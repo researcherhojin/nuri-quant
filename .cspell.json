@@ -524,6 +524,7 @@
     "hashlib",
     "hashpw",
     "headlessly",
+    "healthchecks",
     "herfindahl",
     "hermeticity",
     "hexdigest",

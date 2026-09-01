@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-8,042 backend tests across 373 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (`-n auto --dist worksteal`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
+8,042 backend tests across 373 files + 1622 frontend vitest (141 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):
@@ -186,11 +186,13 @@ If counts disagree with docs, **fix the doc** — precise numbers are load-beari
 ## CI/CD Pipeline (`main-ci-cd.yml`)
 On push/PR to `main`:
 1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with xdist parallel (fast shard matrix + 2 slow push-only — count per `main-ci-cd.yml`). TA-Lib cached. Deps via `uv sync --frozen`.
+2. **Test** — pytest with xdist parallel (fast shard matrix + 2 slow push-only — count per `main-ci-cd.yml`). TA-Lib cached. Deps via `uv sync --frozen --extra dev` — the `local-llm` extra is deliberately excluded (#1406, sdist compile); a separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once, only when `pyproject.toml`/`uv.lock` change. Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414 — runner-disk I/O degradation inflated unrelated setups to 9–16s). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the last runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan
 PR-specific (`pr-discipline.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
+
+On PR close (`cache-cleanup.yml`): deletes that PR's `refs/pull/N/merge` action caches — 7 closed PRs were holding 6.1GB against the 10GB repo cache limit, LRU-evicting live main caches (2026-09-02 measurement; one-shot cleanup took the repo 15.4GB → 1.7GB).
 
 Scheduled (`heartbeat-watch.yml`, #1191 option C): every 20 minutes (cron `7,27,47 * * * *` — off-peak minutes; `*/N` schedules get delayed or dropped under load, and this workflow's cron produced zero events for 7 hours after creation until the `on.schedule` block itself was changed) it reads the `refs/nuri/heartbeat-mini` ref (a custom, non-branch ref — it never appears in the branch list or the "recent pushes" banner) that the mini scheduler force-pushes every 10 minutes via the Git Database API, and posts to `#ops` via the `DISCORD_WEBHOOK_OPS` secret when the heartbeat is older than 45 minutes. Silence from the sender is the alarm — there is no path by which a dead mini reports itself.
 ## Investment Rules

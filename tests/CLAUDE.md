@@ -20,6 +20,14 @@ def db_path(tmp_path):
 `init_db()` 를 부르면 70.8ms × 약 7,000 = 8분이고 파일 복사는 0.5ms 이기 때문
 (실측 오버헤드 0.34s / 1,666 테스트).
 
+복사 위치는 `NURI_TEST_DB_DIR` 로 바꿀 수 있다 (#1414, `make_isolated_db_copy`):
+CI 는 `/dev/shm/nuri-test-db` (tmpfs) 를 지정한다 — ubuntu 러너의 `/tmp` 는 루트
+디스크라, I/O 열화 러너를 뽑으면 워커 8개의 per-test 복사(832KB)가 줄을 서서
+**무관한 테스트들의 setup 이 9~16초**로 부풀고 shard 하나가 361초까지 늘어졌다.
+tmpfs 사본은 테스트 직후 unlink 된다(상주 워커당 ~1MB). env 미설정(로컬)이면 기존
+`tmp_path_factory` 경로 그대로다.
+**Test:** `tests/test_db_isolation_tmpfs.py` — fixture 양 분기 동작 + workflow env 배선.
+
 ⚠️ **`db_path` 를 받는 것만으로는 아무것도 보장되지 않는다.** 함수가 인자를
 선언해 놓고 내부에서 `analyze_portfolio()` 를 인자 없이 부르면 그 한 줄만
 기본 DB 로 샌다. 서명도 맞고 타입 체커도 통과하고 테스트도 초록이다 — 이렇게

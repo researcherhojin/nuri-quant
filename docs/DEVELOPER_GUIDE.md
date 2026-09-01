@@ -15,7 +15,7 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 |---|---|---|
 | Drift bug (working tree ≠ committed) | `check_drift.py --strict` | CI roundtrip 1회 ≈ 3 min |
 | Lint stale config | `ruff check` against committed pyproject | CI roundtrip 1회 ≈ 3 min |
-| Test isolation flake | `pytest -n auto` (CI parity) | CI roundtrip 1+ 회 |
+| Test isolation flake | `pytest -n auto` (CI 는 fast shard 에서 `-n 8`, #1414) | CI roundtrip 1+ 회 |
 | Atomicity violation | `check_atomic.sh` (multi-commit) | reset + re-stage cycle |
 
 ## 4 scripts + 1 PR template
