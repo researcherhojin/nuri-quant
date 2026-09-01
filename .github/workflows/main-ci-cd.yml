@@ -647,6 +647,11 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      # per-test DB 격리 사본(832KB × 테스트당 1회)을 tmpfs 로 — ubuntu 의 /tmp 는
+      # 루트 디스크라 I/O 열화 러너에서 setup 이 9~16s 로 부풀었다 (#1414,
+      # run 33556006779 Fast 4 = 361s). conftest.make_isolated_db_copy 가 소비.
+      NURI_TEST_DB_DIR: /dev/shm/nuri-test-db
     strategy:
       fail-fast: false
       matrix:
@@ -749,6 +754,8 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      NURI_TEST_DB_DIR: /dev/shm/nuri-test-db  # fast shard 와 동일 (#1414)
     strategy:
       fail-fast: false
       matrix:
