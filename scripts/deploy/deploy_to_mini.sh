@@ -214,7 +214,9 @@ fi
 
 # 5b. uv sync --frozen (항상 실행, 1회 retry)
 # ssh non-interactive shell 은 ~/.zprofile 미로드 → homebrew PATH 누락. 명시 prepend 필수.
-SYNC_CMD="export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH} && uv sync --extra dev --frozen --quiet"
+# production 의 opt-in GGUF fallback 을 보존한다 (#1406).
+# Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_deploy_paths_include_local_llm
+SYNC_CMD="export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH} && uv sync --extra dev --extra local-llm --frozen --quiet"
 if "${SSH}" "${REMOTE}" "${SYNC_CMD}" 2>&1; then
     ok "uv sync --frozen 성공"
 elif sleep 5 && "${SSH}" "${REMOTE}" "${SYNC_CMD}" 2>&1; then
