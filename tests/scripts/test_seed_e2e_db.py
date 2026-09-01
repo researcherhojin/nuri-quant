@@ -72,3 +72,24 @@ class TestSeedResolvesKoreanName:
         finally:
             tn._load_kr_name_map.cache_clear()
             tn.get_ticker_name_local.cache_clear()
+
+
+class TestMacroIndicatorsComplete:
+    """seed 가 compute_macro_score 의 전 지표를 채우는지 잠근다.
+
+    지표가 빠지면 예외가 아니라 **성분 제외 + 경고**라 e2e 는 초록인 채로
+    (1) 89개 테스트 전부가 결측-축소 경로만 밟고 전-지표 경로는 미검증이 되고,
+    (2) suite 로그가 지표당 경고 반복으로 덮여 실제 오류가 안 보인다 (2026-09-02
+    run #3161 실측: "매크로 지표 누락" 42줄). 침묵 회귀라 동작으로 잠근다.
+
+    **Test:** tests/scripts/test_seed_e2e_db.py::TestMacroIndicatorsComplete::test_macro_score_has_no_missing_components
+    """
+
+    def test_macro_score_has_no_missing_components(self, seeded_db):
+        from nuri.quant.regime.macro_score import compute_macro_score
+
+        ms = compute_macro_score(db_path=seeded_db)
+
+        # 무경고면 warnings=None (빈 리스트가 아니다) — falsy 검사로 둘 다 받는다.
+        assert not ms.warnings, f"seed 가 매크로 지표를 빠뜨렸다 — e2e 가 결측-축소 경로만 검증하게 된다: {ms.warnings}"
+        assert ms.coverage == 1.0, f"성분 커버리지 {ms.coverage} < 1.0 — 어떤 지표가 가중치에서 제외됐다"
