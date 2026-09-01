@@ -1833,7 +1833,7 @@ wheels = [
 
 [[package]]
 name = "llama-cpp-python"
-version = "0.3.19"
+version = "0.3.35"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "diskcache" },
@@ -1841,7 +1841,7 @@ dependencies = [
     { name = "numpy" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/0f/b26ceec20294f5d592ac137ccc2f10e91fa1f35bb8555906b5718a625ac1/llama_cpp_python-0.3.19.tar.gz", hash = "sha256:6816e4a0a74ae9a356e7a0546e13147543f01f695c86a28d940e4b86519acf13", size = 59043951, upload-time = "2026-03-25T22:32:32.581Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1a/71/5ecdad726b87527b361d9d95313c6591f27bb3fad79c9ab524ad4250b4c9/llama_cpp_python-0.3.35.tar.gz", hash = "sha256:1139dbb54509074b70893fab8554e3b079aa9f4d312058ce4018ef0019e3de12", size = 74868054, upload-time = "2026-08-17T09:41:34.939Z" }
 
 [[package]]
 name = "llvmlite"
