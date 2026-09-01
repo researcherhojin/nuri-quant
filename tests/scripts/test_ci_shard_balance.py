@@ -131,3 +131,14 @@ class TestShardAlgorithm:
             "fast shard 가 pytest-split 기본 duration_based_chunks 로 돌아갔다 — "
             "xdist 비선형 비용이 한 shard 에 몰려 8분 timeout 을 재현한다"
         )
+
+
+class TestShardDiagnostics:
+    """간헐적 tail latency 가 성공 로그에서도 진단 가능하게 유지한다 (#1402)."""
+
+    def test_fast_shards_report_slowest_tests(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        fast_job = text.split("  backend-tests-shard:", 1)[1].split("  backend-tests-slow:", 1)[0]
+        assert "--durations=25" in fast_job, (
+            "fast shard 의 slowest-test 표가 사라졌다 — 8분 timeout 근처 실행의 병목을 성공 로그에서 식별할 수 없다"
+        )
