@@ -383,7 +383,9 @@ jobs:
       # stdlib only (tomllib) — setup-python 불필요, 러너 기본 python3 로 충분
       - name: Compare base and head uv.lock
         env:
-          BASE_REF: ${{ github.base_ref }}
+          # push 이벤트에는 base_ref가 없다. 빈 ref로 `git show origin/:...`가 죽으면
+          # main 자체의 required check가 영구 red가 되므로 기본 브랜치를 대조 대상으로 쓴다.
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
           REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
         run: |
@@ -422,7 +424,8 @@ jobs:
           fetch-depth: 0
       - name: Compare base and head package-lock.json
         env:
-          BASE_REF: ${{ github.base_ref }}
+          # PR은 base_ref, push는 repository 기본 브랜치 — 두 이벤트 모두 실제 lock을 비교한다.
+          BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
           REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
         run: |
