@@ -732,7 +732,10 @@ class TestRetrySemantics:
     초록이었다 — 틀린 건 서술이었고, 그 서술을 믿으면 `latency_ms` 와 에러율을
     잘못 읽는다. 그래서 여기서 잠그는 것은 문장이 아니라 **관측 가능한 성질**이다.
 
-    **Test:** tests/llm/test_openai_client.py::TestRetrySemantics
+    두 축을 나눠 잠근다 — 값(시도 3회가 실제로 일어나는가)과 배선(구성이 명시인가).
+
+    **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_transient_failures_are_retried_then_logged_as_one_row
+    **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_retry_count_is_explicit_not_inherited
     """
 
     def _counting_client(self, statuses):
@@ -802,7 +805,7 @@ class TestRetrySemantics:
         rows = query("SELECT success FROM external_llm_calls", db_path=db_path)
         assert len(rows) == 1 and rows[0]["success"] == 0
 
-    def test_retry_count_is_explicit_not_inherited(self, monkeypatch, db_path):
+    def test_retry_count_is_explicit_not_inherited(self, monkeypatch):
         """구성이 SDK 기본값 상속이 아니라 **명시**여야 한다.
 
         openai 3.6 이 HTTP 전송을 통째로 교체한 전례(#1409)가 있다. 상속된 기본값은
