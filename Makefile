@@ -732,12 +732,34 @@ ports:
 ports-kill:
 	bash scripts/ops/ports.sh kill
 
-sync-test-durations: ## Regenerate .test_durations for CI shard balancing (~10min, serial)
-	@echo "CI 의 fast-test 선택과 동일하게 직렬 실행 — xdist 는 경합으로 시간을 왜곡한다"
+sync-test-durations: ## [deprecated → sync-test-durations-from-ci] M5 직렬 재실측 (CI 런타임을 못 예측함, #1414)
+	@echo "⚠️ M5 직렬 실측은 CI 를 못 예측한다 (#1414: 예측 spread 0.0s / 실측 89s)."
+	@echo "   정본은 make sync-test-durations-from-ci. 이 타겟은 CI artifact 부재 시 폴백."
 	$(PYTHON) -m pytest tests/ -q --tb=line -m "not slow and not integration" \
 		--store-durations --durations-path=.test_durations
 	@# full-precision float 은 privacy 스캐너의 `\b\d{7,}\b` 에 걸린다 (스크립트 docstring 참조)
 	$(PYTHON) scripts/doc/round_test_durations.py .test_durations
+
+# 로직은 전부 scripts/ci/merge_test_durations.py refresh 에 있다 — 이 레시피는
+# gh 다운로드 + 스크립트 호출뿐이다 (셸에 로직을 두면 잠글 수 없다, codex P2-2).
+# gh run list 는 최신 먼저 반환한다 — refresh 의 "최신 run = membership 앵커" 계약과 일치.
+# Test: tests/scripts/test_merge_test_durations.py::TestMakeTargetWiring::test_recipe_delegates_to_refresh
+sync-test-durations-from-ci: ## 최근 push-to-main run 3개의 shard 실측으로 .test_durations 재생성 (#1414)
+	@set -e; \
+	RUNS=$$(gh run list --branch main --workflow main-ci-cd.yml --status success --limit 3 --json databaseId -q '.[].databaseId'); \
+	N=$$(echo "$$RUNS" | grep -c . || true); \
+	if [ "$$N" -lt 2 ]; then echo "❌ 성공한 main run 이 $$N 개 — median 은 2개 이상 필요"; exit 1; fi; \
+	rm -rf /tmp/ci-durations && mkdir -p /tmp/ci-durations; \
+	i=0; DIRS=""; \
+	for RUN in $$RUNS; do \
+	    i=$$((i+1)); DIR=/tmp/ci-durations/run$$i; mkdir -p $$DIR; \
+	    echo "📥 run $$RUN shard durations"; \
+	    gh run download "$$RUN" --pattern 'durations-fast-*' --dir $$DIR; \
+	    DIRS="$$DIRS $$DIR"; \
+	done; \
+	$(PYTHON) scripts/ci/merge_test_durations.py refresh \
+	    --workflow .github/workflows/main-ci-cd.yml --out .test_durations $$DIRS; \
+	echo "✅ 검토 후 일반 PR 로 커밋할 것 (bot push 금지)"
 
 sync-doc-counts:
 	bash scripts/doc/sync_doc_counts.sh

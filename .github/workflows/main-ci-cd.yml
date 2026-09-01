@@ -676,8 +676,19 @@ jobs:
       # Gotcha-Test Pair: tests/scripts/test_ci_shard_balance.py::TestShardAlgorithm::test_fast_shards_use_least_duration
       # 8분 timeout 근처의 간헐적 tail latency 는 성공 로그에도 원인을 남겨야 한다(#1402).
       # Gotcha-Test Pair: tests/scripts/test_ci_shard_balance.py::TestShardDiagnostics::test_fast_shards_report_slowest_tests
-      # 갱신: `make sync-test-durations` (테스트를 크게 추가/삭제한 뒤).
+      # 갱신: `make sync-test-durations-from-ci` — ledger 는 CI 실측이 정본이다 (#1414).
+      # M5 직렬 실측(`make sync-test-durations`)은 CI 런타임을 못 예측한다: 예측
+      # spread 0.0s 인데 실측 spread 89s, 로컬 0.06s 테스트가 CI 에서 7.5s.
       # Slow tests (LLM/scheduler) 는 backend-tests-slow 에서 별도 push-only.
+
+      # push(=main push, on: 설정상)에서만 duration 기록을 켠다 — `!= pull_request` 로
+      # 쓰면 workflow_dispatch 도 기록해 이름과 어긋난다 (codex P3-e). `--clean-durations` 필수 —
+      # 없으면 각 shard 가 기존 ledger 를 품은 full snapshot 을 써서, 병합 시
+      # stale 값이 다른 shard 의 새 실측을 조용히 덮는다 (pytest-split#20).
+      # Test: tests/scripts/test_merge_test_durations.py::TestWorkflowWiring::test_shards_record_and_upload_durations_on_push
+      - name: Arm duration recording (push to main only)
+        if: needs.changes.outputs.run_backend == 'true' && github.event_name == 'push'
+        run: echo "STORE_DURATION_FLAGS=--store-durations --clean-durations" >> "$GITHUB_ENV"
 
       - name: Run fast tests with coverage
         if: needs.changes.outputs.run_backend == 'true'
@@ -687,7 +698,10 @@ jobs:
         # wait-bound 다: 1,317-test subset 실측에서 워커 4개 가동률 14% (101.7s wall /
         # 56s CPU), 워커 8개로 2.5배 단축 (#1414). `-n auto`(=코어수 4)는 대기 시간을
         # 워커 수로 나누지 못해 wall 을 낭비한다.
-        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n 8 --dist worksteal -m "not slow and not integration" --splits 8 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term
+        #
+        # $STORE_DURATION_FLAGS 는 push-to-main 에서만 채워진다 (아래 arm step).
+        # 따옴표 없이 두는 게 의도다 — 빈 값이면 단어가 통째로 사라져야 한다.
+        run: .venv/bin/python -m pytest tests/ -q --tb=short --durations=25 -n 8 --dist worksteal -m "not slow and not integration" --splits 8 --group ${{ matrix.shard }} --splitting-algorithm least_duration --cov=nuri --cov-branch --cov-report= --cov-report=term $STORE_DURATION_FLAGS
         # 5분은 **관측된 최악값과 같았다** — 그래서 통과/실패가 동전던지기였다.
         # shard 4 실측 4회: 139s · 302s(timeout) · pass · timeout(82% 에서 절단, #1028).
         # timeout 은 예상 최악값 위에 여유를 둬야 하고, 그러면서도 진짜 hang 은
@@ -702,6 +716,19 @@ jobs:
           path: .coverage
           if-no-files-found: ignore
           retention-days: 1
+          include-hidden-files: true
+
+      # 초록으로 끝난 push run 만 업로드 (`success()`) — 빨간 run 의 부분 실행이
+      # ledger 에 섞이면 union 검증이 뚫린다. 소비자는 `make sync-test-durations-from-ci`
+      # (scripts/ci/merge_test_durations.py 가 fail-closed 병합 + run 간 median).
+      - name: Upload shard durations (push to main only)
+        if: needs.changes.outputs.run_backend == 'true' && github.event_name == 'push' && success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: durations-fast-${{ matrix.shard }}
+          path: .test_durations
+          if-no-files-found: error
+          retention-days: 7
           include-hidden-files: true
 
   # ── Backend Slow Tests — isolated, push-only ──
