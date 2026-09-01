@@ -3,7 +3,8 @@ import { render, screen, waitFor, act } from "@testing-library/react";
 
 // #1210: 도넛 폐지로 대시보드 트리에 recharts 소비자가 없다 — mock 불필요.
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...rest }: { children: React.ReactNode; href: string; [k: string]: unknown }) => (
+  // scroll/prefetch/replace 는 Next <Link> 전용 — <a> 로 새면 DOM attribute 경고 (run #3161).
+  default: ({ children, href, scroll: _s, prefetch: _p, replace: _r, ...rest }: { children: React.ReactNode; href: string; [k: string]: unknown }) => (
     <a href={href} {...rest}>{children}</a>
   ),
 }));

@@ -57,7 +57,9 @@ vi.mock("@/components/ui/opportunity-explorer", () => ({
 // toggle is `<Link data-testid="holdings-toggle" ...>`, and a children-only mock
 // drops data-testid, making the toggle unqueryable by test id.
 vi.mock("next/link", () => ({
-  default: ({ children, href, ...rest }: { children: ReactNode; href: string }) => (
+  // scroll/prefetch/replace 는 Next <Link> 전용 — <a> 로 스프레드하면 React 가
+  // "non-boolean attribute `scroll`" 경고를 찍는다 (run #3161 stderr). 나머지는 유지.
+  default: ({ children, href, scroll: _s, prefetch: _p, replace: _r, ...rest }: { children: ReactNode; href: string; scroll?: boolean; prefetch?: boolean; replace?: boolean }) => (
     <a href={href} {...rest}>
       {children}
     </a>
@@ -369,7 +371,9 @@ describe("page.tsx branch coverage", () => {
       // siege all-pass (passed omitted -> L588 `|| 0`).
       "/api/certify": { total: 2, conditions: [{ passed: true, severity: "info", description: "ok", detail: "d" }] },
       // freshness via items -> L599 items arm.
-      "/api/freshness": { items: [{ source: "p", status: "PASS", age_hours: 1, threshold_hours: 24 }], overall: "PASS" } as unknown as Json,
+      // 형태는 소비자(FreshnessItem)에서 복사 — source/threshold_hours 는 실형태에 없고,
+      // key 부재는 React key 경고를 냈다 (#1180 과 같은 mock-형태 결함, run #3161 stderr).
+      "/api/freshness": { items: [{ key: "p", label: "P", status: "PASS", age_hours: 1, message: "" }], overall: "PASS" } as unknown as Json,
     });
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
