@@ -1,7 +1,22 @@
 version: 2
-# Grouped dependency updates — reduces PR noise by bundling related
-# minor/patch updates into a single PR per ecosystem.
-# Major version bumps still get individual PRs (manual review required).
+# ⚠️ 이 파일의 `groups` 는 "PR 묶음" 이 아니라 **auto-merge 토큰**이다 (#1363).
+# `dependabot-auto-merge.yml` 의 `isGrouped` 는 `dependency-group` 이 비어 있지만
+# 않으면 참이라, 멤버가 1개여도 그 minor 가 사람 없이 머지된다. 묶음 효과는 실측하면
+# 거의 없다 — 2026-04~08 그룹 PR 52건 중 32건(62%)이 멤버 1개였고 최대가 3개다.
+# 그러니 "패턴을 더 넣어 커버리지를 올린다" 는 노이즈 정리가 아니라 **무인 머지
+# 범위를 넓히는 정책 변경**이다.
+#
+# 그룹에 넣어도 되는지의 기준은 패키지 간 결합도가 아니라 **lock 게이트가 그 생태계를
+# 읽는가** 다. `scripts/verify/check_lock_major_bump.py` (#1364) 는 `uv.lock` 만 읽고
+# `frontend/package-lock.json` 은 범위 밖이다. 그래서 uv 는 그룹을 넓혀도 안전망이
+# 있지만 npm 은 없다 — 실측 사례 3건이 전부 npm 의 ungrouped minor 였다:
+#   #604 jsdom 29.0.2→29.1.1     → entities 6.0.1 → 8.0.0        (major)
+#   #776 @base-ui/react 1.5→1.6  → @base-ui/utils 0.2.9 → 0.3.1   (0.x breaking)
+#   #821 recharts 3.8.1→3.9.2    → immer 10.2.0 → 11.1.11         (major)
+# 셋 다 제목에 없는 rider 였고, ungrouped 라 사람이 막았다. 그룹에 넣었으면 #1355
+# (numpy 1.26→2.5 무인 머지) 를 npm 에서 세 번 반복했을 것이다.
+#
+# major bump 는 어느 그룹에도 안 들어간다 (`update-types: [minor, patch]`).
 updates:
   # ─── Python (uv) ────────────────────────────────────────
   # `pip` 이 아니라 `uv` 다 (#1349). dependabot-core 의 pip file fetcher 는
@@ -24,17 +39,23 @@ updates:
       - "backend"
     commit-message:
       prefix: "chore(deps)"
-    # fastapi: pinned to 0.128.x by openbb-core (#277). Ignore dependabot
-    # proposals to bump past 0.129 until openbb relaxes its constraint.
-    # ruff: openbb-core 1.6.7 이 ruff>=0.15,<0.16 을 하드 핀 — 0.16+ 은 `uv lock`
-    # 이 resolve 못 한다 (#1341 close). uv ecosystem 으로 옮긴 뒤로는 resolver 가
-    # 제안 단계에서 걸러 PR 이 안 열리므로 이 ignore 는 belt-and-braces 지만,
+    # fastapi ignore 는 제거했다 (#1363/#1359). 사유가 낡은 정도가 아니라 규칙이
+    # **뒤집혀** 있었다: openbb-core 1.6.13 의 배포 메타데이터는
+    # `Requires-Dist: fastapi (==0.136.3)` 이고 uv.lock 도 0.136.3 을 들고 있다 —
+    # lock 이 이미 ignore 하한(>=0.129.0) **위에** 있어서, 이 규칙은 "0.129 이상을
+    # 막는" 게 아니라 fastapi 를 영구 동결하고 있었다. 하필 이 패키지는 starlette
+    # Host-header 우회 패치를 받으려고 pyproject `[tool.uv] override-dependencies`
+    # 로 openbb 핀을 **일부러** 깬 대상이다. 안전망은 그대로 있다: fastapi 는 0.x 라
+    # 0.136→0.137 을 #1364 lock 게이트가 `0.x minor` 로 차단한다 (실측).
+    #
+    # ruff: openbb-core 는 1.6.13 기준으로도 `ruff (>=0.15,<0.16)` 하드 핀이고
+    # lock 은 0.15.22 — 하한 0.16.0 아래라 이 ignore 는 **살아서 일하고 있다**.
+    # 0.16+ 은 `uv lock` 이 resolve 못 한다 (#1341 close). uv ecosystem 에서는
+    # resolver 가 제안 단계에서 걸러 PR 이 안 열리므로 belt-and-braces 지만,
     # 해결 불가가 조용한 no-op 이 아니라 job failure 로 뜨는 열린 버그가 있어
     # (dependabot-core#15603) 명시 ignore 가 더 싸다. cap 이 풀리면 이 ignore 와
     # pyproject.toml 의 정확 핀을 같이 올릴 것.
     ignore:
-      - dependency-name: "fastapi"
-        versions: [">=0.129.0"]
       - dependency-name: "ruff"
         versions: [">=0.16.0"]
     groups:
@@ -44,7 +65,6 @@ updates:
         patterns:
           - "ruff*"
           - "pytest*"
-          - "coverage*"
         update-types:
           - "minor"
           - "patch"
@@ -55,7 +75,6 @@ updates:
           - "pandas*"
           - "numpy*"
           - "scipy*"
-          - "pyarrow*"
         update-types:
           - "minor"
           - "patch"
@@ -66,7 +85,6 @@ updates:
           - "fastapi*"
           - "uvicorn*"
           - "httpx*"
-          - "pydantic*"
         update-types:
           - "minor"
           - "patch"
