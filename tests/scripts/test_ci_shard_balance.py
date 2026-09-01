@@ -119,3 +119,15 @@ class TestShardTopology:
             assert shard_list == list(range(1, int(s) + 1)), (
                 f"matrix {shard_list} ≠ --splits {s} — 빠진 group 의 테스트는 어느 shard 에서도 안 돈다"
             )
+
+
+class TestShardAlgorithm:
+    """Fast lane 이 serial 연속 구간 분배로 돌아가는 회귀를 막는다 (#1393)."""
+
+    def test_fast_shards_use_least_duration(self):
+        text = WORKFLOW.read_text(encoding="utf-8")
+        fast_job = text.split("  backend-tests-shard:", 1)[1].split("  backend-tests-slow:", 1)[0]
+        assert "--splitting-algorithm least_duration" in fast_job, (
+            "fast shard 가 pytest-split 기본 duration_based_chunks 로 돌아갔다 — "
+            "xdist 비선형 비용이 한 shard 에 몰려 8분 timeout 을 재현한다"
+        )
