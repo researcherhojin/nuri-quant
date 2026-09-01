@@ -68,6 +68,15 @@ logger = logging.getLogger(__name__)
 PROVIDER = "openai"
 DEFAULT_MODEL = "gpt-5.4-nano"
 
+# 재시도 횟수를 **명시**한다. 값은 SDK 기본값과 같지만(openai 2.30·3.6 모두 2), 상속된
+# 기본값이면 major bump 에서 조용히 바뀌어도 신호가 없다. 명시하면 레포의 결정이 된다.
+# 이 값이 정하는 것은 **감사 원장의 cardinality 하나뿐**이다: max_retries=N 이면 HTTP 시도는
+# 최대 N+1 회인데 `external_llm_calls` 행은 논리적 호출당 1개다. 계약은 OpenAIClient docstring.
+# ⚠️ 전송 계층의 다른 상속 기본값은 여기서 손대지 않았다 — 특히 read timeout 600s 는
+# 그대로라 소진 시 한 호출이 최대 30분 블록될 수 있다 (#1411 로 분리).
+# **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_retry_count_is_explicit_not_inherited
+SDK_MAX_RETRIES = 2
+
 # Per-1M-token pricing in USD. Keep in sync with STRATEGY.md §4.4.3.
 # When OpenAI changes prices, update both this table and the STRATEGY row.
 # Future: if we add more models or providers, move this to config/llm_pricing.yaml.
@@ -103,7 +112,17 @@ class ExternalLLMUnavailable(ExternalLLMError):
     """Raised when the API is unreachable, returns 5xx, or auth fails.
 
     Callers should treat this as transient and either retry or fall back.
-    The wrapper does NOT retry internally — that's the caller's policy.
+
+    ⚠️ **이 예외가 왔다는 것만으로 시도 횟수를 알 수 없다.** wrapper 자신은 재시도
+    루프를 돌지 않지만 SDK 를 `max_retries=SDK_MAX_RETRIES` (=2) 로 구성하므로,
+    실패 종류에 따라 최초 1회로 끝났을 수도 최대 3회 시도됐을 수도 있다.
+
+    - SDK 가 **재시도하는** 것: 408 · 409 · 429 · 5xx · 연결 실패
+      (그 밖에 `x-should-retry` 헤더와 과도한 `Retry-After` 가 결정을 뒤집을 수 있다)
+    - SDK 가 **재시도하지 않는** 것: 400 · 401 · 403 · 404 등 나머지 4xx.
+      요약 줄의 "auth fails" 가 여기 해당하므로 그 경로는 1회 시도로 도달한다.
+
+    2026-09-02 실측. caller 가 여기서 또 재시도를 얹으면 실제 시도 횟수는 곱해진다.
     """
 
 
@@ -152,6 +171,25 @@ class OpenAIClient:
 
     Stateless except for a lazily-constructed SDK client object. Safe to
     instantiate once per process or per call.
+
+    **감사 원장 계약 — 1행 = 논리적 호출 1건, HTTP 시도 1건이 아니다.**
+    SDK 를 `max_retries=SDK_MAX_RETRIES` (=2) 로 구성하므로 `external_llm_calls`
+    의 한 행이 최대 3회의 HTTP 시도를 대표한다. 읽을 때 따라오는 결과 3가지:
+
+    - `latency_ms` 는 재시도 백오프를 **포함한** wall-clock 이다. 값이 크다고
+      모델이 느린 게 아니라 재시도했을 수 있다. 백오프는 지수 + jitter 에 서버
+      `Retry-After` 가 얹히므로 고정값이 아니다.
+    - 재시도로 살아난 호출은 `success=1` 한 행으로만 남는다. 즉 이 표의 에러율은
+      **실제 HTTP 에러율의 하한**이다.
+    - 토큰·비용 컬럼은 **최종 응답의 usage** 를 적는다. 그건 원장의 정의이지
+      청구액의 정의가 아니다 — 서버가 처리를 마친 뒤 타임아웃된 시도는 상류에서
+      과금될 수 있으므로, 실제 청구액은 이 표의 합계보다 클 수 있다. 금액의
+      source of truth 는 OpenAI Usage/Costs 다.
+
+    시도 횟수 자체를 원장에 남기려면 컬럼 추가(forward-only migration)가 필요하고,
+    그건 별도 범위다 — #1410 에서 의도적으로 제외했다.
+
+    **Test:** tests/llm/test_openai_client.py::TestRetrySemantics::test_transient_failures_are_retried_then_logged_as_one_row
     """
 
     def __init__(self, *, default_model: str = DEFAULT_MODEL):
@@ -174,7 +212,7 @@ class OpenAIClient:
             from openai import OpenAI
         except ImportError as e:
             raise ExternalLLMUnavailable(f"openai SDK not installed: {e}") from e
-        self._sdk_client = OpenAI()
+        self._sdk_client = OpenAI(max_retries=SDK_MAX_RETRIES)
         return self._sdk_client
 
     def chat_json(
