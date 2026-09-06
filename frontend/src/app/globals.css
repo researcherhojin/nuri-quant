@@ -106,9 +106,15 @@
 }
 
 /* Evidence Terminal 다크 토큰 (#1195 U1a) — Blueprint 다크 램프.
-   대비 실측(WCAG): text/card 15.1:1 · muted/card 7.66:1 · 링크 8.2:1 — 전부 AAA.
-   가드레일(codex 2R): 이 대비를 낮추는 "무드 맞춤" 변경 금지. 의미색(P&L green=이익)은
-   semantic 유틸리티(emerald/red)가 담당하며 여기서 건드리지 않는다 */
+   대비 실측(WCAG): text/card 15.11:1 (AAA) · muted/card 7.66:1 (AAA) ·
+   링크 #4C90F0 5.76:1 on background / 5.06:1 on card — **AA, AAA 아님**.
+   #1431 이전에는 이 줄이 "링크 8.2:1 — 전부 AAA" 였는데 그 색으로 도달 불가능한 값이다
+   (8.2:1 이 되려면 배경 상대휘도가 음수여야 하고, 순흑 위에서도 최대 6.55:1). 앞의 두
+   숫자는 정확했으므로 측정 자체가 없었던 게 아니라 이 한 줄만 검증을 안 거쳤다.
+   가드레일(codex 2R): 이 대비를 낮추는 "무드 맞춤" 변경 금지. 이제 주석이 아니라 테스트가
+   막는다 — 의미색(P&L green=이익)은 semantic 유틸리티(emerald/red)가 담당하며 여기서
+   건드리지 않는다.
+   **Test:** `src/__tests__/lib/dark-token-contrast.test.ts` (이 파일을 파싱해서 검사) */
 .dark {
   --background: #111418;
   --foreground: #F6F7F9;
