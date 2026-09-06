@@ -18,7 +18,7 @@ class FundamentalAgent(BaseAgent):
             db_path,
         )
         if not rows:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "펀더멘탈 데이터 없음")
+            return AgentVerdict(self.name, ticker, "HOLD", 0, "펀더멘탈 데이터 없음", abstained=True)
 
         f = rows[0]
         pe = f.get("pe_ratio")

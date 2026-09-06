@@ -49,7 +49,7 @@ class TechnicalAgent(BaseAgent):
             except Exception:
                 pass
         if df.empty or len(df) < min_dp:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "데이터 부족")
+            return AgentVerdict(self.name, ticker, "HOLD", 0, "데이터 부족", abstained=True)
 
         close = df["close"]
         latest = float(close.iloc[-1])

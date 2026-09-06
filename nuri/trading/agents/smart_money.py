@@ -170,7 +170,9 @@ class SmartMoneyAgent(BaseAgent):
                 reasons.append(f"ARK 최근 매도 {sells}건")
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 30), "스마트머니 데이터 없음")
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 30), "스마트머니 데이터 없음", abstained=True
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -1)
