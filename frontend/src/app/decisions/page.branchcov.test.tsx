@@ -53,12 +53,14 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
   });
 
   // decisions.length === 0 → 빈 상태 카드 (table-row 분기 우회).
-  // SummaryCards: adjudicated>0 truthy + >=50 green arm.
-  it("renders empty table + green Hit Rate (successRate >= 50)", async () => {
+  // #1429 로 `>=50 ? green : red` 는 삭제됐다 — 두 케이스는 이제 착색 arm 이 아니라
+  // 50% 위·아래에서 **같은 렌더**가 나오는지를 본다. 색 잠금 본체는
+  // `src/components/ui/rate.test.tsx` 의 회귀 잠금 describe 에 있다.
+  it("renders empty table + Hit Rate (rate >= 50)", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
-      // adjudicated=8>0, round(5/8*100)=63 → >=50 → green, value="63%"
+      // adjudicated=8, round(5/8*100)=63
       summary: { total: 10, pending: 2, success: 5, failure: 3, neutral: 0 },
     });
     const jsx = await DecisionsSection();
@@ -66,8 +68,8 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
     expect(getByText("63%")).toBeInTheDocument();
   });
 
-  // red arm: successRate < 50. round(1/10*100)=10.
-  it("renders red Hit Rate (0 < successRate < 50)", async () => {
+  // round(1/10*100)=10.
+  it("renders Hit Rate (0 < rate < 50)", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
