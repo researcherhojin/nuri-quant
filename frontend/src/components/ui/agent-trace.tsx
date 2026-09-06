@@ -6,6 +6,7 @@
  * 10개 에이전트 verdict가 완료 순서대로 표시되고,
  * 최종 합의 결과가 하단에 나타난다.
  */
+import { CONSENSUS } from "@/lib/strings";
 import { useTraceStream } from "@/lib/use-trace-stream";
 import { StatusBadge } from "./status-badge";
 
@@ -75,10 +76,19 @@ export function AgentTrace({ ticker }: { ticker: string }) {
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className="text-[10px] font-medium text-muted-foreground">{a.label}</span>
                   {v ? (
-                    <>
-                      <StatusBadge status={v.action} size="sm" />
-                      <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
-                    </>
+                    // 자리표시자에 확신도 %를 찍으면 의견처럼 읽힌다 (#1436). 백엔드는 이미
+                    // 이것들을 동의율·패널 커버리지에서 빼므로, 여기서 숫자를 보이면 같은
+                    // 화면이 자기 자신과 모순된다.
+                    v.degraded || v.abstained ? (
+                      <span className="text-[10px] text-muted-foreground/40 ml-auto">
+                        {v.degraded ? CONSENSUS.PLACEHOLDER_DEGRADED : CONSENSUS.PLACEHOLDER_ABSTAINED}
+                      </span>
+                    ) : (
+                      <>
+                        <StatusBadge status={v.action} size="sm" />
+                        <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
+                      </>
+                    )
                   ) : (
                     <span className="text-[10px] text-muted-foreground/30 ml-auto">--</span>
                   )}

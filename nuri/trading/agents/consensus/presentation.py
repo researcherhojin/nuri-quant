@@ -51,11 +51,17 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
         cols = []
         for name in agent_order:
             v = agent_map.get(name)
-            if v:
+            if v is None:
+                cols.append("--")
+            elif v.degraded:
+                # 자리표시자에 확신도를 찍으면 같은 줄의 동의율과 모순된다 (#1436) —
+                # 그 수치는 이미 이것들을 뺀 값이다.
+                cols.append("×")
+            elif v.abstained:
+                cols.append("·")
+            else:
                 icon = {"BUY": "B", "SELL": "S", "HOLD": "H"}.get(v.action, "?")
                 cols.append(f"{icon}{v.confidence:.0f}")
-            else:
-                cols.append("--")
 
         print(
             f"  {r.ticker:<10} {r.final_action:<6} {r.final_confidence:>4.0f} {r.agreement_rate:>5.0%} "
@@ -66,7 +72,9 @@ def print_consensus(results: list[ConsensusResult], *, verbose: bool = False) ->
     show_supporters = verbose or len(results) == 1
     if show_supporters:
         for r in sorted(results, key=lambda x: x.final_confidence, reverse=True):
-            supporters = [v for v in r.verdicts if v.action == r.final_action]
+            # `scoring.py` 의 supporters 와 같은 정의를 써야 한다 (#1436, codex R2) — 여기서
+            # 따로 계산하는 바람에 CLI 만 "crypto: 크립토 변동 없음" 을 지지 근거로 찍었다.
+            supporters = [v for v in r.verdicts if v.action == r.final_action and not v.degraded and not v.abstained]
             if not supporters:
                 continue
             print(

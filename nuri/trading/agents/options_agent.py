@@ -25,11 +25,18 @@ class OptionsAgent(BaseAgent):
             db_path,
         )
         if not rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음", abstained=True)
+            return self._no_data(
+                ticker,
+                rows,
+                confidence=_CONF.get("no_data", 0),
+                empty_reason="PCR 데이터 없음",
+                failed_reason="PCR 조회 실패",
+            )
 
         values = [r["value"] for r in rows if r["value"] is not None]
         if not values:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음", abstained=True)
+            # 조회는 성공했고 행도 있는데 값이 전부 NULL — 실패가 아니라 부재다.
+            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 값 없음", abstained=True)
 
         pcr = sum(values) / len(values)
 

@@ -17,6 +17,14 @@ __all__ = ["_build_consensus"]
 
 def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -> ConsensusResult:
     """가중 투표로 합의 결과 산출 (analyze_ticker / stream_analyze_ticker 공용)."""
+    # ⚠️ 이 루프는 **기권을 거르지 않는다 — 의도적이다** (#1436, 후속 #1437).
+    # `live` 는 보고 축(동의율·커버리지·거부권 가용성)만 고치고 채점 축은 그대로 둔다.
+    # 자리표시자도 여기서는 표를 던진다: `smart_money` 의 no_data 는 정규화 후 37.5,
+    # `wallstreet` 는 23.5 라 0 이 아니고 HOLD 쪽으로 가중치를 민다. 실측 결과 기권이
+    # 가중 투표의 중앙값 **5.5%**(최대 15.3%)를 차지하며, 그 기여를 빼면 18 건 중 **3 건의
+    # final_action 이 뒤집힌다** — 즉 여기를 고치는 것은 보고 정정이 아니라 **매매 판단
+    # 변경**이라 backtest 와 STRATEGY 검토가 선행돼야 한다. 이 PR 에 실으면 "기록만 고쳤다"
+    # 는 주장이 거짓이 된다.
     action_scores = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0}
     for v in verdicts:
         w = weights.get(v.agent_name, 0.1)
@@ -148,7 +156,12 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
                 # final_action) 에 실제 기여한 verdict 를 True 로 마킹. UI 는 이
                 # 플래그로 "합의 방향 지지자" 를 강조하되 final_action 과 다를 수
                 # 있음을 `basis_action` 별도 노출로 처리.
-                "counted_for_basis_action": (v.action == basis_action) and not v.degraded and not v.abstained,
+                # ⚠️ `abstained` 를 여기서 빼지 않는다 — 이 플래그는 "basis 방향 **점수에**
+                # 기여했는가" 이고, 기권도 `action_scores` 에는 여전히 기여한다(#1437).
+                # 빼면 이 필드가 `action_scores` 와 모순되어 UI 가 "기여 안 함" 이라 표시하는
+                # verdict 가 실제로는 표를 던진 상태가 된다 (codex R2). 기권 여부는 아래
+                # `abstained` 필드로 따로 노출하니 소비자가 둘을 조합하면 된다.
+                "counted_for_basis_action": (v.action == basis_action) and not v.degraded,
                 # 판단을 못 한 에이전트 — 진짜 HOLD 와 구분된다 (#1028).
                 "degraded": v.degraded,
                 # 정상 실행됐으나 의견 없음 — degraded 와 원인이 다르다 (#1436).

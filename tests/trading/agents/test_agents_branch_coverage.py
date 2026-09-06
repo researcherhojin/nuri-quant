@@ -73,7 +73,9 @@ class TestMacroExceptionPath:
 
         v = MacroAgent().analyze("AAA", db_path=db_path)
         assert v.action == "HOLD"
-        assert "부족" in v.reasoning
+        # #1436: 예외는 부재가 아니라 실패 — 문구와 분류를 함께 잠근다.
+        assert "조회 실패" in v.reasoning
+        assert v.degraded is True and v.abstained is False
 
     def test_yfinance_fallback_runs(self, db_path, monkeypatch):
         """When prices DB empty, yfinance fallback executes (lines 62-71)."""
@@ -273,6 +275,8 @@ class TestSmartMoneyNoData:
         # 데이터 부족 → 낮은 confidence (BaseAgent contract)
         assert v.confidence <= 50
         assert v.ticker == "ZZZ"
+        # #1436: 데이터 부재는 abstained (기권) 이지 degraded (실패) 가 아니다
+        assert v.abstained is True and v.degraded is False
 
 
 # ─── technical.py: lines 44-47, 80-81, 208-210 ─────────────────────────
@@ -614,7 +618,9 @@ class TestTechnicalDefensivePaths:
         v = TechnicalAgent().analyze("AAPL", db_path=None)
         # except 후 df 여전히 empty → 데이터 부족 HOLD
         assert v.action == "HOLD"
-        assert "데이터 부족" in v.reasoning
+        # #1436: yfinance 예외는 부재가 아니라 **실패** — degraded 로 분류된다.
+        assert "가격 조회 실패" in v.reasoning
+        assert v.degraded is True and v.abstained is False
 
     def test_analyze_chart_exception_returns_none(self, db_path, monkeypatch):
         """signals 충분 + analyze_chart raise → chart=None (lines 80-81)."""

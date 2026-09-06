@@ -18,13 +18,36 @@ class FundamentalAgent(BaseAgent):
             db_path,
         )
         if not rows:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "펀더멘탈 데이터 없음", abstained=True)
+            return self._no_data(
+                ticker, rows, confidence=0, empty_reason="펀더멘탈 데이터 없음", failed_reason="펀더멘탈 조회 실패"
+            )
 
         f = rows[0]
         pe = f.get("pe_ratio")
         roe = f.get("roe")
         growth = f.get("revenue_growth")
         debt = f.get("debt_to_equity")
+
+        # 행은 있는데 소비하는 네 필드가 **전부 NULL** 이면 읽은 게 없다 (#1436, codex R8).
+        # 앞 게이트(`if not rows`)는 행이 있으면 통과시키므로 여기서 한 번 더 본다. 전에는
+        # `"; ".join(reasons) or "데이터 제한적"` 로 빠져나가 확신도 50 짜리 살아 있는 HOLD 가
+        # 됐고, 실측 3-verdict 프로브에서 커버리지를 0.667 → 1.0 으로, HOLD 동의율을 0.50 →
+        # 0.67 로 부풀렸다.
+        #
+        # ⚠️ 조건은 "평가할 값이 있었나" 지 **"근거 문구가 비었나" 가 아니다** (codex R9).
+        # 처음엔 `not reasons` 로 썼는데, ROE 5% · 매출성장 5% · 부채 1.0 처럼 전부 중립
+        # 구간인 행은 어느 임계도 안 건드려 근거가 비지만 **실제 데이터로 중립을 확인한
+        # 판단**이다. 그걸 기권으로 깎는 것이 codex R1 이 `risk` 의 "리스크 정상" 에서 잡은
+        # 오류와 같다 — 이 이슈에서 반대 방향으로 세 번째 밟은 함정이다.
+        if pe is None and roe is None and growth is None and debt is None:
+            return self._no_data(
+                ticker,
+                rows,
+                confidence=0,
+                empty_reason="펀더멘탈 데이터 제한적",
+                failed_reason="펀더멘탈 조회 실패",
+                data_points={"pe": pe, "roe": roe, "growth": growth, "debt": debt},
+            )
 
         pe_undervalued = _CFG.get("pe_undervalued", 15)
         pe_fair = _CFG.get("pe_fair", 25)
@@ -99,6 +122,8 @@ class FundamentalAgent(BaseAgent):
             ticker,
             action,
             round(self.normalize_confidence(confidence), 1),
-            "; ".join(reasons) or "데이터 제한적",
+            # 값은 읽었는데 전부 중립 구간이면 근거 문구가 빈다 — 그건 **판단**이다
+            # (`risk` 의 "리스크 정상" 과 같은 부류). 위 게이트가 부재를 이미 걸렀다.
+            "; ".join(reasons) or "펀더멘탈 중립",
             {"pe": pe, "roe": roe, "growth": growth, "debt": debt},
         )
