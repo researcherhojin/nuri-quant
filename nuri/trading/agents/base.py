@@ -36,6 +36,26 @@ class AgentVerdict:
     # 구분되지 않으면 거부권 무력화·동의율 부풀림이 조용히 일어난다.
     degraded: bool = False
 
+    @property
+    def abstained(self) -> bool:
+        """정상 실행됐지만 **의견을 내지 않은** verdict (#1436).
+
+        `degraded` 가 못 덮는 절반이다. 저쪽은 예외·타임아웃으로 에이전트가 **죽은** 경우만
+        True 인데, 멀쩡히 돌고도 확신도 0 을 내는 경로가 따로 있다 — `fundamental` 의
+        "펀더멘탈 데이터 없음", `technical` 의 "데이터 부족", 그리고 주식 티커를 받은
+        `crypto` 처럼 입력은 있으나 그 입력으로 이 종목에 대해 할 말이 없는 경우다.
+        산출물은 양쪽 다 HOLD/0 으로 같고, 그래서 `degraded` 만 거르면 자리표시자가
+        의견으로 집계된다 (#1436 실측: 180 셀 중 36 개, `crypto` 는 18/18).
+
+        **왜 `degraded` 를 넓히지 않았나**: crypto·retail 은 거의 매일 기권한다. 둘을
+        `degraded_agents` 에 넣으면 그 목록이 매 행 가득 차고, 진짜 사고(에이전트 크래시)가
+        노이즈에 묻힌다 — #1028 이 만든 인시던트 신호가 죽는다. 원인이 다르므로 축을 나눈다.
+
+        **왜 확신도로 판정하나**: 에이전트마다 기권 표시를 손으로 붙이면 빠뜨린다.
+        확신도 0 은 정의상 "확신 없음" 이고, 확신 0 짜리 의견은 의견이 아니다.
+        """
+        return not self.degraded and self.confidence == 0
+
 
 def _load_norm_config() -> dict:
     """confidence_normalization 설정 로드 (import cycle 방지를 위해 lazy)."""
