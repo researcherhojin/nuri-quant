@@ -47,6 +47,28 @@ ARK 의 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 
 - **Risk agent** (19% weight) has **veto power**: SELL + confidence ≥ 80 overrides all others.
 - **Technical divergence penalty** (JKHY defense, PR #303): if TechnicalAgent SELL with conf ≥ 80 disagrees with a consensus BUY, downgrade to HOLD. See STRATEGY §2.6 (Soft penalty rung, PR #303 `divergence_technical_threshold`) + §5.9 Case #2 (JKHY).
 
+## 자리표시자 verdict 는 두 축이다 — `degraded` 와 `abstained` (#1028, #1436)
+
+패널이 무너지지 않게 판단 못 한 에이전트도 HOLD/0 을 채운다 (#130). 그 대체물이 진짜 HOLD 와
+섞이면 동의율이 부풀고 거부권 부재가 안 보인다. 그래서 `scoring.py` 의 `live` 는 둘 다 뺀다.
+
+| 축 | 뜻 | 판정 | 성격 |
+|---|---|---|---|
+| `degraded` | 예외·타임아웃으로 **죽었다** | `consensus/__init__.py` 가 명시적으로 True | 인시던트 |
+| `abstained` | 정상 실행, **의견 없음** (확신도 0) | `AgentVerdict.abstained` 파생 | 상시 |
+
+**섞지 않는 이유**: `crypto` 는 주식 티커에서 18/18, `retail` 은 12/18 기권한다 (실측). 이걸
+`degraded_agents` 에 넣으면 그 목록이 매 행 가득 차 **진짜 크래시가 노이즈에 묻힌다** — #1028
+이 만든 신호가 죽는다. 원인이 다르니 축을 나눈다.
+
+**행동은 안 바뀐다**: 확신도 0 은 `action_scores[action] += w * (conf/100)` 에 0 을 더하므로
+`final_action` · `final_confidence` 에 영향이 없고, 거부권도 `0 >= 80` 이 거짓이라 그대로다.
+바뀌는 것은 `agreement_rate` · `dissent` · `panel_coverage` · `risk_veto_available` 이며 전부
+기록·표시용이다 (`agent_agreement` 도 `swing/rules.py` 에서 저장만 되고 게이트가 아니다).
+프로덕션 18 건 재계산: `final_action` 변경 0, `final_confidence` 반올림 1 (37.3→37.4).
+
+**Test:** `tests/trading/agents/test_abstained_verdicts.py`
+
 ## Adding a New Agent
 
 1. Create `nuri/trading/agents/new_agent.py` inheriting `BaseAgent`.

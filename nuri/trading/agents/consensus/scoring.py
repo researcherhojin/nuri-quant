@@ -36,7 +36,10 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # 죽으면 HOLD/0 대체 verdict 가 들어오고 `confidence >= 80` 이 그냥 거짓이 된다 —
     # Hard veto 가 사라지는데 아무 신호가 없다. 2026-08-11 프로덕션 실측: 최근 1,399
     # 추천 중 4건이 그 상태였고, 사후에 어느 건인지 알 방법이 없었다.
-    risk_veto_available = risk_v is not None and not risk_v.degraded
+    # 기권도 "평가 못 함" 이다 (#1436). risk 가 확신도 0 을 내면 `>= 80` 은 어차피 거짓이라
+    # **발동 여부는 안 바뀌지만**, 지금까지 그 행들은 `risk_veto_available=True` 로 기록돼
+    # "거부권을 평가했고 통과했다" 처럼 보였다. 실측 18 건 중 3 건이 그 상태였다.
+    risk_veto_available = risk_v is not None and not risk_v.degraded and not risk_v.abstained
     if risk_veto_available and risk_v is not None and risk_v.confidence >= veto_threshold:
         alpha_flat = risk_v.alpha_action == "FLAT"
         legacy_sell = risk_v.alpha_action is None and risk_v.action == "SELL"
@@ -92,9 +95,16 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # **degraded verdict 는 분자·분모 양쪽에서 뺀다** (#1028). 예외로 죽은 에이전트가
     # 채우는 HOLD/0 은 의견이 아니라 자리표시자다. 세면 합의가 HOLD 로 갈 때 동의율이
     # 부풀어, 패널이 망가졌을수록 더 만장일치로 보이는 역전이 생긴다.
+    #
+    # **기권(abstained)도 같이 뺀다** (#1436). `degraded` 는 예외·타임아웃만 잡는데,
+    # 멀쩡히 돌고 확신도 0 을 내는 경로가 따로 있고 산출물은 똑같은 HOLD/0 이다.
+    # 실측: 최신 1일치 180 셀 중 36 개가 확신도 0 인데 `degraded_agents` 는 전 행 `[]`
+    # 였고 `panel_coverage` 는 전 행 `1.0` 이었다. HOLD 확정 4 건의 동의율이 5.0~8.6pp
+    # 부풀어 있었다 — 위 문단이 예측한 그 역전이다.
     dist_basis = pre_penalty_action_str if penalty_applied else final_action
-    live = [v for v in verdicts if not v.degraded]
+    live = [v for v in verdicts if not v.degraded and not v.abstained]
     degraded_agents = [v.agent_name for v in verdicts if v.degraded]
+    abstained_agents = [v.agent_name for v in verdicts if v.abstained]
     agree_count = sum(1 for v in live if v.action == dist_basis)
     agreement_rate = agree_count / len(live) if live else 0
     dissent = [f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in live if v.action != dist_basis]
@@ -153,6 +163,8 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         # 패널 건강도 (#1028) — 결과를 바꾸지 않고 **열화 사실만** 남긴다.
         # `risk_veto_available=False` 인 행은 "거부권 없이 낸 판정" 이라 사후 조회 가능.
         "degraded_agents": degraded_agents,
+        # 기권은 사고가 아니라 상시 상태다 — `degraded_agents` 에 섞지 않고 따로 센다 (#1436).
+        "abstained_agents": abstained_agents,
         "panel_coverage": round(len(live) / len(verdicts), 3) if verdicts else 0.0,
         "risk_veto_available": risk_veto_available,
         "divergence_flag": divergence_flag,
