@@ -224,9 +224,9 @@ describe("DecisionsPage", () => {
     expect(screen.getByText(/API 연결에 실패했습니다/)).toBeInTheDocument();
   });
 
-  // #1429: 착색 분기는 삭제됐다 — 이 두 테스트는 50% 위·아래에서 비율 텍스트가
-  // 같은 방식으로 렌더되는지만 본다. 색 부재 잠금은 아래 "성과색" describe.
-  it("renders hit rate when success >= 50%", async () => {
+  // #1429: 착색 분기는 삭제됐다 — 이 두 테스트는 비율 텍스트 렌더만 본다.
+  // 색 부재 잠금은 `src/components/ui/rate.test.tsx`.
+  it("renders 100% hit rate (1 success, 0 failure)", async () => {
     setupFetchAPI({
       decisions: [
         { id: 1, date: "2026-01-01", ticker: "WIN", action: "BUY", confidence: 80,
@@ -243,7 +243,9 @@ describe("DecisionsPage", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
-  it("renders hit rate when success < 50%", async () => {
+  // 이 픽스처는 정확히 1/2 = 50% 다. main 에 있던 이름 "red hit rate when success < 50%" 는
+  // 사실과 어긋나 있었다 — 옛 코드의 분기가 `>= 50 ? green : red` 라 50% 는 green 이었다.
+  it("renders 50% hit rate (1 success, 1 failure)", async () => {
     setupFetchAPI({
       decisions: [
         { id: 1, date: "2026-01-01", ticker: "LOSE", action: "BUY", confidence: 40,

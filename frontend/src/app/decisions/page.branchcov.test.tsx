@@ -81,7 +81,7 @@ describe("DecisionsSection — exhaustive branch coverage", () => {
   });
 
   // #1216 의미 변경: 판정 3건 전패 → 0% 는 실측이다 ("—" 로 숨기지 않는다).
-  it("renders 0% (red) when all adjudicated decisions failed", async () => {
+  it("renders 0% when all adjudicated decisions failed", async () => {
     mockFetchAPI.mockResolvedValue({
       decisions: [],
       count: 0,
