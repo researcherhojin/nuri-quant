@@ -3,7 +3,8 @@
  * by mocking fetchAPI and calling the default export with a mock params Promise.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, within } from "@testing-library/react";
+import { CONSENSUS } from "@/lib/strings";
 
 vi.mock("next/link", () => ({
   default: ({ children, href }: { children: React.ReactNode; href: string }) => (
@@ -303,5 +304,42 @@ describe("TickerPage", () => {
 
     // formatMoney (#1197): USD 는 소수 2자리 고정
     expect(screen.getByText("$100.00")).toBeInTheDocument();
+  });
+});
+
+describe("TickerPage — 자리표시자는 의견이 아니다 (#1436)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const withPlaceholder = {
+      ...fullData,
+      consensus: {
+        ...fullData.consensus,
+        verdicts: [
+          { agent_name: "technical", action: "BUY", confidence: 80 },
+          // 백엔드가 동의율·커버리지에서 뺀 자리표시자. 여기서 확신도를 찍으면
+          // 같은 화면의 "80% agree" 와 모순된다 — 10 개 의견처럼 보인다.
+          { agent_name: "korean_market", action: "HOLD", confidence: 50, abstained: true },
+        ],
+      },
+    };
+    mockFetchAPI.mockImplementation((url: string) => {
+      if (url.includes("/prices")) return Promise.resolve(priceData);
+      if (url.includes("/targets/")) return Promise.resolve(targets);
+      if (url.includes("/external/")) return Promise.resolve(external);
+      if (url.includes("/ticker/")) return Promise.resolve(withPlaceholder);
+      return Promise.resolve({});
+    });
+  });
+
+  it("기권 에이전트의 확신도를 숫자로 찍지 않는다", async () => {
+    const mod = await import("@/app/ticker/[symbol]/page");
+    const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
+    await act(async () => { render(element); });
+
+    const row = screen.getByText("korean_market").closest("div")!.parentElement!;
+    expect(within(row).queryByText("50")).not.toBeInTheDocument();
+    expect(within(row).getByText(CONSENSUS.PLACEHOLDER_ABSTAINED)).toBeInTheDocument();
+    // 카나리아 — 진짜 의견은 그대로 숫자가 나온다
+    expect(screen.getByText("80")).toBeInTheDocument();
   });
 });

@@ -102,13 +102,33 @@ export function fmtKvValue(v: unknown): string {
   }
 }
 
+/** 자리표시자 축 — 데이터가 아니라 **분류**라 KV 목록이 아니라 라벨로 그린다 (#1436). */
+const PLACEHOLDER_KEYS = new Set(["degraded", "abstained"]);
+
+/** evidence.detail 에 실린 자리표시자 축. 없으면 둘 다 false (축이 붙기 전 행). */
+export function parseDetailFlags(detail: string | null): { degraded: boolean; abstained: boolean } {
+  if (!detail) return { degraded: false, abstained: false };
+  try {
+    const parsed: unknown = JSON.parse(detail);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { degraded: false, abstained: false };
+    }
+    const o = parsed as Record<string, unknown>;
+    return { degraded: o.degraded === true, abstained: o.abstained === true };
+  } catch {
+    return { degraded: false, abstained: false };
+  }
+}
+
 /** detail 이 JSON 객체면 [key, 표시값] 목록, 아니면 null (호출자가 raw fallback) */
 export function parseDetailKV(detail: string | null): Array<[string, string]> | null {
   if (!detail) return null;
   try {
     const parsed: unknown = JSON.parse(detail);
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    return Object.entries(parsed).map(([k, v]) => [k, fmtKvValue(v)]);
+    return Object.entries(parsed)
+      .filter(([k]) => !PLACEHOLDER_KEYS.has(k))
+      .map(([k, v]) => [k, fmtKvValue(v)]);
   } catch {
     return null;
   }

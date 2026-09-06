@@ -66,7 +66,9 @@ class TestRegimeImportException:
 
         v = MacroAgent().analyze("ZZZ", db_path=db_path)
         assert v.action == "HOLD"
-        assert "데이터 부족" in v.reasoning
+        # #1436: 예외는 부재가 아니라 **실패** 다 — 문구와 분류를 함께 잠근다.
+        assert "조회 실패" in v.reasoning
+        assert v.degraded is True and v.abstained is False
 
 
 # ═══════════════════════════════════════════════════════

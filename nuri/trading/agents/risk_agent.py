@@ -92,12 +92,27 @@ class RiskAgent(BaseAgent):
             "SELECT SUM(quantity * avg_price) as total FROM portfolio",
             db_path=db_path,
         )
+        db_failed = any(r.failed for r in (holding, price_row, total_rows))
         if holding and total_rows and total_rows[0]["total"]:
             ticker_exposure = sum((row["quantity"] or 0) * (row["avg_price"] or 0) for row in holding)
             weight = ticker_exposure / total_rows[0]["total"]
             if weight > MAX_SINGLE_POSITION:
                 concentration_breach = True
                 reasons.append(f"비중 초과 ({weight * 100:.1f}% > {MAX_SINGLE_POSITION * 100:.0f}%) — 리밸런스 권고")
+
+        # 조회 실패는 판단이 아니다 (#1436). "리스크 정상" 은 평가해서 위험 없음을 확인한
+        # **진짜 판단**이라 기권으로 돌리지 않는다 (codex R1 이 잡은 회귀) — 그러나 조회가
+        # **실패**했으면 평가 자체를 못 한 것이고, 그대로 두면 `risk_veto_available` 이 True 로
+        # 기록된다. 거부권을 평가하지도 못한 채 "평가함" 으로 적는 셈이라 하드 거부권 축에서
+        # 방향이 가장 나쁜 실패다.
+        # 예외는 **실제로 감지된 손절선 돌파** 하나뿐이다. 그건 유일한 기계적 alpha 신호
+        # (손절 → `alpha_action=FLAT`)라 조회 하나가 실패했다고 버리면 안 된다.
+        # ⚠️ 처음엔 `not reasons` 로 썼는데 너무 넓었다 (codex R6): `reasons` 는 변동성·집중도
+        # 로도 찬다. 보유 조회가 실패해도 `prices` 가 살아 있으면 "저변동성" 이 들어가고, 그
+        # verdict 는 **손절선을 한 번도 못 봤는데** 거부권이 있는 것으로 기록된다. 실패를
+        # 가리는 근거가 실패 자신이 만든 근거였다.
+        if db_failed and not stop_loss_fired:
+            return AgentVerdict(self.name, ticker, "HOLD", 0.0, "리스크 조회 실패", degraded=True)
 
         # 판정 — legacy action 은 alpha score 만으로 derive. concentration 은
         # 여기 영향 주지 않음 (SELL 경로 분리).

@@ -26,8 +26,9 @@ class MacroAgent(BaseAgent):
             regime = classify_regime(db_path=db_path)
             macro = compute_macro_score(db_path=db_path)
         except Exception:
-            no_data = round(self.normalize_confidence(_CONF.get("no_data", 30)), 1)
-            return AgentVerdict(self.name, ticker, "HOLD", no_data, "레짐/매크로 데이터 부족", abstained=True)
+            # degraded 는 확신도 0 — 실패한 조회가 `action_scores` 에 표를 더하면 안 된다
+            # (#1436, codex R6). 기권 쪽은 `no_data` 를 그대로 쓴다.
+            return AgentVerdict(self.name, ticker, "HOLD", 0.0, "레짐/매크로 조회 실패", degraded=True)
 
         if regime is None:
             no_data = round(self.normalize_confidence(_CONF.get("no_data", 30)), 1)
