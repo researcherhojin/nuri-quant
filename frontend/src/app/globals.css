@@ -106,15 +106,26 @@
 }
 
 /* Evidence Terminal 다크 토큰 (#1195 U1a) — Blueprint 다크 램프.
-   대비 실측(WCAG): text/card 15.11:1 (AAA) · muted/card 7.66:1 (AAA) ·
-   링크 #4C90F0 5.76:1 on background / 5.06:1 on card — **AA, AAA 아님**.
-   #1431 이전에는 이 줄이 "링크 8.2:1 — 전부 AAA" 였는데 그 색으로 도달 불가능한 값이다
-   (8.2:1 이 되려면 배경 상대휘도가 음수여야 하고, 순흑 위에서도 최대 6.55:1). 앞의 두
-   숫자는 정확했으므로 측정 자체가 없었던 게 아니라 이 한 줄만 검증을 안 거쳤다.
-   가드레일(codex 2R): 이 대비를 낮추는 "무드 맞춤" 변경 금지. 이제 주석이 아니라 테스트가
-   막는다 — 의미색(P&L green=이익)은 semantic 유틸리티(emerald/red)가 담당하며 여기서
-   건드리지 않는다.
-   **Test:** `src/__tests__/lib/dark-token-contrast.test.ts` (이 파일을 파싱해서 검사) */
+
+   가드레일(codex 2R): 이 대비를 낮추는 "무드 맞춤" 변경 금지. 의미색(P&L green=이익)은
+   semantic 유틸리티(emerald/red)가 담당하며 여기서 건드리지 않는다.
+
+   아래 `@contrast` 줄은 장식이 아니라 **테스트가 파싱하는 데이터**다 (#1431). 숫자를 고치면
+   테스트가 토큰 실측과 대조해 떨어뜨린다. 이 형식이 된 이유: 원래 이 자리에 "링크 8.2:1 —
+   전부 AAA" 라고 적혀 있었는데 `#4C90F0` 으로는 **도달 불가능한 값**이다 (8.2:1 이 되려면
+   배경 상대휘도가 음수여야 하고, 순흑 위에서도 최대 6.55:1). 같은 주석의 다른 두 숫자는
+   소수점까지 정확했다 — 측정 관행이 없었던 게 아니라 검사하는 게이트가 없어서 한 줄만
+   조용히 틀린 채 남았다. 첫 수정본은 숫자만 고쳤는데, 그 테스트가 주석이 아니라 **주석의
+   복사본**을 검사해서 거짓 값을 되돌려도 초록이었다 (codex R1 P1). 그래서 여기가 정본이다.
+
+   @contrast foreground/card 15.11
+   @contrast muted-foreground/card 7.66
+   @contrast muted-foreground/popover 5.92
+   @contrast primary/background 5.76
+   @contrast primary/card 5.06
+   @contrast primary-foreground/primary 5.76
+
+   **Test:** `src/__tests__/lib/dark-token-contrast.test.ts` */
 .dark {
   --background: #111418;
   --foreground: #F6F7F9;
