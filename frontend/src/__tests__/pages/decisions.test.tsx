@@ -224,7 +224,9 @@ describe("DecisionsPage", () => {
     expect(screen.getByText(/API 연결에 실패했습니다/)).toBeInTheDocument();
   });
 
-  it("shows green hit rate when success >= 50%", async () => {
+  // #1429: 착색 분기는 삭제됐다 — 이 두 테스트는 50% 위·아래에서 비율 텍스트가
+  // 같은 방식으로 렌더되는지만 본다. 색 부재 잠금은 아래 "성과색" describe.
+  it("renders hit rate when success >= 50%", async () => {
     setupFetchAPI({
       decisions: [
         { id: 1, date: "2026-01-01", ticker: "WIN", action: "BUY", confidence: 80,
@@ -241,7 +243,7 @@ describe("DecisionsPage", () => {
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
 
-  it("shows red hit rate when success < 50%", async () => {
+  it("renders hit rate when success < 50%", async () => {
     setupFetchAPI({
       decisions: [
         { id: 1, date: "2026-01-01", ticker: "LOSE", action: "BUY", confidence: 40,
@@ -260,7 +262,7 @@ describe("DecisionsPage", () => {
     });
     const { default: DecisionsPage } = await import("@/app/decisions/page");
     await act(async () => { render(await DecisionsPage()); });
-    // 1 success / 2 completed = 50% → green
+    // 1 success / 2 completed = 50%
     expect(screen.getByText("50%")).toBeInTheDocument();
     // #1216: outcome 은 intent 태그 (성공/실패) + 판정 기준일 — BUY/SELL 배지 오매핑 폐지.
     // 필터 칩에도 "성공" 텍스트가 있으므로 행 범위로 단정한다.

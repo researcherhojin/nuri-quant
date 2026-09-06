@@ -1,7 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { Rate } from "./rate";
 import { RATE } from "@/lib/strings";
 
@@ -112,21 +110,50 @@ describe("Rate — 색은 비율에 붙지 않는다 (#1429 회귀 잠금)", () 
   });
 });
 
-describe("decisions/page.tsx — 옛 Hit Rate 경로가 되살아나지 않는다 (#1429)", () => {
-  // 렌더 테스트는 Metric 을 되살린 회귀를 못 잡는다 (같은 "69%" 를 그린다).
-  // 소스를 직접 본다 — 이 파일이 잠그는 것은 화면이 아니라 **경로**다.
-  const src = readFileSync(join(process.cwd(), "src/app/decisions/page.tsx"), "utf-8");
+describe("decisions 페이지 배선 — 실제 요약값으로 렌더한다 (#1429)", () => {
+  // codex P2: 소스 문자열 검사는 `universe` 가 **틀린 값에 배선돼도** 통과한다
+  // (`universe={success+failure}` 로 바꾸면 커버리지가 100% 가 되는데 정규식은 그대로 매치).
+  // 그래서 페이지를 실제 픽스처로 렌더해 화면에 나온 수치를 본다 — 배선 축의 잠금은
+  // 컴포넌트 단독 테스트가 아니라 여기에 있다.
+  const REAL_SUMMARY = { total: 645, pending: 568, success: 43, failure: 19, neutral: 15 };
 
-  it("`>= 50 ? green : red` 분기가 없다", () => {
-    expect(src).not.toMatch(/>=\s*50\s*\?/);
+  beforeEach(() => {
+    vi.resetModules();
+    vi.doMock("@/lib/api", () => ({
+      fetchAPI: vi.fn().mockResolvedValue({ decisions: [], count: 0, summary: REAL_SUMMARY }),
+    }));
+    vi.doMock("next/navigation", () => ({ useRouter: () => ({}), useSearchParams: () => new URLSearchParams() }));
   });
 
-  it("Hit Rate 를 Metric 으로 렌더하지 않는다", () => {
-    expect(src).not.toMatch(/label="Hit Rate"[\s\S]{0,200}?value=/);
+  afterEach(() => {
+    vi.doUnmock("@/lib/api");
+    vi.doUnmock("next/navigation");
   });
 
-  it("Rate 프리미티브를 쓴다", () => {
-    expect(src).toContain('from "@/components/ui/rate"');
-    expect(src).toMatch(/<Rate[\s\S]*?universe=/);
+  async function renderPage() {
+    const { DecisionsSection } = await import("@/app/decisions/page");
+    return render(await DecisionsSection());
+  }
+
+  it("커버리지를 모집단 645 로 분모 잡는다 — 판정분(62)으로 잡으면 깨진다", async () => {
+    const { getByText } = await renderPage();
+    expect(getByText(`62 / 645 ${RATE.ADJUDICATED} (9.6%)`)).toBeInTheDocument();
+  });
+
+  it("비율과 분모를 함께 보인다", async () => {
+    const { getByText } = await renderPage();
+    expect(getByText("69%")).toBeInTheDocument();
+    expect(getByText(/43\/62/)).toBeInTheDocument();
+  });
+
+  it("탈락한 중립 15 · 대기 568 을 이름으로 밝힌다 — excluded 를 떼면 깨진다", async () => {
+    const { getByText } = await renderPage();
+    expect(getByText(/중립 15/)).toBeInTheDocument();
+    expect(getByText(/대기 568/)).toBeInTheDocument();
+  });
+
+  it("Hit Rate 어디에도 성과색이 붙지 않는다", async () => {
+    const { getByTestId } = await renderPage();
+    expect(getByTestId("rate").innerHTML).not.toMatch(/text-(emerald|green|red|rose|amber)-/);
   });
 });
