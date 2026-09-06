@@ -34,7 +34,9 @@ class CryptoAgent(BaseAgent):
         )
 
         if not change_rows and not dom_rows and not btc_rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 데이터 없음")
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 데이터 없음", abstained=True
+            )
 
         score = 0
         reasons = []
@@ -83,7 +85,9 @@ class CryptoAgent(BaseAgent):
             data["btc_price"] = round(btc_rows[0]["value"], 0)
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 변동 없음", data)
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 변동 없음", data, abstained=True
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -2)

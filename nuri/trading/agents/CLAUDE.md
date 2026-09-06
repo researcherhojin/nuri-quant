@@ -54,12 +54,17 @@ ARK 의 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 
 
 | 축 | 뜻 | 판정 | 성격 |
 |---|---|---|---|
-| `degraded` | 예외·타임아웃으로 **죽었다** | `consensus/__init__.py` 가 명시적으로 True | 인시던트 |
-| `abstained` | 정상 실행, **의견 없음** (확신도 0) | `AgentVerdict.abstained` 파생 | 상시 |
+| `degraded` | 예외·타임아웃으로 **죽었다** | `consensus/__init__.py` 가 `degraded=True` | 인시던트 |
+| `abstained` | 정상 실행, **의견 없음** | 각 에이전트가 자리표시자 반환 지점에서 `abstained=True` (13 곳) | 상시 |
 
-**섞지 않는 이유**: `crypto` 는 주식 티커에서 18/18, `retail` 은 12/18 기권한다 (실측). 이걸
-`degraded_agents` 에 넣으면 그 목록이 매 행 가득 차 **진짜 크래시가 노이즈에 묻힌다** — #1028
-이 만든 신호가 죽는다. 원인이 다르니 축을 나눈다.
+**섞지 않는 이유**: 실측 180 셀 중 기권이 **51 (28.3%)** 이다 — `crypto` 18, `smart_money` 14,
+`retail` 12, `wallstreet` 4, `fundamental` 2, `technical` 1. 이걸 `degraded_agents` 에 넣으면
+목록이 매 행 가득 차 **진짜 크래시가 노이즈에 묻힌다** — #1028 이 만든 신호가 죽는다.
+
+⚠️ **확신도로 판정하지 말 것.** `normalize_confidence` 가 낮은 원점수를 0 으로 깎는다
+(`risk` raw 0~40, `macro` 0~30 → 0.0). 확신도 0 으로 유도하면 `risk` 의 "리스크 정상"(평가해서
+위험 없음을 확인한 **판단**) 3 건을 기권으로 뒤집고, 반대로 `smart_money`(conf 30) 14 건과
+`wallstreet`(conf 20) 4 건은 놓친다. 생산 지점이 선언한다.
 
 **행동은 안 바뀐다**: 확신도 0 은 `action_scores[action] += w * (conf/100)` 에 0 을 더하므로
 `final_action` · `final_confidence` 에 영향이 없고, 거부권도 `0 >= 80` 이 거짓이라 그대로다.

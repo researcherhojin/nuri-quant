@@ -27,11 +27,11 @@ class MacroAgent(BaseAgent):
             macro = compute_macro_score(db_path=db_path)
         except Exception:
             no_data = round(self.normalize_confidence(_CONF.get("no_data", 30)), 1)
-            return AgentVerdict(self.name, ticker, "HOLD", no_data, "레짐/매크로 데이터 부족")
+            return AgentVerdict(self.name, ticker, "HOLD", no_data, "레짐/매크로 데이터 부족", abstained=True)
 
         if regime is None:
             no_data = round(self.normalize_confidence(_CONF.get("no_data", 30)), 1)
-            return AgentVerdict(self.name, ticker, "HOLD", no_data, "SPY 데이터 부족")
+            return AgentVerdict(self.name, ticker, "HOLD", no_data, "SPY 데이터 부족", abstained=True)
 
         trend = regime.trend
         macro_score = macro.total_score

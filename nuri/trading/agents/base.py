@@ -36,25 +36,21 @@ class AgentVerdict:
     # 구분되지 않으면 거부권 무력화·동의율 부풀림이 조용히 일어난다.
     degraded: bool = False
 
-    @property
-    def abstained(self) -> bool:
-        """정상 실행됐지만 **의견을 내지 않은** verdict (#1436).
-
-        `degraded` 가 못 덮는 절반이다. 저쪽은 예외·타임아웃으로 에이전트가 **죽은** 경우만
-        True 인데, 멀쩡히 돌고도 확신도 0 을 내는 경로가 따로 있다 — `fundamental` 의
-        "펀더멘탈 데이터 없음", `technical` 의 "데이터 부족", 그리고 주식 티커를 받은
-        `crypto` 처럼 입력은 있으나 그 입력으로 이 종목에 대해 할 말이 없는 경우다.
-        산출물은 양쪽 다 HOLD/0 으로 같고, 그래서 `degraded` 만 거르면 자리표시자가
-        의견으로 집계된다 (#1436 실측: 180 셀 중 36 개, `crypto` 는 18/18).
-
-        **왜 `degraded` 를 넓히지 않았나**: crypto·retail 은 거의 매일 기권한다. 둘을
-        `degraded_agents` 에 넣으면 그 목록이 매 행 가득 차고, 진짜 사고(에이전트 크래시)가
-        노이즈에 묻힌다 — #1028 이 만든 인시던트 신호가 죽는다. 원인이 다르므로 축을 나눈다.
-
-        **왜 확신도로 판정하나**: 에이전트마다 기권 표시를 손으로 붙이면 빠뜨린다.
-        확신도 0 은 정의상 "확신 없음" 이고, 확신 0 짜리 의견은 의견이 아니다.
-        """
-        return not self.degraded and self.confidence == 0
+    # 에이전트가 정상 실행됐지만 **의견을 내지 않은** 경우 True (#1436). `degraded` 가 못
+    # 덮는 절반이다 — 저쪽은 예외·타임아웃으로 에이전트가 **죽은** 경우만 잡는데, 멀쩡히
+    # 돌고도 "데이터 없음" 으로 자리표시자를 내는 경로가 따로 있다. 산출물이 같은 HOLD/낮은
+    # 확신도라 `degraded` 만 거르면 자리표시자가 의견으로 집계된다.
+    #
+    # ⚠️ **확신도로 파생하지 않는다.** 처음엔 `confidence == 0` 으로 유도했는데 틀렸다
+    # (codex R1): `normalize_confidence` 가 낮은 원점수를 0 으로 깎는다 — `risk` 는 raw
+    # 0~40 이, `macro` 는 0~30 이 전부 0.0 이 된다. 실측에서 `risk` 의 "리스크 정상"
+    # (평가해서 위험 없음을 확인한 **진짜 판단**) 3 건이 확신도 0 이었고, 파생 방식은 그걸
+    # 기권으로 오분류해 `risk_veto_available=False` 로 뒤집어 적었다 — 거부권을 평가했는데
+    # "평가 못 함" 으로 기록하는 정반대 오류다. 생산 지점이 스스로 선언해야 한다.
+    #
+    # 새 자리표시자 경로를 만들면 이 플래그를 붙일 것. 잊으면 게이트가 잡는다:
+    # `tests/trading/agents/test_abstained_verdicts.py::TestProducersDeclareAbstention`
+    abstained: bool = False
 
 
 def _load_norm_config() -> dict:

@@ -25,11 +25,11 @@ class OptionsAgent(BaseAgent):
             db_path,
         )
         if not rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음")
+            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음", abstained=True)
 
         values = [r["value"] for r in rows if r["value"] is not None]
         if not values:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음")
+            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 데이터 없음", abstained=True)
 
         pcr = sum(values) / len(values)
 

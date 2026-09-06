@@ -75,7 +75,7 @@ class WallStreetAgent(BaseAgent):
 
             t = yf.Ticker(ticker)
         except Exception:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "yfinance 로드 실패")
+            return AgentVerdict(self.name, ticker, "HOLD", 0, "yfinance 로드 실패", abstained=True)
 
         score = 0
         reasons = []
@@ -210,7 +210,9 @@ class WallStreetAgent(BaseAgent):
             pass
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 20), "Wall Street 데이터 부족")
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 20), "Wall Street 데이터 부족", abstained=True
+            )
 
         # 판정
         if score >= _CFG.get("score_buy", 3):

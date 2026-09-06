@@ -54,7 +54,10 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         final_action = max(action_scores, key=lambda k: action_scores[k])
         total_weight = sum(action_scores.values())
         final_confidence = (action_scores[final_action] / total_weight * 100) if total_weight > 0 else 0
-        supporters = [v for v in verdicts if v.action == final_action]
+        # 기권은 지지자가 아니다 (#1436, codex R1 P2) — 자리표시자 HOLD 가 합의 방향과
+        # 같다고 `reasoning` 에 "crypto: 크립토 변동 없음" 처럼 근거로 실리면, 근거 없음이
+        # 근거로 둔갑한다.
+        supporters = [v for v in verdicts if v.action == final_action and not v.degraded and not v.abstained]
         reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
 
     # Divergence detection — docs/HARNESS.md §2 (JKHY, 2026-04-14) 재발 방지.
@@ -97,10 +100,12 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # 부풀어, 패널이 망가졌을수록 더 만장일치로 보이는 역전이 생긴다.
     #
     # **기권(abstained)도 같이 뺀다** (#1436). `degraded` 는 예외·타임아웃만 잡는데,
-    # 멀쩡히 돌고 확신도 0 을 내는 경로가 따로 있고 산출물은 똑같은 HOLD/0 이다.
-    # 실측: 최신 1일치 180 셀 중 36 개가 확신도 0 인데 `degraded_agents` 는 전 행 `[]`
-    # 였고 `panel_coverage` 는 전 행 `1.0` 이었다. HOLD 확정 4 건의 동의율이 5.0~8.6pp
-    # 부풀어 있었다 — 위 문단이 예측한 그 역전이다.
+    # 멀쩡히 돌고 "데이터 없음" 자리표시자를 내는 경로가 따로 있고 산출물이 같은 모양이다.
+    # 실측(최신 1일치 180 셀): 선언 기권 **51 개(28.3%)** 인데 `degraded_agents` 는 전 18 행
+    # `[]`, `panel_coverage` 는 전 행 `1.0` 이었다 — 실제 커버리지는 중앙값 0.70, 최소 0.40.
+    # 동의율은 6/18 건이 10pp 이상 어긋났다 (최대 +30.0pp / -13.3pp).
+    # 기권을 확신도 0 으로 유도하면 안 된다: 그 방식은 `risk` 의 "리스크 정상"(진짜 판단) 3 건을
+    # 기권으로 오분류하고, `smart_money`(conf 30) 14 건과 `wallstreet`(conf 20) 4 건은 아예 놓친다.
     dist_basis = pre_penalty_action_str if penalty_applied else final_action
     live = [v for v in verdicts if not v.degraded and not v.abstained]
     degraded_agents = [v.agent_name for v in verdicts if v.degraded]
@@ -143,9 +148,11 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
                 # final_action) 에 실제 기여한 verdict 를 True 로 마킹. UI 는 이
                 # 플래그로 "합의 방향 지지자" 를 강조하되 final_action 과 다를 수
                 # 있음을 `basis_action` 별도 노출로 처리.
-                "counted_for_basis_action": (v.action == basis_action) and not v.degraded,
+                "counted_for_basis_action": (v.action == basis_action) and not v.degraded and not v.abstained,
                 # 판단을 못 한 에이전트 — 진짜 HOLD 와 구분된다 (#1028).
                 "degraded": v.degraded,
+                # 정상 실행됐으나 의견 없음 — degraded 와 원인이 다르다 (#1436).
+                "abstained": v.abstained,
             }
         )
     scoring_detail = {

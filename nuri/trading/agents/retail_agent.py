@@ -30,7 +30,9 @@ class RetailAgent(BaseAgent):
         )
 
         if not mention_rows and not post_rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 센티먼트 데이터 없음")
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 센티먼트 데이터 없음", abstained=True
+            )
 
         score = 0
         reasons = []
@@ -65,7 +67,9 @@ class RetailAgent(BaseAgent):
                 reasons.append(f"WSB 전체 과열 ({posts}건/일)")
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 데이터 부족", data)
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 데이터 부족", data, abstained=True
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -2)
