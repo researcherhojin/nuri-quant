@@ -15,6 +15,13 @@ import {
 } from "@/components/ui/composition-section";
 import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { OTHER_COLOR } from "@/lib/holdings-summary";
+import { OTHER_COLOR as BAR_OTHER_COLOR } from "@/components/dashboard/composition-bar";
+
+/** `#RRGGBB` → `rgb(r, g, b)` — 브라우저가 style 속성을 되돌려주는 형태. */
+function rgb(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
 function summary(over: Partial<HoldingsSummary> = {}): HoldingsSummary {
   return {
@@ -140,9 +147,14 @@ describe("CompositionSection", () => {
     const otherDot = screen
       .getByTestId("composition-legend-Other")
       .querySelector("span[style]") as HTMLElement;
-    expect(otherDot.getAttribute("style")).toContain("rgb(64, 72, 84)"); // #404854
+    // 상수에서 계산한다 — 리터럴을 박아두면 그 사본이 정본과 갈라진다 (#1435 에서 실제로
+    // OTHER_COLOR 를 바꾸자 이 줄만 남아 FAIL 했다). 이 테스트가 잠그는 것은 "기타 버킷이
+    // 카테고리 색을 받지 않는다" 이지 특정 hex 가 아니다.
+    expect(otherDot.getAttribute("style")).toContain(rgb(BAR_OTHER_COLOR));
     const segments = screen.getAllByTestId("composition-bar-segment");
-    expect(segments[4].getAttribute("style")).toContain("rgb(64, 72, 84)");
+    expect(segments[4].getAttribute("style")).toContain(rgb(BAR_OTHER_COLOR));
+    // 카테고리 색이 아니어야 한다는 것이 요점 — 무채인지 직접 단언한다
+    expect(BAR_OTHER_COLOR).not.toBe(OTHER_COLOR); // summary 자체 버킷 색과도 다르다
   });
 
   it("sector tab renders sector slices in legend", () => {
