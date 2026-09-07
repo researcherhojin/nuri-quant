@@ -17,7 +17,11 @@ export interface BarSegment {
 }
 
 export const CHART_COLORS = ["#4C90F0", "#3FA6DA", "#43BF4D", "#F0B726", "#9179F2"] as const;
-export const OTHER_COLOR = "#404854";
+/** Blueprint GRAY2 (#1435). 이전 `#404854` 는 구분선(`--background`)과 **2.00:1** 이라
+ *  구분선이 이 조각 옆에서는 보이지 않았고, 카드 표면과도 1.75:1 이라 조각 자체가 잘 안
+ *  보였다. GRAY1(#5F6B7C)로 올려봤지만 **카드 위 2.99** 로 0.01 차이 미달이라 기각했다 —
+ *  구성 바는 카드 안에 놓이므로 그 표면이 기준이다. GRAY2 는 배경 4.60 / 카드 4.03. */
+export const OTHER_COLOR = "#738091";
 
 /** 상위 5 + 기타 병합. "상위 5"는 **개별** 슬라이스 기준이다 — holdings-summary 가
  *  이미 병합해 둔 자체 Other 버킷(top-12/top-4 잔여)은 집계 행이라 크기가 개별 상위
@@ -45,12 +49,17 @@ export function CompositionBar({ segments }: { segments: BarSegment[] }) {
       role="img"
       aria-label={`포트폴리오 구성: ${description}`}
     >
-      {segments.map((s) => (
+      {segments.map((s, i) => (
         <span
           key={s.label}
           data-testid="composition-bar-segment"
           aria-hidden="true"
-          className="h-full min-w-[2px]"
+          // WCAG 1.4.11 (#1435): 인접 세그먼트는 서로 3:1 로 구분돼야 하는데 팔레트 조합의
+          // 최대가 1.85:1 이라 색만으로는 불가능하다 — 다크 배경에서 5 색을 전부 3:1 로
+          // 벌리는 배치가 존재하지 않는다. 규격이 허용하는 대로 **구분선**으로 충족한다.
+          // 색은 `--background`: 6 개 세그먼트 색 전부와 3.41~10.12:1 이다.
+          // `border-box` 라 1px 테두리가 폭을 늘리지 않아 합이 100% 를 넘지 않는다.
+          className={`h-full min-w-[3px] ${i > 0 ? "border-l border-background" : ""}`}
           style={{ width: `${s.value}%`, background: s.color }}
           title={`${s.label} ${s.value.toFixed(1)}%`}
         />
