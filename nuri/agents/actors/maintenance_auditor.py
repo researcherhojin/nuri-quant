@@ -391,6 +391,11 @@ def _uv_binary() -> Optional[str]:
     return shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
 
 
+def _canonical(name: str) -> str:
+    """PEP 503 정규화 — `uv` 출력과 `pyproject` 표기가 `-`/`_`/`.` 로 갈린다."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def _runtime_dependency_names(repo_root: Path) -> set[str]:
     """`[project].dependencies`의 배포 직접 의존성 이름을 PEP 503으로 정규화한다.
 
@@ -403,7 +408,7 @@ def _runtime_dependency_names(repo_root: Path) -> set[str]:
     for requirement in requirements:
         match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", requirement)
         if match:
-            names.add(re.sub(r"[-_.]+", "-", match.group(0)).lower())
+            names.add(_canonical(match.group(0)))
     return names
 
 
@@ -415,6 +420,23 @@ def _parse_uv_updates(output: str) -> list[tuple[str, str, str]]:
         if match:
             updates.append((match.group(1), match.group(2), match.group(3)))
     return updates
+
+
+def _parse_uv_outdated(output: str) -> list[tuple[str, str, str]]:
+    """`uv tree --outdated --depth 1`의 `(latest: vX)` 행을 읽는다.
+
+    트리 문자(`├──`)와 선택적 `(extra: dev)` 주석이 이름과 버전 사이에 낀다:
+
+        ├── mcp v2.1.1 (latest: v2.2.0)
+        ├── ruff v0.15.22 (extra: dev) (latest: v0.16.6)
+    """
+    rows: list[tuple[str, str, str]] = []
+    pattern = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)\s+v(\S+).*?\(latest:\s*v(\S+)\)")
+    for line in output.splitlines():
+        match = pattern.search(line)
+        if match:
+            rows.append((match.group(1), match.group(2), match.group(3)))
+    return rows
 
 
 def scan_dependency_lag(ctx: ScanContext) -> list[dict[str, str]]:
@@ -448,16 +470,84 @@ def scan_dependency_lag(ctx: ScanContext) -> list[dict[str, str]]:
 
     direct_names = _runtime_dependency_names(ctx.repo_root)
     direct_updates = [
-        (name, old, new)
-        for name, old, new in _parse_uv_updates(output)
-        if re.sub(r"[-_.]+", "-", name).lower() in direct_names
+        (name, old, new) for name, old, new in _parse_uv_updates(output) if _canonical(name) in direct_names
     ]
     detail = f"직접 런타임 의존성 업데이트 후보: {len(direct_updates)}건 (판정 임계값 없음)."
     if direct_updates:
         detail += "\n" + "\n".join(f"- {name}: {old} → {new}" for name, old, new in direct_updates)
     else:
-        detail += "\n현재 lock은 모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다."
-    return [{"axis": "dependency_lag", "title": "직접 의존성 lag 관측", "detail": detail}]
+        detail += "\n도달 가능한 업데이트 없음."
+    return [
+        {
+            "axis": "dependency_lag",
+            "title": "직접 의존성 lag 관측",
+            "detail": detail + _stuck_detail(ctx, uv, direct_updates, direct_names),
+        }
+    ]
+
+
+def _stuck_detail(
+    ctx: ScanContext,
+    uv: str,
+    direct_updates: list[tuple[str, str, str]],
+    direct_names: set[str],
+) -> str:
+    """**막힌** 직접 의존성 — index 최신보다 뒤인데 resolver 가 도달 못 하는 것 (#1458).
+
+    `uv lock --upgrade` 는 **도달 가능한** 버전만 낸다. 어떤 패키지의 최신이 다른 제약과
+    충돌하면 `Update` 행이 아예 안 나오고, 그러면 위 관측은 그것을 "최신" 으로 센다.
+    Dependabot 도 같은 resolver 를 쓰므로 PR 을 안 열고 — **침묵이 유일한 증상**이 된다.
+    이 스캔은 애초에 "Dependabot 이 PR 을 전혀 안 여는 경우" 를 잡으려고 들어왔는데(#1362),
+    같은 눈을 공유하는 바람에 자기 목적을 못 채우고 있었다. #1359 가 그 사고다 — 직접
+    의존성 24 개가 4.5 개월간 뒤처졌고 증상은 침묵뿐이었다.
+
+    그래서 index 의 **최신** 을 따로 묻는다. `uv tree --outdated` 는 해상 가능 여부와
+    무관하게 최신을 붙여주므로 **subprocess 1 회**로 끝난다 — 의존성마다 물으면 캡
+    (`AuditCaps.subprocess_calls=16`)을 넘긴다. HTTP 클라이언트를 새로 들이지도 않는다
+    (이 actor 의 잠긴 불변식이다 — 모듈 독스트링 참조).
+
+    실측 2026-09-08: 막힘 3 건 — `pandas` 2.3.3/3.0.5 · `uvicorn` 0.40.0/0.52.4 ·
+    `vectorbt` 0.28.5/1.1.0. 상류 캡 2 개가 원인이다 (`pykrx` 의 `pandas<3.0`,
+    `openbb-core` 의 `uvicorn<0.41`). 그때 이 스캔은 "업데이트 후보 0건" 만 적고 있었다.
+    """
+    rc = ctx.run([uv, "tree", "--outdated", "--depth", "1"], timeout=60.0)
+    if rc.returncode != 0:
+        # 관측 실패를 "막힘 없음" 으로 적으면 이 축의 결함을 그대로 반복한다.
+        return "\n막힘 여부 **미관측** — `uv tree --outdated` 실패: " + (rc.stdout + rc.stderr).strip()[-200:]
+
+    reachable = {_canonical(name): new.lstrip("v") for name, _, new in direct_updates}
+    outdated = [
+        (name, current, latest)
+        for name, current, latest in _parse_uv_outdated(rc.stdout + rc.stderr)
+        if _canonical(name) in direct_names
+    ]
+    stuck = [row for row in outdated if _canonical(row[0]) not in reachable]
+    # 도달은 하는데 **그 목적지도 최신이 아닌** 것. 그냥 "업데이트 후보" 로만 적으면 올린 뒤에도
+    # 뒤처져 있다는 사실이 사라지고, 다음 주에야 `막힘` 으로 처음 나타난다 — 실측 사례가
+    # `vectorbt` 다 (0.28.5 → 1.0.0 은 가능, 최신 1.1.0 은 `pykrx` 의 pandas 캡에 영구 차단).
+    partial = [
+        (name, reachable[_canonical(name)], latest)
+        for name, _current, latest in outdated
+        if _canonical(name) in reachable and reachable[_canonical(name)] != latest
+    ]
+
+    out = ""
+    if stuck:
+        out += (
+            f"\n**막힘 {len(stuck)}건** — index 최신보다 뒤인데 resolver 가 도달 못 한다. "
+            "Dependabot 도 같은 이유로 PR 을 열지 않으므로 이 항목들은 침묵으로만 나타난다:\n"
+            + "\n".join(f"- {name}: {current} → {latest} (resolver 도달 불가)" for name, current, latest in stuck)
+        )
+    else:
+        out += "\n막힌 직접 의존성 없음 (index 최신 대비 확인)."
+    if partial:
+        out += (
+            "\n**부분 이동 "
+            + str(len(partial))
+            + "건** — 올려도 최신은 아니다:\n"
+            + "\n".join(f"- {name}: 도달 {target} · 최신 {latest}" for name, target, latest in partial)
+        )
+    return out
 
 
 SCANNERS: tuple[Callable[[ScanContext], list[dict[str, str]]], ...] = (

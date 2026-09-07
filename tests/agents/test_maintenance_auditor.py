@@ -454,10 +454,159 @@ class TestDependencyLag:
             {
                 "axis": "dependency_lag",
                 "title": "직접 의존성 lag 관측",
+                # ⚠️ 예전 문구는 "모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다" 였다.
+                # 문자 그대로는 참이지만 원장에서 "최신 상태" 로 읽혔고, resolver 가 도달 못 하는
+                # 패키지는 그 문장 뒤에 숨었다 (#1458). 이제 도달 가능성과 index 최신을 나눠 적는다.
                 "detail": "직접 런타임 의존성 업데이트 후보: 0건 (판정 임계값 없음).\n"
-                "현재 lock은 모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다.",
+                "도달 가능한 업데이트 없음."
+                "\n막힌 직접 의존성 없음 (index 최신 대비 확인).",
             }
         ]
+
+
+def _uv_stub(monkeypatch, ctx, *, upgrade: str, tree: str, tree_rc: int = 0):
+    """`uv lock --upgrade` 와 `uv tree --outdated` 를 argv 로 갈라 흉내낸다.
+
+    한 응답을 두 호출에 공유하면 "도달 가능" 과 "index 최신" 이 같은 문자열이 되어,
+    이 이슈가 잡으려는 **두 눈의 차이** 가 테스트에서 사라진다.
+    """
+    calls: list[list[str]] = []
+
+    def run(argv, *args, **kwargs):
+        calls.append(argv)
+        if "tree" in argv:
+            return real_subprocess.CompletedProcess(argv, tree_rc, tree, "")
+        return real_subprocess.CompletedProcess(argv, 0, upgrade, "")
+
+    monkeypatch.setattr(ctx, "run", run)
+    return calls
+
+
+class TestStuckDependencies:
+    """resolver 가 도달 못 하는 직접 의존성 — 이 스캔의 원래 목적이었으나 못 보던 축 (#1458)."""
+
+    @staticmethod
+    def _ctx(tmp_path, monkeypatch, deps="['numpy>=1.26', 'pandas>=2.0']"):
+        (tmp_path / "pyproject.toml").write_text(f"[project]\ndependencies = {deps}\n", encoding="utf-8")
+        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
+        return ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+
+    def test_a_dependency_the_resolver_cannot_reach_is_surfaced(self, tmp_path, monkeypatch):
+        """`uv lock --upgrade` 가 침묵해도 index 최신보다 뒤면 **막힘**으로 적는다.
+
+        실측 사례: `pandas` 2.3.3 이 최신 3.0.5 보다 뒤인데 `pykrx` 의 `pandas<3.0` 캡 때문에
+        resolver 가 못 간다. Dependabot 도 같은 이유로 PR 을 안 열어 증상이 침묵뿐이었다.
+        """
+        ctx = self._ctx(tmp_path, monkeypatch)
+        _uv_stub(monkeypatch, ctx, upgrade="", tree="├── pandas v2.3.3 (latest: v3.0.5)\n")
+
+        detail = ma.scan_dependency_lag(ctx)[0]["detail"]
+
+        assert "**막힘 1건**" in detail
+        assert "pandas: 2.3.3 → 3.0.5 (resolver 도달 불가)" in detail
+
+    def test_a_reachable_update_is_not_called_stuck(self, tmp_path, monkeypatch):
+        """짝 — 도달 가능한 것을 막힘이라 적으면 신호가 노이즈가 된다."""
+        ctx = self._ctx(tmp_path, monkeypatch)
+        _uv_stub(
+            monkeypatch,
+            ctx,
+            upgrade="Update numpy v2.5.2 -> v2.5.3\n",
+            tree="├── numpy v2.5.2 (latest: v2.5.3)\n",
+        )
+
+        detail = ma.scan_dependency_lag(ctx)[0]["detail"]
+
+        assert "numpy: v2.5.2 → v2.5.3" in detail
+        assert "막힌 직접 의존성 없음" in detail
+
+    def test_reachable_but_still_behind_latest_is_named(self, tmp_path, monkeypatch):
+        """올려도 최신이 아닌 것은 "업데이트 후보" 로만 적으면 사실이 사라진다.
+
+        실측 사례가 `vectorbt` 다 — 0.28.5 → 1.0.0 은 가능하나 최신 1.1.0 은 `pykrx` 의
+        `pandas<3.0` 캡에 영구 차단이다. 올린 다음 주에야 `막힘` 으로 처음 나타난다.
+        """
+        ctx = self._ctx(tmp_path, monkeypatch, deps="['vectorbt>=0.28']")
+        _uv_stub(
+            monkeypatch,
+            ctx,
+            upgrade="Update vectorbt v0.28.5 -> v1.0.0\n",
+            tree="├── vectorbt v0.28.5 (latest: v1.1.0)\n",
+        )
+
+        detail = ma.scan_dependency_lag(ctx)[0]["detail"]
+
+        assert "**부분 이동 1건**" in detail
+        assert "vectorbt: 도달 1.0.0 · 최신 1.1.0" in detail
+        assert "**막힘" not in detail  # 도달은 하므로 막힘이 아니다
+
+    def test_reaching_the_latest_is_not_a_partial_move(self, tmp_path, monkeypatch):
+        """짝 — 최신까지 도달하면 부분 이동이 아니다. 안 가르면 매주 오탐이 쌓인다."""
+        ctx = self._ctx(tmp_path, monkeypatch)
+        _uv_stub(
+            monkeypatch,
+            ctx,
+            upgrade="Update numpy v2.5.2 -> v2.5.3\n",
+            tree="├── numpy v2.5.2 (latest: v2.5.3)\n",
+        )
+
+        assert "부분 이동" not in ma.scan_dependency_lag(ctx)[0]["detail"]
+
+    def test_transitive_outdated_entries_are_excluded(self, tmp_path, monkeypatch):
+        """직접 런타임 의존성만 본다 — 전이를 섞으면 #1362 의 baseline 이 부풀어진다."""
+        ctx = self._ctx(tmp_path, monkeypatch)
+        _uv_stub(
+            monkeypatch,
+            ctx,
+            upgrade="",
+            tree="├── pandas v2.3.3 (latest: v3.0.5)\n├── some-transitive v1.0.0 (latest: v9.9.9)\n",
+        )
+
+        detail = ma.scan_dependency_lag(ctx)[0]["detail"]
+
+        assert "**막힘 1건**" in detail
+        assert "some-transitive" not in detail
+
+    def test_a_failed_tree_call_is_unobserved_not_clean(self, tmp_path, monkeypatch):
+        """관측 실패를 '막힘 없음' 으로 적으면 이 축의 결함을 그대로 반복한다.
+
+        게이트 red 가 '검사 실패' 가 아니라 '검사 미실행' 일 수 있다는 것이 이 레포의
+        반복 형태다 (#910 · #953).
+        """
+        ctx = self._ctx(tmp_path, monkeypatch)
+        _uv_stub(monkeypatch, ctx, upgrade="", tree="uv: unknown option", tree_rc=2)
+
+        detail = ma.scan_dependency_lag(ctx)[0]["detail"]
+
+        assert "막힘 여부 **미관측**" in detail
+        assert "막힌 직접 의존성 없음" not in detail
+
+    def test_the_scan_costs_exactly_two_subprocess_calls(self, tmp_path, monkeypatch):
+        """의존성마다 물으면 `AuditCaps.subprocess_calls=16` 을 즉시 넘긴다 (직접 41개).
+
+        `uv tree --outdated` 는 한 번에 전부 주므로 이 축의 비용은 +1 이다.
+        """
+        ctx = self._ctx(tmp_path, monkeypatch)
+        calls = _uv_stub(monkeypatch, ctx, upgrade="", tree="")
+
+        ma.scan_dependency_lag(ctx)
+
+        assert len(calls) == 2, f"subprocess {len(calls)}회 — 캡(16) 대비 예산이 흔들린다: {calls}"
+        assert ctx.tracker.subprocess_used == 0, "monkeypatch 된 run 은 캡을 계상하지 않는다 (테스트 전제)"
+
+
+class TestParseUvOutdated:
+    def test_reads_the_latest_annotation(self):
+        assert ma._parse_uv_outdated("├── mcp v2.1.1 (latest: v2.2.0)") == [("mcp", "2.1.1", "2.2.0")]
+
+    def test_an_extra_annotation_between_name_and_latest_is_tolerated(self):
+        """`uv` 는 extra 소속을 중간에 끼워 넣는다 — 그걸 못 넘으면 dev 축이 통째로 사라진다."""
+        assert ma._parse_uv_outdated("├── ruff v0.15.22 (extra: dev) (latest: v0.16.6)") == [
+            ("ruff", "0.15.22", "0.16.6")
+        ]
+
+    def test_up_to_date_rows_are_not_rows(self):
+        assert ma._parse_uv_outdated("├── plotly v7.0.0\nnuri-quant v0.2.0\n") == []
 
     def test_failed_dry_run_is_not_reported_as_clean(self, tmp_path, monkeypatch):
         """resolver 오류를 0건 관측으로 읽으면 #1362가 막으려는 silent failure가 재발한다."""
