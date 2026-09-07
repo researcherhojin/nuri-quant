@@ -158,9 +158,12 @@ const TEXT_PAIRS: Pair[] = [
   { name: "primary-foreground/primary", fg: "primary-foreground", bg: "primary", why: "button.tsx default: bg-primary text-primary-foreground" },
   { name: "secondary-foreground/secondary", fg: "secondary-foreground", bg: "secondary", why: "button.tsx secondary" },
   // ── 알파 합성. 원색 배경으로 재면 실제보다 후하게 나온다 (codex R2). ──
-  { name: "primary/primary10-on-sidebar", fg: "primary", bg: { token: "primary", alpha: 0.1, on: "sidebar" }, why: "sidebar.tsx 활성 항목: text-primary bg-primary/10" },
+  { name: "sidebar-active/primary10-on-sidebar", fg: "sidebar-active", bg: { token: "primary", alpha: 0.1, on: "sidebar" }, why: "sidebar.tsx 활성 항목: text-sidebar-active bg-primary/10 (#1432)" },
   { name: "destructive/destructive20-on-card", fg: "destructive", bg: { token: "destructive", alpha: 0.2, on: "card" }, why: "button.tsx destructive (dark:bg-destructive/20)" },
-  { name: "destructive/destructive30-on-card", fg: "destructive", bg: { token: "destructive", alpha: 0.3, on: "card" }, why: "button.tsx destructive hover (dark:hover:bg-destructive/30)" },
+  { name: "destructive/destructive25-on-card", fg: "destructive", bg: { token: "destructive", alpha: 0.25, on: "card" }, why: "button.tsx destructive hover (dark:hover:bg-destructive/25, #1432)" },
+  // 버튼은 카드 밖 표면에도 놓인다 — 한 표면만 재면 나머지가 무방비다 (#1432)
+  { name: "destructive/destructive20-on-background", fg: "destructive", bg: { token: "destructive", alpha: 0.2, on: "background" }, why: "destructive 버튼이 카드 밖에 놓인 경우" },
+  { name: "destructive/destructive25-on-background", fg: "destructive", bg: { token: "destructive", alpha: 0.25, on: "background" }, why: "동 hover" },
 ];
 
 function resolve(bg: Pair["bg"]): string {
@@ -181,9 +184,9 @@ function resolve(bg: Pair["bg"]): string {
  *   장전된 결함이다. 그래서 지우지 않고 남긴다.
  */
 const KNOWN_BELOW_AA: Record<string, number> = {
-  "primary/primary10-on-sidebar": 4.4,
-  "destructive/destructive20-on-card": 3.87,
-  "destructive/destructive30-on-card": 3.28,
+  // #1432 에서 셋 다 닫혔다. 사이드바는 Blueprint BLUE4 로 4.40 → 7.10, destructive 는
+  // RED4 + hover 알파 30→25 로 3.87/3.28 → 5.23/4.65 (card). 이 맵이 비어 있다는 것은
+  // "지금 AA 미달인 조합이 없다" 는 뜻이고, 새로 생기면 값과 후속 이슈를 함께 적는다.
 };
 
 /**
@@ -212,9 +215,11 @@ const GUARDRAIL_MIN: Record<string, number> = {
   "primary/background": 5.76,
   "primary-foreground/primary": 5.76,
   "secondary-foreground/secondary": 13.47,
-  "primary/primary10-on-sidebar": 4.4,
-  "destructive/destructive20-on-card": 3.87,
-  "destructive/destructive30-on-card": 3.28,
+  "sidebar-active/primary10-on-sidebar": 7.1,
+  "destructive/destructive20-on-card": 5.23,
+  "destructive/destructive25-on-card": 4.65,
+  "destructive/destructive20-on-background": 6.05,
+  "destructive/destructive25-on-background": 5.41,
   ring: 5.06,
   "chart-1": 5.06,
   "chart-2": 5.92,

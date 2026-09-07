@@ -122,12 +122,12 @@ export function Sidebar() {
                       focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary/75
                       ${collapsed ? "justify-center px-3" : "px-4"}
                       ${active
-                        ? "text-primary bg-primary/10 border-r-2 border-primary"
+                        ? "text-sidebar-active bg-primary/10 border-r-2 border-sidebar-active"
                         : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                       }
                     `}
                   >
-                    <Icon size={20} className={active ? "text-primary" : "text-muted-foreground"} />
+                    <Icon size={20} className={active ? "text-sidebar-active" : "text-muted-foreground"} />
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
                 );
