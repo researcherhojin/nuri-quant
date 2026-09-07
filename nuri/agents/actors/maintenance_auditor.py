@@ -391,6 +391,18 @@ def _uv_binary() -> Optional[str]:
     return shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
 
 
+#: `uv tree` 의 의존성 행 — 최신이든 아니든 붙는다. **관측했는지**의 카나리아다
+#: (`--offline` 은 rc 0 으로 캐시를 내므로 rc 만으로는 관측을 증명 못 한다).
+_TREE_ROW = re.compile(r"^[│├└─\s]*[A-Za-z0-9][A-Za-z0-9._-]*\s+v\S+", re.M)
+#: 그중 `(latest: vX)` 가 붙은 행. 이름과 latest 사이에 `(extra: dev)` 가 낄 수 있다.
+_OUTDATED_ROW = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)\s+v(\S+).*?\(latest:\s*v(\S+)\)")
+
+
+def _canonical(name: str) -> str:
+    """PEP 503 정규화 — `uv` 출력과 `pyproject` 표기가 `-`/`_`/`.` 로 갈린다."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 def _runtime_dependency_names(repo_root: Path) -> set[str]:
     """`[project].dependencies`의 배포 직접 의존성 이름을 PEP 503으로 정규화한다.
 
@@ -403,7 +415,7 @@ def _runtime_dependency_names(repo_root: Path) -> set[str]:
     for requirement in requirements:
         match = re.match(r"[A-Za-z0-9][A-Za-z0-9._-]*", requirement)
         if match:
-            names.add(re.sub(r"[-_.]+", "-", match.group(0)).lower())
+            names.add(_canonical(match.group(0)))
     return names
 
 
@@ -415,6 +427,22 @@ def _parse_uv_updates(output: str) -> list[tuple[str, str, str]]:
         if match:
             updates.append((match.group(1), match.group(2), match.group(3)))
     return updates
+
+
+def _parse_uv_outdated(output: str) -> list[tuple[str, str, str]]:
+    """`uv tree --outdated --depth 1`의 `(latest: vX)` 행을 읽는다.
+
+    트리 문자(`├──`)와 선택적 `(extra: dev)` 주석이 이름과 버전 사이에 낀다:
+
+        ├── mcp v2.1.1 (latest: v2.2.0)
+        ├── ruff v0.15.22 (extra: dev) (latest: v0.16.6)
+    """
+    rows: list[tuple[str, str, str]] = []
+    for line in output.splitlines():
+        match = _OUTDATED_ROW.search(line)
+        if match:
+            rows.append((match.group(1), match.group(2), match.group(3)))
+    return rows
 
 
 def scan_dependency_lag(ctx: ScanContext) -> list[dict[str, str]]:
@@ -448,16 +476,105 @@ def scan_dependency_lag(ctx: ScanContext) -> list[dict[str, str]]:
 
     direct_names = _runtime_dependency_names(ctx.repo_root)
     direct_updates = [
-        (name, old, new)
-        for name, old, new in _parse_uv_updates(output)
-        if re.sub(r"[-_.]+", "-", name).lower() in direct_names
+        (name, old, new) for name, old, new in _parse_uv_updates(output) if _canonical(name) in direct_names
     ]
     detail = f"직접 런타임 의존성 업데이트 후보: {len(direct_updates)}건 (판정 임계값 없음)."
     if direct_updates:
         detail += "\n" + "\n".join(f"- {name}: {old} → {new}" for name, old, new in direct_updates)
     else:
-        detail += "\n현재 lock은 모든 직접 런타임 의존성의 최신 resolver 결과와 일치한다."
-    return [{"axis": "dependency_lag", "title": "직접 의존성 lag 관측", "detail": detail}]
+        detail += "\n도달 가능한 업데이트 없음."
+    return [
+        {
+            "axis": "dependency_lag",
+            "title": "직접 의존성 lag 관측",
+            "detail": detail + _stuck_detail(ctx, uv, direct_updates, direct_names),
+        }
+    ]
+
+
+def _stuck_detail(
+    ctx: ScanContext,
+    uv: str,
+    direct_updates: list[tuple[str, str, str]],
+    direct_names: set[str],
+) -> str:
+    """**막힌** 직접 의존성 — index 최신보다 뒤인데 resolver 가 도달 못 하는 것 (#1458).
+
+    `uv lock --upgrade` 는 **도달 가능한** 버전만 낸다. 어떤 패키지의 최신이 다른 제약과
+    충돌하면 `Update` 행이 아예 안 나오고, 그러면 위 관측은 그것을 "최신" 으로 센다.
+    Dependabot 도 같은 resolver 를 쓰므로 PR 을 안 열고 — **침묵이 유일한 증상**이 된다.
+    이 스캔은 애초에 "Dependabot 이 PR 을 전혀 안 여는 경우" 를 잡으려고 들어왔는데(#1362),
+    같은 눈을 공유하는 바람에 자기 목적을 못 채우고 있었다. #1359 가 그 사고다 — 직접
+    의존성 24 개가 4.5 개월간 뒤처졌고 증상은 침묵뿐이었다.
+
+    그래서 index 의 **최신** 을 따로 묻는다. `uv tree --outdated` 는 해상 가능 여부와
+    무관하게 최신을 붙여주므로 **subprocess 1 회**로 끝난다 — 의존성마다 물으면 캡
+    (`AuditCaps.subprocess_calls=16`)을 넘긴다. HTTP 클라이언트를 새로 들이지도 않는다
+    (이 actor 의 잠긴 불변식이다 — 모듈 독스트링 참조).
+
+    ⚠️ **`--locked` 는 선택이 아니다.** `uv tree` 는 기본적으로 프로젝트를 lock 한다 —
+    `pyproject.toml` 이 lock 보다 앞서 있으면 **`uv.lock` 을 재작성한다** (실측: 드리프트
+    주입 후 md5 변경). 이 actor 는 주 1 회 `REPO_ROOT` 에서 도는데, 그러면 Mac mini 의 작업
+    트리가 더러워져 autopull 의 ff-merge 가 막히고, 로컬 `make test-fast` 도 개발자의
+    `uv.lock` 을 고쳐 쓴다. 게다가 그 재작성은 바로 앞 축(`scan_dependency` 의
+    `uv lock --check`)이 보고하려는 드리프트를 조용히 없앤다. `--locked` 면 드리프트에
+    rc=2 로 멈추고(lock 무변경) 아래 미관측 경로로 흐른다 — 관측이 본 작업을 고치면 안 된다.
+
+    실측 2026-09-08: 막힘 2 건(`pandas` 2.3.3/3.0.5 · `uvicorn` 0.40.0/0.52.4) + 부분 이동
+    1 건(`vectorbt` 도달 1.0.0 / 최신 1.1.0). 상류 캡 2 개가 원인이다 (`pykrx` 의
+    `pandas<3.0`, `openbb-core` 의 `uvicorn<0.41`).
+
+    ⚠️ 그때 이 스캔이 무엇을 적고 있었는지에 대해 **처음에 틀리게 썼다**: "업데이트 후보
+    0건 만 적고 있었다" 고 했으나 실은 **아무것도 안 적고 있었다** — `dependency_lag` 축이
+    migration 59 의 CHECK 목록에 없어 staging 이 IntegrityError 로 튕겼고 `_scan` 의 넓은
+    `except` 가 그걸 삼켰다. migration 61 이 그 축을 허용한다.
+    """
+    # `--locked` 없이 부르면 lock 을 재작성한다 (위 경고). 관측은 읽기여야 한다.
+    rc = ctx.run([uv, "tree", "--outdated", "--depth", "1", "--locked"], timeout=60.0)
+    if rc.returncode != 0:
+        # 관측 실패를 "막힘 없음" 으로 적으면 이 축의 결함을 그대로 반복한다.
+        return "\n막힘 여부 **미관측** — `uv tree --outdated` 실패: " + (rc.stdout + rc.stderr).strip()[-200:]
+
+    # `--offline` 은 rc 0 으로 **캐시된** latest 를 낸다. rc 만 보고 "관측했다" 고 하면
+    # 낡은 캐시가 자신 있는 "막힘 없음" 이 된다. 트리 행을 하나라도 읽었는지로 가른다 —
+    # 이건 "뒤처진 것이 있는가" 가 아니라 "출력을 실제로 읽었는가" 다.
+    text = rc.stdout + "\n" + rc.stderr
+    if not _TREE_ROW.search(text):
+        return "\n막힘 여부 **미관측** — `uv tree` 출력에서 의존성 행을 읽지 못했다: " + text.strip()[-200:]
+
+    reachable = {_canonical(name): name_new.removeprefix("v") for name, _, name_new in direct_updates}
+    outdated = [
+        (name, current, latest)
+        for name, current, latest in _parse_uv_outdated(text)
+        if _canonical(name) in direct_names
+    ]
+    stuck = [row for row in outdated if _canonical(row[0]) not in reachable]
+    # 도달은 하는데 **그 목적지도 최신이 아닌** 것. 그냥 "업데이트 후보" 로만 적으면 올린 뒤에도
+    # 뒤처져 있다는 사실이 사라지고, 다음 주에야 `막힘` 으로 처음 나타난다 — 실측 사례가
+    # `vectorbt` 다 (0.28.5 → 1.0.0 은 가능, 최신 1.1.0 은 `pykrx` 의 pandas 캡에 영구 차단).
+    partial = [
+        (name, reachable[_canonical(name)], latest)
+        for name, _current, latest in outdated
+        if _canonical(name) in reachable and reachable[_canonical(name)] != latest
+    ]
+
+    out = ""
+    if stuck:
+        out += (
+            f"\n**막힘 {len(stuck)}건** — index 최신보다 뒤인데 resolver 가 도달 못 한다. "
+            "Dependabot 도 같은 이유로 PR 을 열지 않으므로 이 항목들은 침묵으로만 나타난다:\n"
+            + "\n".join(f"- {name}: {current} → {latest} (resolver 도달 불가)" for name, current, latest in stuck)
+        )
+    else:
+        out += "\n막힌 직접 의존성 없음 (index 최신 대비 확인)."
+    if partial:
+        out += (
+            "\n**부분 이동 "
+            + str(len(partial))
+            + "건** — 올려도 최신은 아니다:\n"
+            + "\n".join(f"- {name}: 도달 {target} · 최신 {latest}" for name, target, latest in partial)
+        )
+    return out
 
 
 SCANNERS: tuple[Callable[[ScanContext], list[dict[str, str]]], ...] = (
