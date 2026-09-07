@@ -44,40 +44,53 @@ jobs:
           set -euo pipefail
           THRESHOLD_MIN=45
 
-          # ref 부재도 침묵이다 — ref 가 지워졌거나 첫 push 전이면 곧장 알린다.
+          # 두 신호를 따로 읽는다 (#1443). scheduler beat 하나만 보면 "머신 꺼짐" 과
+          # "머신은 켜졌는데 에이전트 미로드" 가 똑같이 침묵으로 보이는데, **조치가 정반대**다.
+          # 2026-09-06 에 실제로 후자를 의도적 종료로 오인해 6h21m 을 방치했다.
           # 커스텀 ref(refs/nuri/…, 브랜치 아님)라 branches API 가 아니라 Git Database
           # API 2단이다: ref → object sha → commit 의 committer date.
-          sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/nuri/heartbeat-mini" \
-                 --jq '.object.sha' 2>/dev/null || echo "MISSING")
-          if [ "$sha" = "MISSING" ]; then
-            ts="MISSING"
-          else
-            ts=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${sha}" \
-                   --jq '.committer.date' 2>/dev/null || echo "MISSING")
-          fi
+          ref_age_min() {
+            local sha ts
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/$1" --jq '.object.sha' 2>/dev/null || echo "")
+            [ -z "$sha" ] && { echo 99999; return; }
+            ts=$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${sha}" --jq '.committer.date' 2>/dev/null || echo "")
+            [ -z "$ts" ] && { echo 99999; return; }
+            echo $(( ( $(date -u +%s) - $(date -u -d "$ts" +%s) ) / 60 ))
+          }
 
-          now_epoch=$(date -u +%s)
-          if [ "$ts" = "MISSING" ]; then
-            age_min=99999
-            last_seen="(ref 없음)"
-          else
-            hb_epoch=$(date -u -d "$ts" +%s)
-            age_min=$(( (now_epoch - hb_epoch) / 60 ))
-            last_seen="$ts"
-          fi
-          echo "heartbeat age: ${age_min}min (last: ${last_seen}, threshold: ${THRESHOLD_MIN}min)"
+          # ref 경로를 **온전히** 적는다 — 조각내면 송신 상수와의 교차 잠금이 깨진다
+          # (`tests/alerts/test_offbox_heartbeat.py` 가 이름 동치를 검사한다). 한쪽만
+          # rename 되면 감시자는 영원히 "ref 없음" 침묵 알림만 낸다.
+          hb_age=$(ref_age_min nuri/heartbeat-mini)   # 스케줄러가 보낸다 (gui LaunchAgent)
+          mach_age=$(ref_age_min nuri/machine-mini)   # 시스템 도메인 LaunchDaemon 이 보낸다
+          echo "heartbeat: ${hb_age}min · machine: ${mach_age}min (threshold ${THRESHOLD_MIN})"
 
-          if [ "$age_min" -le "$THRESHOLD_MIN" ]; then
+          if [ "$hb_age" -le "$THRESHOLD_MIN" ]; then
             echo "healthy"
             exit 0
           fi
 
-          # 알림은 의미+영향+조치 순 (alert readability 원칙). 실패해도 job 은
-          # 성공 처리하지 않는다 — webhook 죽음도 보여야 한다.
-          payload=$(jq -n \
-            --arg age "${age_min}" \
-            --arg last "${last_seen}" \
-            '{content: ("🔇 **mini heartbeat 침묵 " + $age + "분** (마지막: " + $last + ")\n영향: 스케줄러·로그인 세션·머신·네트워크 중 하나가 죽었을 수 있음 — 수집/브리프/알림 전체 정지 가능.\n조치: mini 전원·네트워크 확인 → 재부팅됐다면 FileVault 잠금 해제 + 콘솔 로그인 (LaunchAgents 는 로그인까지 미로드, #1191). 원격 진단: ssh 후 `pgrep -f nuri.scheduler`, `last reboot`.")}')
+          # 알림은 의미+영향+조치 순 (alert readability 원칙).
+          if [ "$mach_age" -le "$THRESHOLD_MIN" ]; then
+            # 머신은 살아서 비트를 보내는데 스케줄러만 침묵 — 사람이 손대야 하는 상태다.
+            title="🚨 **mini 는 켜져 있는데 스케줄러가 침묵 ${hb_age}분**"
+            impact="영향: 수집·합의·브리프·알림 정지. 머신 비트는 ${mach_age}분 전까지 정상 — 즉 전원/네트워크 문제가 아니다."
+            action="조치: gui LaunchAgent 미로드가 유력하다 (#1443, 콘솔 로그인 전까지 미로드). ssh 후 \`launchctl list | grep nuri\` → 비어 있으면 콘솔 로그인 또는 \`launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist\`."
+          elif [ "$mach_age" = "99999" ]; then
+            # machine ref 자체가 없다 = 데몬 미설치. 분류를 못 하므로 그렇게 말한다.
+            title="🔇 **mini heartbeat 침묵 ${hb_age}분** (머신 비트 미설치)"
+            impact="영향: 수집·합의·브리프·알림 정지 가능. 머신 생존 여부를 **구분할 수 없다**."
+            action="조치: mini 전원·네트워크 확인. 구분을 켜려면 \`sudo bash scripts/launchd/install_daemons.sh\` (#1443)."
+          else
+            # 둘 다 침묵 = 머신이 꺼졌거나 네트워크가 끊겼다. 의도적 종료면 무해하다.
+            title="🔌 **mini 무응답 ${hb_age}분** (머신 비트도 ${mach_age}분 침묵)"
+            impact="영향: 머신 꺼짐 또는 네트워크 단절로 보인다 — 의도적 종료라면 조치 불필요."
+            action="조치: 계획된 종료가 아니면 mini 전원·네트워크 확인. 부팅 후에도 조용하면 위 '켜져 있는데 침묵' 알림으로 바뀐다."
+          fi
+
+          # 실패해도 job 을 성공 처리하지 않는다 — webhook 죽음도 보여야 한다.
+          payload=$(jq -n --arg t "$title" --arg i "$impact" --arg a "$action" \
+            '{content: ($t + "\n" + $i + "\n" + $a)}')
           curl -sf -X POST -H "Content-Type: application/json" \
             -d "$payload" "$DISCORD_WEBHOOK_OPS"
-          echo "alert sent (${age_min}min stale)"
+          echo "alert sent (heartbeat ${hb_age}min, machine ${mach_age}min)"

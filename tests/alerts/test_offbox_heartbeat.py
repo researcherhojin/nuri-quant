@@ -150,9 +150,12 @@ class TestSenderAndWatcherAreWiredTogether:
         # substring 검사 금지 — `…-mini` 는 `…-mini-v2` 의 부분 문자열이라 rename 이
         # 통과한다 (뮤테이션 실측 MISS). Git Database API 호출부(`git/ref/<path>`)에서
         # ref 토큰을 뽑아 동치 비교한다 (커스텀 ref 라 branches API 를 쓰지 않는다).
-        m_ref = re.search(r'git/ref/([A-Za-z0-9/_.-]+)"', text)
-        assert m_ref, "워크플로에서 감시 대상 ref 를 찾을 수 없다"
-        assert m_ref.group(1) == ref_path, f"워크플로 ref {m_ref.group(1)!r} ≠ 송신 ref {ref_path!r}"
+        # #1443 이 감시자를 2-ref 로 바꾸면서 호출부가 `ref_age_min <경로>` 가 됐다.
+        # 동치 비교는 유지한다 — substring 은 `…-mini` 가 `…-mini-v2` 에 걸려 rename 을
+        # 통과시킨다 (뮤테이션 실측 MISS).
+        watched = set(re.findall(r"ref_age_min ([A-Za-z0-9/_.-]+)", text))
+        assert watched, "워크플로에서 감시 대상 ref 를 찾을 수 없다"
+        assert ref_path in watched, f"워크플로 ref {watched!r} 에 송신 ref {ref_path!r} 가 없다"
         assert "DISCORD_WEBHOOK_OPS" in text, "알림 채널 secret 참조가 사라졌다"
 
         m = re.search(r"THRESHOLD_MIN=(\d+)", text)

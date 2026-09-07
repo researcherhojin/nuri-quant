@@ -494,6 +494,7 @@
     "fastapi",
     "fastperiod",
     "fbench",
+    "fdesetup",
     "fetchone",
     "figsize",
     "filterwarnings",
