@@ -110,7 +110,7 @@ export async function GateSection() {
                   </span>
                   <div>
                     <span className="text-foreground/80">{c.description}</span>
-                    {!c.passed && <p className="text-muted-foreground/70 mt-0.5">{c.detail}</p>}
+                    {!c.passed && <p className="text-faint mt-0.5">{c.detail}</p>}
                   </div>
                 </div>
               ))}
@@ -146,7 +146,7 @@ export async function ConflictsSection() {
           </div>
         </div>
         {data.conflicts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.CONFLICTS_EMPTY}</p>
+          <p className="text-xs text-faint py-3 text-center">{ENGINE.CONFLICTS_EMPTY}</p>
         ) : (
           <div className="space-y-2">
             {data.conflicts.map((c, i) => (
@@ -154,7 +154,7 @@ export async function ConflictsSection() {
                 <div className="flex items-center gap-2 mb-1">
                   <span className="text-sm font-medium">{c.ticker}</span>
                   <StatusBadge status={c.severity === "high" ? "SELL" : c.severity === "medium" ? "WATCH" : "HOLD"} size="sm" />
-                  <span className="text-[10px] text-muted-foreground/70">{c.conflict_type}</span>
+                  <span className="text-[10px] text-faint">{c.conflict_type}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">{c.detail}</p>
                 <p className="text-[10px] text-emerald-400/80 mt-1">→ {c.recommendation}</p>
@@ -193,7 +193,7 @@ export async function MemorySection() {
           </div>
         </div>
         {data.drifts.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">{ENGINE.DRIFT_EMPTY}</p>
+          <p className="text-xs text-faint py-3 text-center">{ENGINE.DRIFT_EMPTY}</p>
         ) : (
           <ClientTable variant="drift" data={data.drifts} compact />
         )}

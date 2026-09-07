@@ -36,7 +36,7 @@ const money = (v: number) => <span className="text-emerald-400">${v?.toLocaleStr
 // 통화는 티커로 판정 (#1197) — 이전의 `v > 10000` 휴리스틱은 ₩8,145 종목을 $ 로,
 // $10,000 초과 미국 종목을 ₩ 로 표기했다. row 가 없는 호출은 USD 로 남는다.
 const price = (v: number, row?: { ticker?: string }) => {
-  if (!v) return <span className="text-muted-foreground/70">—</span>;
+  if (!v) return <span className="text-faint">—</span>;
   return <span>{formatMoney(v, { ticker: row?.ticker })}</span>;
 };
 

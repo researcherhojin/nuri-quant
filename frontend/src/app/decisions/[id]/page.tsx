@@ -310,7 +310,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
         <CardContent className="pt-4 pb-3 space-y-2">
           <div className="flex items-baseline justify-between">
             <p className="text-[10px] text-muted-foreground">{DECISIONS.RECHECK_TITLE}</p>
-            <span className="text-[10px] text-muted-foreground/70">{DECISIONS.RECHECK_NOTE}</span>
+            <span className="text-[10px] text-faint">{DECISIONS.RECHECK_NOTE}</span>
           </div>
           <div className="grid gap-2 md:grid-cols-3">
             <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">
@@ -324,7 +324,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
             <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_VOL}</div>
             <div className="rounded-sm bg-muted/40 px-2.5 py-2 text-xs text-foreground/90">{DECISIONS.RECHECK_THESIS}</div>
           </div>
-          <p className="text-[10px] text-muted-foreground/60">{DECISIONS.RECHECK_PIT}</p>
+          <p className="text-[10px] text-faint">{DECISIONS.RECHECK_PIT}</p>
         </CardContent>
       </Card>
 
@@ -361,7 +361,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                 <Metric label={DECISIONS.PRICE_AT_DECISION} value={formatMoney(d.entry_price, { ticker: d.ticker })} />
                 <Metric label="Stop" value={formatMoney(d.stop_loss, { ticker: d.ticker })} color="red" />
               </div>
-              <p className="text-[10px] text-muted-foreground/70">{DECISIONS.SELL_PRICE_NOTE}</p>
+              <p className="text-[10px] text-faint">{DECISIONS.SELL_PRICE_NOTE}</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3">
@@ -398,7 +398,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
           <div className="flex items-baseline gap-2 mb-3">
             <p className="text-[10px] text-muted-foreground">투자 논지</p>
             {d.thesis && (
-              <span className="text-[10px] text-muted-foreground/70">
+              <span className="text-[10px] text-faint">
                 v{d.thesis.version} · {d.thesis.effective_date} · {d.thesis.author} · {d.thesis.status}
               </span>
             )}
@@ -515,7 +515,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                 ? `${DECISIONS.AGENTS_LIVE_TITLE} ${liveVerdicts.length}`
                 : `에이전트 판정 (${verdicts.length})`}
               {typeof sd?.panel_coverage === "number" && (
-                <span className="ml-2 text-muted-foreground/70">
+                <span className="ml-2 text-faint">
                   {DECISIONS.AGENTS_COVERAGE_LABEL} {Math.round(sd.panel_coverage * 100)}%
                 </span>
               )}
@@ -538,7 +538,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   <summary className="text-[11px] text-muted-foreground cursor-pointer px-2.5 py-1.5">
                     {DECISIONS.AGENTS_DEGRADED_SUMMARY} {degradedVerdicts.length} —{" "}
                     {degradedVerdicts.map((v) => v.agent_name).join(" · ")}{" "}
-                    <span className="text-muted-foreground/60">({DECISIONS.AGENTS_DEGRADED_NOTE})</span>
+                    <span className="text-faint">({DECISIONS.AGENTS_DEGRADED_NOTE})</span>
                   </summary>
                   <div className="space-y-1.5 mt-1.5">
                     {degradedVerdicts.map((v, i) => (
@@ -557,7 +557,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   <summary className="text-[11px] text-muted-foreground cursor-pointer px-2.5 py-1.5">
                     {DECISIONS.AGENTS_ABSTAINED_SUMMARY} {abstainedVerdicts.length} —{" "}
                     {abstainedVerdicts.map((v) => v.agent_name).join(" · ")}{" "}
-                    <span className="text-muted-foreground/60">({DECISIONS.AGENTS_ABSTAINED_NOTE})</span>
+                    <span className="text-faint">({DECISIONS.AGENTS_ABSTAINED_NOTE})</span>
                   </summary>
                   <div className="space-y-1.5 mt-1.5">
                     {abstainedVerdicts.map((v, i) => (
@@ -618,7 +618,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                       <span className="flex flex-wrap gap-x-3 gap-y-0.5 min-w-0" data-testid="evidence-kv">
                         {kv.map(([k, v]) => (
                           <span key={k} className="text-[10px] font-mono whitespace-nowrap">
-                            <span className="text-muted-foreground/70">{k}</span>{" "}
+                            <span className="text-faint">{k}</span>{" "}
                             <span className="text-foreground/80 tabular-nums">{v}</span>
                           </span>
                         ))}

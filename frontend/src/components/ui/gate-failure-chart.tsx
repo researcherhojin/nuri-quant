@@ -157,7 +157,7 @@ export function GateFailureChart({ items }: GateFailureChartProps) {
         <span className="text-xs text-muted-foreground">
           Gate Failures — 최근 {totalRuns}건 ({runsWithIssues} 건에 실패/경고 분포)
         </span>
-        <span className="text-[10px] text-muted-foreground/70">
+        <span className="text-[10px] text-faint">
           stacked: category × severity
         </span>
       </div>

@@ -69,7 +69,7 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
     <details className="rounded-md border border-border bg-card/40 p-3 group" data-testid="coverage-details">
       <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          <span className="inline-block mr-1.5 text-muted-foreground/60 transition-transform group-open:rotate-90">&#9656;</span>
+          <span className="inline-block mr-1.5 text-faint transition-transform group-open:rotate-90">&#9656;</span>
           Data Coverage
         </span>
         <span className={`text-sm font-medium ${headerColor}`}>
@@ -78,7 +78,7 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
       </summary>
 
       <table className="w-full text-[12px] mt-2">
-        <thead className="text-left text-muted-foreground/70">
+        <thead className="text-left text-faint">
           <tr className="border-b border-border/50">
             <th className="py-1 font-normal">Table</th>
             <th className="py-1 text-right font-normal">US</th>
@@ -90,13 +90,13 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
         <tbody>
           {data.checks.map((c) => {
             const statusStyle = c.status === "PASS" ? "text-emerald-400" : "text-red-400";
-            const krStyle = c.us_only ? "text-muted-foreground/60 italic" : "text-foreground";
+            const krStyle = c.us_only ? "text-faint italic" : "text-foreground";
             return (
               <tr key={c.name} className="border-b border-border/30 last:border-0">
                 <td className="py-1 font-mono">{displayName(c.name)}</td>
                 <td className="py-1 text-right font-mono">{formatPercent(c.actual)}</td>
                 <td className={`py-1 text-right font-mono ${krStyle}`}>{krColumnText(c)}</td>
-                <td className="py-1 text-right font-mono text-muted-foreground/70">
+                <td className="py-1 text-right font-mono text-faint">
                   &ge;{formatPercent(c.threshold)}
                 </td>
                 <td className={`py-1 text-right font-medium ${statusStyle}`}>
@@ -109,7 +109,7 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
       </table>
 
       {data.checks.some((c) => c.us_only) && (
-        <p className="mt-2 text-[10px] text-muted-foreground/60">
+        <p className="mt-2 text-[10px] text-faint">
           KR &quot;n/a (US-only)&quot;: yfinance .KS / SEC EDGAR 소스가 KR 종목 미지원 (수집 실패 아님).
         </p>
       )}

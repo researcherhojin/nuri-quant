@@ -266,7 +266,7 @@ function PortfolioContent() {
                 {editSaving ? "..." : "Save"}
               </button>
               <button onClick={cancelEdit}
-                className="text-muted-foreground/70 hover:text-foreground text-xs transition-colors">
+                className="text-faint hover:text-foreground text-xs transition-colors">
                 Cancel
               </button>
             </span>
@@ -275,9 +275,9 @@ function PortfolioContent() {
         return (
           <span className="flex gap-1.5 justify-center">
             <button onClick={(e) => { e.stopPropagation(); startEdit(row); }}
-              className="text-muted-foreground/70 hover:text-emerald-400 text-xs transition-colors">Edit</button>
+              className="text-faint hover:text-emerald-400 text-xs transition-colors">Edit</button>
             <button onClick={(e) => { e.stopPropagation(); handleDelete(row.account, row.ticker); }}
-              className="text-muted-foreground/70 hover:text-red-400 text-xs transition-colors">Delete</button>
+              className="text-faint hover:text-red-400 text-xs transition-colors">Delete</button>
           </span>
         );
       },
