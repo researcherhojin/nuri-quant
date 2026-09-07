@@ -88,7 +88,7 @@ export function MarketPulse({ regime, macro }: MarketPulseProps) {
           <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
             Market Pulse
           </p>
-          <span className="text-[10px] text-muted-foreground/50">
+          <span className="text-[10px] text-faint">
             {regime.regime}
           </span>
         </div>

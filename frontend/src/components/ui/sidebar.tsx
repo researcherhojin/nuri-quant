@@ -83,7 +83,7 @@ export function Sidebar() {
             {!collapsed && (
               <>
                 <span className="text-lg font-bold text-foreground tracking-tight">Nuri-Quant</span>
-                <span className="text-[9px] text-muted-foreground/70 font-mono">v0.1</span>
+                <span className="text-[9px] text-faint font-mono">v0.1</span>
               </>
             )}
             {collapsed && <span className="text-lg font-bold text-foreground">N</span>}
@@ -103,7 +103,7 @@ export function Sidebar() {
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="mb-3">
               {!collapsed && (
-                <p className="px-4 text-[10px] font-semibold text-muted-foreground/70 tracking-widest mb-1">
+                <p className="px-4 text-[10px] font-semibold text-faint tracking-widest mb-1">
                   {group.label}
                 </p>
               )}

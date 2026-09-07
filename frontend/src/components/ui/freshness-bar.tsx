@@ -44,7 +44,7 @@ export function FreshnessBar({ items }: { items: FreshnessItem[] }) {
           >
             <span>{style.icon}</span>
             <span className={style.text}>{item.label}</span>
-            <span className="text-muted-foreground/70">{formatAge(item.age_hours)}</span>
+            <span className="text-faint">{formatAge(item.age_hours)}</span>
           </div>
         );
       })}

@@ -68,7 +68,7 @@ export function Rate({ label, numerator, denominator, universe, excluded = [] }:
         </span>
       </p>
 
-      {open && <p className="mt-0.5 text-[10px] text-muted-foreground/70">{RATE.OPEN_SAMPLE}</p>}
+      {open && <p className="mt-0.5 text-[10px] text-faint">{RATE.OPEN_SAMPLE}</p>}
     </div>
   );
 }

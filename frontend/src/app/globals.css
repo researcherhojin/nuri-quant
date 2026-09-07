@@ -35,6 +35,10 @@
   /* 사이드바 활성 표시 전용 (#1432). `--primary` 를 그대로 쓰면 `bg-primary/10` 틴트 위에서
      4.40:1 로 AA 미달이다 — 원색 배경으로 재면 5.06 이라 통과처럼 보이는 알파 함정. */
   --color-sidebar-active: var(--sidebar-active);
+  /* 보조 텍스트 3계층 (#1433). 알파 수식어로 "더 옅게" 를 표현하면 AA 아래로 내려간다 —
+     `--muted-foreground` 는 카드 위 7.66 이라 `/70` 만 붙여도 4.47 로 선을 넘었다.
+     계층을 토큰으로 표현하면 #1431 게이트가 자동으로 덮는다. */
+  --color-faint: var(--faint);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -108,6 +112,8 @@
   --sidebar-ring: oklch(0.708 0 0);
   /* 라이트는 현행 그대로 — primary on primary/10 over sidebar = 9.98:1 (#1432 실측) */
   --sidebar-active: var(--primary);
+  /* 라이트는 현행 유지 — 이 이슈의 실측은 다크 팔레트 기준이다 (#1433) */
+  --faint: var(--muted-foreground);
 }
 
 /* Evidence Terminal 다크 토큰 (#1195 U1a) — Blueprint 다크 램프.
@@ -174,6 +180,12 @@
   /* Blueprint BLUE4 (#1432). BLUE3(#4C90F0)은 `bg-primary/10` 합성 배경 #212C3B 위에서
      4.40:1 로 AA 미달이었다. 알파를 낮추는 안(/08 → 4.53)은 여유가 0.03 뿐이라 기각했다. */
   --sidebar-active: #8ABBFA;
+  /* Blueprint GRAY3 (#1433). `--muted-foreground`(GRAY4, 7.66) 보다 옅으면서 AA 를 넘는
+     유일한 램프 단계다: card 5.62 · background 6.41 · muted 5.01.
+     ⚠️ popover(#2F343C) 위에서는 4.35 로 미달 — 툴팁·팝오버 안에서는 쓰지 말 것.
+     알파로 같은 계층을 만들 수 없는 이유: `/70` 4.47, `/60` 3.68, `/50` 2.97 로 전부 미달이고
+     AA 를 넘는 첫 단계 `/85` 는 이미 GRAY4 와 구분이 안 된다. */
+  --faint: #8F99A8;
 }
 
 @layer base {

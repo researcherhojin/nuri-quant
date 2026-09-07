@@ -22,7 +22,7 @@ export function Metric({ label, value, sub, color = "default", size = "sm" }: Me
       <p className="text-[11px] text-muted-foreground uppercase tracking-wider">{label}</p>
       {/* 숫자 지표는 mono — 자릿수 무관 정렬 (스펙 §1 타이포) */}
       <p className={`${sizeClass} font-mono font-semibold ${colorClass}`}>{value}</p>
-      {sub && <p className="text-[10px] text-muted-foreground/70">{sub}</p>}
+      {sub && <p className="text-[10px] text-faint">{sub}</p>}
     </div>
   );
 }

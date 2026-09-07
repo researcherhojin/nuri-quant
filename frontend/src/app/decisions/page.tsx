@@ -271,7 +271,7 @@ function DecisionTable({ decisions, filtered, today }: { decisions: Decision[]; 
                     <td className="px-3 py-1 hidden md:table-cell text-xs text-muted-foreground">
                       {d.regime ?? "—"}
                       {d.regime && !d.regime_has_evidence && (
-                        <span className="ml-1 text-[9px] text-muted-foreground/60" title={DECISIONS.REGIME_NO_EVIDENCE_FULL}>
+                        <span className="ml-1 text-[9px] text-faint" title={DECISIONS.REGIME_NO_EVIDENCE_FULL}>
                           {DECISIONS.REGIME_NO_EVIDENCE_TAG}
                         </span>
                       )}

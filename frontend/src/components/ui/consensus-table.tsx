@@ -86,14 +86,14 @@ const AGENT_ORDER = [
 ];
 
 function agentCell(verdict: AgentVerdict | undefined) {
-  if (!verdict) return <span className="text-muted-foreground/40">--</span>;
+  if (!verdict) return <span className="text-faint">--</span>;
   // 자리표시자에 확신도 숫자를 찍으면 의견처럼 읽힌다 (#1436). 백엔드는 이미 이것들을
   // 동의율·패널 커버리지에서 빼고 있어서, 여기서 `H0` 으로 보이면 **같은 화면이 자기
   // 자신과 모순**된다 — 커버리지 60% 옆에 10개 의견이 나란히 선다.
   if (verdict.degraded || verdict.abstained) {
     const label = verdict.degraded ? CONSENSUS_TABLE_LABELS.CELL_DEGRADED : CONSENSUS_TABLE_LABELS.CELL_ABSTAINED;
     return (
-      <span className="text-muted-foreground/40 font-mono text-[11px]" title={verdict.reasoning}>
+      <span className="text-faint font-mono text-[11px]" title={verdict.reasoning}>
         {label}
       </span>
     );
@@ -241,7 +241,7 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                                         한쪽만 고치면 같은 행을 클릭하는 것만으로 "의견 없음" 이
                                         "HOLD 50%" 로 바뀐다 — 화면이 자기 자신과 모순된다. */}
                                     {v.degraded || v.abstained ? (
-                                      <span className="text-[10px] text-muted-foreground/50 ml-auto">
+                                      <span className="text-[10px] text-faint ml-auto">
                                         {v.degraded
                                           ? CONSENSUS_TABLE_LABELS.PLACEHOLDER_DEGRADED
                                           : CONSENSUS_TABLE_LABELS.PLACEHOLDER_ABSTAINED}

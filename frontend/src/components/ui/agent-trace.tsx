@@ -80,7 +80,7 @@ export function AgentTrace({ ticker }: { ticker: string }) {
                     // 이것들을 동의율·패널 커버리지에서 빼므로, 여기서 숫자를 보이면 같은
                     // 화면이 자기 자신과 모순된다.
                     v.degraded || v.abstained ? (
-                      <span className="text-[10px] text-muted-foreground/40 ml-auto">
+                      <span className="text-[10px] text-faint ml-auto">
                         {v.degraded ? CONSENSUS.PLACEHOLDER_DEGRADED : CONSENSUS.PLACEHOLDER_ABSTAINED}
                       </span>
                     ) : (
@@ -90,7 +90,7 @@ export function AgentTrace({ ticker }: { ticker: string }) {
                       </>
                     )
                   ) : (
-                    <span className="text-[10px] text-muted-foreground/30 ml-auto">--</span>
+                    <span className="text-[10px] text-faint ml-auto">--</span>
                   )}
                 </div>
                 {v ? (

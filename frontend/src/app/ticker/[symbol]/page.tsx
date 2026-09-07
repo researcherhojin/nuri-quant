@@ -166,7 +166,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
           <span className="text-sm text-muted-foreground font-semibold">{consensus.final_confidence.toFixed(0)}</span>
         )}
         {consensus.agreement_rate != null && (
-          <span className="text-xs text-muted-foreground/70">{(consensus.agreement_rate * 100).toFixed(0)}% agree</span>
+          <span className="text-xs text-faint">{(consensus.agreement_rate * 100).toFixed(0)}% agree</span>
         )}
       </div>
 
@@ -192,7 +192,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
                   <div className="flex items-center gap-2">
                     {/* 자리표시자는 의견이 아니다 (#1436) — 확신도를 찍으면 커버리지 수치와 모순된다 */}
                     {v.degraded || v.abstained ? (
-                      <span className="text-xs text-muted-foreground/50">
+                      <span className="text-xs text-faint">
                         {v.degraded ? CONSENSUS.PLACEHOLDER_DEGRADED : CONSENSUS.PLACEHOLDER_ABSTAINED}
                       </span>
                     ) : (
@@ -207,9 +207,9 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
             </div>
             {(consensus.dissent?.length ?? 0) > 0 && (
               <div className="mt-3 pt-3 border-t border-border">
-                <p className="text-[10px] text-muted-foreground/70 mb-1">Dissent:</p>
+                <p className="text-[10px] text-faint mb-1">Dissent:</p>
                 {consensus.dissent!.slice(0, 3).map((d: string, i: number) => (
-                  <p key={i} className="text-[10px] text-muted-foreground/70 leading-tight">{d}</p>
+                  <p key={i} className="text-[10px] text-faint leading-tight">{d}</p>
                 ))}
               </div>
             )}
@@ -226,7 +226,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
                   <div key={i} className="flex items-center justify-between text-xs">
                     <div>
                       <span className="text-foreground/80">{r.firm}</span>
-                      <span className="text-muted-foreground/70 ml-1">{r.date?.slice(5)}</span>
+                      <span className="text-faint ml-1">{r.date?.slice(5)}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
                       <StatusBadge
@@ -354,9 +354,9 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
 
       {/* #1218: 부재 패널 한 줄 병합 — 빈 상태 1줄 규칙 */}
       {missingPanels.length > 0 && (
-        <p className="text-[11px] text-muted-foreground/70" data-testid="ticker-missing-panels">
+        <p className="text-[11px] text-faint" data-testid="ticker-missing-panels">
           {TD.MISSING_PREFIX} {missingPanels.join(" · ")}{" "}
-          {isKrwTicker(data.ticker) && <span className="text-muted-foreground/50">{TD.MISSING_KR_HINT}</span>}
+          {isKrwTicker(data.ticker) && <span className="text-faint">{TD.MISSING_KR_HINT}</span>}
         </p>
       )}
     </div>

@@ -31,16 +31,16 @@ async function ScannerSection() {
           {SCAN.HEADER_REJECTED} {swingData.rejected}
         </p>
         {rows.length === 0 ? (
-          <p className="text-xs text-muted-foreground/70 py-3 text-center">{SCAN.EMPTY}</p>
+          <p className="text-xs text-faint py-3 text-center">{SCAN.EMPTY}</p>
         ) : (
           <ClientTable variant="scanner" data={rows} />
         )}
         {rejected.length > 0 && (
           <details className="mt-3">
-            <summary className="text-[10px] text-muted-foreground/70 cursor-pointer hover:text-muted-foreground">
+            <summary className="text-[10px] text-faint cursor-pointer hover:text-muted-foreground">
               {SCAN.REJECTED_FOLD} ({rejected.length})
             </summary>
-            <div className="mt-1.5 space-y-0.5 text-[10px] text-muted-foreground/70 pl-2">
+            <div className="mt-1.5 space-y-0.5 text-[10px] text-faint pl-2">
               {rejected.map((e, i) => (
                 <p key={i}>{e.ticker}: {e.reason}</p>
               ))}

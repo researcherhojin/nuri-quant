@@ -244,7 +244,7 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
         <span className="text-xs text-muted-foreground">
           SIEGE Timeline — 최근 {items.length}건 ({certifiedCount} CERTIFIED / {items.length - certifiedCount} REJECTED)
         </span>
-        <span className="text-[10px] text-muted-foreground/70">
+        <span className="text-[10px] text-faint">
           score 0–100, 점선 = portfolio state 변경
         </span>
       </div>
@@ -318,12 +318,12 @@ export function SiegeTimelineChart({ items }: SiegeTimelineChartProps) {
           <span className="inline-block w-3 h-px bg-muted-foreground mr-1.5 align-middle border-t border-dashed" />
           portfolio state 변경
         </span>
-        <span className="w-full mt-0.5 text-muted-foreground/70">caller:</span>
+        <span className="w-full mt-0.5 text-faint">caller:</span>
         {countByCaller(chartData).map(({ caller, count, shape }) => (
           <span key={caller} className="flex items-center">
             <LegendShape shape={shape} className="mr-1 align-middle" />
             {caller}
-            <span className="text-muted-foreground/60 ml-1">×{count}</span>
+            <span className="text-faint ml-1">×{count}</span>
           </span>
         ))}
       </div>

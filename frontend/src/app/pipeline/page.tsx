@@ -201,7 +201,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
         <StepIcon stepId={data.stepId} />
         <div className="flex items-center gap-2">
           {/* 레코드 수 */}
-          <span className="text-[10px] text-muted-foreground/70">{data.recordCount.toLocaleString()}</span>
+          <span className="text-[10px] text-faint">{data.recordCount.toLocaleString()}</span>
           {/* 상태 점 */}
           <span className="relative flex size-2.5">
             {status === "running" ? (
@@ -219,7 +219,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
 
       {/* 부제 + last updated */}
       <p className="text-[10px] text-muted-foreground">{data.sub}</p>
-      <p className="text-[10px] text-muted-foreground/50 mt-0.5">{formatAge(data.lastUpdated)}</p>
+      <p className="text-[10px] text-faint mt-0.5">{formatAge(data.lastUpdated)}</p>
 
       {/* 실행 버튼 */}
       <button
@@ -287,7 +287,7 @@ const FetchFailed = memo(function FetchFailed({ body, onRetry }: { body: string;
   return (
     <div role="alert" className="py-6 text-center space-y-2">
       <p className="text-xs text-red-400">{ERRORS.API_TITLE}</p>
-      <p className="text-[10px] text-muted-foreground/70">{body}</p>
+      <p className="text-[10px] text-faint">{body}</p>
       <button
         type="button"
         onClick={onRetry}
@@ -471,7 +471,7 @@ export default function PipelinePage() {
             </div>
           )}
           {/* 자동 새로고침 표시 */}
-          <span className="text-[10px] text-muted-foreground/50">{PL.AUTO_REFRESH}</span>
+          <span className="text-[10px] text-faint">{PL.AUTO_REFRESH}</span>
         </div>
       </div>
 
@@ -540,9 +540,9 @@ export default function PipelinePage() {
           {timelineState === "error" ? (
             <FetchFailed body={ERRORS.PIPELINE_TIMELINE_FAILED} onRetry={fetchTimeline} />
           ) : timelineState === "loading" ? (
-            <p className="text-xs text-muted-foreground/50 py-6 text-center">{PL.TIMELINE_LOADING}</p>
+            <p className="text-xs text-faint py-6 text-center">{PL.TIMELINE_LOADING}</p>
           ) : timeline.length === 0 ? (
-            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+            <p className="text-xs text-faint py-6 text-center">
               {PL.NO_EVENTS} &mdash; {PL.RUN_STEP_HINT}
             </p>
           ) : (
@@ -563,12 +563,12 @@ export default function PipelinePage() {
                     </div>
                     {/* #1219: raw JSON.stringify 폴백 폐지 — 사람이 읽는 요약 한 줄 */}
                     {ev.payload && summarizePayload(ev.payload) && (
-                      <p className="text-muted-foreground/70 text-[10px] mt-0.5 line-clamp-1">
+                      <p className="text-faint text-[10px] mt-0.5 line-clamp-1">
                         {summarizePayload(ev.payload)}
                       </p>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground/40 shrink-0">
+                  <span className="text-[10px] text-faint shrink-0">
                     {formatTimestamp(ev.timestamp)}
                   </span>
                 </div>
@@ -584,11 +584,11 @@ export default function PipelinePage() {
           {gateState === "error" ? (
             <FetchFailed body={ERRORS.PIPELINE_GATE_FAILED} onRetry={fetchGates} />
           ) : gateState === "loading" ? (
-            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+            <p className="text-xs text-faint py-6 text-center">
               {PL.GATE_LOADING}
             </p>
           ) : allConditions.length === 0 ? (
-            <p className="text-xs text-muted-foreground/50 py-6 text-center">
+            <p className="text-xs text-faint py-6 text-center">
               {PL.GATE_EMPTY}
             </p>
           ) : (
@@ -600,7 +600,7 @@ export default function PipelinePage() {
                   </span>
                   <div className="flex-1 min-w-0">
                     <p className="text-foreground/80">{c.description}</p>
-                    <p className={`text-[10px] mt-0.5 ${c.passed ? "text-muted-foreground/50" : "text-muted-foreground/70"}`}>
+                    <p className={`text-[10px] mt-0.5 ${c.passed ? "text-faint" : "text-faint"}`}>
                       {c.detail}
                     </p>
                   </div>
