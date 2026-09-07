@@ -100,43 +100,18 @@ echo "  ${SYNC_COUNT}개 파일 동기화"
 # NEXT_PUBLIC_API_URL 로 계속 동작하지만, next.config `rewrites()` 는 빌드 산출물
 # (routes-manifest.json) 에 구워지므로 rewrite 도입 이전 빌드에서는 /api/* 가 전부
 # 404. 즉 읽기 화면만 살고 클라이언트 쓰기·SSE 는 전멸한다.
-# 판정: frontend/ 최신 커밋 시각 > .next mtime 이면 재빌드. HEAD 가 안 움직인
-# 경우에도 (오늘처럼) 밀린 빌드를 self-heal 한다.
+# 판정·npm ci 게이트·백업/복원·dashboard 재기동·/login 확인은 전부 build_frontend.sh 안에
+# 있다 — autopull 이 5분마다 부르는 **같은 스크립트**다 (#1462). 여기 인라인으로 다시 쓰면 두
+# 경로가 또 갈라진다: 2026-07-27 에 이 단계만 고치고 autopull 은 WARN 로 두었다가 프로덕션이
+# 9일 된 빌드를 서빙했다(#940→#1023 의 데몬 재기동과 같은 비대칭). 이전 판의 "실패해도 이전
+# .next 가 그대로 서비스 중" 은 틀렸다 — Next 는 빌드 시작 때 .next 를 비운다(cleanDistDir).
+# 잠금: tests/scripts/test_deploy_bounces_resident_services.py::TestBothPathsBuildTheFrontendTheSameWay
 step 4 "frontend 빌드 확인"
 
-DASHBOARD_PLIST_NAME="com.nuri-quant.dashboard.plist"
-DASHBOARD_LABEL="${DASHBOARD_PLIST_NAME%.plist}"
-
-BUILD_NEEDED=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && LAST=\$(git log -1 --format=%ct -- frontend/ 2>/dev/null || echo 0); BUILT=\$(stat -f %m frontend/.next 2>/dev/null || echo 0); [ \"\${LAST:-0}\" -gt \"\${BUILT:-0}\" ] && echo yes || echo no")
-
-if [[ "${BUILD_NEEDED}" == "yes" ]]; then
-    warn "frontend 빌드가 코드보다 오래됨 → 재빌드 (수 분 소요)"
-    # package-lock 이 빌드보다 새로우면 의존성부터 재설치.
-    LOCK_NEWER=$("${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && LOCK=\$(git log -1 --format=%ct -- frontend/package-lock.json 2>/dev/null || echo 0); BUILT=\$(stat -f %m frontend/.next 2>/dev/null || echo 0); [ \"\${LOCK:-0}\" -gt \"\${BUILT:-0}\" ] && echo yes || echo no")
-    if [[ "${LOCK_NEWER}" == "yes" ]]; then
-        "${SSH}" "${REMOTE}" "export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH}/frontend && npm ci --no-audit --no-fund" \
-            || fail "npm ci 실패 — 'ssh ${REMOTE} \"cd ${REMOTE_PATH}/frontend && npm ci\"' 수동 확인"
-        ok "npm ci 완료"
-    fi
-    "${SSH}" "${REMOTE}" "export PATH=/opt/homebrew/bin:\$PATH && cd ${REMOTE_PATH}/frontend && npm run build" \
-        || fail "next build 실패 — 이전 .next 가 그대로 서비스 중이다 (dashboard 는 살아있음). 로그 확인 후 재시도"
-    ok "next build 완료"
-
-    "${SSH}" "${REMOTE}" "launchctl kickstart -k gui/\$(id -u)/${DASHBOARD_LABEL}" 2>/dev/null || true
-    DASH_OK="no"
-    for _ in $(seq 1 40); do
-        if "${SSH}" "${REMOTE}" "curl -sf -o /dev/null -m 3 http://127.0.0.1:3000/login" 2>/dev/null; then
-            DASH_OK="yes"; break
-        fi
-        sleep 1
-    done
-    if [[ "${DASH_OK}" == "yes" ]]; then
-        ok "dashboard 재기동 + /login 응답 확인"
-    else
-        fail "dashboard 재기동 후 :3000 무응답 — 'ssh ${REMOTE} tail data/logs/dashboard.err' 확인"
-    fi
+if "${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && bash scripts/deploy/build_frontend.sh"; then
+    ok "frontend 빌드 최신 (재빌드했다면 위 출력에 BUILD_ID 와 /login 확인이 남는다)"
 else
-    ok "frontend 빌드 최신 (재빌드 불필요)"
+    fail "frontend 빌드/재기동 실패 — 이전 빌드는 복원돼 있다. 'ssh ${REMOTE} tail ${REMOTE_PATH}/data/logs/dashboard.err' 확인"
 fi
 
 # ── 5. scheduler bounce + uv sync --frozen (#574 + #576) ──

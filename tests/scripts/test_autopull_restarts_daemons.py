@@ -27,6 +27,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTOPULL = REPO_ROOT / "scripts" / "deploy" / "autopull_receiver.sh"
 
 RESIDENT = ["com.nuri-quant.scheduler", "com.nuri-quant.api", "com.nuri-quant.discord-bot"]
+DASHBOARD = "com.nuri-quant.dashboard"
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -55,12 +56,24 @@ def world(tmp_path: Path):
     # launchctl stub — `list` 는 서비스가 설치된 것처럼 답하고, 나머지는 인자를 기록.
     (binz / "launchctl").write_text(
         "#!/bin/sh\n"
-        f'if [ "$1" = "list" ]; then for l in {" ".join(RESIDENT)}; do echo "1 0 $l"; done; exit 0; fi\n'
+        f'if [ "$1" = "list" ]; then for l in {" ".join([*RESIDENT, DASHBOARD])}; do echo "1 0 $l"; done; exit 0; fi\n'
         f'echo "launchctl $*" >> "{calls}"\nexit 0\n'
     )
     # UV_STUB_RC 로 sync 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향).
     (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit ${{UV_STUB_RC:-0}}\n')
-    for f in ("launchctl", "uv"):
+    # npm stub — build_frontend.sh (#1462) 가 부른다. Next 처럼 .next 를 비운 뒤 성공 시만 BUILD_ID.
+    (binz / "npm").write_text(
+        "#!/bin/sh\n"
+        f'echo "npm $*" >> "{calls}"\n'
+        'if [ "$1" = "run" ] && [ "$2" = "build" ]; then\n'
+        "    rm -rf .next; mkdir -p .next/cache\n"
+        '    [ "${NPM_STUB_RC:-0}" = "0" ] || exit "$NPM_STUB_RC"\n'
+        '    echo "stub-build-$$" > .next/BUILD_ID\n'
+        "fi\n"
+        "exit 0\n"
+    )
+    (binz / "curl").write_text(f'#!/bin/sh\necho "curl $*" >> "{calls}"\nexit 0\n')
+    for f in ("launchctl", "uv", "npm", "curl"):
         (binz / f).chmod(0o755)
 
     origin.mkdir()
@@ -92,12 +105,26 @@ def world(tmp_path: Path):
             "PATH": f"{binz}:{os.environ['PATH']}",
             "NURI_REPO": str(work),
             "HOME": str(tmp_path),
+            "DASH_WAIT_SECS": "1",
             **env_extra,
         }
         subprocess.run(["bash", str(AUTOPULL)], env=env, check=False, capture_output=True, timeout=120)
         return calls.read_text() if calls.exists() else ""
 
-    return type("W", (), {"land": staticmethod(land), "run": staticmethod(run), "work": work})
+    def autopull_log() -> str:
+        p = tmp_path / "Library" / "Logs" / "nuri-quant-autopull.log"
+        return p.read_text() if p.exists() else ""
+
+    return type(
+        "W",
+        (),
+        {
+            "land": staticmethod(land),
+            "run": staticmethod(run),
+            "work": work,
+            "autopull_log": staticmethod(autopull_log),
+        },
+    )
 
 
 class TestAutopullBouncesDaemons:
@@ -175,4 +202,70 @@ class TestAutopullBouncesDaemons:
         src = AUTOPULL.read_text(encoding="utf-8")
         assert "command -v uv" in src and "/opt/homebrew/bin/uv" in src, (
             "uv 를 PATH 이름만으로 부르면 launchd 컨텍스트에서 조용히 실패한다"
+        )
+
+
+class TestAutopullBuildsTheFrontend:
+    """자동 경로도 프론트를 빌드한다 (#1462) — 데몬 재기동(#1023)과 같은 비대칭의 재발.
+
+    2026-07-27 에 수동 경로(deploy_to_mini.sh 4단계)에만 재빌드를 넣고 자동 경로는 WARN 로그로
+    사람에게 넘겼다. 그 WARN 은 8/30 이후 17번 찍혔고 아무도 안 받았다 — 프로덕션이 9일 된
+    빌드(frontend/ 커밋 25건 · 취약 패키지 3개 미반영)를 서빙했고, 소스만 바뀐 커밋은 WARN 조차
+    없었다. 빌드 스크립트 자체의 동작(백업·복원·npm ci 게이트)은 `test_build_frontend.py` 가 잠그고,
+    여기서는 **autopull 이 그걸 부르는지** 를 본다.
+    """
+
+    def _last_frontend_commit(self, work: Path) -> int:
+        out = subprocess.run(
+            ["git", "log", "-1", "--format=%ct", "--", "frontend/"],
+            cwd=work,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return int(out.stdout.strip())
+
+    def test_frontend_change_rebuilds_and_bounces_only_the_dashboard(self, world):
+        world.land({"frontend/app/page.tsx": "export default () => null;\n"})
+        out = world.run()
+        assert "npm run build" in out, f"프론트가 바뀌었는데 빌드하지 않았다:\n{out}"
+        assert re.search(rf"launchctl kickstart -k \S*{re.escape(DASHBOARD)}", out), (
+            f"대시보드를 재기동하지 않았다:\n{out}"
+        )
+        for label in RESIDENT:
+            assert label not in out, f"python 이 안 바뀌었는데 {label} 을 재기동했다:\n{out}"
+
+    def test_a_stale_build_is_healed_even_when_nothing_new_landed(self, world):
+        """판정이 커밋 vs 빌드 시각이라, 지난 주기에 실패했거나 밀린 빌드를 새 커밋 없이도 따라잡는다.
+
+        이게 없으면 실패한 빌드는 다음 프론트 커밋까지 영영 재시도되지 않는다 — 조용한 실패의 형태.
+        """
+        world.land({"frontend/app/page.tsx": "export default () => null;\n"})
+        world.run()
+        bid = world.work / "frontend" / ".next" / "BUILD_ID"
+        assert bid.exists()
+        old = self._last_frontend_commit(world.work) - 1000
+        os.utime(bid, (old, old))  # 빌드가 코드보다 오래된 것처럼
+
+        out = world.run()  # origin 에 새 커밋 없음
+        assert out.count("npm run build") == 2, f"새 커밋이 없다고 밀린 빌드를 두었다:\n{out}"
+
+    def test_backend_only_change_does_not_rebuild_a_current_frontend(self, world):
+        """빌드는 수십 초고 대시보드 재기동은 세션을 끊는다 — 프론트가 안 바뀌면 건드리지 않는다."""
+        world.land({"frontend/app/page.tsx": "export default () => null;\n"})
+        world.run()
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        out = world.run()
+        assert out.count("npm run build") == 1, f"백엔드만 바뀌었는데 프론트를 다시 빌드했다:\n{out}"
+        assert out.count(DASHBOARD) == 1
+
+    def test_failed_frontend_build_is_logged_and_python_daemons_still_restart(self, world):
+        """프론트 빌드 실패가 python 재기동을 막으면 안 된다 — 두 축은 독립이다 (#1017 과 같은 원칙)."""
+        world.land({"nuri/core/rules.py": "X = 1\n", "frontend/app/page.tsx": "export default () => null;\n"})
+        out = world.run(NPM_STUB_RC="1")
+        for label in RESIDENT:
+            assert re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out), f"{label} 재기동이 빠졌다:\n{out}"
+        assert DASHBOARD not in out, "빌드가 실패했는데 대시보드를 재기동했다"
+        assert "ERROR: frontend 빌드 실패" in world.autopull_log(), (
+            "실패가 로그에 없다 — 침묵은 이 이슈가 막으려는 바로 그 형태다\n" + world.autopull_log()
         )
