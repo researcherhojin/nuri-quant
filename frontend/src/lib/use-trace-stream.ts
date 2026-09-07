@@ -15,6 +15,9 @@ interface AgentVerdict {
   confidence: number;
   reasoning: string;
   data_points: Record<string, unknown>;
+  // 자리표시자 두 축 (#1436). optional — 이 축이 붙기 전 형태도 그대로 렌더된다.
+  degraded?: boolean;
+  abstained?: boolean;
 }
 
 interface ConsensusResult {

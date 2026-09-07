@@ -6,7 +6,7 @@ BTC 지배력(dominance) 하락 = 알트코인 강세 = 투기 심리 과열.
 """
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
 
 _CFG = AGENT_CONFIG.get("crypto", {})
 _CONF = _CFG.get("confidence", {})
@@ -33,8 +33,19 @@ class CryptoAgent(BaseAgent):
             db_path=db_path,
         )
 
+        # 실패 누적은 **모든 출구**가 봐야 한다 (#1436, codex R5). 전에는 "셋 다 비었음"
+        # 분기에서만 봤는데, 변화율 조회가 실패하고 지배력이 중립값(50)으로 성공하면 아래
+        # "변동 없음" 출구로 빠져 장애가 정상 기권으로 기록됐다.
+        db_failed = any(r.failed for r in (change_rows, dom_rows, btc_rows))
+
         if not change_rows and not dom_rows and not btc_rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 데이터 없음")
+            return self._no_data(
+                ticker,
+                QueryRows(failed=db_failed),
+                confidence=_CONF.get("no_data", 0),
+                empty_reason="크립토 데이터 없음",
+                failed_reason="크립토 조회 실패",
+            )
 
         score = 0
         reasons = []
@@ -83,7 +94,14 @@ class CryptoAgent(BaseAgent):
             data["btc_price"] = round(btc_rows[0]["value"], 0)
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "크립토 변동 없음", data)
+            return self._no_data(
+                ticker,
+                QueryRows(failed=db_failed),
+                confidence=_CONF.get("no_data", 0),
+                empty_reason="크립토 변동 없음",
+                failed_reason="크립토 조회 실패",
+                data_points=data,
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -2)

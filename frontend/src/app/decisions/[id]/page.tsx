@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { formatMoney } from "@/lib/format";
-import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailKV, todayKst } from "@/app/decisions/helpers";
+import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailFlags, parseDetailKV, todayKst } from "@/app/decisions/helpers";
 import { deriveActionSource, parseScoringDetail, verdictSplit } from "@/app/decisions/verdict-path";
 import { DECISIONS } from "@/lib/strings";
 
@@ -189,13 +189,23 @@ export async function DecisionProvenance({ id }: { id: string }) {
   // "데이터 없음 ≠ 중립" (#1028) — degraded 명단은 scoring_detail 에만 있으므로
   // 과거 행은 분리 없이 기존 평면 리스트를 유지한다 (fallback 으로 지어내지 않는다).
   const degradedNames = new Set(sd?.degraded_agents ?? []);
-  const liveVerdicts = verdicts.filter((v) => !degradedNames.has(v.agent_name));
+  // 기권도 live 에서 뺀다 (#1436). 백엔드가 `panel_coverage` 와 `agreement_rate` 에서
+  // degraded 와 abstained 를 **둘 다** 빼므로, 여기서 degraded 만 걸러내면 아래 주석이
+  // 선언한 동형성이 깨져 "유효 의견 10" 옆에 "패널 커버리지 70%" 가 나란히 찍힌다.
+  const abstainedNames = new Set(sd?.abstained_agents ?? []);
+  const liveVerdicts = verdicts.filter(
+    (v) => !degradedNames.has(v.agent_name) && !abstainedNames.has(v.agent_name),
+  );
   const degradedVerdicts = verdicts.filter((v) => degradedNames.has(v.agent_name));
+  // degraded 와 별도 버킷이다 — 원인이 다르고(사고 vs 상시), 무엇보다 **가중치 취급이
+  // 다르다**: degraded 는 확신도 0 이라 합의에 미반영이지만, 기권은 `smart_money`(37.5)
+  // 처럼 가중 투표에는 여전히 반영된다 (#1437). 같은 라벨을 쓰면 거짓말이 된다.
+  const abstainedVerdicts = verdicts.filter((v) => abstainedNames.has(v.agent_name));
   // 히어로 분포는 **live 패널 기준** — 백엔드 합의 산식(scoring.py)이 degraded 를
   // 분자·분모에서 빼는 것과 동형이어야 panel_coverage 와 화면이 서로 모순되지 않는다
   // (codex ship review P1). degraded 분리가 없는 과거 행은 live == 전체라 기존과 동일.
   const split = verdictSplit(liveVerdicts);
-  const splitRestLabel = degradedVerdicts.length > 0 ? "중립" : "중립/무의견";
+  const splitRestLabel = degradedVerdicts.length + abstainedVerdicts.length > 0 ? "중립" : "중립/무의견";
   const agreementPct = d.agreement_rate === null ? null : Math.round(d.agreement_rate * 100);
 
   return (
@@ -501,7 +511,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
         <Card className="bg-card border-border">
           <CardContent className="pt-4 pb-3">
             <p className="text-[10px] text-muted-foreground mb-3">
-              {degradedVerdicts.length > 0
+              {degradedVerdicts.length + abstainedVerdicts.length > 0
                 ? `${DECISIONS.AGENTS_LIVE_TITLE} ${liveVerdicts.length}`
                 : `에이전트 판정 (${verdicts.length})`}
               {typeof sd?.panel_coverage === "number" && (
@@ -542,6 +552,25 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   </div>
                 </details>
               )}
+              {abstainedVerdicts.length > 0 && (
+                <details data-testid="abstained-agents">
+                  <summary className="text-[11px] text-muted-foreground cursor-pointer px-2.5 py-1.5">
+                    {DECISIONS.AGENTS_ABSTAINED_SUMMARY} {abstainedVerdicts.length} —{" "}
+                    {abstainedVerdicts.map((v) => v.agent_name).join(" · ")}{" "}
+                    <span className="text-muted-foreground/60">({DECISIONS.AGENTS_ABSTAINED_NOTE})</span>
+                  </summary>
+                  <div className="space-y-1.5 mt-1.5">
+                    {abstainedVerdicts.map((v, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded-sm px-2.5 py-1.5 opacity-70">
+                        <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
+                        {typeof v.reasoning === "string" && (
+                          <span className="truncate text-muted-foreground">{v.reasoning}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -558,8 +587,29 @@ export async function DecisionProvenance({ id }: { id: string }) {
               {evidence.map((e) => (
                 <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
                   <span className="w-32 shrink-0 text-muted-foreground">{e.source_type}/{e.source_key}</span>
-                  {e.action && <StatusBadge status={e.action} />}
-                  {e.confidence !== null && <span className="text-foreground/60 shrink-0">{Math.round(e.confidence)}%</span>}
+                  {/* 근거 사슬도 같은 규칙을 따른다 (#1436, codex R15). 여기만 두면 같은
+                      화면의 위쪽이 "의견 없음" 이라 쓰고 아래는 `HOLD 50%` 를 보여준다 —
+                      자리표시자를 근거로 세는 그 집계가 화면에서 되살아난다. */}
+                  {(() => {
+                    const flags = parseDetailFlags(e.detail);
+                    if (flags.degraded || flags.abstained) {
+                      return (
+                        <span className="text-foreground/50 shrink-0" data-testid="evidence-placeholder">
+                          {flags.degraded
+                            ? DECISIONS.AGENTS_DEGRADED_SUMMARY
+                            : DECISIONS.AGENTS_ABSTAINED_SUMMARY}
+                        </span>
+                      );
+                    }
+                    return (
+                      <>
+                        {e.action && <StatusBadge status={e.action} />}
+                        {e.confidence !== null && (
+                          <span className="text-foreground/60 shrink-0">{Math.round(e.confidence)}%</span>
+                        )}
+                      </>
+                    );
+                  })()}
                   {e.detail && (() => {
                     // #1216 raw JSON 폐지: detail 이 JSON 객체면 key-value, 아니면 기존 raw
                     const kv = parseDetailKV(e.detail);

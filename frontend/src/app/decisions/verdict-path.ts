@@ -5,6 +5,8 @@
 export interface ScoringDetail {
   final_action_source?: "risk_veto" | "divergence_penalty" | "weighted_sum" | string;
   degraded_agents?: string[];
+  /** 정상 실행됐으나 의견을 내지 않은 에이전트 (#1436) — degraded 와 원인·가중치 취급이 다르다. */
+  abstained_agents?: string[];
   panel_coverage?: number;
   risk_veto_fired?: boolean;
   penalty_applied?: boolean;

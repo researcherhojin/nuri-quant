@@ -56,6 +56,13 @@ def record_decision(consensus_result, db_path=None) -> int:
                 "confidence": v.confidence,
                 "reasoning": v.reasoning,
                 "data_points": v.data_points,
+                # 두 축을 여기도 persist 한다 (#1436, codex R12). `consensus/persistence.py`
+                # 만 고쳤더니 이쪽 경로로 저장된 결정은 `/api/decisions/{id}` 에서 기권을
+                # 구분할 수 없었다 — 위쪽 UI 는 `scoring_detail.abstained_agents` 로
+                # "의견 없음" 이라 쓰는데 같은 화면의 verdict 표는 평범한 HOLD 로 보였다.
+                # **쓰는 곳이 둘이면 둘 다 고쳐야 한다** — 한쪽만 고친 상태가 더 나쁘다.
+                "degraded": v.degraded,
+                "abstained": v.abstained,
             }
             for v in consensus_result.verdicts
         ],
@@ -103,7 +110,14 @@ def record_decision(consensus_result, db_path=None) -> int:
             "source_key": v.agent_name,
             "action": v.action,
             "confidence": v.confidence,
-            "detail": json.dumps(v.data_points, ensure_ascii=False),
+            # 자리표시자를 근거 사슬에서 **지우지는 않는다** — "이 에이전트는 의견이 없었다"
+            # 도 사실이고, 지우면 패널이 왜 좁은지 설명이 사라진다. 대신 축을 detail 에
+            # 실어 소비자가 진짜 근거와 가를 수 있게 한다 (#1436, codex R12). 타입 컬럼의
+            # HOLD 만 보고 근거로 세면 이 이슈가 없애려는 그 집계가 된다.
+            "detail": json.dumps(
+                {**(v.data_points or {}), "degraded": v.degraded, "abstained": v.abstained},
+                ensure_ascii=False,
+            ),
         }
         for v in consensus_result.verdicts
     ]

@@ -1654,6 +1654,10 @@ class TestGatherContext:
         class MockVerdict:
             agent_name: str
             action: str
+            # 실 dataclass 를 따라간다 (#1436) — 형태가 어긋나면 mock 이 버그를 잠근다:
+            # 리포트가 자리표시자를 구분하기 시작해도 이 mock 을 쓰는 테스트는 안 본다.
+            degraded: bool = False
+            abstained: bool = False
 
         @dataclass
         class MockConsensus:
