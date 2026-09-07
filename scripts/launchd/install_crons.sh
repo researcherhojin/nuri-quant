@@ -23,7 +23,12 @@ LOG_DIR="$PWD/data/logs"
 ALL_PLISTS=()
 while IFS= read -r line; do
     ALL_PLISTS+=("$line")
-done < <(find "$PLIST_SRC_DIR" -name "com.nuri-quant.*.plist" -type f -exec basename {} \; | sort)
+# `-maxdepth 1` 은 장식이 아니다 (#1443). `system/` 하위의 plist 는 **LaunchDaemon** 이라
+# 시스템 도메인(`/Library/LaunchDaemons`, root)에 설치돼야 로그인 없이 돈다. find 는 기본이
+# 재귀라 이 플래그가 없으면 그것들이 gui LaunchAgent 로 설치되고, 그러면 로그인 게이트를
+# 벗어나려고 만든 데몬이 **정확히 그 게이트 뒤에** 놓인다 — 조용히, 성공한 것처럼.
+# 시스템 도메인 설치는 `scripts/launchd/install_daemons.sh` 담당.
+done < <(find "$PLIST_SRC_DIR" -maxdepth 1 -name "com.nuri-quant.*.plist" -type f -exec basename {} \; | sort)
 
 if [ "${#ALL_PLISTS[@]}" -eq 0 ]; then
     echo " ❌ no plist found under $PLIST_SRC_DIR/"
