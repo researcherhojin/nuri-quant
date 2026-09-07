@@ -686,6 +686,66 @@ class TestFailureIsNeverReportedAsAbstention:
         assert detail["crypto"]["abstained"] is True
         assert detail["technical"]["abstained"] is False
 
+    def test_korean_market_reports_read_failure_instead_of_absence(self):
+        """헬퍼가 삼킨 실패가 `analyze()` 까지 도달한다 (#1446).
+
+        `korean_market` 은 DB 를 헬퍼 5 개를 통해서만 읽는데, 그 헬퍼들이 각자 예외를 삼키고
+        `None`/`""`/`0` 을 돌려줬다. 반환값만 보면 "값이 없다" 와 "조회가 실패했다" 가
+        구분되지 않아, DB 장애가 상시 부재로 기록됐다 — #1436 이 다른 9 개 에이전트에서
+        없앤 형태가 여기만 남아 있었다.
+
+        총체적 장애가 그동안 안 새어나간 것은 `_calibrate_fx_thresholds` 가 `_safe_query` 가
+        아니라 raw `query_df` 를 써서 예외가 올라간 **우연** 덕이었다. 여기서는 헬퍼 경로만
+        죽여 그 우연에 기대지 않고 잰다.
+        """
+        from nuri.trading.agents.base import QueryRows
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+
+        rows21 = QueryRows([{"close": 100.0 + i} for i in range(21)])
+        cases = [
+            ("전 조회 실패", lambda sql: QueryRows(failed=True), "degraded"),
+            ("성공하나 비어 있음", lambda sql: QueryRows(), "abstained"),
+            # 부분 실패라도 실제로 읽은 값이 있으면 **판단**이다 — 여기서 degrade 하면
+            # #1436 이 세 번 밟은 과교정(진짜 판단을 자리표시자로 깎기)의 재발이다.
+            ("모멘텀만 있음", lambda sql: rows21 if "FROM prices" in sql else QueryRows(failed=True), "live"),
+        ]
+        for name, stub, expect in cases:
+            agent = KoreanMarketAgent()
+            agent._safe_query = lambda sql, params=(), db_path=None, _s=stub: _s(sql)
+            v = agent.analyze("000000.KS")
+            got = "degraded" if v.degraded else "abstained" if v.abstained else "live"
+            assert got == expect, f"{name}: {expect} 여야 하는데 {got} ({v.reasoning!r})"
+
+    def test_each_korean_market_helper_reports_its_own_failure(self):
+        """헬퍼 **하나씩** 죽여서 잠근다 (#1446).
+
+        위 "전 조회 실패" 케이스는 다섯이 동시에 실패하므로 한 헬퍼의 보고를 지워도 나머지가
+        대신 보고해 통과한다 — 실측으로 확인했다(뮤테이션 2 건이 그대로 빠져나갔다).
+        한 경로만 잠그면 나머지는 무방비라는 것이 이 레포가 반복해 겪은 형태다.
+        """
+        from nuri.trading.agents.base import QueryRows
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+
+        # 헬퍼 → 그 헬퍼의 쿼리를 알아보는 표식
+        helpers = {
+            "fx": "indicator='usd_krw'",
+            "sector": "FROM portfolio",
+            "foreign_flow": "FROM institutional_flows",
+            "momentum": "FROM prices",
+            "macro_events": "FROM macro_events",
+        }
+        offenders = []
+        for name, marker in helpers.items():
+            agent = KoreanMarketAgent()
+            # 그 헬퍼만 실패, 나머지는 **성공하되 비어 있다** — 실패가 부재에 묻히는지 본다
+            agent._safe_query = lambda sql, params=(), db_path=None, _m=marker: (
+                QueryRows(failed=True) if _m in sql else QueryRows()
+            )
+            v = agent.analyze("000000.KS")
+            if not v.degraded:
+                offenders.append(f"{name}(degraded={v.degraded}, abstained={v.abstained})")
+        assert offenders == [], f"실패를 보고하지 않는 헬퍼: {offenders} — `failures` out-param 을 확인할 것"
+
     def test_query_failure_is_distinguishable_from_empty(self):
         """`_safe_query` 의 두 결과가 실제로 구분되는지 — 이 구분이 위 단언의 기반이다."""
         from nuri.trading.agents.base import QueryRows
