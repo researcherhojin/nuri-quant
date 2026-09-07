@@ -1909,4 +1909,46 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_held_add_wf_ticker ON held_add_would_fire(ticker, as_of_date);
     """,
     ),
+    (
+        61,
+        "maintenance_candidates.axis 에 dependency_lag 허용 (#1458)",
+        # `scan_dependency_lag` 는 #1362 에 들어왔는데 그 축 이름이 migration 59 의 CHECK
+        # 목록에 없다. 그래서 이 스캐너의 발견은 **한 번도 원장에 들어간 적이 없다** —
+        # staging 이 IntegrityError 로 튕기고 `MaintenanceAuditor._scan` 의 넓은
+        # `except Exception` 이 그걸 `scanner_errors` 로 삼켜 run 은 WARN 으로 끝났다.
+        # 실측: 프로덕션 복제본과 dev DB 양쪽에서 `maintenance_candidates` 는
+        # `gate_liveness` 1 행뿐이다. 스캐너가 도는데 산출물이 0 인 상태가 조용히 유지됐다.
+        #
+        # SQLite 는 CHECK 변경을 지원하지 않는다 → migration 45/46/59 와 동일한 재생성
+        # 패턴. 인덱스는 DROP 과 함께 사라지므로 다시 만든다.
+        """
+        CREATE TABLE maintenance_candidates_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            axis TEXT NOT NULL CHECK(axis IN
+                ('gate_liveness', 'doc_drift', 'scheduler_wiring',
+                 'stale_collector', 'dependency', 'dependency_lag')),
+            title TEXT NOT NULL,
+            detail TEXT NOT NULL,
+            fingerprint TEXT NOT NULL UNIQUE,
+            run_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'staged' CHECK(status IN
+                ('staged', 'approved', 'rejected', 'published')),
+            reviewed_at TEXT,
+            review_note TEXT,
+            last_seen_at TEXT NOT NULL,
+            seen_count INTEGER NOT NULL DEFAULT 1
+        );
+        INSERT INTO maintenance_candidates_new
+            (id, created_at, axis, title, detail, fingerprint, run_id, status,
+             reviewed_at, review_note, last_seen_at, seen_count)
+            SELECT id, created_at, axis, title, detail, fingerprint, run_id, status,
+                   reviewed_at, review_note, last_seen_at, seen_count
+              FROM maintenance_candidates;
+        DROP TABLE maintenance_candidates;
+        ALTER TABLE maintenance_candidates_new RENAME TO maintenance_candidates;
+        CREATE INDEX IF NOT EXISTS idx_maintenance_status
+            ON maintenance_candidates(status, created_at);
+    """,
+    ),
 ]

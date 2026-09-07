@@ -391,6 +391,13 @@ def _uv_binary() -> Optional[str]:
     return shutil.which("uv") or ("/opt/homebrew/bin/uv" if Path("/opt/homebrew/bin/uv").exists() else None)
 
 
+#: `uv tree` 의 의존성 행 — 최신이든 아니든 붙는다. **관측했는지**의 카나리아다
+#: (`--offline` 은 rc 0 으로 캐시를 내므로 rc 만으로는 관측을 증명 못 한다).
+_TREE_ROW = re.compile(r"^[│├└─\s]*[A-Za-z0-9][A-Za-z0-9._-]*\s+v\S+", re.M)
+#: 그중 `(latest: vX)` 가 붙은 행. 이름과 latest 사이에 `(extra: dev)` 가 낄 수 있다.
+_OUTDATED_ROW = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)\s+v(\S+).*?\(latest:\s*v(\S+)\)")
+
+
 def _canonical(name: str) -> str:
     """PEP 503 정규화 — `uv` 출력과 `pyproject` 표기가 `-`/`_`/`.` 로 갈린다."""
     return re.sub(r"[-_.]+", "-", name).lower()
@@ -431,9 +438,8 @@ def _parse_uv_outdated(output: str) -> list[tuple[str, str, str]]:
         ├── ruff v0.15.22 (extra: dev) (latest: v0.16.6)
     """
     rows: list[tuple[str, str, str]] = []
-    pattern = re.compile(r"([A-Za-z0-9][A-Za-z0-9._-]*)\s+v(\S+).*?\(latest:\s*v(\S+)\)")
     for line in output.splitlines():
-        match = pattern.search(line)
+        match = _OUTDATED_ROW.search(line)
         if match:
             rows.append((match.group(1), match.group(2), match.group(3)))
     return rows
@@ -506,19 +512,40 @@ def _stuck_detail(
     (`AuditCaps.subprocess_calls=16`)을 넘긴다. HTTP 클라이언트를 새로 들이지도 않는다
     (이 actor 의 잠긴 불변식이다 — 모듈 독스트링 참조).
 
-    실측 2026-09-08: 막힘 3 건 — `pandas` 2.3.3/3.0.5 · `uvicorn` 0.40.0/0.52.4 ·
-    `vectorbt` 0.28.5/1.1.0. 상류 캡 2 개가 원인이다 (`pykrx` 의 `pandas<3.0`,
-    `openbb-core` 의 `uvicorn<0.41`). 그때 이 스캔은 "업데이트 후보 0건" 만 적고 있었다.
+    ⚠️ **`--locked` 는 선택이 아니다.** `uv tree` 는 기본적으로 프로젝트를 lock 한다 —
+    `pyproject.toml` 이 lock 보다 앞서 있으면 **`uv.lock` 을 재작성한다** (실측: 드리프트
+    주입 후 md5 변경). 이 actor 는 주 1 회 `REPO_ROOT` 에서 도는데, 그러면 Mac mini 의 작업
+    트리가 더러워져 autopull 의 ff-merge 가 막히고, 로컬 `make test-fast` 도 개발자의
+    `uv.lock` 을 고쳐 쓴다. 게다가 그 재작성은 바로 앞 축(`scan_dependency` 의
+    `uv lock --check`)이 보고하려는 드리프트를 조용히 없앤다. `--locked` 면 드리프트에
+    rc=2 로 멈추고(lock 무변경) 아래 미관측 경로로 흐른다 — 관측이 본 작업을 고치면 안 된다.
+
+    실측 2026-09-08: 막힘 2 건(`pandas` 2.3.3/3.0.5 · `uvicorn` 0.40.0/0.52.4) + 부분 이동
+    1 건(`vectorbt` 도달 1.0.0 / 최신 1.1.0). 상류 캡 2 개가 원인이다 (`pykrx` 의
+    `pandas<3.0`, `openbb-core` 의 `uvicorn<0.41`).
+
+    ⚠️ 그때 이 스캔이 무엇을 적고 있었는지에 대해 **처음에 틀리게 썼다**: "업데이트 후보
+    0건 만 적고 있었다" 고 했으나 실은 **아무것도 안 적고 있었다** — `dependency_lag` 축이
+    migration 59 의 CHECK 목록에 없어 staging 이 IntegrityError 로 튕겼고 `_scan` 의 넓은
+    `except` 가 그걸 삼켰다. migration 61 이 그 축을 허용한다.
     """
-    rc = ctx.run([uv, "tree", "--outdated", "--depth", "1"], timeout=60.0)
+    # `--locked` 없이 부르면 lock 을 재작성한다 (위 경고). 관측은 읽기여야 한다.
+    rc = ctx.run([uv, "tree", "--outdated", "--depth", "1", "--locked"], timeout=60.0)
     if rc.returncode != 0:
         # 관측 실패를 "막힘 없음" 으로 적으면 이 축의 결함을 그대로 반복한다.
         return "\n막힘 여부 **미관측** — `uv tree --outdated` 실패: " + (rc.stdout + rc.stderr).strip()[-200:]
 
-    reachable = {_canonical(name): new.lstrip("v") for name, _, new in direct_updates}
+    # `--offline` 은 rc 0 으로 **캐시된** latest 를 낸다. rc 만 보고 "관측했다" 고 하면
+    # 낡은 캐시가 자신 있는 "막힘 없음" 이 된다. 트리 행을 하나라도 읽었는지로 가른다 —
+    # 이건 "뒤처진 것이 있는가" 가 아니라 "출력을 실제로 읽었는가" 다.
+    text = rc.stdout + "\n" + rc.stderr
+    if not _TREE_ROW.search(text):
+        return "\n막힘 여부 **미관측** — `uv tree` 출력에서 의존성 행을 읽지 못했다: " + text.strip()[-200:]
+
+    reachable = {_canonical(name): name_new.removeprefix("v") for name, _, name_new in direct_updates}
     outdated = [
         (name, current, latest)
-        for name, current, latest in _parse_uv_outdated(rc.stdout + rc.stderr)
+        for name, current, latest in _parse_uv_outdated(text)
         if _canonical(name) in direct_names
     ]
     stuck = [row for row in outdated if _canonical(row[0]) not in reachable]
