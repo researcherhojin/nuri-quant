@@ -157,6 +157,12 @@ const TEXT_PAIRS: Pair[] = [
   { name: "primary/background", fg: "primary", bg: "background", why: "동일 링크가 카드 밖 표면에도 놓인다" },
   { name: "primary-foreground/primary", fg: "primary-foreground", bg: "primary", why: "button.tsx default: bg-primary text-primary-foreground" },
   { name: "secondary-foreground/secondary", fg: "secondary-foreground", bg: "secondary", why: "button.tsx secondary" },
+  // 보조 텍스트 3계층의 가장 옅은 단계 (#1433). 토큰으로 옮긴 이유가 **이 게이트가 덮게
+  // 하려는 것**이라, 등록하지 않으면 옮긴 의미가 없다 — 실제로 등록 전에는 `--faint` 를
+  // GRAY2(card 4.03)로 낮추는 뮤테이션이 통과했다.
+  { name: "faint/card", fg: "faint", bg: "card", why: "text-faint — 보조 텍스트 최옅 단계" },
+  { name: "faint/background", fg: "faint", bg: "background", why: "카드 밖 표면의 보조 텍스트" },
+  { name: "faint/muted", fg: "faint", bg: "muted", why: "bg-muted 칩 안의 보조 텍스트" },
   // ── 알파 합성. 원색 배경으로 재면 실제보다 후하게 나온다 (codex R2). ──
   { name: "sidebar-active/primary10-on-sidebar", fg: "sidebar-active", bg: { token: "primary", alpha: 0.1, on: "sidebar" }, why: "sidebar.tsx 활성 항목: text-sidebar-active bg-primary/10 (#1432)" },
   { name: "destructive/destructive20-on-card", fg: "destructive", bg: { token: "destructive", alpha: 0.2, on: "card" }, why: "button.tsx destructive (dark:bg-destructive/20)" },
@@ -220,6 +226,9 @@ const GUARDRAIL_MIN: Record<string, number> = {
   "destructive/destructive25-on-card": 4.65,
   "destructive/destructive20-on-background": 6.05,
   "destructive/destructive25-on-background": 5.41,
+  "faint/card": 5.62,
+  "faint/background": 6.41,
+  "faint/muted": 5.01,
   ring: 5.06,
   "chart-1": 5.06,
   "chart-2": 5.92,

@@ -77,7 +77,7 @@ export async function DissentSection() {
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-medium text-sm">{r.ticker}</span>
                 <StatusBadge status={r.final_action} />
-                <span className="text-[10px] text-muted-foreground/70">{(r.agreement_rate * 100).toFixed(0)}% agree</span>
+                <span className="text-[10px] text-faint">{(r.agreement_rate * 100).toFixed(0)}% agree</span>
               </div>
               {r.dissent.slice(0, 2).map((d: string, i: number) => (
                 <p key={i} className="text-[10px] text-muted-foreground leading-tight">{d.slice(0, 80)}</p>

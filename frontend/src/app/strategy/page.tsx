@@ -101,7 +101,7 @@ export async function StrategyDashboard() {
           <div className="flex items-center gap-3 mb-3">
             <StatusBadge status={(regime?.regime || "unknown").toUpperCase()} size="md" />
             <span className="text-xs text-muted-foreground">{regime?.confidence != null ? `${(regime.confidence * 100).toFixed(0)}% confidence` : ""}</span>
-            <span className="text-xs text-muted-foreground/70">|</span>
+            <span className="text-xs text-faint">|</span>
             <span className="text-xs text-muted-foreground">{positions.length} positions open</span>
           </div>
 
@@ -151,24 +151,24 @@ export async function StrategyDashboard() {
                 <p className={`text-lg font-bold ${(r.total_return || 0) > 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {(r.total_return || 0) > 0 ? "+" : ""}{(r.total_return || 0).toFixed(1)}%
                 </p>
-                <p className="text-[10px] text-muted-foreground/70">Return</p>
-                <p className="text-[10px] text-muted-foreground/50">SPY +{(r.spy_total_return || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-faint">Return</p>
+                <p className="text-[10px] text-faint">SPY +{(r.spy_total_return || 0).toFixed(1)}%</p>
               </div>
               <div>
                 <p className={`text-lg font-bold ${(r.sharpe || 0) > (r.spy_sharpe || 0) ? "text-emerald-400" : "text-foreground/80"}`}>
                   {(r.sharpe || 0).toFixed(2)}
                 </p>
-                <p className="text-[10px] text-muted-foreground/70">Sharpe</p>
-                <p className="text-[10px] text-muted-foreground/50">SPY {(r.spy_sharpe || 0).toFixed(2)}</p>
+                <p className="text-[10px] text-faint">Sharpe</p>
+                <p className="text-[10px] text-faint">SPY {(r.spy_sharpe || 0).toFixed(2)}</p>
               </div>
               <div>
                 <p className="text-lg font-bold text-emerald-400">{(r.max_drawdown || 0).toFixed(1)}%</p>
-                <p className="text-[10px] text-muted-foreground/70">Max DD</p>
-                <p className="text-[10px] text-muted-foreground/50">SPY {(r.spy_max_drawdown || 0).toFixed(1)}%</p>
+                <p className="text-[10px] text-faint">Max DD</p>
+                <p className="text-[10px] text-faint">SPY {(r.spy_max_drawdown || 0).toFixed(1)}%</p>
               </div>
               <div>
                 <p className="text-lg font-bold text-foreground/80">{(r.transaction_costs || 0).toFixed(1)}%</p>
-                <p className="text-[10px] text-muted-foreground/70">Costs</p>
+                <p className="text-[10px] text-faint">Costs</p>
               </div>
             </div>
 
@@ -181,21 +181,21 @@ export async function StrategyDashboard() {
                     <span className={`font-medium ${t.avg_forward_30d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_30d > 0 ? "+" : ""}{t.avg_forward_30d}%
                     </span>
-                    <p className="text-[10px] text-muted-foreground/70">30d</p>
+                    <p className="text-[10px] text-faint">30d</p>
                   </div>
                   <div className="text-center">
                     <span className={`font-medium ${t.avg_forward_60d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_60d > 0 ? "+" : ""}{t.avg_forward_60d}%
                     </span>
-                    <p className="text-[10px] text-muted-foreground/70">60d</p>
+                    <p className="text-[10px] text-faint">60d</p>
                   </div>
                   <div className="text-center">
                     <span className={`font-medium ${t.avg_forward_90d > 0 ? "text-emerald-400" : "text-red-400"}`}>
                       {t.avg_forward_90d > 0 ? "+" : ""}{t.avg_forward_90d}%
                     </span>
-                    <p className="text-[10px] text-muted-foreground/70">90d</p>
+                    <p className="text-[10px] text-faint">90d</p>
                   </div>
-                  <div className="text-[10px] text-muted-foreground/70 ml-auto">
+                  <div className="text-[10px] text-faint ml-auto">
                     → bull {(t.pct_to_bull * 100).toFixed(0)}% / bear {(t.pct_to_bear * 100).toFixed(0)}%
                   </div>
                 </div>
@@ -220,7 +220,7 @@ export async function StrategyDashboard() {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-muted-foreground/50 mt-2">Monte Carlo p&lt;0.01 (99.6th percentile)</p>
+            <p className="text-[10px] text-faint mt-2">Monte Carlo p&lt;0.01 (99.6th percentile)</p>
           </CardContent>
         </Card>
       </div>

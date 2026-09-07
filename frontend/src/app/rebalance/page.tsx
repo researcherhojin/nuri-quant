@@ -34,7 +34,7 @@ export async function RebalanceSection() {
         </p>
         <ClientTable variant="rebalance" data={actionable} />
         {holds.length > 0 && (
-          <p className="text-xs text-muted-foreground/70 mt-3">
+          <p className="text-xs text-faint mt-3">
             HOLD: {holds.map((h) => h.ticker).join(", ")}
           </p>
         )}
