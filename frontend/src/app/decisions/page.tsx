@@ -6,6 +6,7 @@ import { fetchAPI } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { Rate } from "@/components/ui/rate";
 import { formatMoney } from "@/lib/format";
 import { DECISIONS, COMMON } from "@/lib/strings";
 import {
@@ -66,11 +67,12 @@ interface DecisionResponse {
 function Loading() {
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        {[...Array(5)].map((_, i) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {[...Array(4)].map((_, i) => (
           <div key={i} className="animate-pulse bg-card rounded-xl border border-border h-20" />
         ))}
       </div>
+      <div className="animate-pulse bg-card rounded-xl border border-border h-20" />
       <div className="animate-pulse bg-card rounded-xl border border-border h-96" />
     </div>
   );
@@ -78,12 +80,8 @@ function Loading() {
 
 // === Metric Cards ===
 function SummaryCards({ summary }: { summary: DecisionSummary }) {
-  // #1216: 판정 완료 건이 없으면 NaN 이 아니라 — 를 보인다 (0/0 나눗셈 가드)
-  const adjudicated = summary.success + summary.failure;
-  const successRate = adjudicated > 0 ? Math.round((summary.success / adjudicated) * 100) : null;
-
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
           <Metric label="Total" value={summary.total} />
@@ -104,16 +102,27 @@ function SummaryCards({ summary }: { summary: DecisionSummary }) {
           <Metric label="Failure" value={summary.failure} color="red" />
         </CardContent>
       </Card>
-      <Card className="bg-card border-border">
-        <CardContent className="pt-4 pb-3">
-          <Metric
-            label="Hit Rate"
-            value={successRate !== null ? `${successRate}%` : "—"}
-            color={successRate !== null ? (successRate >= 50 ? "green" : "red") : "default"}
-          />
-        </CardContent>
-      </Card>
     </div>
+  );
+}
+
+// === Hit Rate (#1429) — 분모·모집단과 함께만 렌더한다 ===
+function HitRate({ summary }: { summary: DecisionSummary }) {
+  return (
+    <Card className="bg-card border-border">
+      <CardContent className="pt-4 pb-3">
+        <Rate
+          label="Hit Rate"
+          numerator={summary.success}
+          denominator={summary.success + summary.failure}
+          universe={summary.total}
+          excluded={[
+            { label: DECISIONS.OUTCOME_NEUTRAL, value: summary.neutral },
+            { label: DECISIONS.OUTCOME_PENDING, value: summary.pending },
+          ]}
+        />
+      </CardContent>
+    </Card>
   );
 }
 
@@ -311,6 +320,7 @@ export async function DecisionsSection({
   return (
     <>
       <SummaryCards summary={data.summary} />
+      <HitRate summary={data.summary} />
       <FilterBar outcome={outcome} action={action} />
       {/* codex R1 P2: 요약 카드는 전역 통계 — 필터 중임을 명시해 혼동을 막는다 */}
       {filtered && (
