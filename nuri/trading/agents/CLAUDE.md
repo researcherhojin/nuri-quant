@@ -110,10 +110,13 @@ probe_failed)` 를 돌려준다. 억제는 두 경우 모두 하되 "낡음 — 
 성립하지만, 조회 실패는 모르는 것이다 — 전 판은 둘을 뭉뚱그려 검증 못 한 staleness 를
 적었고, 그 문구가 `reasons` 를 채워 실패 분기까지 우회시켰다.
 
-미해결 (#1446): `korean_market` 은 헬퍼 5 개가 각자 예외를 삼켜 실패 신호가 `analyze()` 까지
-오지 않는다. 연결 전체가 죽는 경우만 `_calibrate_fx_thresholds` 의 raw `query_df` 예외로
-덮이는데, **그 커버는 우연이다** — 누가 그 호출을 `_safe_query` 로 '방어적으로' 바꾸면 총체적
-DB 장애까지 조용히 `"Korean market neutral"` 이 된다.
+`korean_market` 은 DB 를 헬퍼 5 개로만 읽는다. 그 헬퍼들이 예외를 삼키고 `None`/`""`/`0` 을
+돌려주면 반환값만으로는 부재와 실패가 구분되지 않는다 — #1446 이 `failures` out-param 으로
+그 신호를 `analyze()` 까지 올렸다. 총체적 장애가 그전에 안 새어나간 것은
+`_calibrate_fx_thresholds` 가 `_safe_query` 가 아니라 raw `query_df` 를 써서 예외가 올라간
+**우연** 덕이었고, 그 호출을 '방어적으로' 바꿨다면 조용해졌을 것이다. 이제 그 우연에 기대지
+않는다. **부분 실패라도 읽은 값이 하나라도 있으면 살아 있는 판단이다** — 거기서 degrade 하면
+이 이슈에서 세 번 밟은 과교정의 재발이다.
 
 **Test:** `tests/trading/agents/test_abstained_verdicts.py::TestFailureIsNeverReportedAsAbstention`
 — `::test_partial_failure_is_not_an_abstention` (형제 성공 + 한 소스 실패, 5 경로) ·

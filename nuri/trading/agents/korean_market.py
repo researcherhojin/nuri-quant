@@ -91,10 +91,15 @@ class KoreanMarketAgent(BaseAgent):
         reasons = []
         data = {"is_korean": True, "market": "KOSDAQ" if ticker in KOSDAQ_TICKERS else "KOSPI"}
 
+        # 조회 실패를 누적한다 (#1446). 헬퍼 5 개가 각자 예외를 삼켜 반환값만 보면 "값이
+        # 없다" 와 "조회가 실패했다" 가 구분되지 않았고, 그래서 DB 장애가 상시 부재로
+        # 기록됐다 — #1436 이 다른 9 개 에이전트에서 없앤 형태가 여기만 남아 있었다.
+        db_failures: list[str] = []
+
         # 1. 환율 영향 (동적 캘리브레이션)
-        fx_rate = self._get_fx_rate(db_path)
+        fx_rate = self._get_fx_rate(db_path, failures=db_failures)
         data["fx_rate"] = fx_rate
-        sector = self._get_sector(ticker, db_path)
+        sector = self._get_sector(ticker, db_path, failures=db_failures)
         data["sector"] = sector
         fx_weak, fx_strong = _calibrate_fx_thresholds(db_path)
         data["fx_weak_threshold"] = fx_weak
@@ -112,7 +117,7 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append(f"원화강세({fx_rate:.0f}) 내수주 유리")
 
         # 2. 외국인 수급 (institutional_flows 테이블)
-        foreign_net = self._get_foreign_flow(ticker, db_path)
+        foreign_net = self._get_foreign_flow(ticker, db_path, failures=db_failures)
         data["foreign_net"] = foreign_net
         if foreign_net is not None:
             if foreign_net > 0:
@@ -123,7 +128,7 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append("외국인 순매도")
 
         # 3. 가격 모멘텀 (20일 수익률)
-        momentum = self._get_momentum(ticker, db_path)
+        momentum = self._get_momentum(ticker, db_path, failures=db_failures)
         data["momentum_20d"] = momentum
         if momentum is not None:
             if momentum > _CFG.get("momentum_positive_threshold", 5):
@@ -140,7 +145,7 @@ class KoreanMarketAgent(BaseAgent):
 
         # 5. 매크로 이벤트 반영 (#247) — export_surge/demand_growth 시 한국 종목 부스트
         macro_events: list[str] = []
-        macro_boost = self._get_macro_event_boost(sector, db_path, saw_input=macro_events)
+        macro_boost = self._get_macro_event_boost(sector, db_path, saw_input=macro_events, failures=db_failures)
         data["macro_event_boost"] = macro_boost
         if macro_boost != 0:
             score += macro_boost
@@ -168,11 +173,11 @@ class KoreanMarketAgent(BaseAgent):
         if fx_rate is None and foreign_net is None and momentum is None and not macro_events:
             return self._no_data(
                 ticker,
-                QueryRows(),
+                QueryRows(failed=bool(db_failures)),
                 confidence=0,
                 empty_reason="한국 시장 데이터 없음",
-                failed_reason="한국 시장 조회 실패",  # 도달 불가 — #1446 이 열어줄 경로
-                data_points=data,
+                failed_reason="한국 시장 조회 실패",
+                data_points={**data, "read_failures": db_failures},
             )
 
         # 판정
@@ -193,8 +198,14 @@ class KoreanMarketAgent(BaseAgent):
             data_points=data,
         )
 
-    def _get_fx_rate(self, db_path=None) -> float | None:
-        """최신 KRW/USD 환율."""
+    def _get_fx_rate(self, db_path=None, failures: list | None = None) -> float | None:
+        """최신 KRW/USD 환율.
+
+        `failures` 를 주면 조회 실패를 append 한다 (#1446). 반환값 `None` 은 "환율을 모른다"
+        와 "조회가 실패했다" 를 뭉갠다 — 후자를 정상 부재로 기록하면 DB 장애가 상시 기권으로
+        위장된다(#1436 이 다른 9 개 에이전트에서 없앤 바로 그 형태). 반환형을 안 바꾸는 이유는
+        이 private 헬퍼들을 직접 부르는 테스트가 여럿이라서다.
+        """
         # #1278: 날짜 상한 + 미래행 경고는 공용 리더가 담당한다 (nuri/core/fx.py). `_safe_query` 의 예외 삼킴을 유지하려 쿼리 형태만 맞춘다.
         from nuri.core.timezone import today_kst
 
@@ -203,27 +214,35 @@ class KoreanMarketAgent(BaseAgent):
             (today_kst(),),
             db_path=db_path,
         )
+        if failures is not None and rows.failed:
+            failures.append("fx")
         return rows[0]["value"] if rows else None
 
-    def _get_sector(self, ticker: str, db_path=None) -> str:
-        """종목 섹터 조회."""
+    def _get_sector(self, ticker: str, db_path=None, failures: list | None = None) -> str:
+        """종목 섹터 조회. `failures` 규약은 `_get_fx_rate` 참조 (#1446)."""
         rows = self._safe_query(
             "SELECT sector FROM portfolio WHERE ticker=? LIMIT 1",
             (ticker,),
             db_path=db_path,
         )
+        if failures is not None and rows.failed:
+            failures.append("sector")
         return rows[0]["sector"] if rows else ""
 
-    def _get_foreign_flow(self, ticker: str, db_path=None) -> float | None:
-        """최근 외국인 순매수."""
+    def _get_foreign_flow(self, ticker: str, db_path=None, failures: list | None = None) -> float | None:
+        """최근 외국인 순매수. `failures` 규약은 `_get_fx_rate` 참조 (#1446)."""
         rows = self._safe_query(
             "SELECT foreign_net FROM institutional_flows WHERE ticker=? ORDER BY date DESC LIMIT 1",
             (ticker,),
             db_path=db_path,
         )
+        if failures is not None and rows.failed:
+            failures.append("foreign_flow")
         return rows[0]["foreign_net"] if rows else None
 
-    def _get_macro_event_boost(self, sector: str, db_path=None, saw_input: list | None = None) -> int:
+    def _get_macro_event_boost(
+        self, sector: str, db_path=None, saw_input: list | None = None, failures: list | None = None
+    ) -> int:
         """최근 3일 매크로 이벤트에서 한국 관련 시그널 추출 (#247).
 
         export_surge, demand_growth → 수출 섹터(반도체 등)에 긍정적
@@ -244,6 +263,8 @@ class KoreanMarketAgent(BaseAgent):
                GROUP BY category""",
             db_path=db_path,
         )
+        if failures is not None and rows.failed:
+            failures.append("macro_events")
         if not rows:
             return 0
 
@@ -264,13 +285,15 @@ class KoreanMarketAgent(BaseAgent):
                     saw_input.append(cat)
         return boost
 
-    def _get_momentum(self, ticker: str, db_path=None) -> float | None:
-        """20일 가격 모멘텀."""
+    def _get_momentum(self, ticker: str, db_path=None, failures: list | None = None) -> float | None:
+        """20일 가격 모멘텀. `failures` 규약은 `_get_fx_rate` 참조 (#1446)."""
         rows = self._safe_query(
             "SELECT close FROM prices WHERE ticker=? ORDER BY date DESC LIMIT 21",
             (ticker,),
             db_path=db_path,
         )
+        if failures is not None and rows.failed:
+            failures.append("momentum")
         if len(rows) < 21:
             return None
         latest = rows[0]["close"]
