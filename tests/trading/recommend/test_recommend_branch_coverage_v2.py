@@ -1776,7 +1776,6 @@ class TestPriceTargetsMddBranches:
         """
         import logging
 
-        import nuri.core.db as db_mod
         from nuri.core.db import OperationalError
         from nuri.trading.recommend import price_targets as pt
 
@@ -1793,19 +1792,31 @@ class TestPriceTargetsMddBranches:
                 (kr_ticker, "2026-05-04", 50_000, 50_000, 50_000, 50_000, 1, 50_000),
             )
 
-        original_q = db_mod.query
+        # ⚠️ facade(`nuri.core.db.query`)가 아니라 **실제로 읽는 모듈**을 겨눈다 (#1448).
+        # 환율을 읽는 것은 `nuri/core/fx.py` 이고 그 모듈은 import 시점에 `query` 사본을
+        # 가져간다(`fx.py:34`). facade 를 갈아끼우면 그 사본에 닿지 않아 **fake 가 0 회
+        # 발화**했고, 이 테스트는 이름이 말하는 실패를 한 번도 일으키지 않은 채 통과했다.
+        # 곁가지로 그 형태는 #1149 누출의 사정거리이기도 하다 — import 순서가 반대였다면
+        # mock 이 patch 창 밖까지 살아남는다. 무력하거나 유해하거나였다.
+        import nuri.core.fx as fx_mod
+
+        original_q = fx_mod.query
+        fired = {"n": 0}
 
         def fake_q(sql, *a, **kw):
             if "usd_krw" in sql:
+                fired["n"] += 1
                 raise OperationalError("synthetic fx fail")
             return original_q(sql, *a, **kw)
 
-        monkeypatch.setattr(db_mod, "query", fake_q)
+        monkeypatch.setattr(fx_mod, "query", fake_q)
 
         with caplog.at_level(logging.WARNING, logger="nuri.trading.recommend.price_targets"):
             result = pt.check_portfolio_mdd(db_path=fresh_db)
 
         # -50% 라 환율만 있으면 확실한 위반이다. 그래도 판정하지 않는 것이 요점.
+        # 카나리아 — fake 가 실제로 발화해야 이 테스트가 무언가를 재는 것이다 (#1448).
+        assert fired["n"] > 0, "환율 조회 실패를 한 번도 일으키지 못했다 — 테스트가 공허하다"
         assert result is None, "환율 조회가 실패했는데 지어낸 환율로 손절선을 판정했다"
         assert caplog.records, "판정을 포기하고도 조용했다 — 아무도 조회 실패를 모른다"
 
