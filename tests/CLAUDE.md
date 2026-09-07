@@ -90,7 +90,14 @@ import 될 뿐 테스트 모듈이 아니다.** 그런데 파일을 인자로 �
 (`tests/` 는 패키지가 아니라 import 경로가 실행 방식에 따라 달라진다).
 **Test:** `tests/test_production_db_guard.py` — 파일 자체가 이 규칙의 산물이다.
 
-### `patch("nuri.core.db.query")` 금지 — mock 이 patch 창을 넘어 산다 (#1149)
+### facade 리더 **재바인딩** 금지 — mock 이 patch 창을 넘어 산다 (#1149, #1447)
+
+금지 대상은 철자가 아니라 *`nuri.core.db` 의 `query`/`query_df` 속성을 갈아끼우는 행위*다.
+`patch("nuri.core.db.query")` · `monkeypatch.setattr(dbmod, "query", …)` ·
+`monkeypatch.setattr("nuri.core.db.query", …)` · `patch.object(dbmod, "query", …)` ·
+`setattr(dbmod, "query", …)` — 다섯 형태가 **똑같은 누출**을 만든다. 게이트가 첫 형태만
+보던 동안 나머지 넷은 자유롭게 통과했고, 실제로 #1436 작업 중 `monkeypatch.setattr` 판
+위반이 6 개 테스트를 오염시키며 통과했다 (#1447 이 5 형태 전부 보도록 넓혔다).
 
 patch 가 활성인 동안 **처음 import 되는** 모듈이 `from nuri.core.db import query` 를 하면
 mock 을 자기 전역에 **복사**한다. patch 는 원본 속성만 되돌리므로 그 복사본은 mock 인 채
