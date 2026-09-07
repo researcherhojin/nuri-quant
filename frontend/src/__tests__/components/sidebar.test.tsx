@@ -102,10 +102,15 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/portfolio");
     const { container } = render(<Sidebar />);
 
-    // 액티브 = 인터랙션 액센트(primary) — emerald 브랜드 액센트 폐지 (#1200, 스펙 §1)
+    // 액티브 = 인터랙션 액센트 — emerald 브랜드 액센트 폐지 (#1200, 스펙 §1).
+    // 토큰이 `--primary` 에서 `--sidebar-active` 로 갈라졌다 (#1432): `bg-primary/10` 틴트
+    // 위에서 primary 는 4.40:1 로 AA 미달이라 다크에서만 Blueprint BLUE4 로 한 단계 밝힌다.
+    // 라이트는 `var(--primary)` 그대로라 의도는 바뀌지 않는다.
     const activeLink = container.querySelector('a[href="/portfolio"]');
     expect(activeLink).not.toBeNull();
-    expect(activeLink!.className).toContain("text-primary");
+    expect(activeLink!.className).toContain("text-sidebar-active");
+    // 브랜드 액센트로 되돌아가지 않았는지 — #1200 이 막은 축
+    expect(activeLink!.className).not.toContain("emerald");
   });
 
   it("collapses sidebar on chevron click", () => {

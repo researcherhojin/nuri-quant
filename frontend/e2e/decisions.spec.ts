@@ -34,8 +34,12 @@ test.describe("Decisions Page", () => {
     // #1216: 본문 필터 칩("전체")도 /decisions href 를 가지므로 사이드바(aside nav)로 스코프
     const decisionLink = page.locator("aside nav a[href='/decisions']");
     await expect(decisionLink).toBeVisible();
-    // Active state: 인터랙션 액센트(blue) — emerald 브랜드 액센트 폐지 (스펙 §1)
-    await expect(decisionLink).toHaveClass(/text-primary/);
+    // Active state: 인터랙션 액센트(blue) — emerald 브랜드 액센트 폐지 (스펙 §1).
+    // 토큰이 `--primary` 에서 `--sidebar-active` 로 갈라졌다 (#1432): `bg-primary/10` 틴트
+    // 위에서 primary 는 4.40:1 로 AA 미달이라 다크에서만 한 단계 밝힌다. 의도는 그대로다.
+    await expect(decisionLink).toHaveClass(/text-sidebar-active/);
+    // 이 단언이 원래 막던 축 — 브랜드 액센트로 되돌아가지 않았는지
+    await expect(decisionLink).not.toHaveClass(/emerald/);
   });
 
   test("no hardcoded exchange rate visible", async ({ page }) => {
