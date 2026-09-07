@@ -54,11 +54,8 @@ ALLOWED = {
     "api/test_dashboard.py": "dashboard 의 query 는 전부 함수-로컬 lazy import (61·254·314·409·600) — 전역 오염 불가",
     "collectors/test_collectors_branches.py": "earnings_preview.query_df 는 함수-로컬 lazy import (135) — 전역 오염 불가",
     "trading/agents/test_base.py": "BaseAgent._safe_query 가 query 를 함수 안에서 import (80) — 전역 오염 불가",
-    # 이쪽만 성격이 다르다: 소비자(nuri/core/fx.py:34, price_targets.py:15)가 **모듈 레벨**로
-    # 사본을 가져가므로 facade 를 갈아끼워도 아무 데도 안 닿는다. 실측으로 fake 발화 0 회 —
-    # 즉 누출은 없지만 그 테스트도 무력하다 (#1448). import 순서가 반대였다면 같은 코드가
-    # 이번엔 창 밖까지 mock 을 남겨 #1149 그 자체가 된다: **무력하거나 유해하거나** 다.
-    "trading/recommend/test_recommend_branch_coverage_v2.py": "소비자가 모듈 레벨 사본 보유 — patch 가 무력 (#1448 에서 use-site 로 교체 예정)",
+    # (#1448 에서 use-site patch 로 교체돼 이 목록에서 빠졌다. 양방향 검사라 사유가 사라진
+    #  항목을 남겨두면 stale 로 FAIL 한다 — 실제로 그 PR 을 rebase 하자마자 여기서 걸렸다.)
 }
 
 
