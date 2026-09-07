@@ -7,7 +7,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { PriceChartLazy as PriceChart } from "@/components/ui/price-chart-lazy";
-import { TICKER_DETAIL as TD } from "@/lib/strings";
+import { CONSENSUS, TICKER_DETAIL as TD } from "@/lib/strings";
 import { formatMoney, isKrwTicker } from "@/lib/format";
 
 interface AgentVerdict {
@@ -190,8 +190,17 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
                 <div key={v.agent_name} className="flex items-center justify-between">
                   <span className="text-sm capitalize">{v.agent_name}</span>
                   <div className="flex items-center gap-2">
-                    <StatusBadge status={v.action} size="sm" />
-                    <span className="text-xs text-muted-foreground">{v.confidence.toFixed(0)}</span>
+                    {/* 자리표시자는 의견이 아니다 (#1436) — 확신도를 찍으면 커버리지 수치와 모순된다 */}
+                    {v.degraded || v.abstained ? (
+                      <span className="text-xs text-muted-foreground/50">
+                        {v.degraded ? CONSENSUS.PLACEHOLDER_DEGRADED : CONSENSUS.PLACEHOLDER_ABSTAINED}
+                      </span>
+                    ) : (
+                      <>
+                        <StatusBadge status={v.action} size="sm" />
+                        <span className="text-xs text-muted-foreground">{v.confidence.toFixed(0)}</span>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

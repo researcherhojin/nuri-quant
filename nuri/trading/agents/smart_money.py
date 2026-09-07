@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.timezone import kst_now
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
 
 _CFG = AGENT_CONFIG.get("smart_money", {})
 _CONF = _CFG.get("confidence", {})
@@ -20,28 +20,46 @@ class SmartMoneyAgent(BaseAgent):
     def __init__(self):
         super().__init__("smart_money")
 
-    def _source_is_fresh(self, probe_sql: str, cutoff: str, db_path) -> bool:
+    def _source_is_fresh(self, probe_sql: str, cutoff: str, db_path) -> tuple[bool, bool]:
         """소스 **전체**의 최신 날짜가 컷오프 안인지 — 티커 행 나이와 구분한다 (#1187 Codex P2).
 
         티커의 행만 낡은 것은 소스 staleness 가 아니다: 13F 에서 팔린 종목, ARK 가
         보유만 유지한 종목은 소스가 멀쩡해도 그 티커의 매매/보유 행이 늙는다. 그건
         정상 부재라 조용히 제외하고, 소스 자체가 낡았을 때만 "낡음 — 제외" 를 낸다.
         프로브 실패/빈 결과는 미상 = 신선 아님 (ark COUNT(*)=5 원칙과 같은 방향).
+
+        Returns:
+            `(is_fresh, probe_failed)`. 억제는 두 경우 모두 하되 **"낡음" 이라고 말하는 것은
+            프로브가 실제로 낡음을 확인했을 때뿐**이다 (#1436, codex R6). 전에는 bool 하나만
+            돌려줘서 조회 실패가 `"애널리스트 컨센서스 낡음 — 제외"` 라는 **검증한 적 없는
+            사실 주장**으로 나갔고, 그 문구가 `reasons` 를 채우는 바람에 `_no_data` 의 실패
+            분기까지 우회했다 — 실패가 자기를 가릴 근거를 스스로 만든 셈이다.
         """
         rows = self._safe_query(probe_sql, (), db_path)
+        if rows.failed:
+            return False, True
         if not rows:
-            return False
+            return False, False
         latest = list(rows[0].values())[0]
-        return bool(latest) and str(latest) >= cutoff
+        return bool(latest) and str(latest) >= cutoff, False
 
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         score = 0
         reasons = []
+        # 조회 실패를 누적한다 (#1436). 결과 변수를 그대로 보면 안 된다 — `est_rows` 는
+        # 신선도 억제에서 평범한 `[]` 로 재대입돼 `.failed` 가 사라진다.
+        db_failed = False
         # source 별 신선도 억제 (#1187): 낡은 행은 점수에서 빼되, "소스가 낡아 제외" 는
         # 소스-레벨 프로브가 낡음을 확인했을 때만 명시한다 (Surface rung). 소스가
         # 신선한데 티커 행만 늙었으면 정상 부재로 조용히 제외한다 (Codex P2 ×2).
         # 임계는 config/agents.yaml smart_money.freshness (config-over-code).
         stale_sources: list[str] = []
+        # 제외 **진단 노트** — 점수를 만든 근거(`reasons`)와 분리한다 (#1436, codex R7).
+        # 둘을 한 리스트에 담으면 "낡아서 전부 제외했다" 가 `not reasons` 를 거짓으로 만들어,
+        # 아무 증거도 못 쓴 판정이 살아 있는 의견으로 집계된다. 조회 실패가 섞이면 더 나쁘다:
+        # 실패로 degrade 해야 할 자리에서 노트가 게이트를 열어준다 — `risk_agent` 에서 고친
+        # 것과 같은 형태(실패를 가리는 근거가 실패 자신이 만든 근거)다.
+        notes: list[str] = []
 
         pct_high = _CFG.get("portfolio_pct_high", 5)
         upside_th = _CFG.get("upside_threshold", 20)
@@ -57,21 +75,22 @@ class SmartMoneyAgent(BaseAgent):
             (ticker,),
             db_path,
         )
+        db_failed = db_failed or si_all.failed
         si_rows = [r for r in si_all if (r.get("filing_date") or "") >= si_cutoff]
-        if (
-            si_all
-            and not si_rows
-            and not self._source_is_fresh(
+        if si_all and not si_rows:
+            si_fresh, si_probe_failed = self._source_is_fresh(
                 # investor_class 필터는 잠금 테스트 의무이자 의미상 정확 — 이 에이전트의
                 # universe 는 conviction 이므로 소스 신선도도 conviction 제출분으로 잰다
                 "SELECT MAX(filing_date) FROM superinvestors WHERE investor_class = 'conviction'",
                 si_cutoff,
                 db_path,
             )
-        ):
-            latest = max(r.get("filing_date") or "?" for r in si_all)
-            stale_sources.append("superinvestors")
-            reasons.append(f"슈퍼투자자 13F 낡음(최신 {latest}) — 제외")
+            db_failed = db_failed or si_probe_failed
+            # 프로브가 실패했으면 낡았는지 **모른다** — 억제는 하되 사실 주장은 하지 않는다
+            if not si_fresh and not si_probe_failed:
+                latest = max(r.get("filing_date") or "?" for r in si_all)
+                stale_sources.append("superinvestors")
+                notes.append(f"슈퍼투자자 13F 낡음(최신 {latest}) — 제외")
         if si_rows:
             investors = [r["investor"] for r in si_rows[:3]]
             max_pct = si_rows[0]["portfolio_pct"]
@@ -95,6 +114,7 @@ class SmartMoneyAgent(BaseAgent):
             (ticker, si_cutoff),
             db_path,
         )
+        db_failed = db_failed or change_rows.failed
         if change_rows:
             score += 1
             reasons.append(f"최근 신규 매수: {', '.join(r['investor'] for r in change_rows)}")
@@ -107,10 +127,13 @@ class SmartMoneyAgent(BaseAgent):
             (ticker,),
             db_path,
         )
+        db_failed = db_failed or est_rows.failed
         if est_rows and (est_rows[0].get("date") or "") < est_cutoff:
-            if not self._source_is_fresh("SELECT MAX(date) FROM estimates", est_cutoff, db_path):
+            est_fresh, est_probe_failed = self._source_is_fresh("SELECT MAX(date) FROM estimates", est_cutoff, db_path)
+            db_failed = db_failed or est_probe_failed
+            if not est_fresh and not est_probe_failed:
                 stale_sources.append("estimates")
-                reasons.append(f"애널리스트 컨센서스 낡음(최신 {est_rows[0].get('date') or '?'}) — 제외")
+                notes.append(f"애널리스트 컨센서스 낡음(최신 {est_rows[0].get('date') or '?'}) — 제외")
             est_rows = []
         if est_rows:
             est = est_rows[0]
@@ -150,15 +173,20 @@ class SmartMoneyAgent(BaseAgent):
             (ticker,),
             db_path,
         )
+        db_failed = db_failed or ark_all.failed
         ark_rows = [r for r in ark_all if (r.get("date") or "") >= ark_cutoff]
         if ark_all and not ark_rows:
             # 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 (#1147): ark 는
             # 보유 교집합 + Hold 스냅샷이라 "보유만 유지한 종목" 도 매매 행이 늙는다.
             # 수집기가 필터 이전 사실을 기록하는 곳이 소스 신선도의 정본이다.
-            if not self._source_is_fresh("SELECT MAX(csv_date) FROM ark_source_dates", ark_cutoff, db_path):
+            ark_fresh, ark_probe_failed = self._source_is_fresh(
+                "SELECT MAX(csv_date) FROM ark_source_dates", ark_cutoff, db_path
+            )
+            db_failed = db_failed or ark_probe_failed
+            if not ark_fresh and not ark_probe_failed:
                 latest = max(r.get("date") or "?" for r in ark_all)
                 stale_sources.append("ark")
-                reasons.append(f"ARK 매매 낡음(최신 {latest}) — 제외")
+                notes.append(f"ARK 매매 낡음(최신 {latest}) — 제외")
         if ark_rows:
             buys = sum(1 for r in ark_rows if r["direction"] == "Buy")
             sells = sum(1 for r in ark_rows if r["direction"] == "Sell")
@@ -170,7 +198,16 @@ class SmartMoneyAgent(BaseAgent):
                 reasons.append(f"ARK 최근 매도 {sells}건")
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 30), "스마트머니 데이터 없음")
+            # 노트는 근거 문구로 실어 보낸다 — #1187 이 "'데이터 없음' 이 아니라 제외 사유가
+            # 나열된" 표면화를 요구한다. 축은 자리표시자로 바뀌지만 정보는 안 잃는다.
+            return self._no_data(
+                ticker,
+                QueryRows(failed=db_failed),
+                confidence=_CONF.get("no_data", 30),
+                empty_reason="; ".join(notes) or "스마트머니 데이터 없음",
+                failed_reason="스마트머니 조회 실패",
+                data_points={"score": 0, "n_superinvestors": len(si_rows), "stale_sources": stale_sources},
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -1)
@@ -199,6 +236,6 @@ class SmartMoneyAgent(BaseAgent):
             ticker,
             action,
             round(self.normalize_confidence(confidence), 1),
-            "; ".join(reasons),
+            "; ".join(reasons + notes),
             {"score": score, "n_superinvestors": len(si_rows), "stale_sources": stale_sources},
         )

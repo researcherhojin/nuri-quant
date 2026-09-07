@@ -17,6 +17,14 @@ __all__ = ["_build_consensus"]
 
 def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -> ConsensusResult:
     """가중 투표로 합의 결과 산출 (analyze_ticker / stream_analyze_ticker 공용)."""
+    # ⚠️ 이 루프는 **기권을 거르지 않는다 — 의도적이다** (#1436, 후속 #1437).
+    # `live` 는 보고 축(동의율·커버리지·거부권 가용성)만 고치고 채점 축은 그대로 둔다.
+    # 자리표시자도 여기서는 표를 던진다: `smart_money` 의 no_data 는 정규화 후 37.5,
+    # `wallstreet` 는 23.5 라 0 이 아니고 HOLD 쪽으로 가중치를 민다. 실측 결과 기권이
+    # 가중 투표의 중앙값 **5.5%**(최대 15.3%)를 차지하며, 그 기여를 빼면 18 건 중 **3 건의
+    # final_action 이 뒤집힌다** — 즉 여기를 고치는 것은 보고 정정이 아니라 **매매 판단
+    # 변경**이라 backtest 와 STRATEGY 검토가 선행돼야 한다. 이 PR 에 실으면 "기록만 고쳤다"
+    # 는 주장이 거짓이 된다.
     action_scores = {"BUY": 0.0, "SELL": 0.0, "HOLD": 0.0}
     for v in verdicts:
         w = weights.get(v.agent_name, 0.1)
@@ -36,7 +44,10 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # 죽으면 HOLD/0 대체 verdict 가 들어오고 `confidence >= 80` 이 그냥 거짓이 된다 —
     # Hard veto 가 사라지는데 아무 신호가 없다. 2026-08-11 프로덕션 실측: 최근 1,399
     # 추천 중 4건이 그 상태였고, 사후에 어느 건인지 알 방법이 없었다.
-    risk_veto_available = risk_v is not None and not risk_v.degraded
+    # 기권도 "평가 못 함" 이다 (#1436). risk 가 확신도 0 을 내면 `>= 80` 은 어차피 거짓이라
+    # **발동 여부는 안 바뀌지만**, 지금까지 그 행들은 `risk_veto_available=True` 로 기록돼
+    # "거부권을 평가했고 통과했다" 처럼 보였다. 실측 18 건 중 3 건이 그 상태였다.
+    risk_veto_available = risk_v is not None and not risk_v.degraded and not risk_v.abstained
     if risk_veto_available and risk_v is not None and risk_v.confidence >= veto_threshold:
         alpha_flat = risk_v.alpha_action == "FLAT"
         legacy_sell = risk_v.alpha_action is None and risk_v.action == "SELL"
@@ -51,7 +62,10 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         final_action = max(action_scores, key=lambda k: action_scores[k])
         total_weight = sum(action_scores.values())
         final_confidence = (action_scores[final_action] / total_weight * 100) if total_weight > 0 else 0
-        supporters = [v for v in verdicts if v.action == final_action]
+        # 기권은 지지자가 아니다 (#1436, codex R1 P2) — 자리표시자 HOLD 가 합의 방향과
+        # 같다고 `reasoning` 에 "crypto: 크립토 변동 없음" 처럼 근거로 실리면, 근거 없음이
+        # 근거로 둔갑한다.
+        supporters = [v for v in verdicts if v.action == final_action and not v.degraded and not v.abstained]
         reasoning = " | ".join(f"{v.agent_name}: {v.reasoning}" for v in supporters)
 
     # Divergence detection — docs/HARNESS.md §2 (JKHY, 2026-04-14) 재발 방지.
@@ -92,9 +106,18 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
     # **degraded verdict 는 분자·분모 양쪽에서 뺀다** (#1028). 예외로 죽은 에이전트가
     # 채우는 HOLD/0 은 의견이 아니라 자리표시자다. 세면 합의가 HOLD 로 갈 때 동의율이
     # 부풀어, 패널이 망가졌을수록 더 만장일치로 보이는 역전이 생긴다.
+    #
+    # **기권(abstained)도 같이 뺀다** (#1436). `degraded` 는 예외·타임아웃만 잡는데,
+    # 멀쩡히 돌고 "데이터 없음" 자리표시자를 내는 경로가 따로 있고 산출물이 같은 모양이다.
+    # 실측(최신 1일치 180 셀): 선언 기권 **51 개(28.3%)** 인데 `degraded_agents` 는 전 18 행
+    # `[]`, `panel_coverage` 는 전 행 `1.0` 이었다 — 실제 커버리지는 중앙값 0.70, 최소 0.40.
+    # 동의율은 6/18 건이 10pp 이상 어긋났다 (최대 +30.0pp / -13.3pp).
+    # 기권을 확신도 0 으로 유도하면 안 된다: 그 방식은 `risk` 의 "리스크 정상"(진짜 판단) 3 건을
+    # 기권으로 오분류하고, `smart_money`(conf 30) 14 건과 `wallstreet`(conf 20) 4 건은 아예 놓친다.
     dist_basis = pre_penalty_action_str if penalty_applied else final_action
-    live = [v for v in verdicts if not v.degraded]
+    live = [v for v in verdicts if not v.degraded and not v.abstained]
     degraded_agents = [v.agent_name for v in verdicts if v.degraded]
+    abstained_agents = [v.agent_name for v in verdicts if v.abstained]
     agree_count = sum(1 for v in live if v.action == dist_basis)
     agreement_rate = agree_count / len(live) if live else 0
     dissent = [f"{v.agent_name}({v.action}, {v.confidence:.0f}): {v.reasoning}" for v in live if v.action != dist_basis]
@@ -133,9 +156,16 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
                 # final_action) 에 실제 기여한 verdict 를 True 로 마킹. UI 는 이
                 # 플래그로 "합의 방향 지지자" 를 강조하되 final_action 과 다를 수
                 # 있음을 `basis_action` 별도 노출로 처리.
+                # ⚠️ `abstained` 를 여기서 빼지 않는다 — 이 플래그는 "basis 방향 **점수에**
+                # 기여했는가" 이고, 기권도 `action_scores` 에는 여전히 기여한다(#1437).
+                # 빼면 이 필드가 `action_scores` 와 모순되어 UI 가 "기여 안 함" 이라 표시하는
+                # verdict 가 실제로는 표를 던진 상태가 된다 (codex R2). 기권 여부는 아래
+                # `abstained` 필드로 따로 노출하니 소비자가 둘을 조합하면 된다.
                 "counted_for_basis_action": (v.action == basis_action) and not v.degraded,
                 # 판단을 못 한 에이전트 — 진짜 HOLD 와 구분된다 (#1028).
                 "degraded": v.degraded,
+                # 정상 실행됐으나 의견 없음 — degraded 와 원인이 다르다 (#1436).
+                "abstained": v.abstained,
             }
         )
     scoring_detail = {
@@ -153,6 +183,8 @@ def _build_consensus(ticker: str, verdicts: list[AgentVerdict], weights: dict) -
         # 패널 건강도 (#1028) — 결과를 바꾸지 않고 **열화 사실만** 남긴다.
         # `risk_veto_available=False` 인 행은 "거부권 없이 낸 판정" 이라 사후 조회 가능.
         "degraded_agents": degraded_agents,
+        # 기권은 사고가 아니라 상시 상태다 — `degraded_agents` 에 섞지 않고 따로 센다 (#1436).
+        "abstained_agents": abstained_agents,
         "panel_coverage": round(len(live) / len(verdicts), 3) if verdicts else 0.0,
         "risk_veto_available": risk_veto_available,
         "divergence_flag": divergence_flag,

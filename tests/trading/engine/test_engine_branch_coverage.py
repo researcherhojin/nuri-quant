@@ -35,6 +35,8 @@ class _FakeVerdict:
     data_points: dict | None = None
     alpha_action: str | None = None
     portfolio_action: str | None = None
+    degraded: bool = False  # 실 dataclass 를 따라간다 (#1436)
+    abstained: bool = False
 
 
 @dataclass

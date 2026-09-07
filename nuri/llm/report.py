@@ -100,6 +100,19 @@ class ReportContext:
     known_numbers: set[str] = field(default_factory=set)
 
 
+def format_agent_summary(verdicts) -> str:
+    """LLM 에 넘길 에이전트 요약 — 자리표시자를 **표로 넘기지 않는다** (#1436).
+
+    `name=HOLD` 로 넘기면 LLM 이 그걸 진짜 표로 읽는다. 바로 옆 동의율은 이미 기권·
+    degraded 를 뺀 값이라, 넘기는 순간 프롬프트가 자기모순을 담는다 — 10 표처럼 보이는데
+    동의율은 6 표 기준이다. 자리표시자를 지우지는 않는다: "이 에이전트는 의견이 없었다" 도
+    LLM 이 알아야 할 사실이고, 지우면 패널이 왜 좁은지 설명이 사라진다.
+    """
+    return ", ".join(
+        f"{v.agent_name}={'의견없음' if v.abstained else '미산출' if v.degraded else v.action}" for v in verdicts
+    )
+
+
 def gather_context(db_path=None) -> ReportContext:
     """모든 데이터 소스를 수집하여 구조화된 컨텍스트 생성."""
     known_tickers = set()
@@ -294,7 +307,7 @@ def gather_context(db_path=None) -> ReportContext:
             lines = [f"멀티 에이전트 합의 ({len(results)}종목):"]
             for r in sorted(results, key=lambda x: x.final_confidence, reverse=True)[:10]:
                 known_tickers.add(r.ticker)
-                agent_summary = ", ".join(f"{v.agent_name}={v.action}" for v in r.verdicts)
+                agent_summary = format_agent_summary(r.verdicts)
                 lines.append(
                     f"  {r.ticker}: {r.final_action} (신뢰도 {r.final_confidence:.0f}, "
                     f"동의율 {r.agreement_rate:.0%}) [{agent_summary}]"

@@ -63,19 +63,25 @@ class WallStreetAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         # ETF, 한국주, 레버리지 종목은 yfinance Wall Street 데이터 없음 → 즉시 스킵
         if ticker in SKIP_TICKERS or ticker.endswith(".KS"):
-            return AgentVerdict(self.name, ticker, "HOLD", 20, "Wall Street 데이터 미지원 종목")
+            return AgentVerdict(self.name, ticker, "HOLD", 20, "Wall Street 데이터 미지원 종목", abstained=True)
 
-        # DB에 캐시된 데이터 먼저 확인 (yfinance 호출 최소화)
-        cached = self._check_cached(ticker, db_path)
+        # DB에 캐시된 데이터 먼저 확인 (yfinance 호출 최소화). 그 조회들의 실패 여부를 같이
+        # 받아온다 (#1436, codex R5) — 아래 원격 조회 블록만 보면 DB 장애가 "데이터 부족"
+        # 기권으로 빠져나가기 때문이다. 전 판은 `SELECT 1` 로 연결만 물었는데, 그건 **연결은
+        # 살아 있고 캐시 테이블만 깨진** 경우를 못 잡았다.
+        # 반환형을 안 바꾸고 out-param 을 쓰는 이유는 이 private 메서드를 직접 부르는 테스트가
+        # 37 곳이라, 신호 하나 얻자고 그만큼을 흔드는 건 비례가 안 맞아서다.
+        db_failures: list[bool] = []
+        cached = self._check_cached(ticker, db_path, failures=db_failures)
         if cached:
             return cached
-
+        fetch_failed = any(db_failures)
         try:
             import yfinance as yf
 
             t = yf.Ticker(ticker)
         except Exception:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "yfinance 로드 실패")
+            return AgentVerdict(self.name, ticker, "HOLD", 0, "yfinance 로드 실패", degraded=True)
 
         score = 0
         reasons = []
@@ -122,7 +128,7 @@ class WallStreetAgent(BaseAgent):
                     avg_target = float(targets.mean())
                     data_points["avg_target"] = round(avg_target, 2)
         except Exception:
-            pass
+            fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 
         # ── 2. Earnings Surprise ──
         try:
@@ -145,7 +151,7 @@ class WallStreetAgent(BaseAgent):
                 data_points["eps_actual"] = float(latest.get("epsActual", 0) or 0)
                 data_points["eps_estimate"] = float(latest.get("epsEstimate", 0) or 0)
         except Exception:
-            pass
+            fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 
         # ── 3. Insider 매매 ──
         try:
@@ -172,7 +178,7 @@ class WallStreetAgent(BaseAgent):
                 data_points["insider_buys"] = buys
                 data_points["insider_sells"] = sells
         except Exception:
-            pass
+            fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 
         # ── 4. 애널리스트 컨센서스 분포 ──
         try:
@@ -207,10 +213,17 @@ class WallStreetAgent(BaseAgent):
                         "strong_sell": strong_sell,
                     }
         except Exception:
-            pass
+            fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 20), "Wall Street 데이터 부족")
+            # 조회가 **실패한** 것과 조회는 됐는데 **비어 있는** 것은 다르다 (#1436, codex R3).
+            # 뭉뚱그리면 소스 장애가 상시 기권으로 위장돼 인시던트 신호가 죽는다.
+            if fetch_failed:
+                # degraded 는 확신도 0 (#1436, codex R6) — 아래 기권 분기만 `no_data` 를 쓴다
+                return AgentVerdict(self.name, ticker, "HOLD", 0.0, "Wall Street 조회 실패", degraded=True)
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 20), "Wall Street 데이터 부족", abstained=True
+            )
 
         # 판정
         if score >= _CFG.get("score_buy", 3):
@@ -241,8 +254,13 @@ class WallStreetAgent(BaseAgent):
             data_points,
         )
 
-    def _check_cached(self, ticker: str, db_path=None) -> AgentVerdict | None:
-        """DB에 캐시된 Wall Street 데이터로 판정 (yfinance 호출 없이)."""
+    def _check_cached(self, ticker: str, db_path=None, failures: list | None = None) -> AgentVerdict | None:
+        """DB에 캐시된 Wall Street 데이터로 판정 (yfinance 호출 없이).
+
+        `failures` 를 주면 세 조회의 실패 여부를 append 한다 (#1436) — 호출부가 "캐시 없음"
+        과 "캐시 조회 실패" 를 갈라야 하는데 반환값 `None` 이 둘을 뭉갠다. 반환형 대신
+        out-param 인 이유는 위 호출부 주석 참조.
+        """
         ratings = self._safe_query(
             "SELECT action, target_price FROM analyst_ratings WHERE ticker=? ORDER BY date DESC LIMIT 10",
             (ticker,),
@@ -258,6 +276,9 @@ class WallStreetAgent(BaseAgent):
             (ticker,),
             db_path,
         )
+
+        if failures is not None:
+            failures.extend(r.failed for r in (ratings, earnings, insiders))
 
         if not ratings and not earnings and not insiders:
             return None  # 캐시 없음 → yfinance 호출 필요

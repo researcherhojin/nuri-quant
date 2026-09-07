@@ -15,6 +15,7 @@ from datetime import timedelta
 
 from nuri.core.db import get_db
 from nuri.core.timezone import kst_now
+from nuri.trading.agents.base import QueryRows
 from nuri.trading.agents.smart_money import SmartMoneyAgent
 
 
@@ -151,7 +152,7 @@ class TestSmartMoneyBranches:
 
         def _leak_hold_rows(sql, params=(), db_path=None):
             if "FROM ark" in sql:
-                return [{"direction": "Hold", "shares": 0.0} for _ in range(5)]
+                return QueryRows([{"direction": "Hold", "shares": 0.0} for _ in range(5)])
             return real_safe_query(sql, params, db_path)
 
         agent._safe_query = _leak_hold_rows
@@ -280,6 +281,36 @@ class TestSourceFreshnessSuppression:
         assert "스마트머니 데이터 없음" not in v.reasoning
         assert "낡음" in v.reasoning
         assert set(v.data_points["stale_sources"]) == {"superinvestors", "estimates", "ark"}
+        # #1436 (codex R7): 증거를 하나도 못 썼으므로 **의견이 아니라 기권**이다. 제외 노트가
+        # `reasons` 에 섞여 있던 동안에는 살아 있는 HOLD 로 집계돼 동의율·커버리지를 부풀렸다.
+        assert v.abstained is True and v.degraded is False
+
+    def test_a_stale_note_does_not_mask_a_failed_sibling_read(self, db_path, monkeypatch):
+        """검증된 낡음 + 형제 조회 실패 → degraded 다 (#1436, codex R7 P1).
+
+        `reasons` 가 점수 근거와 제외 노트를 섞고 있던 동안, "13F 낡음 — 제외" 하나가
+        `not reasons` 를 거짓으로 만들어 **estimates 조회 실패를 살아 있는 HOLD/43.8 로**
+        내보냈다. 실패한 조회가 표를 얻고 패널 커버리지까지 부풀린다.
+        `risk_agent` 에서 고친 것과 같은 형태 — 실패를 가리는 근거가 실패 자신이 만든 근거다.
+        """
+        with get_db(db_path) as conn:
+            conn.execute(  # 소스 자체가 낡음 → 검증된 제외 노트가 난다
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                "VALUES ('Buffett', 'STALEMASK', 8.0, ?, 'conviction')",
+                (_d(300),),
+            )
+        agent = SmartMoneyAgent()
+        real = agent._safe_query
+
+        def _stub(sql, params, dbp):
+            if "FROM estimates WHERE ticker" in sql:
+                return QueryRows(failed=True)
+            return real(sql, params, dbp)
+
+        monkeypatch.setattr(agent, "_safe_query", _stub)
+        v = agent.analyze("STALEMASK", db_path=db_path)
+        assert v.degraded is True and v.abstained is False, f"실패가 노트에 가려졌다: {v.reasoning!r}"
+        assert v.confidence == 0
 
 
 class TestStaleRowsVsFreshSource:
@@ -342,23 +373,70 @@ class TestStaleRowsVsFreshSource:
         assert "ARK 최근 매수" not in v.reasoning  # 낡은 매매는 점수에도 안 들어감
         assert "ark" not in v.data_points.get("stale_sources", [])
 
-    def test_probe_empty_result_counts_as_not_fresh(self, db_path, monkeypatch):
-        """프로브가 빈 결과(테이블 부재 등 _safe_query 예외 흡수)면 미상 = 신선 아님 →
-        낡은 행만 있으면 노트가 난다. 부재를 신선으로 치면 '진짜 낡았는데 침묵' 이 된다."""
+    def _seed_stale_ark(self, db_path):
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO ark (ticker, date, direction, shares) VALUES ('NOPROBE', ?, 'Buy', 1000)",
                 (_d(60),),
             )
-        agent = SmartMoneyAgent()
+
+    def _with_probe(self, agent, monkeypatch, probe_result):
         real = agent._safe_query
 
-        def _probe_blind(sql, params, dbp):
-            if "ark_source_dates" in sql:
-                return []  # 테이블 부재 → _safe_query 가 예외를 먹고 빈 리스트
-            return real(sql, params, dbp)
+        def _stub(sql, params, dbp):
+            return probe_result if "ark_source_dates" in sql else real(sql, params, dbp)
 
-        monkeypatch.setattr(agent, "_safe_query", _probe_blind)
+        monkeypatch.setattr(agent, "_safe_query", _stub)
+
+    def test_probe_empty_result_counts_as_not_fresh(self, db_path, monkeypatch):
+        """프로브가 **빈 결과**면 미상 = 신선 아님 → 낡은 행만 있으면 노트가 난다.
+        부재를 신선으로 치면 '진짜 낡았는데 침묵' 이 된다.
+
+        빈 결과는 수집기가 한 번도 기록을 안 남겼다는 뜻이라 낡음 주장이 성립한다.
+        조회 **실패**는 다르다 — 아래 짝 테스트 참조."""
+        self._seed_stale_ark(db_path)
+        agent = SmartMoneyAgent()
+        self._with_probe(agent, monkeypatch, QueryRows())
         v = agent.analyze("NOPROBE", db_path=db_path)
         assert "ARK 매매 낡음" in v.reasoning
         assert "ark" in v.data_points["stale_sources"]
+
+    def test_superinvestor_probe_failure_makes_no_staleness_claim(self, db_path, monkeypatch):
+        """축마다 따로 잠근다 — 세 프로브(13F · estimates · ark)는 호출부가 각각이다.
+
+        실측으로 확인한 구멍이다: ark 축만 잠갔을 때 13F 축의 `not si_probe_failed` 를
+        지우는 뮤테이션이 **통과했다.** 한 규칙에 잠금이 한 경로만 걸리면 나머지는 무방비다.
+        """
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+                "VALUES ('Buffett', 'SIPROBE', 8.0, ?, 'conviction')",
+                (_d(300),),  # 컷오프(200일)보다 낡음 → 소스-레벨 프로브를 태운다
+            )
+        agent = SmartMoneyAgent()
+        real = agent._safe_query
+
+        def _stub(sql, params, dbp):
+            if "MAX(filing_date) FROM superinvestors" in sql:
+                return QueryRows(failed=True)
+            return real(sql, params, dbp)
+
+        monkeypatch.setattr(agent, "_safe_query", _stub)
+        v = agent.analyze("SIPROBE", db_path=db_path)
+        assert "13F 낡음" not in v.reasoning, f"검증 못 한 staleness 를 사실로 주장했다: {v.reasoning!r}"
+        assert "superinvestors" not in v.data_points.get("stale_sources", [])
+        assert v.degraded is True and v.abstained is False
+
+    def test_probe_failure_makes_no_staleness_claim(self, db_path, monkeypatch):
+        """짝 (#1436, codex R6 P1) — 프로브가 **실패**하면 낡았는지 모른다.
+
+        빈 결과와 뭉뚱그려 "낡음 — 제외" 를 적으면 검증한 적 없는 사실 주장이 되고, 그
+        문구가 `reasons` 를 채워 `_no_data` 의 실패 분기까지 우회한다. 억제는 그대로 하되
+        말은 하지 않고, verdict 는 degraded 로 낸다."""
+        self._seed_stale_ark(db_path)
+        agent = SmartMoneyAgent()
+        self._with_probe(agent, monkeypatch, QueryRows(failed=True))
+        v = agent.analyze("NOPROBE", db_path=db_path)
+        assert "ARK 매매 낡음" not in v.reasoning
+        assert "ark" not in v.data_points.get("stale_sources", [])
+        assert v.degraded is True and v.abstained is False

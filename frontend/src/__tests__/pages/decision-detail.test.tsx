@@ -677,6 +677,36 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
     expect(within(degraded).getAllByText(/smart_money/).length).toBeGreaterThan(0);
   });
 
+  it("에이전트 3단: 기권도 live 에서 빠지고 별도 버킷 (#1436)", async () => {
+    // codex R3 P1 — 백엔드가 panel_coverage 에서 degraded·abstained 를 **둘 다** 빼므로,
+    // 화면이 degraded 만 걸러내면 "유효 의견 3" 옆에 "커버리지 50%" 가 나란히 찍힌다.
+    // 그 모순이 바로 이 파일 194~196 행 주석이 금지한 것이다.
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...vetoDetail,
+      agent_verdicts: JSON.stringify([
+        ...JSON.parse(vetoDetail.agent_verdicts),
+        { agent_name: "crypto", action: "HOLD", confidence: 0, reasoning: "크립토 변동 없음" },
+      ]),
+      scoring_detail: JSON.stringify({
+        ...JSON.parse(vetoDetail.scoring_detail),
+        degraded_agents: ["smart_money"],
+        abstained_agents: ["crypto"],
+        panel_coverage: 0.6,
+      }),
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+    // degraded 1 + abstained 1 이 빠진 수가 제목에 나와야 한다 (전체 5 → 유효 3)
+    expect(screen.getByText(/에이전트 판정 — 유효 의견 3/)).toBeInTheDocument();
+    const abstained = screen.getByTestId("abstained-agents");
+    expect(within(abstained).getByText(/의견 없음 1/)).toBeInTheDocument();
+    expect(within(abstained).getAllByText(/crypto/).length).toBeGreaterThan(0);
+    // 기권 라벨은 degraded 의 "가중치 0" 을 재사용하면 안 된다 — 실제로는 투표에 반영된다
+    expect(within(abstained).getByText(/가중 투표에는 반영/)).toBeInTheDocument();
+  });
+
   it("scoring_detail 없는 과거 행은 평면 리스트 유지 — degraded 를 지어내지 않는다", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({ ...vetoDetail, scoring_detail: null });
     const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
@@ -825,5 +855,46 @@ describe("DecisionProvenance — null-필드 분기 커버 (#1257 codecov patch)
     // confidence null → "—", 분포 바는 0명이라 비어 있고, 일치율 표기는 생략
     expect(within(hero).getByText(/SELL · —/)).toBeInTheDocument();
     expect(within(hero).queryByText(/일치율 \d/)).not.toBeInTheDocument();
+  });
+});
+
+describe("근거 사슬 — 자리표시자는 근거가 아니다 (#1436, codex R15)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  it("기권 evidence 행에 배지·확신도 대신 라벨을 그린다", async () => {
+    // 위쪽 패널이 "의견 없음" 이라 쓰는 동안 아래 사슬이 `HOLD 50%` 를 보여주면
+    // 같은 화면이 자기 자신과 모순된다 — 자리표시자를 근거로 세는 그 집계다.
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      evidence: [
+        { id: 1, decision_id: 531, source_type: "agent", source_key: "technical",
+          action: "BUY", confidence: 80, detail: '{"rsi": 49, "degraded": false, "abstained": false}' },
+        { id: 2, decision_id: 531, source_type: "agent", source_key: "korean_market",
+          action: "HOLD", confidence: 50, detail: '{"is_korean": false, "degraded": false, "abstained": true}' },
+        // 조건식의 **반대쪽** — degraded 는 기권과 다른 라벨이라 둘 다 밟아야 한다
+        { id: 3, decision_id: 531, source_type: "agent", source_key: "crypto",
+          action: "HOLD", confidence: 0, detail: '{"degraded": true, "abstained": false}' },
+      ],
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    await act(async () => { render(await DecisionProvenance({ id: "531" })); });
+
+    const kr = screen.getByText("agent/korean_market").parentElement!;
+    expect(within(kr).queryByText("50%")).not.toBeInTheDocument();
+    expect(within(kr).getByTestId("evidence-placeholder")).toBeInTheDocument();
+    // 축은 분류지 데이터가 아니다 — KV 목록에 섞이면 근거처럼 읽힌다
+    expect(within(kr).queryByText("abstained")).not.toBeInTheDocument();
+
+    const cry = screen.getByText("agent/crypto").parentElement!;
+    expect(within(cry).getByText(DECISIONS.AGENTS_DEGRADED_SUMMARY)).toBeInTheDocument();
+    expect(within(cry).queryByText("0%")).not.toBeInTheDocument();
+
+    // 카나리아 — 진짜 근거 행은 그대로 배지와 확신도를 보여준다
+    const tech = screen.getByText("agent/technical").parentElement!;
+    expect(within(tech).getByText("80%")).toBeInTheDocument();
+    expect(within(tech).queryByTestId("evidence-placeholder")).not.toBeInTheDocument();
   });
 });

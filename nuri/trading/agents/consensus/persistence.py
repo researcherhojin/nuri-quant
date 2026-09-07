@@ -72,6 +72,13 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                     "data_points": v.data_points,
                     "alpha_action": v.alpha_action,
                     "portfolio_action": v.portfolio_action,
+                    # 두 축을 persist 한다 (#1436, codex R8). 빠뜨리면 `api/routes/ticker.py`
+                    # 가 **캐시 상태에 따라 다른 계약**을 낸다 — 캐시 적중 시엔 축이 없는
+                    # verdict 를, live 폴백 시엔 `asdict()` 로 축이 붙은 verdict 를 준다.
+                    # 소비자는 기권 HOLD 와 진짜 의견을 구분할 수 없고, 그 구분이 이 이슈의
+                    # 전부다. 필드 추가라 기존 소비자(Learning Memory 의 action 분기)는 무영향.
+                    "degraded": v.degraded,
+                    "abstained": v.abstained,
                 }
                 for v in r.verdicts
             ],

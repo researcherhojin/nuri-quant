@@ -12,7 +12,7 @@ from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query, query_df
 from nuri.core.timezone import kst_now
 from nuri.quant.chart_analysis import analyze_chart
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,7 @@ class TechnicalAgent(BaseAgent):
 
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         min_dp = _CFG.get("min_data_points", 50)
+        fetch_failed = False
         df = query_df(
             "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date",
             (ticker,),
@@ -47,9 +48,15 @@ class TechnicalAgent(BaseAgent):
                     close_col = _df["Close"].squeeze() if hasattr(_df["Close"], "squeeze") else _df["Close"]
                     df = pd.DataFrame({"close": close_col.values})
             except Exception:
-                pass
+                fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
         if df.empty or len(df) < min_dp:
-            return AgentVerdict(self.name, ticker, "HOLD", 0, "데이터 부족")
+            return self._no_data(
+                ticker,
+                QueryRows(failed=fetch_failed),
+                confidence=0,
+                empty_reason="데이터 부족",
+                failed_reason="가격 조회 실패",
+            )
 
         close = df["close"]
         latest = float(close.iloc[-1])

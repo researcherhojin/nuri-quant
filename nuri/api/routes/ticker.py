@@ -68,10 +68,20 @@ def _read_consensus_from_db(ticker: str) -> dict | None:
         sig = {}
 
     final_action = row["action"]
+    # 자리표시자는 반대 의견이 아니다 (#1436, codex R9). 이 경로는 `ConsensusResult.dissent`
+    # 를 쓰지 않고 저장된 verdict 에서 **재구성**하는데, 두 축을 안 거르면 같은 엔드포인트가
+    # 캐시 적중 시엔 기권을 dissent 로, 미적중 시엔(live 폴백은 `ConsensusResult.dissent` 를
+    # 그대로 쓴다) 아니라고 답한다. 실측: 캐시된 BUY + 기권 crypto HOLD 가
+    # `crypto(HOLD, 0): ...` 로 나왔다.
+    # `.get(..., False)` 로 관대하게 읽는 이유는 이 축들이 persist 되기 **전에** 저장된 과거
+    # 행 때문이다 — 그 행들은 축이 없으니 예전처럼 동작한다(없던 정보를 지어내지 않는다).
     dissent = [
         f"{v.get('agent_name', '?')}({v.get('action', '?')}, {float(v.get('confidence') or 0):.0f}): {v.get('reasoning', '')}"
         for v in verdicts
-        if isinstance(v, dict) and v.get("action") != final_action
+        if isinstance(v, dict)
+        and v.get("action") != final_action
+        and not v.get("degraded", False)
+        and not v.get("abstained", False)
     ]
     return {
         "final_action": final_action,

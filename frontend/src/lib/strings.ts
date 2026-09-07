@@ -207,6 +207,12 @@ export const COLLAPSIBLE = {
 
 /* ── Consensus Page ─────────────────────────────────────────── */
 export const CONSENSUS = {
+  // 자리표시자 셀 (#1436) — 확신도 숫자를 찍으면 의견처럼 읽힌다. 백엔드가 이미 동의율·
+  // 패널 커버리지에서 빼고 있으므로, 숫자를 보이면 같은 화면이 자기 자신과 모순된다.
+  CELL_DEGRADED: "×",
+  CELL_ABSTAINED: "·",
+  PLACEHOLDER_DEGRADED: "의견 미산출",
+  PLACEHOLDER_ABSTAINED: "의견 없음",
   VIX_BLOCKED: "신규 매수 차단",
   VIX_CAUTION: "반포지션 적용 중",
   VIX_BLOCKED_SUB: "win rate 붕괴 구간, 모든 BUY 차단",
@@ -352,6 +358,10 @@ export const DECISIONS = {
   AGENTS_COVERAGE_LABEL: "패널 커버리지",
   AGENTS_DEGRADED_SUMMARY: "의견 미산출",
   AGENTS_DEGRADED_NOTE: "가중치 0 — 합의에 미반영",
+  // 기권은 degraded 와 다르다 (#1436): 정상 실행됐고, **가중 투표에는 반영된다**
+  // (smart_money 는 37.5 로 기여 — #1437). 동의율·커버리지에서만 빠진다.
+  AGENTS_ABSTAINED_SUMMARY: "의견 없음",
+  AGENTS_ABSTAINED_NOTE: "동의율·커버리지에서 제외 — 가중 투표에는 반영",
   // 규칙 판정(veto)인데 논지가 없으면 자동 논지 렌더 — 채점 기준의 공백 방지
   AUTO_THESIS_TITLE: "자동 논지 (손절 규율 집행)",
   AUTO_THESIS_BODY:

@@ -6,7 +6,7 @@ WSB 전체 활동 증가 = 시장 관심도 과열.
 """
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
 
 _CFG = AGENT_CONFIG.get("retail", {})
 _CONF = _CFG.get("confidence", {})
@@ -29,8 +29,19 @@ class RetailAgent(BaseAgent):
             db_path=db_path,
         )
 
+        # 실패 누적은 **모든 출구**가 봐야 한다 (#1436, codex R5). 전에는 "둘 다 비었음"
+        # 분기에서만 봤는데, 티커 언급 조회가 실패하고 전체 게시물 수가 임계 아래로 성공하면
+        # 아래 "데이터 부족" 출구로 빠져 장애가 정상 기권으로 기록됐다.
+        db_failed = any(r.failed for r in (mention_rows, post_rows))
+
         if not mention_rows and not post_rows:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 센티먼트 데이터 없음")
+            return self._no_data(
+                ticker,
+                QueryRows(failed=db_failed),
+                confidence=_CONF.get("no_data", 0),
+                empty_reason="리테일 센티먼트 데이터 없음",
+                failed_reason="리테일 조회 실패",
+            )
 
         score = 0
         reasons = []
@@ -65,7 +76,14 @@ class RetailAgent(BaseAgent):
                 reasons.append(f"WSB 전체 과열 ({posts}건/일)")
 
         if not reasons:
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "리테일 데이터 부족", data)
+            return self._no_data(
+                ticker,
+                QueryRows(failed=db_failed),
+                confidence=_CONF.get("no_data", 0),
+                empty_reason="리테일 데이터 부족",
+                failed_reason="리테일 조회 실패",
+                data_points=data,
+            )
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -2)

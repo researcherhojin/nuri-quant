@@ -313,6 +313,11 @@ class MockAgentVerdict:
     confidence: float
     reasoning: str
     data_points: dict = field(default_factory=dict)
+    # 실 dataclass 를 따라간다 (#1436) — mock 형태가 실물과 어긋나면 그 자체가 버그를
+    # 잠근다: `record_decision` 이 두 축을 persist 하기 시작해도 이 mock 을 쓰는 테스트는
+    # 아무것도 검사하지 않는다.
+    degraded: bool = False
+    abstained: bool = False
 
 
 @dataclass

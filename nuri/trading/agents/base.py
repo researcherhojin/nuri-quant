@@ -9,6 +9,18 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 
+class QueryRows(list):
+    """`BaseAgent._safe_query` 결과 — 빈 결과와 **조회 실패** 를 구분한다 (#1436).
+
+    `list` 하위 타입이라 `if not rows` · 순회 · 인덱싱이 그대로 동작한다. 실패를 알아야 하는
+    호출부만 `rows.failed` 를 본다.
+    """
+
+    def __init__(self, iterable=(), *, failed: bool = False):
+        super().__init__(iterable)
+        self.failed = failed
+
+
 @dataclass
 class AgentVerdict:
     """에이전트 개별 판정.
@@ -35,6 +47,26 @@ class AgentVerdict:
     # 무너지지 않게 HOLD/0 verdict 를 채우는데(#130), 그 대체물이 진짜 HOLD 와
     # 구분되지 않으면 거부권 무력화·동의율 부풀림이 조용히 일어난다.
     degraded: bool = False
+
+    # 에이전트가 정상 실행됐지만 **의견을 내지 않은** 경우 True (#1436). `degraded` 가 못
+    # 덮는 절반이다 — 저쪽은 예외·타임아웃으로 에이전트가 **죽은** 경우만 잡는데, 멀쩡히
+    # 돌고도 "데이터 없음" 으로 자리표시자를 내는 경로가 따로 있다. 산출물이 같은 HOLD/낮은
+    # 확신도라 `degraded` 만 거르면 자리표시자가 의견으로 집계된다.
+    #
+    # ⚠️ **확신도로 파생하지 않는다.** 처음엔 `confidence == 0` 으로 유도했는데 틀렸다
+    # (codex R1): `normalize_confidence` 가 낮은 원점수를 0 으로 깎는다 — `risk` 는 raw
+    # 0~40 이, `macro` 는 0~30 이 전부 0.0 이 된다. 실측에서 `risk` 의 "리스크 정상"
+    # (평가해서 위험 없음을 확인한 **진짜 판단**) 3 건이 확신도 0 이었고, 파생 방식은 그걸
+    # 기권으로 오분류해 `risk_veto_available=False` 로 뒤집어 적었다 — 거부권을 평가했는데
+    # "평가 못 함" 으로 기록하는 정반대 오류다. 생산 지점이 스스로 선언해야 한다.
+    #
+    # 새 자리표시자 경로를 만들면 이 플래그를 붙일 것. 잠금은
+    # `tests/trading/agents/test_abstained_verdicts.py::TestFailureIsNeverReportedAsAbstention`
+    # 인데, **이건 실패↔기권 오분류만 잡지 "플래그를 아예 안 붙인 새 자리표시자" 는 못 잡는다**
+    # (codex R6 P2). 그 형태를 구조로 잡으려던 AST 스윕은 지역변수·키워드 인자·헬퍼 이동에
+    # 네 번 뚫려 폐기했다 — 자리표시자와 진짜 저확신 판단을 코드 모양으로는 못 가른다
+    # (`risk` 의 "리스크 정상" 이 그 반례다). 남은 방어는 리뷰이므로 여기 적어 둔다.
+    abstained: bool = False
 
 
 def _load_norm_config() -> dict:
@@ -75,11 +107,49 @@ class BaseAgent(ABC):
         normalized = (raw - raw_min) / (raw_max - raw_min) * 100
         return max(0.0, min(100.0, normalized))
 
-    def _safe_query(self, sql, params=(), db_path=None):
-        """DB 쿼리 안전 래퍼."""
+    def _safe_query(self, sql, params=(), db_path=None) -> "QueryRows":
+        """DB 쿼리 안전 래퍼.
+
+        예외를 삼키되 **삼켰다는 사실을 남긴다** (#1436). 전에는 그냥 `[]` 를 돌려줘서
+        "테이블이 비었다" 와 "DB 가 죽었다" 가 호출부에서 완전히 같아 보였고, 그 결과 DB
+        장애가 6 개 에이전트에서 전부 **정상 기권**(abstained)으로 기록됐다 — 실패를 상시
+        부재로 위장하는 것은 #1028 이 막으려던 바로 그 형태다.
+
+        삼킴 자체는 유지한다. 26 개 호출처 중 상당수가 선택적 보강 쿼리(환율·섹터·합계)라
+        예외를 올리면 부수 실패가 에이전트 전체를 죽인다.
+        """
         from nuri.core.db import query
 
         try:
-            return query(sql, params, db_path=db_path)
+            return QueryRows(query(sql, params, db_path=db_path))
         except Exception:
-            return []
+            return QueryRows(failed=True)
+
+    def _no_data(
+        self,
+        ticker: str,
+        rows,
+        *,
+        confidence: float,
+        empty_reason: str,
+        failed_reason: str,
+        data_points: dict | None = None,
+    ) -> AgentVerdict:
+        """데이터가 없을 때의 자리표시자 — **부재와 실패를 갈라서** 낸다 (#1436).
+
+        `rows` 가 `_safe_query` 결과이고 그 조회가 실패했다면 `degraded`(사고), 조회는
+        됐는데 비었다면 `abstained`(상시 기권)다. 둘을 뭉뚱그리면 DB·소스 장애가 정상
+        기권으로 위장돼 인시던트 신호가 죽는다.
+        """
+        if rows.failed:
+            # 확신도 0 — `confidence` 인자를 **의도적으로 버린다** (#1436, codex R6).
+            # `action_scores[action] += w * (conf/100)` 이라 0 이 아니면 죽은 에이전트가 계속
+            # 투표한다. 러너가 만드는 degraded verdict 는 처음부터 0 이었는데
+            # (`consensus/__init__.py`), `_no_data` 가 에이전트별 `no_data` 값(smart_money 30 ·
+            # wallstreet 20 · macro 30)을 그대로 물려주면서 **0 이 아닌 첫 degraded** 가 생겼다.
+            # 실측: smart_money 자리표시자 conf 30 이 HOLD 에 0.0228 을 더해 final_confidence 를
+            # 79.3 → 71.9 로 끌어내렸다 — UI 는 그동안 "가중치 0 — 합의에 미반영" 이라고 적고
+            # 있었다. 기권(#1437)과 달리 이쪽은 미룰 이유가 없다: **실패한 조회에 표를 주는
+            # 것은 어느 축에서도 옳지 않다.**
+            return AgentVerdict(self.name, ticker, "HOLD", 0.0, failed_reason, data_points or {}, degraded=True)
+        return AgentVerdict(self.name, ticker, "HOLD", confidence, empty_reason, data_points or {}, abstained=True)

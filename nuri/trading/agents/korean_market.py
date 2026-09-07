@@ -10,7 +10,7 @@ US 종목에는 HOLD(중립)을 반환하여 합의에 영향을 주지 않는�
 import logging
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,11 @@ class KoreanMarketAgent(BaseAgent):
                 confidence=_CFG.get("us_confidence", 50.0),
                 reasoning="US ticker — Korean market agent neutral",
                 data_points={"is_korean": False},
+                # 전문 범위 밖이다 — 의견이 아니라 부재다 (#1436). CLAUDE.md 의 Specialization
+                # 표가 "Returns low-conf HOLD outside specialization by design" 이라 적어둔 그
+                # 경로인데, 지금까지 확신도 50 짜리 HOLD 표로 세어져 **모든 US 종목**에서
+                # 동의율과 패널 커버리지를 부풀렸다.
+                abstained=True,
             )
 
         score = float(_CFG.get("score_base", 50))
@@ -134,7 +139,8 @@ class KoreanMarketAgent(BaseAgent):
             reasons.append("KOSDAQ 변동성 할인")
 
         # 5. 매크로 이벤트 반영 (#247) — export_surge/demand_growth 시 한국 종목 부스트
-        macro_boost = self._get_macro_event_boost(sector, db_path)
+        macro_events: list[str] = []
+        macro_boost = self._get_macro_event_boost(sector, db_path, saw_input=macro_events)
         data["macro_event_boost"] = macro_boost
         if macro_boost != 0:
             score += macro_boost
@@ -142,6 +148,32 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append(f"매크로 이벤트 긍정적 (+{macro_boost})")
             else:
                 reasons.append(f"매크로 이벤트 부정적 ({macro_boost})")
+
+        # 값 입력 셋이 **전부 부재**면 이 종목에 대해 평가한 것이 없다 (#1436, codex R11).
+        # `fundamental` 의 전부-NULL 게이트와 같은 조건이다. 전에는 그대로 내려가
+        # "Korean market neutral" HOLD 가 살아 있는 의견으로 집계돼 `panel_coverage` 와
+        # HOLD 동의율을 부풀렸다.
+        #
+        # ⚠️ 하나라도 있으면 **판단**이다 — 값을 읽고 어느 임계도 안 건드린 것은 중립 판단이지
+        # 기권이 아니다 (`risk` 의 "리스크 정상"). `sector` 와 KOSDAQ 할인은 값 입력이 아니다:
+        # 전자는 수정자고, 후자는 종목 소속에서 나오는 상수라 이 종목의 상태에 대한 근거가 아니다.
+        # 매크로 이벤트 부스트는 **값 입력이다** — 첫 판이 이걸 빼먹어, 이벤트가 실제로 잡힌
+        # 종목까지 기권으로 깎았다 (`test_negative_macro_event_appends_negative_reason` 이 잡음).
+        # 그 다음 판은 `macro_boost == 0` 으로 봤는데 그것도 틀렸다 (codex R12): 수출주에
+        # demand_growth +6 과 trade_war -6 이 함께 오면 순 0 이지만 평가는 한 것이다.
+        # **점수가 아니라 입력의 존재**를 본다.
+        #
+        # 조회 **실패** 는 여기서 못 가른다 — 헬퍼 5 개가 각자 예외를 삼켜 신호가 안 온다.
+        # 그건 #1446 이고, 그때까지 실패는 이 부재 경로로 합류한다.
+        if fx_rate is None and foreign_net is None and momentum is None and not macro_events:
+            return self._no_data(
+                ticker,
+                QueryRows(),
+                confidence=0,
+                empty_reason="한국 시장 데이터 없음",
+                failed_reason="한국 시장 조회 실패",  # 도달 불가 — #1446 이 열어줄 경로
+                data_points=data,
+            )
 
         # 판정
         score_base = _CFG.get("score_base", 50)
@@ -191,11 +223,17 @@ class KoreanMarketAgent(BaseAgent):
         )
         return rows[0]["foreign_net"] if rows else None
 
-    def _get_macro_event_boost(self, sector: str, db_path=None) -> int:
+    def _get_macro_event_boost(self, sector: str, db_path=None, saw_input: list | None = None) -> int:
         """최근 3일 매크로 이벤트에서 한국 관련 시그널 추출 (#247).
 
         export_surge, demand_growth → 수출 섹터(반도체 등)에 긍정적
         trade_war, geopolitical_escalation → 전체 부정적
+
+        `saw_input` 을 주면 **점수에 실제로 기여한 이벤트가 있었는지**를 append 한다
+        (#1436, codex R12). 반환값 0 은 "이벤트 없음" 과 "상쇄돼 0" 을 구분하지 못한다 —
+        수출주에 demand_growth +6 과 trade_war -6 이 함께 오면 순 0 이지만 **평가는 했다.**
+        그걸 부재로 읽으면 근거가 있는 판단을 기권으로 깎는다. 반환형을 안 바꾸는 이유는
+        이 private 메서드를 직접 부르는 테스트가 6 곳이라서다.
         """
         rows = self._safe_query(
             """SELECT category, COUNT(*) as cnt, AVG(confidence) as avg_conf
@@ -218,8 +256,12 @@ class KoreanMarketAgent(BaseAgent):
                 continue  # 1건은 노이즈 가능성
             if cat in ("export_surge", "demand_growth") and sector in EXPORT_SECTORS:
                 boost += int(min(cnt * conf * 3, 8))  # 최대 +8
+                if saw_input is not None:
+                    saw_input.append(cat)
             elif cat in ("trade_war", "geopolitical_escalation"):
                 boost -= int(min(cnt * conf * 2, 6))  # 최대 -6
+                if saw_input is not None:
+                    saw_input.append(cat)
         return boost
 
     def _get_momentum(self, ticker: str, db_path=None) -> float | None:

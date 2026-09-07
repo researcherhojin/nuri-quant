@@ -7,6 +7,7 @@
  */
 import { Fragment, useState } from "react";
 import { Ban, TriangleAlert, Vote } from "lucide-react";
+import { CONSENSUS as CONSENSUS_TABLE_LABELS } from "@/lib/strings";
 import { AgentTrace } from "./agent-trace";
 import { StatusBadge } from "./status-badge";
 
@@ -17,6 +18,10 @@ export interface AgentVerdict {
   confidence: number;
   reasoning: string;
   data_points: Record<string, unknown>;
+  // 자리표시자 두 축 (#1436). optional 인 이유는 이 축이 persist 되기 **전에** 저장된
+  // 과거 행 때문이다 — 그 행들은 축이 없으니 예전처럼 렌더된다(없던 정보를 지어내지 않는다).
+  degraded?: boolean;
+  abstained?: boolean;
 }
 
 // A-2c (PR #368): backend scoring_detail contract. Populated by `_build_consensus`
@@ -82,6 +87,17 @@ const AGENT_ORDER = [
 
 function agentCell(verdict: AgentVerdict | undefined) {
   if (!verdict) return <span className="text-muted-foreground/40">--</span>;
+  // 자리표시자에 확신도 숫자를 찍으면 의견처럼 읽힌다 (#1436). 백엔드는 이미 이것들을
+  // 동의율·패널 커버리지에서 빼고 있어서, 여기서 `H0` 으로 보이면 **같은 화면이 자기
+  // 자신과 모순**된다 — 커버리지 60% 옆에 10개 의견이 나란히 선다.
+  if (verdict.degraded || verdict.abstained) {
+    const label = verdict.degraded ? CONSENSUS_TABLE_LABELS.CELL_DEGRADED : CONSENSUS_TABLE_LABELS.CELL_ABSTAINED;
+    return (
+      <span className="text-muted-foreground/40 font-mono text-[11px]" title={verdict.reasoning}>
+        {label}
+      </span>
+    );
+  }
   const icon = verdict.action === "BUY" ? "B" : verdict.action === "SELL" ? "S" : "H";
   const color = verdict.action === "BUY"
     ? "text-emerald-400"
@@ -221,8 +237,21 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                                 >
                                   <div className="flex items-center gap-2 mb-1">
                                     <span className="text-[10px] font-medium text-muted-foreground">{a.label}</span>
-                                    <StatusBadge status={v.action} size="sm" />
-                                    <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
+                                    {/* 접힌 셀과 같은 규칙을 편 카드에도 적용한다 (#1436, codex R14).
+                                        한쪽만 고치면 같은 행을 클릭하는 것만으로 "의견 없음" 이
+                                        "HOLD 50%" 로 바뀐다 — 화면이 자기 자신과 모순된다. */}
+                                    {v.degraded || v.abstained ? (
+                                      <span className="text-[10px] text-muted-foreground/50 ml-auto">
+                                        {v.degraded
+                                          ? CONSENSUS_TABLE_LABELS.PLACEHOLDER_DEGRADED
+                                          : CONSENSUS_TABLE_LABELS.PLACEHOLDER_ABSTAINED}
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <StatusBadge status={v.action} size="sm" />
+                                        <span className="text-[10px] text-muted-foreground ml-auto">{v.confidence.toFixed(0)}%</span>
+                                      </>
+                                    )}
                                   </div>
                                   {contrib && (
                                     <div className="flex items-center gap-1 mb-1 text-[9px] text-muted-foreground/80">
