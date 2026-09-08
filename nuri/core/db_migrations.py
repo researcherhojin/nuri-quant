@@ -1951,4 +1951,43 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
             ON maintenance_candidates(status, created_at);
     """,
     ),
+    (
+        62,
+        "incidents incident_type enum 확장 — frontend_build_stale (#1463)",
+        # #1462 가 autopull 에 프론트 재빌드를 넣었지만 "빌드가 계속 실패하는" 상태는 여전히
+        # 로그 한 줄뿐이다 — 이 계열 사고(2026-07-27 3.5개월, 2026-09-08 9일)의 공통 원인이
+        # 바로 그 로그를 읽는 사람이 없다는 것이었다. SRE detector 가 `.next.failed` /
+        # `.next.restart_pending` 마커와 코드-빌드 시각 차를 보고 #ops 로 띄운다.
+        # SQLite 는 CHECK 변경 미지원 → migration 45/46/49 와 동일한 재생성 패턴.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale',
+                'alpha_report_stale','schema_version_drift','required_table_missing',
+                'writer_role','frontend_build_stale'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT,
+            UNIQUE(incident_type, target, status)
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]
