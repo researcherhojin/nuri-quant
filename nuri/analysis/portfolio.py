@@ -21,6 +21,7 @@ import pandas as pd
 
 from nuri.core.db import query, query_df
 from nuri.core.fx import is_krw_holding
+from nuri.core.openbb_compat import get_obb
 from nuri.core.rules import LEVERAGE_ETFS, MAX_SINGLE_POSITION
 
 logger = logging.getLogger(__name__)
@@ -60,10 +61,11 @@ def get_exchange_rate(db_path=None) -> float:
             )
         return rate
 
-    # DB에 환율 없음 -> OpenBB 시도
+    # DB에 환율 없음 -> OpenBB 시도 (실패는 프로세스당 한 번만 지불, #1477)
     try:
-        from openbb import obb
-
+        obb = get_obb()
+        if obb is None:
+            raise RuntimeError("openbb unavailable")
         result = obb.currency.price.historical("USDKRW", provider="yfinance", start_date="2026-01-01")
         df = result.to_dataframe()
         if not df.empty:
