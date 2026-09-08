@@ -62,6 +62,74 @@ class TestTechnicalAgent_R26:
         assert result.data_points["price"] == pytest.approx(result.data_points["price"])  # NaN != NaN
         assert result.action in ("BUY", "SELL", "HOLD")
 
+    def test_infinite_close_is_rejected_like_null(self, db_path):
+        """dropna 는 ±inf 를 못 거른다 — 같은 strict-JSON 500 경로 (Codex P2, #1479)."""
+        _seed_ticker(db_path, "AAPL", n=60)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("AAPL", "2025-03-31", 1.0, 1.0, 1.0, float("inf"), 1),
+            )
+        from nuri.trading.agents.technical import TechnicalAgent
+
+        result = TechnicalAgent().analyze("AAPL", db_path=db_path)
+        json.dumps(asdict(result), allow_nan=False)
+        assert result.data_points["price"] == pytest.approx(result.data_points["price"])
+
+    def test_null_rows_do_not_count_toward_min_data_points(self, db_path, monkeypatch):
+        """유효 49 + NULL 1 = 50행은 min_data_points 를 채운 게 아니다 — '데이터 부족' 으로 가야 한다 (Codex P2)."""
+        from nuri.trading.agents import technical as mod
+
+        min_dp = mod._CFG.get("min_data_points", 50)
+        _seed_ticker(db_path, "AAPL", n=min_dp - 1)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("AAPL", "2025-03-31", None, None, None, None, 0),
+            )
+        result = mod.TechnicalAgent().analyze("AAPL", db_path=db_path)
+        assert result.action == "HOLD"
+        assert result.confidence == 0
+        assert "부족" in result.reasoning
+
+    def test_null_rows_do_not_block_the_yfinance_fallback(self, monkeypatch):
+        """Codex P2 (#1479): 유효 49 + NULL 1 = 50행이 min_dp 를 '채운' 척하면 폴백을 건너뛰고 '데이터 부족' 이 된다.
+        정제가 자격 판정 *앞* 에 있어야 폴백이 돈다. db_path=None 은 conftest 가 per-test 복사본으로 격리한다."""
+        import sys as _sys
+
+        from nuri.trading.agents import technical as mod
+
+        min_dp = mod._CFG.get("min_data_points", 50)
+        dates = pd.bdate_range(end="2025-03-28", periods=min_dp - 1).strftime("%Y-%m-%d").tolist()
+        with get_db(None) as conn:  # 기본 DB = 격리 복사본
+            for i, d in enumerate(dates):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    ("FBK", d, 50.0, 50.0, 50.0, 50.0 + i * 0.1, 1),
+                )
+            conn.execute(  # upsert_prices 가 NULL 을 거르게 되어도(#1480) 이 행은 남도록 raw INSERT
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("FBK", "2025-03-31", None, None, None, None, 0),
+            )
+        fake_yf = MagicMock()
+        fake_yf.download.return_value = pd.DataFrame({"Close": [60.0 + i * 0.1 for i in range(min_dp + 10)]})
+        monkeypatch.setitem(_sys.modules, "yfinance", fake_yf)
+
+        result = mod.TechnicalAgent().analyze("FBK", db_path=None)
+
+        fake_yf.download.assert_called_once()
+        assert "부족" not in result.reasoning
+        assert result.confidence > 0
+        json.dumps(asdict(result), allow_nan=False)
+
+    def test_finite_closes_drops_nan_none_and_inf_only(self):
+        """폴백 프레임도 이 함수로 정제한 뒤 min_dp 를 센다 — NaN/None/±inf 만 빠지고 0 과 음수는 남는다."""
+        from nuri.trading.agents.technical import _finite_closes
+
+        df = pd.DataFrame({"close": [50.0, float("nan"), None, float("inf"), -float("inf"), 0.0, -1.0]})
+        assert _finite_closes(df)["close"].tolist() == [50.0, 0.0, -1.0]
+        assert _finite_closes(pd.DataFrame()).empty
+
     def test_yfinance_fallback_no_db_path(self, db_path, monkeypatch):
         """Cover yfinance fallback when prices table empty."""
         from nuri.trading.agents.technical import TechnicalAgent

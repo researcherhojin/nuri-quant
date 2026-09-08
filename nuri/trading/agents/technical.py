@@ -6,6 +6,7 @@ FINVIZ 스크리너 데이터를 보조 시그널로 활용 (external_analysis �
 
 import logging
 
+import numpy as np
 import pandas as pd
 
 from nuri.core.agent_config import AGENT_CONFIG
@@ -26,6 +27,25 @@ _FINVIZ_SELL_SIGNALS = {"overbought_rsi", "new_high"}
 # unusual_volume, most_volatile → 방향 중립 (가산 없음)
 
 
+def _finite_closes(df: pd.DataFrame) -> pd.DataFrame:
+    """close 가 NaN/None/±inf 인 행을 걷어낸다 (#1479).
+
+    수집이 반쪽만 쓴 날(가격 NULL, volume 만)이 하나만 있어도 latest/sma 가 NaN 이 돼 판정이 전부 HOLD 로
+    새고 API 의 strict json.dumps 가 500 으로 죽었다. `dropna` 는 ±inf 를 못 거르므로 finite 로 잠근다.
+    """
+    if df.empty or "close" not in df.columns:
+        return df
+    close = pd.to_numeric(df["close"], errors="coerce").to_numpy(dtype=float)
+    return df.loc[np.isfinite(close)].reset_index(drop=True)
+
+
+def _finite_or_none(value):
+    """숫자면 finite 일 때만 그대로, NaN/±inf 는 None — strict JSON 이 죽지 않게."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value if np.isfinite(value) else None
+    return value
+
+
 class TechnicalAgent(BaseAgent):
     def __init__(self):
         super().__init__("technical")
@@ -33,26 +53,27 @@ class TechnicalAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         min_dp = _CFG.get("min_data_points", 50)
         fetch_failed = False
-        df = query_df(
-            "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date",
-            (ticker,),
-            db_path=db_path,
+        df = _finite_closes(
+            query_df(
+                "SELECT date, close FROM prices WHERE ticker = ? ORDER BY date",
+                (ticker,),
+                db_path=db_path,
+            )
         )
-        # prices에 없으면 yfinance fallback (스캐너 종목 대응)
+        # prices에 없으면 yfinance fallback (스캐너 종목 대응). 정제 *뒤에* 세야 NULL 행이 폴백 자격을
+        # 가리지 않는다 (Codex P2, #1479: 유효 49 + NULL 1 이면 폴백을 건너뛰고 "데이터 부족" 이 됐다)
         if (df.empty or len(df) < min_dp) and db_path is None:
             try:
                 import yfinance as yf
 
                 _df = yf.download(ticker, period="6mo", progress=False)
-                if not _df.empty and len(_df) >= min_dp:
+                if not _df.empty:
                     close_col = _df["Close"].squeeze() if hasattr(_df["Close"], "squeeze") else _df["Close"]
-                    df = pd.DataFrame({"close": close_col.values})
+                    _fb = _finite_closes(pd.DataFrame({"close": close_col.values}))
+                    if len(_fb) >= min_dp:
+                        df = _fb
             except Exception:
                 fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
-        # close 가 NULL 인 행(수집이 반쪽만 쓴 날)은 지표 전체를 NaN 으로 만들고 JSON 직렬화를 500 으로
-        # 죽인다 (#1479). 여기서 걷어내야 아래 min_dp 판정도 실제 값 기준이 된다.
-        if not df.empty:
-            df = df.dropna(subset=["close"]).reset_index(drop=True)
         if df.empty or len(df) < min_dp:
             return self._no_data(
                 ticker,
@@ -187,14 +208,15 @@ class TechnicalAgent(BaseAgent):
             "price": round(latest, 2),
         }
         if chart is not None and chart.price > 0:
+            # analyze_chart 는 DB 를 직접 읽어 위 정제를 거치지 않는다 — 파생값의 non-finite 는 None 으로 (#1479)
             data_points.update(
                 {
-                    "bb_pos": chart.bb_position,
+                    "bb_pos": _finite_or_none(chart.bb_position),
                     "macd_turn": chart.macd_turn,
-                    "dist_high_52w": chart.dist_from_52w_high,
-                    "dist_low_52w": chart.dist_from_52w_low,
-                    "poc": chart.poc_price,
-                    "trend": chart.trend_strength,
+                    "dist_high_52w": _finite_or_none(chart.dist_from_52w_high),
+                    "dist_low_52w": _finite_or_none(chart.dist_from_52w_low),
+                    "poc": _finite_or_none(chart.poc_price),
+                    "trend": _finite_or_none(chart.trend_strength),
                     "visual_bias": chart.visual_bias,
                 }
             )
