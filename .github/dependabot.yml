@@ -39,18 +39,14 @@ updates:
       - "backend"
     commit-message:
       prefix: "chore(deps)"
-    # fastapi ignore 는 제거했다 (#1363/#1359). 사유가 낡은 정도가 아니라 규칙이
-    # **뒤집혀** 있었다: openbb-core 1.6.13 의 배포 메타데이터는
-    # `Requires-Dist: fastapi (==0.136.3)` 이고 uv.lock 도 0.136.3 을 들고 있다 —
-    # lock 이 이미 ignore 하한(>=0.129.0) **위에** 있어서, 이 규칙은 "0.129 이상을
-    # 막는" 게 아니라 fastapi 를 영구 동결하고 있었다. 하필 이 패키지는 starlette
-    # Host-header 우회 패치를 받으려고 pyproject `[tool.uv] override-dependencies`
-    # 로 openbb 핀을 **일부러** 깬 대상이다. 안전망은 그대로 있다: fastapi 는 0.x 라
-    # 0.136→0.137 을 #1364 lock 게이트가 `0.x minor` 로 차단한다 (실측).
+    # fastapi ignore 는 제거했다 (#1363/#1359). openbb 가 있던 시절 이 규칙은 fastapi 를
+    # 영구 동결하고 있었고, 반대로 override 하한이 openbb-core 의 정확 핀을 지워 #1369 bump
+    # 가 openbb 를 깼다(#1477 — openbb 제거). 안전망: fastapi 는 0.x 라 0.x minor 이동은
+    # #1364 lock 게이트가 차단한다 (실측).
     #
-    # ruff: openbb-core 는 1.6.13 기준으로도 `ruff (>=0.15,<0.16)` 하드 핀이고
-    # lock 은 0.15.22 — 하한 0.16.0 아래라 이 ignore 는 **살아서 일하고 있다**.
-    # 0.16+ 은 `uv lock` 이 resolve 못 한다 (#1341 close). uv ecosystem 에서는
+    # ruff: openbb-core 의 `ruff<0.16` 캡은 #1477 로 사라졌다. 이 ignore 는 이제
+    # 정확 핀(#1235, CI ruff-action 이 pyproject 핀을 읽음)을 지키는 용도다 — 0.16 은
+    # 별도 bump 로 올린다. uv ecosystem 에서는
     # resolver 가 제안 단계에서 걸러 PR 이 안 열리므로 belt-and-braces 지만,
     # 해결 불가가 조용한 no-op 이 아니라 job failure 로 뜨는 열린 버그가 있어
     # (dependabot-core#15603) 명시 ignore 가 더 싸다. cap 이 풀리면 이 ignore 와

@@ -1,11 +1,11 @@
 # pyright: reportAttributeAccessIssue=false, reportOptionalMemberAccess=false
 """
-미국 주가 데이터 수집기 — OpenBB Platform 기반.
+미국 주가 데이터 수집기 — yfinance 직접 호출.
 
-(OpenBB BaseApp 동적 attribute, yfinance.download None-or-DataFrame — runtime 정상.)
+(yfinance.download None-or-DataFrame — runtime 정상.)
 
-OpenBB가 다중 프로바이더(yfinance, polygon, tiingo 등)를 지원하며,
-에러 핸들링과 재시도 로직이 내장되어 있다.
+openbb 경유 1차 경로는 #1477 로 제거했다 (하한 override 가 openbb-core 의 fastapi 핀을 지워
+2026-09-01 부터 import 자체가 죽었고, 그동안 이 yfinance 경로만으로 결손 없이 수집됐다).
 한국 종목은 stock_kr.py에서 pykrx로 별도 처리.
 
 사용법:
@@ -22,10 +22,6 @@ import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_prices
-from nuri.core.openbb_compat import get_obb
-
-# OpenBB 프로바이더 우선순위 (무료)
-PROVIDERS = ["yfinance"]
 
 # SIEGE freshness extraction — yfinance 가 직접 fetch 못하는 macro/index 식별자.
 # config/rules.yaml siege_gates.asset_classes.*.freshness_primary 가 source of truth 이지만
@@ -55,7 +51,7 @@ def _load_freshness_tickers() -> list[str]:
 
 
 class StockCollector(BaseCollector):
-    """OpenBB Platform으로 미국 주가 수집."""
+    """yfinance 로 미국 주가 수집."""
 
     def __init__(self):
         super().__init__("stock")
@@ -67,7 +63,7 @@ class StockCollector(BaseCollector):
         source: str = "portfolio",
         **kwargs,
     ) -> pd.DataFrame:
-        """OpenBB로 미국 종목 OHLCV 수집.
+        """yfinance 로 미국 종목 OHLCV 수집.
 
         Args:
             source: 'portfolio' (default) | 'universe' | 'all' | 'freshness'. #272 Phase 2b + #453.
@@ -152,25 +148,8 @@ class StockCollector(BaseCollector):
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
     def _collect_ticker(self, ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """단일 종목 수집. OpenBB → yfinance 직접 폴백."""
-        # 1차: OpenBB
-        try:
-            obb = get_obb()
-            if obb is None:
-                raise RuntimeError("openbb unavailable")
-            result = obb.equity.price.historical(
-                symbol=ticker,
-                start_date=start_date,
-                end_date=end_date,
-                provider="yfinance",
-            )
-            df = result.to_dataframe()
-            if not df.empty:
-                return self._standardize(df, ticker)
-        except Exception as e:
-            self.logger.debug(f"{ticker}: OpenBB 실패 — {e}")
-
-        # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
+        """단일 종목 수집 (yfinance)."""
+        # yfinance 직접 호출 — 2026-09-01 부터 이 경로만 돌았고(#1477) openbb 는 제거했다
         try:
             import yfinance as yf
 
@@ -244,7 +223,7 @@ class StockCollector(BaseCollector):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Nuri-Quant 미국 주가 수집기 (OpenBB)")
+    parser = argparse.ArgumentParser(description="Nuri-Quant 미국 주가 수집기 (yfinance)")
     parser.add_argument("--period", default="5d", help="수집 기간 (1d/5d/1mo/3mo/1y)")
     parser.add_argument(
         "--source",

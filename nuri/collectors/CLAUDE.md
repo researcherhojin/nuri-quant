@@ -56,23 +56,11 @@ with ThreadPoolExecutor(max_workers=10) as ex:
 
 ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlying C extension call (e.g. pykrx) keeps running. **Don't rely on timeout for cancellable hangs**. Sequential + delay for hanging APIs (KRX).
 
-## OpenBB Single Entry Point (#1477)
+## yfinance Direct (openbb removed, #1477)
 
-`from openbb import obb` fails on every machine with the locked pair (openbb 4.7.2 + openbb-core 1.6.13, `router.get_command_map` AttributeError), and a failed package import leaves nothing in `sys.modules`, so each call site used to pay the attempt again (1.6-2.6s). Collectors therefore call `nuri.core.openbb_compat.get_obb()` (None on failure — fall back to yfinance) instead of importing `obb` themselves; it tries once per process under a lock and logs one WARNING. This means:
-- `patch("module.obb")` will FAIL — the name doesn't exist at module level
-- Use `patch.dict(sys.modules, {"openbb": mock_module})` for testing — `get_obb()` reads the stub even after a remembered failure
-- **Test:** `tests/core/test_openbb_compat.py::TestSoleImporter` (AST sweep: static + dynamic imports, plus a per-call-site `get_obb()` call canary)
-
-## OpenBB Provider Limitations
-
-| Endpoint | yfinance | Paid alternative |
-|----------|----------|-----------------|
-| `obb.equity.price.historical` | OK | — |
-| `obb.equity.fundamental.metrics` | OK | — |
-| `obb.equity.estimates.consensus` | OK | — |
-| `obb.equity.fundamental.ratios` | No | `fmp` / `intrinio` |
-| `obb.equity.estimates.price_target` | No | `benzinga` / `fmp` |
-| `obb.equity.ownership.*` | No | `fmp` |
+`stock` / `etf_flows` / `news` / `analysis.portfolio.get_exchange_rate` call yfinance directly. openbb was the nominal primary source until 2026-09-01, when a lower-bound-only `[tool.uv] override` let dependabot move fastapi past openbb-core's exact pin and `from openbb import obb` started failing on every machine; the yfinance path carried production for a week with no data gap, so the dependency (51 lock packages incl. 31 openbb-*, 3 overrides, a ruff cap) was dropped. `yfinance` is imported **inside functions**:
+- `patch("module.yf")` will FAIL — the name doesn't exist at module level
+- Stub the module for tests: `monkeypatch.setitem(sys.modules, "yfinance", MagicMock(...))`
 
 ## 전면 실패는 빈 수집과 다르다 (#1043)
 

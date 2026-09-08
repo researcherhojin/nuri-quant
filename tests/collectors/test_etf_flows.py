@@ -196,35 +196,31 @@ class TestEtfFlowsCollectorSectorRotation:
 
 class TestEtfFlowsCollectorErrorHandling:
     def test_collect_success(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        mock_df = pd.DataFrame([{"name": "Tech", "total_assets": 50e9, "volume_avg": 20000000, "nav_price": 200.0}])
-        mock_obb = MagicMock()
-        mock_obb.etf.info.return_value = MagicMock(to_df=MagicMock(return_value=mock_df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        info = {"longName": "Tech", "totalAssets": 50e9, "averageVolume": 20000000, "navPrice": 200.0}
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(info=info))))
         results = EtfFlowsCollector().collect()
         assert len(results) > 0
 
     def test_collect_empty(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        mock_obb = MagicMock()
-        mock_obb.etf.info.return_value = MagicMock(to_df=MagicMock(return_value=pd.DataFrame()))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(info={}))))
         assert EtfFlowsCollector().collect() == []
 
     def test_collect_exception(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        mock_obb = MagicMock()
-        mock_obb.etf.info.side_effect = Exception("ETF API error")
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        monkeypatch.setitem(
+            sys.modules, "yfinance", MagicMock(Ticker=MagicMock(side_effect=Exception("ETF API error")))
+        )
         assert EtfFlowsCollector().collect() == []
 
     def test_save_empty(self, db_with_portfolio):
@@ -360,43 +356,33 @@ class TestEtfFlowsCollectorErrorHandling:
 
 class TestEtfFlowsNanValues:
     def test_collect_nan_assets(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        mock_df = pd.DataFrame(
-            [{"name": "Test ETF", "total_assets": float("nan"), "volume_avg": float("nan"), "nav_price": float("nan")}]
-        )
-        mock_obb = MagicMock()
-        mock_obb.etf.info.return_value = MagicMock(to_df=MagicMock(return_value=mock_df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
-        results = EtfFlowsCollector().collect()
-        assert len(results) > 0
-        assert results[0]["total_assets"] is None
+        from nuri.collectors.etf_flows import EtfFlowsCollector
+
+        # yfinance 경로: total_assets 가 NaN 이면 row 자체가 failed (analyze_sector_rotation 의 aum 차분 보호)
+        info = {
+            "longName": "Test ETF",
+            "totalAssets": float("nan"),
+            "averageVolume": float("nan"),
+            "navPrice": float("nan"),
+        }
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(info=info))))
+        assert EtfFlowsCollector().collect() == []
 
 
 class TestEtfFlowsYfinanceFallback:
-    """yfinance Ticker.info 폴백 경로 (#274) regression lock-in.
+    """yfinance Ticker.info 경로 (#274 폴백 → #1477 유일 경로) regression lock-in.
 
     - total_assets 누락 시 failed 처리 (analyze_sector_rotation TypeError 방지)
     - NaN primary + usable secondary → pd.notna 기반 secondary 선택
     """
-
-    def _patch_openbb_fail(self, monkeypatch):
-        """OpenBB primary 를 무조건 실패시켜 yfinance fallback 유도."""
-        import sys
-
-        mock_obb = MagicMock()
-        mock_obb.etf.info.side_effect = ImportError("OBBject_EtfCountries not found")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
 
     def test_yfinance_fallback_full_fields(self, monkeypatch):
         """yfinance .info 에 모든 필드 정상 — 변환 후 dict 반환."""
         import sys
 
         from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        self._patch_openbb_fail(monkeypatch)
 
         info = {
             "longName": "SPDR S&P 500 ETF Trust",
@@ -426,8 +412,6 @@ class TestEtfFlowsYfinanceFallback:
 
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
-        self._patch_openbb_fail(monkeypatch)
-
         # 1) totalAssets 자체 누락
         info_missing = {"longName": "X", "averageVolume": 100, "navPrice": 50}
         mock_yf = MagicMock()
@@ -448,8 +432,6 @@ class TestEtfFlowsYfinanceFallback:
         import sys
 
         from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        self._patch_openbb_fail(monkeypatch)
 
         info = {
             "longName": "Partial ETF",
@@ -480,11 +462,6 @@ class TestEtfFlowsYfinanceFallback:
         # ALL_ETFS 짧게 monkeypatch (1 < 10)
         monkeypatch.setattr("nuri.collectors.etf_flows.ALL_ETFS", {"SPY": "S&P 500"})
 
-        # OpenBB 실패 → yfinance fallback
-        mock_obb = MagicMock()
-        mock_obb.etf.info.side_effect = ImportError("not found")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
-
         # yfinance.Ticker.info 반환
         mock_yf = MagicMock()
         mock_yf.Ticker.return_value.info = {
@@ -508,8 +485,6 @@ class TestEtfFlowsYfinanceFallback:
 
         from nuri.collectors.etf_flows import EtfFlowsCollector
 
-        self._patch_openbb_fail(monkeypatch)
-
         mock_yf = MagicMock()
         mock_yf.Ticker.return_value.info = {}
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
@@ -522,8 +497,6 @@ class TestEtfFlowsYfinanceFallback:
         import sys
 
         from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        self._patch_openbb_fail(monkeypatch)
 
         info = {
             "totalAssets": 1_000_000,

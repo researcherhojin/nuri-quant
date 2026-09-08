@@ -23,7 +23,6 @@ class TestEventsCollectorFOMCAndEarnings:
         mock_obb.equity.calendar.dividend.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         results = EventsCollector().collect()
         fomc = [r for r in results if r["event_type"] == "fomc"]
         assert len(fomc) == 8

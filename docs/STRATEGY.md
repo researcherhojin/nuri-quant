@@ -54,7 +54,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 `@docs/STRATEGY.md` 로 import
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
 | **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
-| OpenBB + yfinance | 무료 데이터. OpenBB provider 교체 용이, yfinance 폴백. |
+| yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 ### 2.6 Escalation Ladder (근거 기반 → 기계적 개입의 4단계)
 §2.1 (Evidence-first) 과 §2.2 (Mechanical) 는 같은 스펙트럼의 양 끝. 모든 증거에 대해 어디까지 기계적으로 개입할지는 4단계 사다리로 결정. **3 단계는 downside-block, 1 단계는 upside-amplify**. 새 feature 설계 시 레벨을 명시적으로 고르고 PR/STRATEGY 에 기록.
@@ -293,7 +293,7 @@ measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,217 tests, 377 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,209 tests, 376 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
 | Frontend tests | 목표 ≥ 90% | 1,722 tests, 146 files |
 | E2E | 핵심 flow | 87 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -309,7 +309,7 @@ PR 전 확인.
 ### 4.3 데이터
 | DB 접근 | `nuri/core/db/` 만 |
 | 스키마 변경 | `_MIGRATIONS` 리스트, 직접 ALTER 금지 |
-| 환율 | DB → OpenBB → `StaleExchangeRateError` (하드코딩 폴백 금지) |
+| 환율 | DB → yfinance `KRW=X` → `StaleExchangeRateError` (하드코딩 폴백 금지) |
 | 외부 데이터 | 최소 10개 외부 소스 교차 |
 ### 4.4 보안
 | 시크릿 | `.env`, git 커밋 금지 |

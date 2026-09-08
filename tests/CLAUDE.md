@@ -147,10 +147,10 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
 ### runpy + mock
 `runpy.run_module()` re-executes module source, **invalidating all mocks**. Use `patch("source.module.function")` for source-level patching, not `patch("target.module.function")`.
 
-### OpenBB local import
-`obb` is imported inside functions. `patch("module.obb")` fails. Use:
+### yfinance is imported inside functions
+Collectors do `import yfinance as yf` inside the method (openbb was removed in #1477). `patch("module.yf")` fails; stub the module instead:
 ```python
-patch.dict(sys.modules, {"openbb": mock_module})
+monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=df)))
 ```
 
 ### vi.mock() hoisting (frontend tests)

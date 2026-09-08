@@ -175,8 +175,15 @@ class TestParserIsNotBlind:
     def test_the_repo_lock_parses(self):
         from scripts.verify.check_lock_major_bump import parse_lock
 
-        pkgs = parse_lock((REPO_ROOT / "uv.lock").read_text(encoding="utf-8"))
-        assert len(pkgs) >= 200, f"registry 패키지를 {len(pkgs)}개만 읽었다 — 파서가 눈이 멀었다"
+        raw = (REPO_ROOT / "uv.lock").read_text(encoding="utf-8")
+        pkgs = parse_lock(raw)
+        # 상수 하한(예전 200)은 lock 이 줄면 오탐한다 — #1477 이 openbb 계열 51개를 빼자 185 가 됐다.
+        # registry 항목 수와 정확히 맞춰야 "파서가 눈이 멀었다" 를 lock 크기와 무관하게 잡는다.
+        registry_entries = raw.count("source = { registry = ")
+        assert registry_entries >= 100, f"lock 에 registry 항목이 {registry_entries}개뿐 — 파일이 이상하다"
+        assert len(pkgs) == registry_entries, (
+            f"registry {registry_entries}개 중 {len(pkgs)}개만 읽었다 — 파서가 눈이 멀었다"
+        )
         assert "numpy" in pkgs
         assert "nuri-quant" not in pkgs, "editable 루트가 판정 대상에 들어왔다"
 

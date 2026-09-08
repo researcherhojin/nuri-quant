@@ -5,7 +5,7 @@ Detailed reference for Nuri-Quant internals. This file is NOT auto-loaded — ag
 README shows the high-level flow. Per-phase orientation table — each row points at the canonical detail section below (or peer doc).
 | # | Phase | Inputs | Outputs | Key modules | Detail |
 |---|-------|--------|---------|-------------|--------|
-| 1 | **Collect** | External APIs (yfinance · OpenBB · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
+| 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" + "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
 | 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-8,217 backend tests across 377 files + 1,722 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
+8,209 backend tests across 376 files + 1,722 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):
@@ -197,17 +197,8 @@ On PR close (`cache-cleanup.yml`): deletes that PR's `refs/pull/N/merge` action 
 Scheduled (`heartbeat-watch.yml`, #1191 option C): every 20 minutes (cron `7,27,47 * * * *` — off-peak minutes; `*/N` schedules get delayed or dropped under load, and this workflow's cron produced zero events for 7 hours after creation until the `on.schedule` block itself was changed) it reads the `refs/nuri/heartbeat-mini` ref (a custom, non-branch ref — it never appears in the branch list or the "recent pushes" banner) that the mini scheduler force-pushes every 10 minutes via the Git Database API, and posts to `#ops` via the `DISCORD_WEBHOOK_OPS` secret when the heartbeat is older than 45 minutes. Silence from the sender is the alarm — there is no path by which a dead mini reports itself.
 ## Investment Rules
 All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution — no hardcoded thresholds).
-## OpenBB Provider Limitations
-| Endpoint | yfinance | Notes |
-|----------|----------|-------|
-| `obb.equity.price.historical` | OK | Primary price data source |
-| `obb.equity.fundamental.metrics` | OK | PE, PB, ROE, margins, growth, beta |
-| `obb.equity.estimates.consensus` | OK | Target price, recommendation, analyst count |
-| `obb.equity.fundamental.ratios` | No | Requires `fmp` or `intrinio` (paid) |
-| `obb.equity.estimates.price_target` | No | Requires `benzinga` or `fmp` (paid) |
-| `obb.equity.ownership.*` | No | Requires `fmp` (paid) |
 ## Currency Handling
-Multi-account portfolio mixes USD and KRW. Exchange rate fallback: DB `macro` table → OpenBB API → `StaleExchangeRateError` (no hardcoded fallback). Warns if rate > 7 days old. `.KS` tickers always KRW.
+Multi-account portfolio mixes USD and KRW. Exchange rate fallback: DB `macro` table → yfinance `KRW=X` → `StaleExchangeRateError` (no hardcoded fallback). Warns if rate > 7 days old. `.KS` tickers always KRW.
 ## Portfolio Action Plan Format
 Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, buy priority by multi-factor score.
 Every recommendation **must** include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target.
