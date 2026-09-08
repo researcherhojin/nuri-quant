@@ -580,7 +580,7 @@ class TestCheckFreshness:
         from nuri.core.freshness import check_freshness
 
         result = check_freshness("prices", db_path=db_path)
-        expected_keys = {"key", "label", "status", "last_updated", "age_hours", "message"}
+        expected_keys = {"key", "label", "status", "last_updated", "age_hours", "holidays_excused", "message"}
         assert set(result.keys()) == expected_keys
 
 
@@ -1104,12 +1104,36 @@ class TestHolidayCalendar:
             r = check_freshness("prices", db_path=db_path)
         assert r["holidays_excused"] == [] and r["status"] == "FAIL"
 
-    def test_vix_shares_the_calendar_with_macro_market(self):
-        """같은 FRED T+1 물리 — 임계를 같이 두는 이유(#1242)와 같은 이유로 달력도 같이 둔다."""
+    def test_credit_begins_only_after_the_holiday_has_passed_in_new_york(self, db_path):
+        """잠금(Codex P1) — 09-07 00:00 KST 는 뉴욕 09-06 11:00, 노동절 전이다. 그 순간 면제하면
+        새 데이터 없이 FAIL→WARN 이 되는 '치유' 다. 09-08 14:30 KST(뉴욕 09-08 01:30)엔 지났다."""
+        from nuri.core.freshness import check_freshness
+
+        self._seed_macro(db_path, "2026-09-01", "2026-09-01")  # 144h @ 09-07 00:00 KST
+        with patch("nuri.core.freshness.kst_now", return_value=datetime(2026, 9, 7, 0, 0, tzinfo=KST)):
+            r = check_freshness("macro_market", db_path=db_path)
+        assert r["holidays_excused"] == [] and r["status"] == "FAIL", r
+        with patch("nuri.core.freshness.kst_now", return_value=datetime(2026, 9, 8, 0, 0, tzinfo=KST)):
+            r = check_freshness("macro_market", db_path=db_path)  # 뉴욕 09-07 11:00 — 아직 노동절 중
+        assert r["holidays_excused"] == [], r
+        with patch("nuri.core.freshness.kst_now", return_value=self._LABOR_DAY_NOW):
+            r = check_freshness("macro_market", db_path=db_path)
+        assert r["holidays_excused"] == ["2026-09-07"]
+
+    def test_vix_does_not_use_the_federal_calendar(self):
+        """CBOE 는 콜럼버스·재향군인의 날에도 VIX 를 발행한다 — 연방 달력을 붙이면 verdict_gate 입력이
+        그 날 진짜 정체를 24h 숨긴다. T+1 임계(#1242)는 같이 가도 휴장일 달력은 소스마다 다르다."""
         from nuri.core.freshness import FRESHNESS_POLICIES
 
         assert FRESHNESS_POLICIES["macro_market"]["holiday_calendar"] == "us_federal"
-        assert FRESHNESS_POLICIES["macro_vix"]["holiday_calendar"] == "us_federal"
+        assert FRESHNESS_POLICIES["macro_vix"]["holiday_calendar"] is None
+
+    def test_early_returns_carry_the_same_keys(self, db_path):
+        """빈 DB(데이터 없음) 결과도 같은 스키마 — 소비자가 키 유무로 분기하지 않게."""
+        from nuri.core.freshness import check_freshness
+
+        r = check_freshness("macro_market", db_path=db_path)
+        assert r["status"] == "FAIL" and r["holidays_excused"] == []
 
     def test_config_rejects_an_unknown_calendar(self, tmp_path, monkeypatch):
         import yaml as _yaml

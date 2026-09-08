@@ -509,7 +509,8 @@ class TestFredRetry:
         mock_fred = MagicMock()
         mock_fred.get_series.side_effect = side_effects
         monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
-        monkeypatch.setattr("nuri.collectors.macro.time.sleep", lambda _s: None)
+        self.sleeps: list[float] = []
+        monkeypatch.setattr("nuri.collectors.macro.time.sleep", self.sleeps.append)
         c = MacroCollector()
         c.api_key = "test_key"
         return c, mock_fred
@@ -525,6 +526,9 @@ class TestFredRetry:
             records = c._collect_fred(days=30)
         assert len(records) == len(FRED_SERIES), "재시도 성공분이 빠졌다"
         assert mock_fred.get_series.call_count == len(FRED_SERIES) + 1
+        from nuri.collectors.macro import FRED_RETRY_DELAY_SEC
+
+        assert self.sleeps == [FRED_RETRY_DELAY_SEC], "재시도 전 간격이 없으면 같은 5xx 를 곧바로 다시 맞는다"
         assert not [r for r in caplog.records if "FRED 수집 실패" in r.getMessage()], (
             "재시도로 성공했는데 WARNING 을 남겼다"
         )
@@ -539,3 +543,4 @@ class TestFredRetry:
         assert len(warns) == len(FRED_SERIES), "시리즈당 WARNING 하나"
         assert all(f"({FRED_ATTEMPTS}회)" in r.getMessage() for r in warns)
         assert mock_fred.get_series.call_count == len(FRED_SERIES) * FRED_ATTEMPTS
+        assert len(self.sleeps) == len(FRED_SERIES) * (FRED_ATTEMPTS - 1), "마지막 시도 뒤에는 기다리지 않는다"

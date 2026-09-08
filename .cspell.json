@@ -706,6 +706,7 @@
     "pyarrow",
     "pycache",
     "pydantic",
+    "pydatetime",
     "pydevproject",
     "pykis",
     "pykrx",
