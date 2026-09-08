@@ -9,6 +9,8 @@ from __future__ import annotations
 import ast
 import builtins
 import sys
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -26,13 +28,14 @@ def _fresh_memo(monkeypatch):
     monkeypatch.delitem(sys.modules, "openbb", raising=False)
 
 
-def _break_openbb(monkeypatch, counter: list[int]):
-    """실제 openbb 처럼 — import 가 예외를 내고 sys.modules 에 아무것도 남기지 않는다."""
+def _break_openbb(monkeypatch, counter: list[int], delay: float = 0.0):
+    """실제 openbb 처럼 — import 가 예외를 내고 sys.modules 에 아무것도 남기지 않는다. `delay` 는 실제 1.6s 의 축소판."""
     real = builtins.__import__
 
     def fake(name, *a, **k):
         if name == "openbb":
             counter.append(1)
+            time.sleep(delay)
             raise AttributeError("'_IncludedRouter' object has no attribute 'path'")
         return real(name, *a, **k)
 
@@ -50,6 +53,23 @@ class TestFailureIsPaidOnce:
         assert len(attempts) == 1, "실패를 기억하지 않는다 — 호출마다 1.6~17s 를 다시 지불한다"
         warns = [r for r in caplog.records if "openbb" in r.getMessage()]
         assert len(warns) == 1, "WARNING 은 프로세스당 한 번"
+
+    def test_ten_threads_arriving_together_pay_once(self, monkeypatch):
+        """stock.py 의 10-worker 풀 — 첫 배치가 동시에 `_FAILED` 체크를 지나면 10번 지불한다."""
+        attempts: list[int] = []
+        _break_openbb(monkeypatch, attempts, delay=0.05)
+        gate = threading.Barrier(10)
+
+        def worker():
+            gate.wait()
+            openbb_compat.get_obb()
+
+        threads = [threading.Thread(target=worker) for _ in range(10)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        assert len(attempts) == 1, f"동시 진입 {len(attempts)}회 시도 — 락 없이는 워커 수만큼 지불한다"
 
     def test_a_stub_in_sys_modules_is_honoured_even_after_a_failure(self, monkeypatch):
         """테스트들이 쓰는 `monkeypatch.setitem(sys.modules, "openbb", stub)` 경로 — 실패 기억이 스텁을 가리면 안 된다."""

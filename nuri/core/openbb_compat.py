@@ -16,11 +16,13 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
 _FAILED = False
+_LOCK = threading.Lock()  # stock.py 의 10-worker 풀이 첫 배치에서 동시에 들어온다 — 시도는 한 스레드만
 
 
 def _stubbed() -> bool:
@@ -31,15 +33,16 @@ def _stubbed() -> bool:
 def get_obb() -> Any | None:
     """`openbb.obb` 또는 None. 실패는 프로세스당 한 번만 시도하고 한 번만 WARNING."""
     global _FAILED
-    if _FAILED and not _stubbed():
-        return None
-    try:
-        from openbb import obb
-    except Exception as exc:  # noqa: BLE001 — ImportError 만이 아니라 openbb 내부의 AttributeError 도 온다
-        if not _stubbed():
-            _FAILED = True
-            logger.warning(
-                "openbb 를 쓸 수 없다 — 이 프로세스에서는 다시 시도하지 않는다 (%s: %s)", type(exc).__name__, exc
-            )
-        return None
-    return obb
+    with _LOCK:
+        if _FAILED and not _stubbed():
+            return None
+        try:
+            from openbb import obb
+        except Exception as exc:  # noqa: BLE001 — ImportError 만이 아니라 openbb 내부의 AttributeError 도 온다
+            if not _stubbed():
+                _FAILED = True
+                logger.warning(
+                    "openbb 를 쓸 수 없다 — 이 프로세스에서는 다시 시도하지 않는다 (%s: %s)", type(exc).__name__, exc
+                )
+            return None
+        return obb
