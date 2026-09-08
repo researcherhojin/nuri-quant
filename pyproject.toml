@@ -140,7 +140,8 @@ override-dependencies = [
     # 패치는 starlette≥1.3.1 에 존재, fastapi 는 0.133.0 부터 starlette 1.x
     # 허용. openbb-core(최신 1.6.10)까지 fastapi<0.129 하드 핀이나, nuri 는
     # openbb 의 fastapi 서버를 안 쓰므로(라이브러리 전용) override 로 강제.
-    # 실측: openbb_core/obb import OK + API + 전체 테스트 green.
+    # 실측(당시): API + 전체 테스트 green. `from openbb import obb` 자체는 openbb 4.7.2 +
+    # openbb-core 1.6.13 조합에서 fastapi 와 무관하게 실패한다(#1477) — 진입점은 nuri.core.openbb_compat.
     "fastapi>=0.133.0",
     "starlette>=1.3.1",
 ]

@@ -82,6 +82,18 @@ class TestFailureIsPaidOnce:
         monkeypatch.setitem(sys.modules, "openbb", SimpleNamespace(obb=stub_obb))
         assert openbb_compat.get_obb() is stub_obb
 
+    def test_a_partial_module_without_obb_does_not_reopen_retries(self, monkeypatch, caplog):
+        """`sys.modules["openbb"]` 가 있어도 `obb` 가 없으면 스텁이 아니다 — 실패 기억을 풀면 안 된다 (Codex P3)."""
+        attempts: list[int] = []
+        _break_openbb(monkeypatch, attempts)
+        monkeypatch.setitem(sys.modules, "openbb", SimpleNamespace())
+        with caplog.at_level("WARNING", logger="nuri.core.openbb_compat"):
+            assert openbb_compat.get_obb() is None
+            assert openbb_compat.get_obb() is None
+        assert len(attempts) == 1
+        assert openbb_compat._FAILED is True
+        assert len([r for r in caplog.records if "openbb" in r.getMessage()]) == 1
+
     def test_success_is_returned_as_is(self, monkeypatch):
         stub_obb = MagicMock(name="obb")
         monkeypatch.setitem(sys.modules, "openbb", SimpleNamespace(obb=stub_obb))
@@ -103,15 +115,40 @@ class TestSoleImporter:
                     names = [a.name for a in node.names]
                 if any(n == "openbb" or n.startswith("openbb.") for n in names):
                     offenders.append(str(py.relative_to(REPO_ROOT)))
+                # `importlib.import_module("openbb")` / `__import__("openbb")` 는 정적 import 검사를 비켜간다
+                if _is_dynamic_openbb_import(node):
+                    offenders.append(f"{py.relative_to(REPO_ROOT)} (dynamic)")
         assert offenders == ["nuri/core/openbb_compat.py"], f"openbb 를 직접 import 하는 곳: {offenders}"
 
-    def test_the_four_call_sites_go_through_get_obb(self):
-        """캐너리 — 위 테스트가 '아무도 openbb 를 안 쓴다' 로도 통과하는 상태를 배제."""
-        sites = [
-            "nuri/collectors/etf_flows.py",
-            "nuri/collectors/stock.py",
-            "nuri/collectors/news.py",
-            "nuri/analysis/portfolio.py",
+    @pytest.mark.parametrize(
+        ("rel", "func"),
+        [
+            ("nuri/collectors/etf_flows.py", "_fetch_etf"),
+            ("nuri/collectors/stock.py", "_collect_ticker"),
+            ("nuri/collectors/news.py", "_fetch_ticker_news"),
+            ("nuri/analysis/portfolio.py", "get_exchange_rate"),
+        ],
+    )
+    def test_the_four_call_sites_call_get_obb(self, rel, func):
+        """캐너리 — 위 테스트가 '아무도 openbb 를 안 쓴다' 로도 통과하는 상태를 배제. 문자열이 아니라 실제 호출을 본다."""
+        tree = ast.parse((REPO_ROOT / rel).read_text(encoding="utf-8"))
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == func)
+        calls = [
+            n
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "get_obb"
         ]
-        for rel in sites:
-            assert "get_obb()" in (REPO_ROOT / rel).read_text(encoding="utf-8"), rel
+        assert calls, f"{rel}::{func} 가 get_obb() 를 호출하지 않는다"
+
+
+def _is_dynamic_openbb_import(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call) or not node.args:
+        return False
+    first = node.args[0]
+    if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
+        return False
+    target = first.value == "openbb" or first.value.startswith("openbb.")
+    f = node.func
+    is_import_module = isinstance(f, ast.Attribute) and f.attr == "import_module"
+    is_dunder = isinstance(f, ast.Name) and f.id == "__import__"
+    return target and (is_import_module or is_dunder)
