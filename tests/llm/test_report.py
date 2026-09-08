@@ -30,6 +30,42 @@ def db_path(tmp_path, monkeypatch):
     return path
 
 
+@pytest.fixture(autouse=True)
+def _cheap_candidates(monkeypatch):
+    """`gather_context()` 는 `screen_candidates()` 를 두 번(후보 섹션 + conflicts) 돌리고, 그게 160회 signal
+    backtest(3,992 bar) = 로컬 3.6s · CI 29~38s 다 (#1475 프로파일). 이 모듈은 리포트 조립·검증을 보지 스크리너를
+    보지 않는다 — 결정적인 후보 2건으로 대체한다. 스크리너 자체는 tests/trading/recommend 가 잠근다."""
+    from nuri.trading.recommend import candidates as cand_mod
+
+    fake = [
+        cand_mod.Candidate(
+            ticker="AAPL",
+            signal_id="rsi_oversold",
+            signal_date="2025-01-10",
+            direction="BUY",
+            confidence=70.0,
+            win_rate=0.6,
+            profit_factor=1.5,
+            regime_fit=True,
+            price=190.0,
+            notes="",
+        ),
+        cand_mod.Candidate(
+            ticker="MSFT",
+            signal_id="macd_cross",
+            signal_date="2025-01-10",
+            direction="SELL",
+            confidence=55.0,
+            win_rate=0.5,
+            profit_factor=1.1,
+            regime_fit=True,
+            price=400.0,
+            notes="",
+        ),
+    ]
+    monkeypatch.setattr(cand_mod, "screen_candidates", lambda *a, **k: list(fake))
+
+
 @pytest.fixture
 def rich_db(tmp_path, monkeypatch):
     """Portfolio + 500-day prices + macro (VIX, F&G, yields, PCR)."""
@@ -509,10 +545,23 @@ class TestLLMValidation:
         result = validate_output(good, ctx)
         assert hasattr(result, "passed")
 
-    def test_validate_empty_report(self, rich_db):
-        from nuri.llm.report import gather_context, validate_output
+    def test_validate_empty_report(self):
+        """빈 리포트 구조 검증 — 컨텍스트는 직접 만든다. `gather_context()` 는 gates+regime+macro 전체를
+        돌려 CI 에서 29~38s 짜리 call 이었고, 이 테스트가 보는 건 빈 문자열의 처리뿐이다 (#1475)."""
+        from nuri.llm.report import ReportContext, validate_output
 
-        ctx = gather_context()
+        ctx = ReportContext(
+            gate_summary="",
+            gate_score=0.0,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+        )
         result = validate_output("", ctx)
         # 빈 리포트도 구조 검증은 통과할 수 있음 (warnings에 기록)
         assert hasattr(result, "warnings")
