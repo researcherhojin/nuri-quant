@@ -319,7 +319,9 @@ def resolve_incident(
     """Incident 종료 — status='resolved' + resolved_at=now.
 
     Returns: True if updated, False if no open/acknowledged incident with that id.
-    Resolve 후 동일 (type, target) 재발 시 신규 row 가능 (status 가 UNIQUE 의 일부).
+    Resolve 후 동일 (type, target) 재발 시 신규 row 가능 — 그리고 그 재발도 다시 resolve 된다.
+    migration 63 이전에는 UNIQUE(type,target,status) 가 두 번째 resolved 행을 막아 자동 해소가
+    매시간 죽었다 (#1466). 지금 유일성은 open 행에만 걸린다 (partial index).
     """
     with get_db(db_path) as conn:
         cursor = conn.execute(
