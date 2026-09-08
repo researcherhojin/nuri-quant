@@ -53,7 +53,7 @@ ensure_frontend_build() {
     # 형제 스크립트는 **이 파일 기준**으로 찾는다 — $REPO 기준이면 NURI_REPO 로 임시 레포를
     # 가리키는 실행 테스트에서 스크립트가 없어 조용히 실패한다 (첫 판에서 실제로 그랬다).
     if ! bash "$(cd "$(dirname "$0")" && pwd)/build_frontend.sh" >>"$LOG" 2>&1; then
-        log "ERROR: frontend 빌드 실패 — 이전 빌드 유지, 다음 주기에 재시도 (위 출력 참조)"
+        log "ERROR: frontend 빌드 실패 — 이전 빌드 유지 (위 출력 참조). 같은 커밋은 재시도하지 않는다(frontend/.next.failed) — 새 frontend 커밋 또는 deploy_to_mini 가 지운다; 재기동만 실패했으면 다음 주기에 재기동 재시도"
     fi
 }
 

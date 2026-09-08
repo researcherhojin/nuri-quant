@@ -105,10 +105,12 @@ echo "  ${SYNC_COUNT}개 파일 동기화"
 # 경로가 또 갈라진다: 2026-07-27 에 이 단계만 고치고 autopull 은 WARN 로 두었다가 프로덕션이
 # 9일 된 빌드를 서빙했다(#940→#1023 의 데몬 재기동과 같은 비대칭). 이전 판의 "실패해도 이전
 # .next 가 그대로 서비스 중" 은 틀렸다 — Next 는 빌드 시작 때 .next 를 비운다(cleanDistDir).
+# `--retry`: 같은 커밋에서 실패한 빌드(.next.failed)는 autopull 이 재시도하지 않는다 — 사람이 부른
+# 배포는 곧 재시도 의사이므로 여기서만 마커를 무시한다.
 # 잠금: tests/scripts/test_deploy_bounces_resident_services.py::TestBothPathsBuildTheFrontendTheSameWay
 step 4 "frontend 빌드 확인"
 
-if "${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && bash scripts/deploy/build_frontend.sh"; then
+if "${SSH}" "${REMOTE}" "cd ${REMOTE_PATH} && bash scripts/deploy/build_frontend.sh --retry"; then
     ok "frontend 빌드 최신 (재빌드했다면 위 출력에 BUILD_ID 와 /login 확인이 남는다)"
 else
     fail "frontend 빌드/재기동 실패 — 이전 빌드는 복원돼 있다. 'ssh ${REMOTE} tail ${REMOTE_PATH}/data/logs/dashboard.err' 확인"
