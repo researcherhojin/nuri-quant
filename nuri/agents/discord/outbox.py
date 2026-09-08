@@ -555,6 +555,11 @@ _SRE_KIND_META: dict[str, dict[str, str]] = {
         "what": "시그널 평가 heartbeat 공백 — 발화 0건(정상)과 평가 미실행(고장) 구분 불가 상태",
         "action": "조치: `python -m nuri.collectors.technical` 수동 실행 / 스케줄러 점검",
     },
+    "sre_frontend_build_stale": {
+        "label": "🧱 대시보드 빌드 낡음",
+        "what": "프로덕션 프론트 빌드가 코드보다 낡았거나 빌드/재기동이 실패한 채 남음 — 대시보드가 옛 코드를 서빙",
+        "action": "조치: mini `~/Library/Logs/nuri-quant-autopull.log` 확인 → `bash scripts/deploy/build_frontend.sh --retry` (실패 마커 무시하고 재빌드)",
+    },
 }
 
 

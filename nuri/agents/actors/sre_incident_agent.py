@@ -5,10 +5,10 @@
 Layer A 설계 (Codex Round 5):
 - 100% rule-based — threshold 비교 (LLM 추론 X)
 - ZERO LLM
-- 11 detector 모두 결정적 (DB query + filesystem stat)
+- 12 detector 모두 결정적 (DB query + filesystem stat + git log)
 - 모든 incident → audit_ledger + incidents 테이블 영구 기록
 
-11 Detector:
+12 Detector:
     1. orphan_run         — agent_run_ledger started + finished_at IS NULL + >1h
                             warning (1h+) / critical (3h+)
     2. disk_full          — shutil.disk_usage() percent_used > 80 (warn) / > 90 (crit)
@@ -28,6 +28,10 @@ Layer A 설계 (Codex Round 5):
                             stage** 공백 (#894): ≥35일 (warn). heartbeat 공백이
                             아니라 성공 공백 — cron 이 매일이라 role 누락 상태도
                             heartbeat 는 계속 찍힌다.
+   12. frontend_build_stale — 프로덕션(primary) 프론트 빌드가 코드보다 낡음 (#1463):
+                            `.next.failed` 마커(빌드 실패, 같은 커밋 재시도 없음) /
+                            `.next.restart_pending` 마커가 1h 넘게 잔존(재기동 실패) /
+                            frontend/ 최신 커밋 시각 − BUILD_ID mtime > 1h. warning.
 
 Idempotent semantics:
 - 동일 (incident_type, target) 의 open incident 는 단일 row → log_incident() 가
@@ -132,6 +136,7 @@ _DETECTOR_INCIDENT_TYPES: dict[str, tuple[str, ...]] = {
     "_detect_data_freshness_critical": ("data_freshness_critical",),
     "_detect_signal_evaluation_stale": ("signal_evaluation_stale",),
     "_detect_alpha_report_stale": ("alpha_report_stale",),
+    "_detect_frontend_build_stale": ("frontend_build_stale",),
 }
 # 당일은 이 시각(KST) 이후부터 미실행으로 계상 — 07:00 cron 전 새벽 scan false positive 방지
 SIGNAL_EVAL_GRACE_HOUR = 12
@@ -144,13 +149,21 @@ ALPHA_REPORT_STALE_DAYS = 35
 
 HEARTBEAT_PATH = Path(__file__).resolve().parents[3] / "data" / ".scheduler_heartbeat"
 
+# 프로덕션 프론트 빌드 드리프트 (#1463). autopull 이 5분마다 build_frontend.sh 를 부르므로
+# 한 주기 안의 드리프트는 정상이다 — 12 주기(1h)를 넘긴 것만 사고로 친다. 마커 파일은
+# scripts/deploy/build_frontend.sh 가 쓴다(그쪽 헤더가 계약의 정본).
+REPO_ROOT = Path(__file__).resolve().parents[3]
+FRONTEND_DIR = REPO_ROOT / "frontend"
+FRONTEND_BUILD_STALE_MIN = 60
+FRONTEND_GIT_TIMEOUT_SEC = 10
+
 
 @REGISTRY.register
 class SREIncidentAgent(Actor):
     """Operational incident detection + lifecycle management — Layer A.
 
     Actions (input_data['action']):
-        scan        — 11 detector 모두 실행 → log_incident + Discord publish.
+        scan        — 12 detector 모두 실행 → log_incident + Discord publish.
         acknowledge — incident_id 사용자 확인 (audit-only).
         resolve     — incident_id 종료 (status='resolved').
         list_open   — open incident 목록 (severity 필터 optional).
@@ -190,7 +203,7 @@ class SREIncidentAgent(Actor):
     # ─── scan ────────────────────────────────────────────────
 
     def _scan(self, input_data: dict[str, Any], ctx: RunContext) -> ActorResult:
-        """11 detector 실행 → 발견된 incident 목록 반환 + 조건 해소분 자동 종료."""
+        """12 detector 실행 → 발견된 incident 목록 반환 + 조건 해소분 자동 종료."""
         detected: list[dict[str, Any]] = []
 
         failed_detectors: set[str] = set()
@@ -207,6 +220,7 @@ class SREIncidentAgent(Actor):
             self._detect_data_freshness_critical,
             self._detect_signal_evaluation_stale,
             self._detect_alpha_report_stale,
+            self._detect_frontend_build_stale,
         ):
             try:
                 detected.extend(detector(ctx))
@@ -661,6 +675,76 @@ class SREIncidentAgent(Actor):
             )
         ]
 
+    def _detect_frontend_build_stale(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """프로덕션 프론트 빌드가 코드보다 낡았거나 빌드/재기동이 실패한 채 남아 있다 (#1463).
+
+        primary(Mac mini) 에서만 본다 — dev 머신의 `.next` 는 의미가 없다. 술어는 배포
+        스크립트(`build_frontend.sh`)와 **같은 것**을 쓴다: `git log -1 --format=%ct -- frontend/`
+        대 `.next/BUILD_ID` mtime. 거기에 그 스크립트가 남기는 마커 둘을 더한다 — 마커 없이
+        mtime 비교만 하면 "같은 커밋은 재시도하지 않는다" 는 스크립트 계약 때문에 **계속
+        실패하는 빌드**가 영영 안 보인다. 그게 이 이슈가 잡으라는 바로 그 경우다.
+
+        발화 우선순위: 빌드 실패 > 재기동 실패 > 단순 드리프트. 셋 다 target 이 같아
+        UNIQUE 로 한 row 에 묶이고, 조건이 풀리면 `_auto_resolve` 가 닫는다.
+        """
+        if _machine_role() != "primary":
+            return []
+        if not FRONTEND_DIR.is_dir():
+            return []
+
+        import subprocess
+        import time as _time
+
+        failed_mark = FRONTEND_DIR / ".next.failed"
+        pending_mark = FRONTEND_DIR / ".next.restart_pending"
+        build_id = FRONTEND_DIR / ".next" / "BUILD_ID"
+        built_epoch = build_id.stat().st_mtime if build_id.exists() else 0.0
+
+        # git 실패는 detector 실패로 올린다(_scan 이 db_lock warning 으로 기록) — 조용한 skip 이
+        # 아니라 "감시가 안 된다" 는 사실이 남아야 한다.
+        proc = subprocess.run(
+            ["git", "log", "-1", "--format=%ct %H", "--", "frontend/"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=FRONTEND_GIT_TIMEOUT_SEC,
+            check=True,
+        )
+        parts = proc.stdout.split()
+        code_epoch = float(parts[0]) if parts else 0.0
+        code_sha = parts[1] if len(parts) > 1 else None
+
+        now = _time.time()
+        reason: str | None = None
+        if failed_mark.exists():
+            reason = "build_failed"
+        elif pending_mark.exists() and (now - pending_mark.stat().st_mtime) / 60.0 > FRONTEND_BUILD_STALE_MIN:
+            reason = "restart_failed"
+        elif code_epoch > 0 and (code_epoch - built_epoch) / 60.0 > FRONTEND_BUILD_STALE_MIN:
+            reason = "stale"
+        if reason is None:
+            return []
+
+        evidence = {
+            "reason": reason,
+            "failed_commit": failed_mark.read_text().strip()[:40] if reason == "build_failed" else None,
+            "code_commit": code_sha,
+            "code_committed_at_utc": _utc_str(code_epoch) if code_epoch else None,
+            "build_id_mtime_utc": _utc_str(built_epoch) if built_epoch else None,
+            "build_missing": built_epoch == 0.0,
+            "drift_minutes": round((code_epoch - built_epoch) / 60.0, 1) if code_epoch and built_epoch else None,
+            "threshold_min": FRONTEND_BUILD_STALE_MIN,
+        }
+        return [
+            self._record_incident(
+                incident_type="frontend_build_stale",
+                severity="warning",
+                target="frontend_build",
+                evidence=evidence,
+                ctx=ctx,
+            )
+        ]
+
     # ─── helpers ─────────────────────────────────────────────
 
     def _record_incident(
@@ -885,7 +969,29 @@ def _human_incident_summary(incident_type: str, target: str, evidence: dict[str,
         }.get(str(e.get("last_skip_reason")), "원인 미상")
         when = "한 번도 발화 없음" if e.get("never_staged") else f"마지막 {e.get('last_staged_at_utc', '?')} UTC"
         return f"§3.11 월간 alpha 리포트 — {e.get('days_since_staged', 0)}일째 미발화 ({when}). {cause}"
+    if incident_type == "frontend_build_stale":
+        reason = str(e.get("reason"))
+        if reason == "build_failed":
+            return (
+                f"프로덕션 대시보드 빌드 실패 — 커밋 {str(e.get('failed_commit') or '?')[:8]} 에서 실패한 채 "
+                f"이전 빌드 서빙 중 (같은 커밋은 자동 재시도 없음)"
+            )
+        if reason == "restart_failed":
+            return "프로덕션 대시보드 — 새 빌드는 있으나 재기동/응답 확인 실패가 1h 넘게 지속"
+        if e.get("build_missing"):
+            return "프로덕션 대시보드 — 빌드 산출물(.next/BUILD_ID) 자체가 없음"
+        return (
+            f"프로덕션 대시보드 빌드가 코드보다 {e.get('drift_minutes', 0):.0f}분 낡음 "
+            f"(코드 {e.get('code_committed_at_utc', '?')} UTC > 빌드 {e.get('build_id_mtime_utc', '?')} UTC)"
+        )
     return f"{incident_type} on {target}"
+
+
+def _utc_str(epoch: float) -> str:
+    """epoch → 'YYYY-MM-DD HH:MM:SS' (UTC) — 다른 detector 의 *_utc 필드와 같은 표기."""
+    from datetime import UTC
+
+    return datetime.fromtimestamp(epoch, tz=UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _short_json(payload: dict[str, Any], max_len: int = 800) -> str:
