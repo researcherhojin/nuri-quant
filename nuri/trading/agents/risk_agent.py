@@ -2,7 +2,7 @@
 
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.rules import MAX_SINGLE_POSITION, get_stop_loss_for_account
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_or_none
 
 _CFG = AGENT_CONFIG.get("risk", {})
 _CONF = _CFG.get("confidence", {})
@@ -35,12 +35,13 @@ class RiskAgent(BaseAgent):
             db_path,
         )
 
-        if holding and price_row and price_row[0]["close"]:
-            current = price_row[0]["close"]
+        # -inf 가격은 truthy 라 100 확신 손절 거부권을 발동시켰다 — finite 만 가격이다 (Codex P1, #1485)
+        current = finite_or_none(price_row[0]["close"]) if price_row else None
+        if holding and current:
             worst_breach: tuple[float, int] | None = None  # (pnl_pct, threshold)
             worst_loss_pct: float | None = None  # breach 없을 때만 사용
             for row in holding:
-                avg = row["avg_price"]
+                avg = finite_or_none(row["avg_price"])
                 if not avg:
                     continue
                 row_pnl = (current - avg) / avg * 100
