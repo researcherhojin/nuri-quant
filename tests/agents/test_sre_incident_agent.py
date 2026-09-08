@@ -1412,13 +1412,28 @@ def prod_frontend(tmp_path):
         os.utime(bid, (epoch, epoch))
         return bid
 
+    def commit(when: int) -> str:
+        """frontend/ 에 커밋 하나 더 (커밋 시각 고정). 반환: sha."""
+        (fe / "app" / "page.tsx").write_text(f"export default () => {when};\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "touch", when=when)
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
     with (
         patch("nuri.agents.actors.sre_incident_agent._machine_role", return_value="primary"),
         patch("nuri.agents.actors.sre_incident_agent.REPO_ROOT", repo),
         patch("nuri.agents.actors.sre_incident_agent.FRONTEND_DIR", fe),
     ):
         yield type(
-            "P", (), {"fe": fe, "repo": repo, "commit_epoch": commit_epoch, "set_build": staticmethod(set_build)}
+            "P",
+            (),
+            {
+                "fe": fe,
+                "repo": repo,
+                "commit_epoch": commit_epoch,
+                "set_build": staticmethod(set_build),
+                "commit": staticmethod(commit),
+            },
         )
 
 
@@ -1450,20 +1465,61 @@ class TestFrontendBuildStaleDetector:
         prod_frontend.set_build(prod_frontend.commit_epoch + 60)
         assert self._mine(self._scan()) == []
 
-    def test_drift_inside_one_autopull_hour_is_normal(self, patched_db, no_publish, prod_frontend):
-        """autopull 이 5분마다 따라잡는다 — 임계 안의 드리프트는 사고가 아니다."""
-        prod_frontend.set_build(prod_frontend.commit_epoch - (FRONTEND_BUILD_STALE_MIN - 5) * 60)
+    def test_recent_commit_not_yet_built_is_normal(self, patched_db, no_publish, prod_frontend):
+        """autopull 이 5분마다 따라잡는다 — 방금 온 커밋이 아직 안 빌드된 건 사고가 아니다."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        prod_frontend.commit(int(time.time()) - 10 * 60)  # 10분 전 커밋, 빌드보다 새롭다
         assert self._mine(self._scan()) == []
 
-    def test_build_older_than_code_past_threshold_warns(self, patched_db, no_publish, prod_frontend):
-        prod_frontend.set_build(prod_frontend.commit_epoch - (FRONTEND_BUILD_STALE_MIN + 5) * 60)
+    def test_small_gap_that_persists_past_threshold_warns(self, patched_db, no_publish, prod_frontend):
+        """잠금(Codex P1) — 낡음은 **미빌드 지속 시간**이지 커밋−빌드 간격이 아니다.
+
+        빌드 T, 커밋 T+1분, 그 뒤 3시간 동안 마커 없는 실패(npm 부재·락 경합)가 반복되면 간격은
+        영원히 1분이다. 간격 기준 구현으로 되돌리면 이 테스트가 FAIL 한다.
+        """
+        prod_frontend.set_build(prod_frontend.commit_epoch - 60)  # 3h 전 커밋보다 1분 오래된 빌드
         out = self._mine(self._scan())
         assert len(out) == 1
         assert out[0]["severity"] == "warning" and out[0]["target"] == "frontend_build"
         e = out[0]["evidence"]
         assert e["reason"] == "stale" and e["build_missing"] is False
-        assert e["drift_minutes"] > FRONTEND_BUILD_STALE_MIN
+        assert e["unbuilt_minutes"] > FRONTEND_BUILD_STALE_MIN
         assert e["code_commit"] and e["code_committed_at_utc"] and e["build_id_mtime_utc"]
+
+    def test_build_in_progress_is_not_judged(self, patched_db, no_publish, prod_frontend):
+        """빌드 중에는 .next 가 .next.bak 으로 비켜나 BUILD_ID 가 없다 — 락 pid 가 살아 있으면 skip."""
+        lock = prod_frontend.fe / ".next.lock"
+        lock.mkdir()
+        holder = subprocess.Popen(["sleep", "30"])
+        try:
+            (lock / "pid").write_text(str(holder.pid))
+            assert self._mine(self._scan()) == []
+        finally:
+            holder.kill()
+
+    def test_dead_lock_holder_does_not_hide_a_missing_build(self, patched_db, no_publish, prod_frontend):
+        lock = prod_frontend.fe / ".next.lock"
+        lock.mkdir()
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        (lock / "pid").write_text(str(dead.pid))
+        out = self._mine(self._scan())
+        assert len(out) == 1 and out[0]["evidence"]["build_missing"] is True
+
+    def test_failed_marker_for_an_older_commit_is_not_a_failure_yet(self, patched_db, no_publish, prod_frontend):
+        """새 커밋이 왔고 다음 주기가 마커를 지우고 재시도한다 — 옛 sha 마커는 실패가 아니다."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        (prod_frontend.fe / ".next.failed").write_text("0000000000000000000000000000000000000000\n")
+        prod_frontend.commit(int(time.time()) - 5 * 60)
+        assert self._mine(self._scan()) == []
+
+    def test_failed_marker_beats_a_fresh_pending_marker(self, patched_db, no_publish, prod_frontend):
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        sha = prod_frontend.commit(int(time.time()) - 5 * 60)
+        (prod_frontend.fe / ".next.failed").write_text(sha + "\n")
+        (prod_frontend.fe / ".next.restart_pending").touch()
+        out = self._mine(self._scan())
+        assert len(out) == 1 and out[0]["evidence"]["reason"] == "build_failed"
 
     def test_missing_build_on_primary_warns(self, patched_db, no_publish, prod_frontend):
         """BUILD_ID 자체가 없다 — 재부팅 뒤 빈 대시보드가 뜨는 상태."""
@@ -1475,12 +1531,15 @@ class TestFrontendBuildStaleDetector:
         """잠금 — 실패 후 이전 빌드가 복원돼 mtime 만 보면 '낡음' 이거나, 복원본이 최근이면
         아예 조용하다. 마커를 안 읽는 구현으로 되돌리면 이 테스트가 FAIL 한다."""
         prod_frontend.set_build(prod_frontend.commit_epoch + 60)
-        (prod_frontend.fe / ".next.failed").write_text("deadbeefcafe0000000000000000000000000000\n")
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=prod_frontend.repo, capture_output=True, text=True
+        ).stdout.strip()
+        (prod_frontend.fe / ".next.failed").write_text(sha + "\n")
         out = self._mine(self._scan())
         assert len(out) == 1
         e = out[0]["evidence"]
         assert e["reason"] == "build_failed"
-        assert e["failed_commit"] == "deadbeefcafe0000000000000000000000000000"
+        assert e["failed_commit"] == sha
 
     def test_fresh_restart_pending_marker_is_not_yet_an_incident(self, patched_db, no_publish, prod_frontend):
         """방금 빌드하고 재기동 중일 수 있다 — 한 주기 안의 마커는 정상."""
@@ -1523,7 +1582,7 @@ class TestFrontendBuildStaleDetector:
 
     def test_resolves_once_build_catches_up(self, patched_db, no_publish, prod_frontend):
         """조건이 풀리면 기존 `_auto_resolve` 가 닫는다 — 열기만 하는 detector 는 재발 알림을 삼킨다."""
-        bid = prod_frontend.set_build(prod_frontend.commit_epoch - (FRONTEND_BUILD_STALE_MIN + 5) * 60)
+        bid = prod_frontend.set_build(prod_frontend.commit_epoch - 60)
         assert len(self._mine(self._scan())) == 1
         with get_db(patched_db) as conn:
             conn.execute(
@@ -1551,7 +1610,7 @@ class TestFrontendBuildStaleDetector:
                 {
                     "reason": "stale",
                     "build_missing": False,
-                    "drift_minutes": 540.0,
+                    "unbuilt_minutes": 540.0,
                     "code_committed_at_utc": "2026-09-08 04:43:20",
                     "build_id_mtime_utc": "2026-08-29 20:58:00",
                 },

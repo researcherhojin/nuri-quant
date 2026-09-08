@@ -31,7 +31,7 @@ Layer A 설계 (Codex Round 5):
    12. frontend_build_stale — 프로덕션(primary) 프론트 빌드가 코드보다 낡음 (#1463):
                             `.next.failed` 마커(빌드 실패, 같은 커밋 재시도 없음) /
                             `.next.restart_pending` 마커가 1h 넘게 잔존(재기동 실패) /
-                            frontend/ 최신 커밋 시각 − BUILD_ID mtime > 1h. warning.
+                            빌드보다 새로운 frontend/ 커밋이 1h 넘게 미빌드. warning.
 
 Idempotent semantics:
 - 동일 (incident_type, target) 의 open incident 는 단일 row → log_incident() 가
@@ -700,8 +700,14 @@ class SREIncidentAgent(Actor):
         build_id = FRONTEND_DIR / ".next" / "BUILD_ID"
         built_epoch = build_id.stat().st_mtime if build_id.exists() else 0.0
 
-        # git 실패는 detector 실패로 올린다(_scan 이 db_lock warning 으로 기록) — 조용한 skip 이
-        # 아니라 "감시가 안 된다" 는 사실이 남아야 한다.
+        # 빌드 진행 중(락 보유 pid 생존)이면 판정하지 않는다 — 빌드 중에는 .next 가 .next.bak 으로
+        # 비켜나 BUILD_ID 가 1~3분 부재하고, 시간당 스캔이 그 창에 겹치면 build_missing 오보가 난다.
+        lock_pid = FRONTEND_DIR / ".next.lock" / "pid"
+        if lock_pid.exists() and _pid_alive(lock_pid.read_text().strip()):
+            return []
+
+        # git 실패는 예외로 올린다 — _scan 이 detector 이름을 target 으로 한 db_lock 항목을 output 에
+        # 남긴다(DB 미기록, sre_scan 로그로만). 조용한 [] 보다는 낫지만 알림은 아니다.
         proc = subprocess.run(
             ["git", "log", "-1", "--format=%ct %H", "--", "frontend/"],
             cwd=REPO_ROOT,
@@ -715,24 +721,31 @@ class SREIncidentAgent(Actor):
         code_sha = parts[1] if len(parts) > 1 else None
 
         now = _time.time()
+        # "낡음" 은 버전 간격이 아니라 **미빌드 지속 시간**이다. 커밋−빌드 간격은 마커 없이 실패하는
+        # 경로(npm 부재 · 락 경합)에서 영원히 같은 값이라 임계를 못 넘긴다 — 코드가 빌드보다 새로운
+        # 채로 지금까지 얼마나 지났는지를 잰다 (Codex 리뷰 P1).
+        unbuilt_min = (now - code_epoch) / 60.0 if code_epoch > built_epoch else 0.0
+        # 실패 마커는 지금 코드의 sha 일 때만 "실패" 다 — 새 커밋이 오면 다음 주기가 마커를 지우고
+        # 재시도하므로, 그 5분 창의 옛 sha 는 실패가 아니라 아직 안 돈 빌드다.
+        failed_sha = failed_mark.read_text().strip()[:40] if failed_mark.exists() else None
         reason: str | None = None
-        if failed_mark.exists():
+        if failed_sha and (code_sha is None or failed_sha == code_sha):
             reason = "build_failed"
         elif pending_mark.exists() and (now - pending_mark.stat().st_mtime) / 60.0 > FRONTEND_BUILD_STALE_MIN:
             reason = "restart_failed"
-        elif code_epoch > 0 and (code_epoch - built_epoch) / 60.0 > FRONTEND_BUILD_STALE_MIN:
+        elif unbuilt_min > FRONTEND_BUILD_STALE_MIN:
             reason = "stale"
         if reason is None:
             return []
 
         evidence = {
             "reason": reason,
-            "failed_commit": failed_mark.read_text().strip()[:40] if reason == "build_failed" else None,
+            "failed_commit": failed_sha if reason == "build_failed" else None,
             "code_commit": code_sha,
             "code_committed_at_utc": _utc_str(code_epoch) if code_epoch else None,
             "build_id_mtime_utc": _utc_str(built_epoch) if built_epoch else None,
             "build_missing": built_epoch == 0.0,
-            "drift_minutes": round((code_epoch - built_epoch) / 60.0, 1) if code_epoch and built_epoch else None,
+            "unbuilt_minutes": round(unbuilt_min, 1),
             "threshold_min": FRONTEND_BUILD_STALE_MIN,
         }
         return [
@@ -981,10 +994,23 @@ def _human_incident_summary(incident_type: str, target: str, evidence: dict[str,
         if e.get("build_missing"):
             return "프로덕션 대시보드 — 빌드 산출물(.next/BUILD_ID) 자체가 없음"
         return (
-            f"프로덕션 대시보드 빌드가 코드보다 {e.get('drift_minutes', 0):.0f}분 낡음 "
+            f"프로덕션 대시보드 — 새 코드가 {e.get('unbuilt_minutes', 0):.0f}분째 미빌드 "
             f"(코드 {e.get('code_committed_at_utc', '?')} UTC > 빌드 {e.get('build_id_mtime_utc', '?')} UTC)"
         )
     return f"{incident_type} on {target}"
+
+
+def _pid_alive(pid_text: str) -> bool:
+    """락 파일의 pid 가 살아 있나 — build_frontend.sh 의 take_lock 과 같은 `kill -0` 판정."""
+    import os
+
+    try:
+        os.kill(int(pid_text), 0)
+    except (ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
 
 
 def _utc_str(epoch: float) -> str:
