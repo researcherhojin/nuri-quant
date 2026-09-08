@@ -5,8 +5,49 @@
 Consensus engine이 가중 투표로 최종 결론을 도출한다.
 """
 
+import math
+import numbers
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+
+
+def finite_or_none(value):
+    """숫자면 finite 일 때만 그대로, NaN/±inf/None 은 None — `data_points` 는 strict JSON(`allow_nan=False`) 을 지난다.
+
+    #1479(technical) → #1481(korean_market · wallstreet): 행 수만 세고 값의 유효성은 안 본 자리마다 NaN 이
+    `/api/consensus/{ticker}` 를 500 으로 죽였다. `data_points` 에 넣는 파생 숫자는 이 함수를 거친다.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, numbers.Integral):  # int · np.int64 → int
+        return int(value)
+    if isinstance(
+        value, numbers.Real
+    ):  # float · np.float32/64 → float (Codex P2: np.float32 는 float 서브클래스가 아니다)
+        f = float(value)
+        return f if math.isfinite(f) else None
+    return value
+
+
+def finite_values(values) -> list[float]:
+    """iterable 에서 finite 로 변환되는 값만 float 리스트로 — 문자열·None·NaN·±inf 는 버린다."""
+    out: list[float] = []
+    for v in values:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(f):
+            out.append(f)
+    return out
+
+
+def finite_or_zero(value) -> float:
+    """yfinance 필드용 — `x or 0` 은 NaN 을 못 거른다(`nan or 0 == nan`)."""
+    out = finite_or_none(value)
+    return float(out) if isinstance(out, (int, float)) and not isinstance(out, bool) else 0.0
 
 
 class QueryRows(list):
