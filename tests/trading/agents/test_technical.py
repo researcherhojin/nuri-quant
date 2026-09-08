@@ -1,6 +1,7 @@
 """Tests for technical agent — split from test_trading_agents_all.py."""
+
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -15,6 +16,7 @@ from tests.trading.agents._helpers import _seed_macro, _seed_portfolio, _seed_pr
 class TestTechnicalAgent:
     def test_returns_verdict(self, agent_data):
         from nuri.trading.agents.technical import TechnicalAgent
+
         v = TechnicalAgent().analyze("TEST", db_path=agent_data)
         assert v.agent_name == "technical"
         assert v.action in ("BUY", "SELL", "HOLD")
@@ -22,6 +24,7 @@ class TestTechnicalAgent:
 
     def test_no_data(self, db_path):
         from nuri.trading.agents.technical import TechnicalAgent
+
         v = TechnicalAgent().analyze("NONE", db_path=db_path)
         assert v.action == "HOLD"
         assert v.confidence == 0
@@ -30,6 +33,7 @@ class TestTechnicalAgent:
 class TestTechnicalAgent_R26:
     def test_no_data(self, db_path):
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("AAPL", db_path=db_path)
         assert result.action == "HOLD"
         assert "부족" in result.reasoning
@@ -37,13 +41,31 @@ class TestTechnicalAgent_R26:
     def test_with_price_data(self, db_path):
         _seed_ticker(db_path, "AAPL", n=60)
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("AAPL", db_path=db_path)
         assert result.action in ("BUY", "SELL", "HOLD")
         assert result.data_points.get("rsi") is not None
 
+    def test_trailing_null_close_does_not_poison_data_points(self, db_path):
+        """#1479 — prices 에 close NULL 행이 하나 있으면 latest/sma 가 NaN 이 돼 API JSON 직렬화가 500 으로 죽었다.
+        starlette 와 같은 `allow_nan=False` 로 잠근다."""
+        _seed_ticker(db_path, "AAPL", n=60)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("AAPL", "2025-03-31", None, None, None, None, 0),
+            )
+        from nuri.trading.agents.technical import TechnicalAgent
+
+        result = TechnicalAgent().analyze("AAPL", db_path=db_path)
+        json.dumps(asdict(result), allow_nan=False)  # NaN 이 하나라도 있으면 ValueError
+        assert result.data_points["price"] == pytest.approx(result.data_points["price"])  # NaN != NaN
+        assert result.action in ("BUY", "SELL", "HOLD")
+
     def test_yfinance_fallback_no_db_path(self, db_path, monkeypatch):
         """Cover yfinance fallback when prices table empty."""
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("NONEXIST", db_path=db_path)
         assert result.action == "HOLD"
 
@@ -51,6 +73,7 @@ class TestTechnicalAgent_R26:
 def _insert_finviz_signal(db_path, ticker, signal, date_str=None):
     """external_analysis에 FINVIZ 시그널 삽입 헬퍼."""
     from nuri.core.timezone import today_kst
+
     if date_str is None:
         date_str = today_kst()
     with get_db(db_path) as conn:
@@ -71,6 +94,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "AAPL", "oversold_rsi")
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("AAPL", db_path=db_path)
         assert "FINVIZ oversold_rsi" in result.reasoning
         assert "finviz_signals" in result.data_points
@@ -82,6 +106,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "TSLA", "overbought_rsi")
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("TSLA", db_path=db_path)
         assert "FINVIZ overbought_rsi" in result.reasoning
 
@@ -91,6 +116,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "MSFT", "new_high")
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("MSFT", db_path=db_path)
         assert "FINVIZ new_high" in result.reasoning
 
@@ -100,6 +126,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "GOOG", "new_low")
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("GOOG", db_path=db_path)
         assert "FINVIZ new_low" in result.reasoning
 
@@ -108,6 +135,7 @@ class TestTechnicalFinviz:
         _seed_ticker(db_path, "NVDA", n=60)
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("NVDA", db_path=db_path)
         assert result.action in ("BUY", "SELL", "HOLD")
         assert "FINVIZ" not in result.reasoning
@@ -118,11 +146,13 @@ class TestTechnicalFinviz:
         from datetime import timedelta
 
         from nuri.core.timezone import kst_now
+
         old_date = (kst_now() - timedelta(days=10)).strftime("%Y-%m-%d")
         _seed_ticker(db_path, "META", n=60)
         _insert_finviz_signal(db_path, "META", "oversold_rsi", date_str=old_date)
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("META", db_path=db_path)
         assert "FINVIZ" not in result.reasoning
 
@@ -132,6 +162,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "AMZN", "unusual_volume")
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("AMZN", db_path=db_path)
         assert "FINVIZ unusual_volume" not in result.reasoning
 
@@ -140,6 +171,7 @@ class TestTechnicalFinviz:
         from datetime import timedelta
 
         from nuri.core.timezone import kst_now
+
         _seed_ticker(db_path, "NFLX", n=60)
         today = kst_now().strftime("%Y-%m-%d")
         yesterday = (kst_now() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -147,6 +179,7 @@ class TestTechnicalFinviz:
         _insert_finviz_signal(db_path, "NFLX", "new_low", date_str=yesterday)
 
         from nuri.trading.agents.technical import TechnicalAgent
+
         result = TechnicalAgent().analyze("NFLX", db_path=db_path)
         assert "FINVIZ oversold_rsi" in result.reasoning
         assert "FINVIZ new_low" in result.reasoning

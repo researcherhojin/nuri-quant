@@ -49,6 +49,10 @@ class TechnicalAgent(BaseAgent):
                     df = pd.DataFrame({"close": close_col.values})
             except Exception:
                 fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
+        # close 가 NULL 인 행(수집이 반쪽만 쓴 날)은 지표 전체를 NaN 으로 만들고 JSON 직렬화를 500 으로
+        # 죽인다 (#1479). 여기서 걷어내야 아래 min_dp 판정도 실제 값 기준이 된다.
+        if not df.empty:
+            df = df.dropna(subset=["close"]).reset_index(drop=True)
         if df.empty or len(df) < min_dp:
             return self._no_data(
                 ticker,
