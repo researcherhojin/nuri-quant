@@ -122,6 +122,45 @@ class TestTechnicalAgent_R26:
         assert result.confidence > 0
         json.dumps(asdict(result), allow_nan=False)
 
+    def test_finite_helpers_cover_every_kind(self):
+        """base.finite_or_none / finite_or_zero — 숫자가 아니면 그대로, bool 은 보존, NaN/inf/None 은 None/0."""
+        from nuri.trading.agents.base import finite_or_none, finite_or_zero
+
+        assert finite_or_none("up") == "up"
+        assert finite_or_none(True) is True
+        assert finite_or_none(None) is None
+        assert finite_or_none(3) == 3
+        assert finite_or_none(float("nan")) is None
+        assert finite_or_none(float("-inf")) is None
+        assert finite_or_zero(float("nan")) == 0.0
+        assert finite_or_zero(None) == 0.0
+        assert finite_or_zero("n/a") == 0.0
+        assert finite_or_zero(2.5) == 2.5
+        from nuri.trading.agents.base import finite_values
+
+        assert finite_values([1, "2.5", None, "n/a", float("nan"), float("inf"), True]) == [1.0, 2.5, 1.0]
+        # numpy 스칼라 — np.float32 는 float 서브클래스가 아니고 json 이 못 직렬화한다 (Codex P2)
+        assert finite_or_none(np.float32(1.25)) == 1.25 and type(finite_or_none(np.float32(1.25))) is float
+        assert type(finite_or_none(np.int64(7))) is int
+        assert finite_or_none(np.float64("nan")) is None
+        assert finite_or_zero(np.float32(1.25)) == 1.25
+        json.dumps({"v": finite_or_none(np.float32(1.25)), "i": finite_or_none(np.int64(7))}, allow_nan=False)
+
+    def test_fallback_frame_short_after_sanitising_is_not_adopted(self, monkeypatch):
+        """폴백 6mo 프레임이 정제 후 min_dp 미만이면 채택하지 않고 '데이터 부족' 으로 간다 (#1482 patch gap)."""
+        import sys as _sys
+
+        from nuri.trading.agents import technical as mod
+
+        min_dp = mod._CFG.get("min_data_points", 50)
+        fake_yf = MagicMock()
+        fake_yf.download.return_value = pd.DataFrame({"Close": [60.0] * (min_dp - 1) + [float("nan")] * 5})
+        monkeypatch.setitem(_sys.modules, "yfinance", fake_yf)
+        result = mod.TechnicalAgent().analyze("SHRT", db_path=None)
+        fake_yf.download.assert_called_once()
+        assert result.confidence == 0
+        assert "부족" in result.reasoning
+
     def test_finite_closes_drops_nan_none_and_inf_only(self):
         """폴백 프레임도 이 함수로 정제한 뒤 min_dp 를 센다 — NaN/None/±inf 만 빠지고 0 과 음수는 남는다."""
         from nuri.trading.agents.technical import _finite_closes

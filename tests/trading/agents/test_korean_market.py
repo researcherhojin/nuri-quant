@@ -1,7 +1,7 @@
 """Tests for korean_market agent — split from test_trading_agents_all.py."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
@@ -60,6 +60,72 @@ class TestKoreanMarketBranches:
         weak, strong = _calibrate_fx_thresholds(db_path)
         assert weak >= 1300
         assert strong <= 1350
+
+
+class TestFxCalibrationNullRows:
+    """#1481 — NULL 값 행은 행 수에 넣지 않는다. 30행 전부 NULL 이면 예전엔 mean/std 가 NaN 이라 임계가 NaN 으로 data_points 에 실렸다."""
+
+    def _seed(self, db_path, null_rows: int, valid_rows: int):
+        dates = pd.date_range("2025-01-01", periods=null_rows + valid_rows).strftime("%Y-%m-%d").tolist()
+        with get_db(db_path) as conn:
+            for i, d in enumerate(dates):
+                value = None if i < null_rows else 1380.0 + i * 0.5
+                conn.execute("INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)", (d, "usd_krw", value))
+
+    def test_all_null_rows_fall_back_to_defaults_not_nan(self, db_path):
+        from nuri.trading.agents.korean_market import _CFG, _calibrate_fx_thresholds
+
+        self._seed(db_path, null_rows=35, valid_rows=0)
+        weak, strong = _calibrate_fx_thresholds(db_path)
+        assert (weak, strong) == (_CFG.get("fx_weak_default", 1400), _CFG.get("fx_strong_default", 1250))
+        json.dumps({"w": weak, "s": strong}, allow_nan=False)
+
+    def test_null_rows_do_not_count_toward_minimum(self, db_path):
+        """유효 29 + NULL 30 = 59행은 캘리브레이션 최소(30)를 채운 게 아니다."""
+        from nuri.trading.agents.korean_market import _CFG, _calibrate_fx_thresholds
+
+        self._seed(db_path, null_rows=30, valid_rows=_CFG.get("fx_calibration_min", 30) - 1)
+        assert _calibrate_fx_thresholds(db_path) == (
+            _CFG.get("fx_weak_default", 1400),
+            _CFG.get("fx_strong_default", 1250),
+        )
+
+    def test_non_finite_fx_foreign_momentum_inputs_are_dropped(self, db_path, monkeypatch):
+        """fx_rate=NaN, foreign_net=inf, momentum=NaN 이 각각 판정과 data_points 로 새지 않는다 (Codex P2)."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "005930.KS", 10, 70000, "KRW", "Semiconductor"),
+            )
+        monkeypatch.setattr(KoreanMarketAgent, "_get_fx_rate", lambda self, db_path=None, failures=None: float("nan"))
+        monkeypatch.setattr(
+            KoreanMarketAgent, "_get_foreign_flow", lambda self, t, db_path=None, failures=None: float("inf")
+        )
+        monkeypatch.setattr(
+            KoreanMarketAgent, "_get_momentum", lambda self, t, db_path=None, failures=None: float("nan")
+        )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        json.dumps(asdict(v), allow_nan=False)
+        assert v.data_points["fx_rate"] is None
+        assert v.data_points["foreign_net"] is None
+        assert v.data_points["momentum_20d"] is None
+        assert "외국인" not in v.reasoning
+
+    def test_verdict_stays_strict_json_with_null_fx_history(self, db_path):
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+
+        self._seed(db_path, null_rows=35, valid_rows=0)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO portfolio (account, ticker, quantity, avg_price, currency, sector) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                ("test", "005930.KS", 10, 70000, "KRW", "Semiconductor"),
+            )
+        v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
+        json.dumps(asdict(v), allow_nan=False)
 
 
 class TestKoreanMarketFullBranches:

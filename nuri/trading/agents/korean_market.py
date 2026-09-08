@@ -9,8 +9,11 @@ US 종목에는 HOLD(중립)을 반환하여 합의에 영향을 주지 않는�
 
 import logging
 
+import numpy as np
+import pandas as pd
+
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +41,14 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
         (today_kst(),),
         db_path=db_path,
     )
-    if df.empty or len(df) < _CFG.get("fx_calibration_min", 30):
+    # NULL/NaN 값 행은 행 수에 넣지 않는다 — 30행이 전부 NULL 이면 예전엔 임계가 NaN 으로 data_points 에 실렸다 (#1481)
+    values = np.asarray(pd.to_numeric(df["value"], errors="coerce"), dtype=float) if not df.empty else np.array([])
+    values = values[np.isfinite(values)]
+    if len(values) < _CFG.get("fx_calibration_min", 30):
         return fx_weak_default, fx_strong_default
 
-    mean = df["value"].mean()
-    std = df["value"].std()
+    mean = float(values.mean())
+    std = float(values.std(ddof=1))
     weak = round(mean + std, 0)
     strong = round(mean - std, 0)
     return max(weak, _CFG.get("fx_weak_floor", 1300)), min(strong, _CFG.get("fx_strong_ceil", 1350))
@@ -97,7 +103,8 @@ class KoreanMarketAgent(BaseAgent):
         db_failures: list[str] = []
 
         # 1. 환율 영향 (동적 캘리브레이션)
-        fx_rate = self._get_fx_rate(db_path, failures=db_failures)
+        # 세 입력(환율·외국인·모멘텀)도 non-finite 면 '없음' 으로 — 캘리브레이션만 정제하면 반쪽이다 (Codex P2, #1481)
+        fx_rate = finite_or_none(self._get_fx_rate(db_path, failures=db_failures))
         data["fx_rate"] = fx_rate
         sector = self._get_sector(ticker, db_path, failures=db_failures)
         data["sector"] = sector
@@ -117,7 +124,7 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append(f"원화강세({fx_rate:.0f}) 내수주 유리")
 
         # 2. 외국인 수급 (institutional_flows 테이블)
-        foreign_net = self._get_foreign_flow(ticker, db_path, failures=db_failures)
+        foreign_net = finite_or_none(self._get_foreign_flow(ticker, db_path, failures=db_failures))
         data["foreign_net"] = foreign_net
         if foreign_net is not None:
             if foreign_net > 0:
@@ -128,7 +135,7 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append("외국인 순매도")
 
         # 3. 가격 모멘텀 (20일 수익률)
-        momentum = self._get_momentum(ticker, db_path, failures=db_failures)
+        momentum = finite_or_none(self._get_momentum(ticker, db_path, failures=db_failures))
         data["momentum_20d"] = momentum
         if momentum is not None:
             if momentum > _CFG.get("momentum_positive_threshold", 5):

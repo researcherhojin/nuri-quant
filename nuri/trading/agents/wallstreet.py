@@ -16,7 +16,7 @@ from datetime import timedelta
 
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.timezone import kst_now
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_or_none, finite_or_zero, finite_values
 
 logger = logging.getLogger(__name__)
 
@@ -123,10 +123,10 @@ class WallStreetAgent(BaseAgent):
                 data_points["downgrades_90d"] = downgrades
 
                 # 최근 목표가
-                targets = recent[recent["currentPriceTarget"].notna()]["currentPriceTarget"]
-                if not targets.empty:
-                    avg_target = float(targets.mean())
-                    data_points["avg_target"] = round(avg_target, 2)
+                # notna 는 ±inf 를 못 거른다 — finite 만 평균해 strict JSON 을 지나게 (#1481)
+                targets = finite_values(recent["currentPriceTarget"].tolist())
+                if targets:
+                    data_points["avg_target"] = round(sum(targets) / len(targets), 2)
         except Exception:
             fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 
@@ -135,21 +135,24 @@ class WallStreetAgent(BaseAgent):
             eh = t.earnings_history
             if eh is not None and not eh.empty:
                 latest = eh.iloc[-1]
-                surprise = latest.get("surprisePercent", 0) or 0
+                # NaN 서프라이즈는 '모름' 이지 '0% 부합' 이 아니다 — `or 0` 은 NaN 을 못 거른다 (#1481)
+                surprise = finite_or_none(latest.get("surprisePercent"))
 
                 earn_th = _CFG.get("earnings_surprise", 0.05)
-                if surprise > earn_th:
+                if surprise is None:
+                    pass  # 실적 판정 없음, data_points 에는 None
+                elif surprise > earn_th:
                     score += 2
                     reasons.append(f"실적 서프라이즈 +{surprise * 100:.0f}%")
                 elif surprise < -earn_th:
                     score -= 2
                     reasons.append(f"실적 미스 {surprise * 100:.0f}%")
-                elif abs(surprise) <= earn_th:
+                else:
                     reasons.append(f"실적 부합 ({surprise * 100:+.1f}%)")
 
-                data_points["earnings_surprise"] = round(float(surprise), 4)
-                data_points["eps_actual"] = float(latest.get("epsActual", 0) or 0)
-                data_points["eps_estimate"] = float(latest.get("epsEstimate", 0) or 0)
+                data_points["earnings_surprise"] = round(surprise, 4) if surprise is not None else None
+                data_points["eps_actual"] = finite_or_zero(latest.get("epsActual", 0))
+                data_points["eps_estimate"] = finite_or_zero(latest.get("epsEstimate", 0))
         except Exception:
             fetch_failed = True  # 소스 장애를 기권으로 위장하지 않는다 (#1436)
 

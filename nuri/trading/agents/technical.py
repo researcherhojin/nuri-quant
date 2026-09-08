@@ -13,7 +13,7 @@ from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query, query_df
 from nuri.core.timezone import kst_now
 from nuri.quant.chart_analysis import analyze_chart
-from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +37,6 @@ def _finite_closes(df: pd.DataFrame) -> pd.DataFrame:
         return df
     close = pd.to_numeric(df["close"], errors="coerce").to_numpy(dtype=float)
     return df.loc[np.isfinite(close)].reset_index(drop=True)
-
-
-def _finite_or_none(value):
-    """숫자면 finite 일 때만 그대로, NaN/±inf 는 None — strict JSON 이 죽지 않게."""
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value if np.isfinite(value) else None
-    return value
 
 
 class TechnicalAgent(BaseAgent):
@@ -211,12 +204,12 @@ class TechnicalAgent(BaseAgent):
             # analyze_chart 는 DB 를 직접 읽어 위 정제를 거치지 않는다 — 파생값의 non-finite 는 None 으로 (#1479)
             data_points.update(
                 {
-                    "bb_pos": _finite_or_none(chart.bb_position),
+                    "bb_pos": finite_or_none(chart.bb_position),
                     "macd_turn": chart.macd_turn,
-                    "dist_high_52w": _finite_or_none(chart.dist_from_52w_high),
-                    "dist_low_52w": _finite_or_none(chart.dist_from_52w_low),
-                    "poc": _finite_or_none(chart.poc_price),
-                    "trend": _finite_or_none(chart.trend_strength),
+                    "dist_high_52w": finite_or_none(chart.dist_from_52w_high),
+                    "dist_low_52w": finite_or_none(chart.dist_from_52w_low),
+                    "poc": finite_or_none(chart.poc_price),
+                    "trend": finite_or_none(chart.trend_strength),
                     "visual_bias": chart.visual_bias,
                 }
             )
