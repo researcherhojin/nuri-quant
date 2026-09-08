@@ -311,7 +311,7 @@ class WallStreetAgent(BaseAgent):
                 reasons.append(f"등급↓({downs}↓/{ups}↑, cached)")
 
         if earnings:
-            sp = earnings[0].get("surprise_pct")
+            sp = finite_or_none(earnings[0].get("surprise_pct"))  # 캐시 경로도 라이브 경로와 같은 규칙 (#1485)
             if sp and sp > earn_th:
                 score += 1
                 reasons.append(f"실적+{sp * 100:.0f}%(cached)")
