@@ -15,7 +15,12 @@ from .connection import get_db
 
 
 def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None) -> int:
-    """가격 데이터 DataFrame upsert."""
+    """가격 데이터 DataFrame upsert. close 가 NaN/None 인 반쪽 행은 쓰지 않는다 (#1480)."""
+    if df.empty:
+        return 0
+    # yfinance 는 미확정 세션을 가격 NaN + volume 만 채운 행으로 준다. INSERT OR REPLACE 라 그대로 쓰면
+    # 정상 행까지 NULL 로 덮이고, 그 행 하나가 technical agent 의 지표 전체를 NaN 으로 만들었다 (#1479).
+    df = df.loc[df["close"].notna().to_numpy()]  # close 는 필수 컬럼 — 아래 INSERT 도 :close 를 요구한다
     if df.empty:
         return 0
     with get_db(db_path) as conn:
