@@ -226,17 +226,16 @@ class SREIncidentAgent(Actor):
                 detected.extend(detector(ctx))
             except Exception as exc:  # noqa: BLE001 — detector 실패는 다른 detector 진행
                 failed_detectors.add(detector.__name__)
-                detected.append(
-                    {
-                        "incident_type": "db_lock",  # detector 실패 = infra 의심
-                        "severity": "warning",
-                        "target": detector.__name__,
-                        "evidence": {"detector_error": str(exc)[:200]},
-                        "is_new": False,
-                    }
-                )
+                detected.append(self._record_scan_failure(detector.__name__, str(exc), ctx))
 
         auto_resolved, resolve_errors = self._auto_resolve(detected, failed_detectors)
+        if resolve_errors:
+            # 원장 정리 실패도 사고다 — output JSON 에만 두면 읽는 사람이 없다 (#1467, #1466 의 잔여).
+            detected.append(
+                self._record_scan_failure(
+                    "_auto_resolve", "; ".join(str(e.get("error")) for e in resolve_errors)[:200], ctx
+                )
+            )
 
         # 요약 (severity 분포)
         severity_counts = {"critical": 0, "warning": 0, "info": 0}
@@ -263,6 +262,34 @@ class SREIncidentAgent(Actor):
                 f"auto-resolved={len(auto_resolved)})"
             ),
         )
+
+    def _record_scan_failure(self, target: str, error: str, ctx: RunContext) -> dict[str, Any]:
+        """감시 자체의 실패(detector 예외 · 원장 정리 실패)를 **실제 인시던트**로 남긴다 (#1467).
+
+        예전에는 output 에만 합성 항목(`is_new=False`)을 넣어 DB 미기록·미발행이었다 — 감시가
+        죽어도 아무도 모르는 형태고, #1466 이 정확히 그 침묵 속에서 38시간을 갔다. 실제 row 로
+        기록하면 dedupe(재발화 억제)·`_auto_resolve`(복구 시 종료)·Discord(warning → #ops)가
+        모두 기존 경로로 따라온다. 기록 자체가 실패하면(DB 가 진짜 죽음) 합성 항목으로 후퇴한다
+        — 감시 실패를 적는 코드가 스캔을 죽이면 안 된다.
+        """
+        evidence = {"error": error[:200], "detector_error": error[:200]}
+        try:
+            return self._record_incident(
+                incident_type="db_lock",  # 감시 실패 = infra 의심 (원래 분류 유지)
+                severity="warning",
+                target=target,
+                evidence=evidence,
+                ctx=ctx,
+            )
+        except Exception as exc:  # noqa: BLE001 — 기록 실패는 output 에라도 남긴다
+            logger.warning("scan failure for %s could not be recorded: %s", target, exc)
+            return {
+                "incident_type": "db_lock",
+                "severity": "warning",
+                "target": target,
+                "evidence": {**evidence, "record_error": str(exc)[:200]},
+                "is_new": False,
+            }
 
     # ─── auto-resolve ────────────────────────────────────────
 

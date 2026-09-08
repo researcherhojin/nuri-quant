@@ -118,7 +118,8 @@ class TestDetectorExceptionFallback:
         assert len(synth) == 1, "fallback synth incident expected exactly once"
         assert synth[0]["severity"] == "warning"
         assert "synthetic detector boom" in synth[0]["evidence"]["detector_error"]
-        assert synth[0]["is_new"] is False  # 합성은 신규 row 아님
+        assert synth[0]["is_new"] is True  # #1467: 합성이 아니라 실제 row — 재발화 억제·자동 종료·알림이 따라온다
+        assert "incident_id" in synth[0]
 
 
 # ════════════════════════════════════════════════════════════
