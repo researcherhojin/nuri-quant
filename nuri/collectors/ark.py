@@ -30,13 +30,18 @@ from nuri.core.timezone import today_kst
 
 # ETF 별 보유 CSV. 통합 파일이 없어졌으므로 펀드마다 따로 받는다.
 # 한 펀드가 실패해도 나머지는 수집된다 (부분 성공 허용).
+#
+# 파일명은 **펀드 정식 명칭**을 담고 있어 개명되면 바뀐다. ARKF 가 2025-11-23 "ARK Blockchain
+# & Fintech Innovation ETF" 로 개명됐는데 ARKF 의 옛 파일은 지워지지 않고 2026-01-02 내용을
+# 200 으로 계속 서빙해 249일간 "동결" 로 보였다 (#1471, #1145 패턴). `_record_source_dates` 의 동결 경고가 뜨면 장애보다 먼저 개명/파일
+# 이동을 의심하고 assets.ark-funds.com 의 현재 파일명을 확인할 것.
 ARK_HOLDINGS_BASE = "https://assets.ark-funds.com/fund-documents/funds-etf-csv"
 ARK_HOLDINGS_FILES = {
     "ARKK": "ARK_INNOVATION_ETF_ARKK_HOLDINGS.csv",
     "ARKW": "ARK_NEXT_GENERATION_INTERNET_ETF_ARKW_HOLDINGS.csv",
     "ARKG": "ARK_GENOMIC_REVOLUTION_ETF_ARKG_HOLDINGS.csv",
     "ARKQ": "ARK_AUTONOMOUS_TECH._&_ROBOTICS_ETF_ARKQ_HOLDINGS.csv",
-    "ARKF": "ARK_FINTECH_INNOVATION_ETF_ARKF_HOLDINGS.csv",
+    "ARKF": "ARK_BLOCKCHAIN_&_FINTECH_INNOVATION_ETF_ARKF_HOLDINGS.csv",  # 2025-11-23 개명 (#1471)
 }
 
 
