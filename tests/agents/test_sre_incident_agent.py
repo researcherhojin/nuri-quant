@@ -1720,3 +1720,64 @@ class TestIncidentCanBeResolvedTwice:
         assert len(errs) == 1 and errs[0]["target"] == "ghost-actor" and "UNIQUE" in errs[0]["error"]
         assert result.output["summary"]["resolve_errors"] == 1
         assert result.output["auto_resolved"] == []
+
+    def test_a_failing_candidate_query_does_not_kill_the_scan(self, patched_db, no_publish):
+        """후보 조회 자체가 죽어도(락·fd 고갈) detector 결과는 살아남는다 — 조회 실패는 output 에 남긴다."""
+        real_query = __import__("nuri.core.db", fromlist=["query"]).query
+
+        def flaky(sql, *a, **kw):
+            if "FROM incidents" in sql and "last_detected_at) <" in sql:
+                raise RuntimeError("database is locked")
+            kw.setdefault("db_path", patched_db)
+            return real_query(sql, *a, **kw)
+
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+            patch("nuri.agents.actors.sre_incident_agent.query", side_effect=flaky),
+        ):
+            result = actor.run({"action": "scan"})
+        assert result.outcome == Outcome.PASS
+        assert "incidents" in result.output and result.output["auto_resolved"] == []
+        errs = result.output["resolve_errors"]
+        assert len(errs) == 1 and "locked" in errs[0]["error"] and errs[0]["incident_id"] is None
+
+    def test_upgrade_from_v62_preserves_rows_and_unblocks_the_second_resolve(self, tmp_path):
+        """업그레이드 경로 — 프로덕션 모양(v62 + resolved·open·acknowledged 같은 키)의 DB 에 63 을
+        적용한다. 신규 DB 테스트만으로는 `INSERT … SELECT` 컬럼 매핑 오류가 안 잡힌다 (Codex P2)."""
+        from nuri.core.db import connection as conn_mod
+        from nuri.core.db_migrations import _MIGRATIONS
+
+        path = tmp_path / "v62.db"
+        with patch.object(conn_mod, "_MIGRATIONS", [m for m in _MIGRATIONS if m[0] <= 62]):
+            init_db(path)
+        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == 62
+        first = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 1}, db_path=path)
+        assert resolve_incident(first, db_path=path)
+        second = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 2}, db_path=path)
+        third = log_incident("disk_full", "warning", "disk", {"n": 3}, db_path=path)
+        assert acknowledge_incident(third, db_path=path)
+        with get_db(path) as conn:  # v62 는 두 번째 resolve 를 거부한다 — 프로덕션 오류 재현
+            with pytest.raises(Exception, match="UNIQUE"):
+                conn.execute("UPDATE incidents SET status='resolved' WHERE incident_id = ?", (second,))
+        before = query(
+            "SELECT incident_id, incident_type, target, status, evidence_json FROM incidents ORDER BY incident_id",
+            db_path=path,
+        )
+
+        init_db(path)  # → 63
+
+        after = query(
+            "SELECT incident_id, incident_type, target, status, evidence_json FROM incidents ORDER BY incident_id",
+            db_path=path,
+        )
+        assert [dict(r) for r in after] == [dict(r) for r in before], "재생성이 행/컬럼을 바꿨다"
+        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == 63
+        assert resolve_incident(second, db_path=path) is True, "프로덕션에서 죽던 두 번째 resolve"
+        fourth = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 4}, db_path=path)
+        assert fourth > third, "AUTOINCREMENT 가 재생성 뒤에도 이어진다"

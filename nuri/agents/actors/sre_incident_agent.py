@@ -291,16 +291,21 @@ class SREIncidentAgent(Actor):
         blocked_types = {t for name in failed_detectors for t in _DETECTOR_INCIDENT_TYPES.get(name, ())}
         still_open = {(d["incident_type"], d["target"]) for d in detected}
 
-        rows = query(
-            """SELECT incident_id, incident_type, target, last_detected_at
-                 FROM incidents
-                WHERE status IN ('open', 'acknowledged')
-                  AND datetime(last_detected_at) < datetime('now', ?)""",
-            (f"-{int(AUTO_RESOLVE_GRACE_HOURS * 60)} minutes",),
-        )
-
         resolved: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
+        # 후보 조회도 감시 본업 밖이다 — 이 읽기가 죽으면 detector 12개의 결과가 통째로 버려진다.
+        try:
+            rows = query(
+                """SELECT incident_id, incident_type, target, last_detected_at
+                     FROM incidents
+                    WHERE status IN ('open', 'acknowledged')
+                      AND datetime(last_detected_at) < datetime('now', ?)""",
+                (f"-{int(AUTO_RESOLVE_GRACE_HOURS * 60)} minutes",),
+            )
+        except Exception as exc:  # noqa: BLE001 — 원장 조회 실패가 감시를 멈추면 안 된다
+            logger.warning("auto-resolve candidate query failed: %s", exc)
+            errors.append({"incident_id": None, "incident_type": None, "target": None, "error": str(exc)[:200]})
+            return resolved, errors
         for raw in rows:
             r = dict(raw)
             if (r["incident_type"], r["target"]) in still_open:
