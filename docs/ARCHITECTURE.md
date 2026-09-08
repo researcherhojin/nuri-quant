@@ -85,7 +85,7 @@ Configured in `.env` (see `.env.example`):
 - `NURI_ROLE` — `production` gates two things: §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set) and the off-box dead-man heartbeat push (`nuri/alerts/offbox_heartbeat.py`, #1191 option C — dev machines are a no-op). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
 - `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
 ## DB Schema (SQLite, WAL mode)
-61 tables total (62 migrations as of 2026-08-30). Key tables:
+61 tables total (63 migrations as of 2026-08-30). Key tables:
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |
@@ -159,7 +159,7 @@ data/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
 ## Testing
-8,167 backend tests across 376 files + 1,722 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
+8,172 backend tests across 376 files + 1,722 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
 **Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
 @pytest.fixture
 def db_path(tmp_path):

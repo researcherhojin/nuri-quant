@@ -236,7 +236,7 @@ class SREIncidentAgent(Actor):
                     }
                 )
 
-        auto_resolved = self._auto_resolve(detected, failed_detectors)
+        auto_resolved, resolve_errors = self._auto_resolve(detected, failed_detectors)
 
         # 요약 (severity 분포)
         severity_counts = {"critical": 0, "warning": 0, "info": 0}
@@ -247,9 +247,11 @@ class SREIncidentAgent(Actor):
             output={
                 "incidents": detected,
                 "auto_resolved": auto_resolved,
+                "resolve_errors": resolve_errors,
                 "summary": {
                     "total": len(detected),
                     "auto_resolved": len(auto_resolved),
+                    "resolve_errors": len(resolve_errors),
                     **severity_counts,
                 },
             },
@@ -264,8 +266,14 @@ class SREIncidentAgent(Actor):
 
     # ─── auto-resolve ────────────────────────────────────────
 
-    def _auto_resolve(self, detected: list[dict[str, Any]], failed_detectors: set[str]) -> list[dict[str, Any]]:
-        """이번 스캔에서 감지되지 않은 open incident 를 닫는다 (#944).
+    def _auto_resolve(
+        self, detected: list[dict[str, Any]], failed_detectors: set[str]
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """이번 스캔에서 감지되지 않은 open incident 를 닫는다 (#944). 반환: (닫은 것, 실패한 것).
+
+        행 하나의 resolve 실패가 스캔을 죽이면 안 된다 — 원장 정리는 감시 본업이 아니다
+        (#1466: UNIQUE 충돌 한 줄이 38시간 동안 detector 11개를 전부 멈췄다. #894 와 같은 유형).
+        실패는 삼키지 않고 `resolve_errors` 로 output 에 남긴다.
 
         열기만 하고 닫지 않으면 두 가지가 망가진다. open 목록이 단조 증가해
         "지금 무엇이 고장인가" 를 답하지 못하게 되고, 더 나쁘게는 dedupe 가
@@ -292,13 +300,27 @@ class SREIncidentAgent(Actor):
         )
 
         resolved: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
         for raw in rows:
             r = dict(raw)
             if (r["incident_type"], r["target"]) in still_open:
                 continue
             if r["incident_type"] in blocked_types:
                 continue  # detector 가 죽어서 안 보이는 것일 수 있다
-            if db_resolve_incident(r["incident_id"]):
+            try:
+                ok = db_resolve_incident(r["incident_id"])
+            except Exception as exc:  # noqa: BLE001 — 원장 정리 실패가 감시를 멈추면 안 된다
+                logger.warning("auto-resolve failed for incident %s: %s", r["incident_id"], exc)
+                errors.append(
+                    {
+                        "incident_id": r["incident_id"],
+                        "incident_type": r["incident_type"],
+                        "target": r["target"],
+                        "error": str(exc)[:200],
+                    }
+                )
+                continue
+            if ok:
                 resolved.append(
                     {
                         "incident_id": r["incident_id"],
@@ -307,7 +329,7 @@ class SREIncidentAgent(Actor):
                         "last_detected_at": r["last_detected_at"],
                     }
                 )
-        return resolved
+        return resolved, errors
 
     # ─── 8 detectors ─────────────────────────────────────────
 
