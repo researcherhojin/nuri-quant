@@ -5,7 +5,7 @@ config-over-code), 쿼리·라벨은 구현이라 여기 남는다. 아래 각 �
 쿼리 형태의 근거이므로 임계가 config 로 나가도 유지한다.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -126,6 +126,11 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         # 00:00 KST 앵커 기준 정상 최대 나이 ~127h (2026-08-26 02:00 KST 실측 — FAIL 122h
         # 상태에서 FRED 직접 조회로 금요일 이후 관측 부재 확증). 120h 로 되돌리면 매주
         # 수요일 00:00~새벽 KST 에 건강한 파이프라인이 구조적으로 FAIL 한다.
+        # 그 실측은 **평상 주말**이다 — 미국 연방 공휴일이 끼면 하루가 더 붙어 임계를 넘는다
+        # (2026-09-08 노동절 다음 날 14:30 KST, DGS3MO 09-03 → 134.5h FAIL, FRED 는
+        # realtime_end 09-04 로 최신). config 의 `holiday_calendar: us_federal` 이 그 날짜들을
+        # 나이에서 면제한다 (#1469). **Test:** tests/core/test_freshness.py::
+        # TestHolidayCalendar::test_labor_day_gap_is_warn_not_fail
         "query": (
             "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
             "WHERE indicator IN ('us_10y_yield', 'us_2y_yield', 'us_3m_yield', 'put_call_ratio') "
@@ -303,6 +308,28 @@ FRESHNESS_POLICIES: dict[str, dict] = {
 }
 
 
+def _us_federal_holidays(start: date, end: date) -> list[date]:
+    """(start, end) 안의 미국 연방 공휴일 — pandas 내장 달력, 추가 의존성 없음.
+
+    `end` 는 **뉴욕 기준 오늘**이고 열린 구간이다: 휴일은 미국에서 그 날이 다 지나야 "발행이
+    없었던 날" 이 된다. KST 자정에 세면 휴일이 미국에서 시작되기 13시간 전에 FAIL 이 새 데이터
+    없이 WARN 으로 "치유" 된다 — 증거 없이 바뀌는 신호는 Surface 축의 거짓말이다 (#1469 Codex).
+    """
+    import pandas as pd
+    from pandas.tseries.holiday import USFederalHolidayCalendar
+
+    days = USFederalHolidayCalendar().holidays(start=start, end=end)
+    # stubs 가 holidays() 원소를 NaT 가능으로 잡는다 — isinstance 로 date 만 남겨 타입을 확정한다
+    dates = [pd.Timestamp(d).to_pydatetime().date() for d in days]
+    return [d for d in dates if isinstance(d, date) and start < d < end]
+
+
+# 정책이 고를 수 있는 휴장일 달력 — 소스가 그 달력대로 발행을 멈추는 경우에만 붙인다.
+# 공휴일 하루당 24h 를 나이에서 면제한다: 임계는 평상 주말 실측(#1242)이라 3일 연휴를 못 덮고,
+# 임계를 연휴 폭만큼 넓히면 평상시 진짜 지연을 그만큼 늦게 잡는다 (#1469).
+_HOLIDAY_CALENDARS = {"us_federal": _us_federal_holidays}
+
+
 def _load_config() -> dict:
     """config/freshness.yaml 로드 + 정책 골격에 임계 주입 (#1180).
 
@@ -326,6 +353,12 @@ def _load_config() -> dict:
     for key, hours in thresholds.items():
         FRESHNESS_POLICIES[key]["warn_hours"] = hours["warn_hours"]
         FRESHNESS_POLICIES[key]["fail_hours"] = hours["fail_hours"]
+        cal = hours.get("holiday_calendar")
+        if cal is not None and cal not in _HOLIDAY_CALENDARS:
+            raise ValueError(
+                f"freshness.yaml {key}.holiday_calendar 미지원: {cal!r} (지원: {sorted(_HOLIDAY_CALENDARS)})"
+            )
+        FRESHNESS_POLICIES[key]["holiday_calendar"] = cal
 
     gate = cfg.get("verdict_gate") or []
     unknown = [k for k in gate if k not in code_keys]
@@ -400,6 +433,7 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
                 "status": "PASS",
                 "last_updated": None,
                 "age_hours": None,
+                "holidays_excused": [],
                 "message": "해당 시장 universe 미구성 — 검사 생략",
             }
         floor = max(1, math.ceil(len(members) * 0.6))
@@ -415,6 +449,7 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
             "status": "FAIL",
             "last_updated": None,
             "age_hours": None,
+            "holidays_excused": [],
             "message": "쿼리 실행 실패",
         }
 
@@ -432,6 +467,7 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
             "status": "FAIL",
             "last_updated": None,
             "age_hours": None,
+            "holidays_excused": [],
             "message": "데이터 없음",
         }
 
@@ -444,20 +480,31 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
             "status": "FAIL",
             "last_updated": str(value),
             "age_hours": None,
+            "holidays_excused": [],
             "message": f"날짜 파싱 실패: {value}",
         }
 
     age_hours = (now - last_dt).total_seconds() / 3600
 
-    if age_hours <= policy["warn_hours"]:
+    # 소스가 쉬는 공휴일은 나이에서 뺀다 — 발행이 없는 날을 "낡음" 으로 세면 연휴마다 오탐이다.
+    holidays: list[date] = []
+    cal = policy.get("holiday_calendar")
+    if cal:
+        from zoneinfo import ZoneInfo
+
+        holidays = _HOLIDAY_CALENDARS[cal](last_dt.date(), now.astimezone(ZoneInfo("America/New_York")).date())
+    effective_hours = age_hours - 24 * len(holidays)
+    excuse = f", 공휴일 {len(holidays)}일 제외 → {effective_hours:.1f}h" if holidays else ""
+
+    if effective_hours <= policy["warn_hours"]:
         status = "PASS"
-        message = f"최신 ({age_hours:.1f}h)"
-    elif age_hours <= policy["fail_hours"]:
+        message = f"최신 ({age_hours:.1f}h{excuse})"
+    elif effective_hours <= policy["fail_hours"]:
         status = "WARN"
-        message = f"업데이트 필요 ({age_hours:.1f}h)"
+        message = f"업데이트 필요 ({age_hours:.1f}h{excuse})"
     else:
         status = "FAIL"
-        message = f"오래됨 ({age_hours:.1f}h)"
+        message = f"오래됨 ({age_hours:.1f}h{excuse})"
 
     return {
         "key": key,
@@ -465,6 +512,7 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
         "status": status,
         "last_updated": str(value),
         "age_hours": round(age_hours, 1),
+        "holidays_excused": [d.isoformat() for d in holidays],
         "message": message,
     }
 

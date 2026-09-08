@@ -5,14 +5,14 @@
 
 thresholds:
   prices: { warn_hours: 48, fail_hours: 120 } # 주말/공휴일 감안 (금→화 = 96h)
-  macro_vix: { warn_hours: 48, fail_hours: 132 } # VIXCLS 도 FRED T+1 일간 시리즈 — macro_market 과 같은 물리 (#1242). 72h 는 완벽한 금요일 데이터도 월 새벽(77h)에 깨지고, FRED 경로 최악(목 관측→화 새벽)은 ~125h 라 매주 주말 상시 발화했다 (2026-08-30 실측 77.3h FAIL)
+  macro_vix: { warn_hours: 48, fail_hours: 132 } # holiday_calendar 없음 — CBOE 는 콜럼버스·재향군인의 날에도 VIX 를 발행하므로 연방 달력을 붙이면 진짜 정체가 그 날 24h 를 공짜로 얻는다 (#1469 Codex) # VIXCLS 도 FRED T+1 일간 시리즈 — macro_market 과 같은 물리 (#1242). 72h 는 완벽한 금요일 데이터도 월 새벽(77h)에 깨지고, FRED 경로 최악(목 관측→화 새벽)은 ~125h 라 매주 주말 상시 발화했다 (2026-08-30 실측 77.3h FAIL)
   factors: { warn_hours: 48, fail_hours: 120 } # 재료가 prices 라 임계 동일 (#1071)
   signals: { warn_hours: 48, fail_hours: 120 }
   signals_kr: { warn_hours: 48, fail_hours: 120 } # 설날·추석엔 정직하게 WARN/FAIL
   fundamentals: { warn_hours: 192, fail_hours: 360 } # 주 1회 잡 — 정상 나이 168h (#1109)
   fundamentals_kr: { warn_hours: 192, fail_hours: 360 }
   macro_fear_greed: { warn_hours: 24, fail_hours: 48 }
-  macro_market: { warn_hours: 48, fail_hours: 132 } # 금리 3종 + put/call — 소스가 T+1 발행이라 prices(120)보다 넓다 (#1242)
+  macro_market: { warn_hours: 48, fail_hours: 132, holiday_calendar: us_federal } # 금리 3종 + put/call — 소스가 T+1 발행이라 prices(120)보다 넓다 (#1242). holiday_calendar: 미국 연방 공휴일(뉴욕 기준으로 지난 날)당 24h 면제 — 132h 는 평상 주말 실측이라 3일 연휴(노동절 2026-09-08 실측 134.5h)를 못 덮었다 (#1469). 성금요일은 연방 휴일이 아니라 면제 안 됨 — 보수적 방향의 오탐으로 둔다
   macro_monthly: { warn_hours: 1080, fail_hours: 1800 } # 월간 릴리즈: 45d 한 사이클 / 75d 두 사이클
   consensus: { warn_hours: 24, fail_hours: 48 }
   decisions_context: { warn_hours: 24, fail_hours: 60 } # 매일 07:05 cron — warn 은 consensus 와 동일. fail 은 (55.08, 79.08) 열린구간이어야 한다: 하루 degradation 최대 나이 55.08h 는 WARN 으로 흡수, 3차 예정 실행(79.08h) 전에는 FAIL (#1261)
