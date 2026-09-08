@@ -46,6 +46,7 @@ _INCIDENT_TYPES = (
     "schema_version_drift",
     "required_table_missing",
     "writer_role",
+    "frontend_build_stale",  # 프로덕션 프론트 빌드 낡음/실패 (#1463) — migration 62 와 짝
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")

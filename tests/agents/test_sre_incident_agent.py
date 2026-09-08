@@ -3,9 +3,9 @@
 검증 (Codex Round 5 Layer A):
 - Layer A enforcement (outcome 필수, ZERO LLM)
 - 4 actions: scan / acknowledge / resolve / list_open
-- 8 detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
+- detector 각각 (orphan_run / disk_full / db_lock / scheduler_heartbeat /
   actor_failure_streak / data_freshness_critical / signal_evaluation_stale /
-  alpha_report_stale)
+  alpha_report_stale / frontend_build_stale)
 - Idempotent UNIQUE(incident_type,target,status='open') — 재detection 시 신규 row X
 - resolve 후 재발 시 신규 incident_id (status 가 UNIQUE 의 일부)
 - Discord publish — critical=INCIDENTS, warning=OPS, 재detection 시 publish 차단
@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import time
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -31,6 +33,7 @@ from nuri.agents.actors.sre_incident_agent import (
     FAILURE_STREAK_WARN,
     FRESHNESS_FAIL_CRIT,
     FRESHNESS_FAIL_WARN,
+    FRONTEND_BUILD_STALE_MIN,
     ORPHAN_CRIT_HOURS,
     ORPHAN_WARN_HOURS,
     SIGNAL_EVAL_CRIT_DAYS,
@@ -1367,3 +1370,261 @@ class TestAbsorbedHealthChecks:
         if expect_incident:
             assert out[0]["evidence"]["role"] == role
             assert out[0]["severity"] == "warning"
+
+
+# ═══════════════════════════════════════════════════════
+# Detector: frontend_build_stale (#1463)
+# ═══════════════════════════════════════════════════════
+
+
+def _git(cwd, *args: str, when: int | None = None) -> None:
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+    if when is not None:
+        env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = f"@{when} +0000"
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, env=env)
+
+
+@pytest.fixture()
+def prod_frontend(tmp_path):
+    """primary 머신 흉내: frontend/ 커밋 하나를 가진 레포 + detector 경로를 그리로 돌린다.
+
+    반환값은 (frontend_dir, commit_epoch). `set_build(epoch)` 로 BUILD_ID mtime 을 놓는다.
+    """
+    repo = tmp_path / "repo"
+    fe = repo / "frontend"
+    (fe / "app").mkdir(parents=True)
+    (fe / "app" / "page.tsx").write_text("export default () => null;\n")
+    _git(repo, "init", "-b", "main")
+    _git(repo, "add", "-A")
+    commit_epoch = int(time.time()) - 3 * 3600  # 3h 전 커밋
+    _git(repo, "commit", "-m", "seed", when=commit_epoch)
+
+    def set_build(epoch: float):
+        (fe / ".next").mkdir(exist_ok=True)
+        bid = fe / ".next" / "BUILD_ID"
+        bid.write_text("build-x")
+        os.utime(bid, (epoch, epoch))
+        return bid
+
+    def commit(when: int) -> str:
+        """frontend/ 에 커밋 하나 더 (커밋 시각 고정). 반환: sha."""
+        (fe / "app" / "page.tsx").write_text(f"export default () => {when};\n")
+        _git(repo, "add", "-A")
+        _git(repo, "commit", "-m", "touch", when=when)
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+
+    with (
+        patch("nuri.agents.actors.sre_incident_agent._machine_role", return_value="primary"),
+        patch("nuri.agents.actors.sre_incident_agent.REPO_ROOT", repo),
+        patch("nuri.agents.actors.sre_incident_agent.FRONTEND_DIR", fe),
+    ):
+        yield type(
+            "P",
+            (),
+            {
+                "fe": fe,
+                "repo": repo,
+                "commit_epoch": commit_epoch,
+                "set_build": staticmethod(set_build),
+                "commit": staticmethod(commit),
+            },
+        )
+
+
+class TestFrontendBuildStaleDetector:
+    """#1463 Gotcha-Test Pair — '프로덕션 프론트 빌드가 계속 실패하는데 아무도 모른다'.
+
+    핵심은 mtime 비교만이 아니라 `build_frontend.sh` 의 마커 둘을 읽는 것이다. 그 스크립트는
+    같은 커밋을 재시도하지 않으므로(`.next.failed`), 마커를 안 보면 계속 실패하는 빌드는 mtime
+    드리프트로만 보이고 — 그마저 이전 빌드가 복원돼 있어 "낡음" 으로 뭉뚱그려진다. 실패는
+    실패라고 말해야 조치(`--retry`)가 나온다.
+    """
+
+    def _scan(self):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            result = actor.run({"action": "scan"})
+        return result.output["incidents"]
+
+    def _mine(self, incidents):
+        return [i for i in incidents if i["incident_type"] == "frontend_build_stale"]
+
+    def test_current_build_is_silent(self, patched_db, no_publish, prod_frontend):
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        assert self._mine(self._scan()) == []
+
+    def test_recent_commit_not_yet_built_is_normal(self, patched_db, no_publish, prod_frontend):
+        """autopull 이 5분마다 따라잡는다 — 방금 온 커밋이 아직 안 빌드된 건 사고가 아니다."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        prod_frontend.commit(int(time.time()) - 10 * 60)  # 10분 전 커밋, 빌드보다 새롭다
+        assert self._mine(self._scan()) == []
+
+    def test_small_gap_that_persists_past_threshold_warns(self, patched_db, no_publish, prod_frontend):
+        """잠금(Codex P1) — 낡음은 **미빌드 지속 시간**이지 커밋−빌드 간격이 아니다.
+
+        빌드 T, 커밋 T+1분, 그 뒤 3시간 동안 마커 없는 실패(npm 부재·락 경합)가 반복되면 간격은
+        영원히 1분이다. 간격 기준 구현으로 되돌리면 이 테스트가 FAIL 한다.
+        """
+        prod_frontend.set_build(prod_frontend.commit_epoch - 60)  # 3h 전 커밋보다 1분 오래된 빌드
+        out = self._mine(self._scan())
+        assert len(out) == 1
+        assert out[0]["severity"] == "warning" and out[0]["target"] == "frontend_build"
+        e = out[0]["evidence"]
+        assert e["reason"] == "stale" and e["build_missing"] is False
+        assert e["unbuilt_minutes"] > FRONTEND_BUILD_STALE_MIN
+        assert e["code_commit"] and e["code_committed_at_utc"] and e["build_id_mtime_utc"]
+
+    def test_build_in_progress_is_not_judged(self, patched_db, no_publish, prod_frontend):
+        """빌드 중에는 .next 가 .next.bak 으로 비켜나 BUILD_ID 가 없다 — 락 pid 가 살아 있으면 skip."""
+        lock = prod_frontend.fe / ".next.lock"
+        lock.mkdir()
+        holder = subprocess.Popen(["sleep", "30"])
+        try:
+            (lock / "pid").write_text(str(holder.pid))
+            assert self._mine(self._scan()) == []
+        finally:
+            holder.kill()
+
+    def test_dead_lock_holder_does_not_hide_a_missing_build(self, patched_db, no_publish, prod_frontend):
+        lock = prod_frontend.fe / ".next.lock"
+        lock.mkdir()
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        (lock / "pid").write_text(str(dead.pid))
+        out = self._mine(self._scan())
+        assert len(out) == 1 and out[0]["evidence"]["build_missing"] is True
+
+    def test_failed_marker_for_an_older_commit_is_not_a_failure_yet(self, patched_db, no_publish, prod_frontend):
+        """새 커밋이 왔고 다음 주기가 마커를 지우고 재시도한다 — 옛 sha 마커는 실패가 아니다."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        (prod_frontend.fe / ".next.failed").write_text("0000000000000000000000000000000000000000\n")
+        prod_frontend.commit(int(time.time()) - 5 * 60)
+        assert self._mine(self._scan()) == []
+
+    def test_failed_marker_beats_a_fresh_pending_marker(self, patched_db, no_publish, prod_frontend):
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        sha = prod_frontend.commit(int(time.time()) - 5 * 60)
+        (prod_frontend.fe / ".next.failed").write_text(sha + "\n")
+        (prod_frontend.fe / ".next.restart_pending").touch()
+        out = self._mine(self._scan())
+        assert len(out) == 1 and out[0]["evidence"]["reason"] == "build_failed"
+
+    def test_missing_build_on_primary_warns(self, patched_db, no_publish, prod_frontend):
+        """BUILD_ID 자체가 없다 — 재부팅 뒤 빈 대시보드가 뜨는 상태."""
+        out = self._mine(self._scan())
+        assert len(out) == 1
+        assert out[0]["evidence"]["reason"] == "stale" and out[0]["evidence"]["build_missing"] is True
+
+    def test_failed_marker_wins_even_when_build_looks_current(self, patched_db, no_publish, prod_frontend):
+        """잠금 — 실패 후 이전 빌드가 복원돼 mtime 만 보면 '낡음' 이거나, 복원본이 최근이면
+        아예 조용하다. 마커를 안 읽는 구현으로 되돌리면 이 테스트가 FAIL 한다."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=prod_frontend.repo, capture_output=True, text=True
+        ).stdout.strip()
+        (prod_frontend.fe / ".next.failed").write_text(sha + "\n")
+        out = self._mine(self._scan())
+        assert len(out) == 1
+        e = out[0]["evidence"]
+        assert e["reason"] == "build_failed"
+        assert e["failed_commit"] == sha
+
+    def test_fresh_restart_pending_marker_is_not_yet_an_incident(self, patched_db, no_publish, prod_frontend):
+        """방금 빌드하고 재기동 중일 수 있다 — 한 주기 안의 마커는 정상."""
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        (prod_frontend.fe / ".next.restart_pending").touch()
+        assert self._mine(self._scan()) == []
+
+    def test_restart_pending_past_threshold_warns(self, patched_db, no_publish, prod_frontend):
+        prod_frontend.set_build(prod_frontend.commit_epoch + 60)
+        mark = prod_frontend.fe / ".next.restart_pending"
+        mark.touch()
+        old = time.time() - (FRONTEND_BUILD_STALE_MIN + 5) * 60
+        os.utime(mark, (old, old))
+        out = self._mine(self._scan())
+        assert len(out) == 1 and out[0]["evidence"]["reason"] == "restart_failed"
+
+    def test_replica_and_unknown_hosts_are_ignored(self, patched_db, no_publish, prod_frontend):
+        """dev 머신의 .next 는 의미가 없다 — primary 밖에서는 발화하지 않는다."""
+        for role in ("replica", "unknown"):
+            with patch("nuri.agents.actors.sre_incident_agent._machine_role", return_value=role):
+                assert self._mine(self._scan()) == [], role
+
+    def test_no_frontend_dir_is_skipped(self, patched_db, no_publish, prod_frontend):
+        with patch("nuri.agents.actors.sre_incident_agent.FRONTEND_DIR", prod_frontend.repo / "nope"):
+            assert self._mine(self._scan()) == []
+
+    def test_git_failure_surfaces_as_detector_failure_not_silence(self, patched_db, no_publish, prod_frontend):
+        """git 이 죽으면 '감시가 안 된다' 가 남아야 한다 — 조용한 skip 이면 사고와 구분이 안 된다."""
+        # 존재하는 디렉터리지만 git 레포가 아니다 — 없는 경로면 cwd 오류라 `check=` 와 무관하게
+        # 죽어서, git 의 비정상 종료를 삼키는 회귀(check=False)를 못 잡는다.
+        plain = prod_frontend.repo.parent / "plain-dir"
+        plain.mkdir()
+        with patch("nuri.agents.actors.sre_incident_agent.REPO_ROOT", plain):
+            incidents = self._scan()
+        assert self._mine(incidents) == []
+        failures = [
+            i for i in incidents if i["incident_type"] == "db_lock" and i["target"] == "_detect_frontend_build_stale"
+        ]
+        assert len(failures) == 1
+
+    def test_resolves_once_build_catches_up(self, patched_db, no_publish, prod_frontend):
+        """조건이 풀리면 기존 `_auto_resolve` 가 닫는다 — 열기만 하는 detector 는 재발 알림을 삼킨다."""
+        bid = prod_frontend.set_build(prod_frontend.commit_epoch - 60)
+        assert len(self._mine(self._scan())) == 1
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "UPDATE incidents SET last_detected_at = datetime('now', '-48 hours') WHERE incident_type = 'frontend_build_stale'"
+            )
+        os.utime(bid, None)  # 빌드가 따라잡음
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            out = actor.run({"action": "scan"}).output
+        assert [r for r in out["auto_resolved"] if r["incident_type"] == "frontend_build_stale"]
+
+    @pytest.mark.parametrize(
+        ("evidence", "needle"),
+        [
+            ({"reason": "build_failed", "failed_commit": "deadbeefcafe"}, "deadbeef"),
+            ({"reason": "restart_failed"}, "재기동"),
+            ({"reason": "stale", "build_missing": True}, "BUILD_ID"),
+            (
+                {
+                    "reason": "stale",
+                    "build_missing": False,
+                    "unbuilt_minutes": 540.0,
+                    "code_committed_at_utc": "2026-09-08 04:43:20",
+                    "build_id_mtime_utc": "2026-08-29 20:58:00",
+                },
+                "540분",
+            ),
+        ],
+    )
+    def test_human_summary_names_the_cause(self, evidence, needle):
+        text = _human_incident_summary("frontend_build_stale", "frontend_build", evidence)
+        assert needle in text and "frontend_build_stale on" not in text
+
+    def test_outbox_has_meta_for_the_kind(self):
+        """#ops 디지스트가 cryptic 타입명 대신 의미+조치를 보이게 (alert readability)."""
+        from nuri.agents.discord.outbox import _SRE_KIND_META
+
+        meta = _SRE_KIND_META["sre_frontend_build_stale"]
+        assert "--retry" in meta["action"]
