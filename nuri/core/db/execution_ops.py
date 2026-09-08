@@ -47,6 +47,7 @@ _INCIDENT_TYPES = (
     "required_table_missing",
     "writer_role",
     "frontend_build_stale",  # 프로덕션 프론트 빌드 낡음/실패 (#1463) — migration 62 와 짝
+    "scan_failure",  # 감시 자체의 실패 — detector 예외 · 원장 정리 실패 (#1473) — migration 64 와 짝
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")

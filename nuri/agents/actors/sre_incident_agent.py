@@ -275,7 +275,7 @@ class SREIncidentAgent(Actor):
         evidence = {"error": error[:200], "detector_error": error[:200]}
         try:
             return self._record_incident(
-                incident_type="db_lock",  # 감시 실패 = infra 의심 (원래 분류 유지)
+                incident_type="scan_failure",  # 감시 자체의 실패 — db_lock 과 분리 (#1473)
                 severity="warning",
                 target=target,
                 evidence=evidence,
@@ -284,7 +284,7 @@ class SREIncidentAgent(Actor):
         except Exception as exc:  # noqa: BLE001 — 기록 실패는 output 에라도 남긴다
             logger.warning("scan failure for %s could not be recorded: %s", target, exc)
             return {
-                "incident_type": "db_lock",
+                "incident_type": "scan_failure",
                 "severity": "warning",
                 "target": target,
                 "evidence": {**evidence, "record_error": str(exc)[:200]},
@@ -337,6 +337,10 @@ class SREIncidentAgent(Actor):
             r = dict(raw)
             if (r["incident_type"], r["target"]) in still_open:
                 continue
+            # scan_failure 는 여기 안 걸린다 — detector 가 *내는* 타입이 아니라 detector 의 실패
+            # 기록이라 `_DETECTOR_INCIDENT_TYPES` 에 없다. 죽은 detector 의 row 는 still_open 에
+            # 있어 위에서 걸러지고, 복구된 detector 의 row 는 다른 detector(예: _detect_db_lock)가
+            # 아직 죽어 있어도 닫힌다. db_lock 을 같이 쓰던 #1467 에서는 그게 막혔다 (#1473).
             if r["incident_type"] in blocked_types:
                 continue  # detector 가 죽어서 안 보이는 것일 수 있다
             try:
@@ -1016,6 +1020,8 @@ def _human_incident_summary(incident_type: str, target: str, evidence: dict[str,
         return f"{target} — 사용률 {e.get('percent_used', 0):.0f}% (여유 {e.get('free_gb', 0):.0f}GB)"
     if incident_type == "db_lock":
         return f"{target} — DB 접근 실패: {e.get('error', '?')}"
+    if incident_type == "scan_failure":
+        return f"감시 {target} 자체가 죽음 — {e.get('error', '?')}"
     if incident_type == "orphan_run":
         return f"{target} 작업 — {e.get('age_hours', 0):.1f}h 미완료(orphan)"
     if incident_type == "actor_failure_streak":

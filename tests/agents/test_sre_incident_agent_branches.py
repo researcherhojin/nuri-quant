@@ -95,8 +95,8 @@ def patched_db(db_path):
 
 
 class TestDetectorExceptionFallback:
-    def test_detector_raise_synthesizes_db_lock_record(self, patched_db):
-        """L126-127: detector 가 raise 하면 다른 detector 진행 + 합성 db_lock 레코드.
+    def test_detector_raise_records_a_scan_failure(self, patched_db):
+        """L126-127: detector 가 raise 하면 다른 detector 진행 + scan_failure 인시던트 (#1467/#1473).
 
         Regression: 본 분기 제거 시 detector 1 개 실패가 scan 전체를 abort 한다.
         """

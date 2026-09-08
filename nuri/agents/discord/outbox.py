@@ -555,6 +555,11 @@ _SRE_KIND_META: dict[str, dict[str, str]] = {
         "what": "시그널 평가 heartbeat 공백 — 발화 0건(정상)과 평가 미실행(고장) 구분 불가 상태",
         "action": "조치: `python -m nuri.collectors.technical` 수동 실행 / 스케줄러 점검",
     },
+    "sre_scan_failure": {
+        "label": "🩺 감시 자체 실패",
+        "what": "SRE detector 가 예외로 죽었거나 인시던트 원장 정리가 실패 — 그 축의 감시가 비어 있음",
+        "action": "조치: mini `data/logs/sre_scan.err` 의 traceback 확인 — 코드 결함이면 이슈, DB 라면 db_lock 인시던트와 함께 봄",
+    },
     "sre_frontend_build_stale": {
         "label": "🧱 대시보드 빌드 낡음",
         "what": "프로덕션 프론트 빌드가 코드보다 낡았거나 빌드/재기동이 실패한 채 남음 — 대시보드가 옛 코드를 서빙",
