@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import ast
 import collections
+import functools
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -110,13 +111,19 @@ def _callee_name(call: ast.Call, aliases: dict[str, str]) -> str | None:
     return None
 
 
+@functools.cache
+def _trees() -> dict[Path, ast.Module]:
+    """nuri/ 전체 AST — 프로세스당 1회. 세 테스트가 각자 파싱하면 CI(4-core, 8 worker, coverage)에서
+    12.8s 짜리 call 이 셋이 된다 (#1475)."""
+    return {path: ast.parse(path.read_text(encoding="utf-8")) for path in sorted(NURI.rglob("*.py"))}
+
+
+@functools.cache
 def _scan() -> list[tuple[str, int, str, str]]:
     """(파일, 줄, 호출자, 피호출자) — db_path 를 안 넘긴 지점."""
-    trees: dict[Path, ast.Module] = {}
+    trees = _trees()
     accepts: set[str] = set()
-    for path in sorted(NURI.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        trees[path] = tree
+    for tree in trees.values():
         accepts |= _accepts_db_path(tree)
 
     findings = []
@@ -162,8 +169,7 @@ class TestDbPathIsForwarded:
         `_accepts_db_path` 나 경로 glob 이 깨지면 findings 가 빈 리스트가 되고 위
         두 테스트가 **아무것도 검사하지 않은 채** 초록이 된다.
         """
-        trees = [ast.parse(p.read_text(encoding="utf-8")) for p in NURI.rglob("*.py")]
         accepts = collections.Counter()
-        for t in trees:
+        for t in _trees().values():
             accepts.update(_accepts_db_path(t))
         assert len(accepts) > 100, f"db_path 를 받는 함수가 {len(accepts)}개뿐 — 스캐너가 깨졌다"
