@@ -16,7 +16,9 @@ from pathlib import Path
 
 import pandas as pd
 
+from nuri.core.brief_scope import memo
 from nuri.core.db import query, query_df
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -385,7 +387,17 @@ def _check_data_freshness(db_path=None) -> bool:
 
 
 def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None:
-    """시장 레짐 분류 (동적 임계값 + 히스테리시스)."""
+    """시장 레짐 분류 (동적 임계값 + 히스테리시스). 브리프 범위 안에서는 (date, db) 당 한 번 (#1499)."""
+    # 키: (모드, 날짜, DB). date=None 은 "라이브(신선도 검사 포함)" 이고 date=오늘 은 "as-of" 라 의미가 달라 같은 키를
+    # 쓰면 안 되고, 라이브 키에는 KST 날짜를 박아 자정을 넘긴 범위가 어제 레짐을 재사용하지 않게 한다. db_path 는
+    # None 과 경로 문자열 "None" 을 구분하기 위해 str() 로 뭉개지 않는다 (Codex #1499 P1/P2).
+    # **Test:** `tests/quant/regime/test_classify_regime_memo_key.py::TestRegimeMemoKey`
+    mode = "live" if date is None else "asof"
+    key = ("regime", mode, date if date is not None else today_kst(), None if db_path is None else str(db_path))
+    return memo(key, lambda: _classify_regime_uncached(date, db_path))
+
+
+def _classify_regime_uncached(date: str | None = None, db_path=None) -> RegimeState | None:
     # 데이터 신선도 체크: 72시간 초과 시 분석 차단
     if date is None:
         if not _check_data_freshness(db_path):
