@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 
 from nuri.core.agent_config import AGENT_CONFIG
+from nuri.core.brief_scope import memo, scoped
 from nuri.core.db import get_tickers
 from nuri.trading.agents.base import AgentVerdict
 
@@ -85,6 +86,11 @@ def _compute_weights(db_path=None) -> dict[str, float]:
     recommendations 대신 decisions 를 primary source 로 전환.
     See: nuri.trading.engine.decisions.compute_agent_accuracy()
     """
+    # 브리프 범위 안에서는 한 번만 — 입력이 종목과 무관한데 종목마다 원장을 다시 훑었다 (#1499)
+    return memo(("consensus_weights", str(db_path)), lambda: _compute_weights_uncached(db_path))
+
+
+def _compute_weights_uncached(db_path=None) -> dict[str, float]:
     canonical = compute_canonical_weights(db_path=db_path)
     provisional = compute_provisional_weights(db_path=db_path)
     weights, sources = select_weight_source(canonical, provisional)
@@ -177,7 +183,7 @@ def analyze_ticker(ticker: str, db_path=None) -> ConsensusResult:
     # timeout의 의미가 사라짐.
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS))
     try:
-        futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
+        futures = {executor.submit(scoped(_run_agent), agent): agent for agent in ALL_AGENTS}  # 범위 전파 (#1499)
         completed: set[concurrent.futures.Future] = set()
         try:
             for future in concurrent.futures.as_completed(futures, timeout=agent_timeout):
@@ -226,7 +232,7 @@ def stream_analyze_ticker(ticker: str, db_path=None):
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(ALL_AGENTS))
     try:
-        futures = {executor.submit(_run_agent, agent): agent for agent in ALL_AGENTS}
+        futures = {executor.submit(scoped(_run_agent), agent): agent for agent in ALL_AGENTS}  # 범위 전파 (#1499)
         completed: set[concurrent.futures.Future] = set()
         try:
             for future in concurrent.futures.as_completed(futures, timeout=agent_timeout):
