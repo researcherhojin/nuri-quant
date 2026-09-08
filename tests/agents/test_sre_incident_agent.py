@@ -1781,3 +1781,106 @@ class TestIncidentCanBeResolvedTwice:
         assert resolve_incident(second, db_path=path) is True, "프로덕션에서 죽던 두 번째 resolve"
         fourth = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 4}, db_path=path)
         assert fourth > third, "AUTOINCREMENT 가 재생성 뒤에도 이어진다"
+
+
+# ═══════════════════════════════════════════════════════
+# #1467 — 감시 자체의 실패는 실제 인시던트다
+# ═══════════════════════════════════════════════════════
+
+
+class TestScanFailuresAreRealIncidents:
+    """detector 예외와 원장 정리 실패를 DB row + Discord 로 (#1467).
+
+    예전엔 output JSON 의 합성 항목(`is_new=False`)뿐이라 DB 미기록·미발행 — 감시가 죽어도 아무도
+    모르는 형태였고 #1466 이 그 침묵 속에서 38시간을 갔다.
+    """
+
+    def _scan(self):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            return actor.run({"action": "scan"})
+
+    def test_detector_failure_is_written_and_published(self, patched_db, no_publish):
+        with patch.object(SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("boom")):
+            result = self._scan()
+        assert result.outcome == Outcome.PASS
+        rows = [r for r in _open_rows(patched_db) if r["target"] == "_detect_orphan_runs"]
+        assert rows and rows[0]["incident_type"] == "db_lock", "감시 실패가 DB 에 없다 — 예전의 침묵"
+        # 이 머신의 writer_role 같은 다른 인시던트도 publish 되므로 대상으로 거른다
+        mine = [c for c in no_publish.call_args_list if c.args[3] == "_detect_orphan_runs"]
+        assert len(mine) == 1 and mine[0].args[1] == "db_lock" and mine[0].args[2] == "warning", (
+            "warning 은 #ops 로 나가야 한다"
+        )
+
+    def test_second_failure_does_not_republish(self, patched_db, no_publish):
+        """dedupe — 같은 detector 가 매시간 죽어도 알림은 한 번, row 는 하나."""
+        with patch.object(SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("boom")):
+            self._scan()
+            self._scan()
+        assert len([r for r in _open_rows(patched_db) if r["target"] == "_detect_orphan_runs"]) == 1
+        assert len([c for c in no_publish.call_args_list if c.args[3] == "_detect_orphan_runs"]) == 1
+
+    def test_recovered_detector_is_auto_resolved(self, patched_db, no_publish):
+        with patch.object(SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("boom")):
+            self._scan()
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "UPDATE incidents SET last_detected_at = datetime('now', '-48 hours') WHERE target = '_detect_orphan_runs'"
+            )
+        out = self._scan().output
+        assert any(r["target"] == "_detect_orphan_runs" for r in out["auto_resolved"])
+        assert not [r for r in _open_rows(patched_db) if r["target"] == "_detect_orphan_runs"]
+
+    def test_resolve_failure_becomes_an_incident_too(self, patched_db, no_publish):
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        with patch(
+            "nuri.agents.actors.sre_incident_agent.db_resolve_incident",
+            side_effect=RuntimeError("UNIQUE constraint failed"),
+        ):
+            result = self._scan()
+        assert result.outcome == Outcome.PASS
+        rows = [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
+        assert rows and rows[0]["incident_type"] == "db_lock"
+        assert any(
+            i["target"] == "_auto_resolve" and "UNIQUE" in i["evidence"]["error"] for i in result.output["incidents"]
+        )
+
+    def test_resolve_failure_row_closes_on_a_later_clean_scan(self, patched_db, no_publish):
+        """실패 row 는 스캔 뒤에 append 되므로 같은 스캔의 still_open 에 없다 — 다음 정상 스캔에서
+        grace 가 지나면 닫혀야 하고, 되풀이 실패는 같은 row 를 갱신만 한다(재발행·증식 없음)."""
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        with patch(
+            "nuri.agents.actors.sre_incident_agent.db_resolve_incident",
+            side_effect=RuntimeError("UNIQUE constraint failed"),
+        ):
+            self._scan()
+            self._scan()  # 되풀이 실패
+        rows = [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
+        assert len(rows) == 1, "되풀이 실패가 row 를 늘렸다"
+        assert len([c for c in no_publish.call_args_list if c.args[3] == "_auto_resolve"]) == 1
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "UPDATE incidents SET last_detected_at = datetime('now', '-48 hours') WHERE target = '_auto_resolve'"
+            )
+        out = self._scan().output  # resolve 가 다시 되는 정상 스캔
+        assert any(r["target"] == "_auto_resolve" for r in out["auto_resolved"]), "감시 실패 row 가 영영 열려 있다"
+        assert not [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
+
+    def test_recording_failure_falls_back_to_a_synthetic_entry(self, patched_db, no_publish):
+        """DB 가 진짜 죽었으면 기록도 못 한다 — 그래도 스캔은 PASS 하고 output 에는 남는다."""
+        with (
+            patch.object(SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("boom")),
+            patch("nuri.agents.actors.sre_incident_agent.log_incident", side_effect=RuntimeError("disk I/O error")),
+        ):
+            result = self._scan()
+        assert result.outcome == Outcome.PASS
+        synth = [i for i in result.output["incidents"] if i["target"] == "_detect_orphan_runs"]
+        assert len(synth) == 1 and synth[0]["is_new"] is False
+        assert "disk I/O error" in synth[0]["evidence"]["record_error"]
