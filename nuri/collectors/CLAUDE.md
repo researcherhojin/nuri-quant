@@ -56,11 +56,12 @@ with ThreadPoolExecutor(max_workers=10) as ex:
 
 ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlying C extension call (e.g. pykrx) keeps running. **Don't rely on timeout for cancellable hangs**. Sequential + delay for hanging APIs (KRX).
 
-## OpenBB Local Import Pattern
+## OpenBB Single Entry Point (#1477)
 
-`obb` is imported **inside functions**, not at module level. This means:
+`from openbb import obb` fails on every machine with the locked pair (openbb 4.7.2 + openbb-core 1.6.13, `router.get_command_map` AttributeError), and a failed package import leaves nothing in `sys.modules`, so each call site used to pay the attempt again (1.6-2.6s). Collectors therefore call `nuri.core.openbb_compat.get_obb()` (None on failure — fall back to yfinance) instead of importing `obb` themselves; it tries once per process under a lock and logs one WARNING. This means:
 - `patch("module.obb")` will FAIL — the name doesn't exist at module level
-- Use `patch.dict(sys.modules, {"openbb": mock_module})` for testing
+- Use `patch.dict(sys.modules, {"openbb": mock_module})` for testing — `get_obb()` reads the stub even after a remembered failure
+- **Test:** `tests/core/test_openbb_compat.py::TestSoleImporter` (AST sweep: static + dynamic imports, plus a per-call-site `get_obb()` call canary)
 
 ## OpenBB Provider Limitations
 

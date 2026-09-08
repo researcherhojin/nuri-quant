@@ -22,6 +22,7 @@ import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_prices
+from nuri.core.openbb_compat import get_obb
 
 # OpenBB 프로바이더 우선순위 (무료)
 PROVIDERS = ["yfinance"]
@@ -154,8 +155,9 @@ class StockCollector(BaseCollector):
         """단일 종목 수집. OpenBB → yfinance 직접 폴백."""
         # 1차: OpenBB
         try:
-            from openbb import obb
-
+            obb = get_obb()
+            if obb is None:
+                raise RuntimeError("openbb unavailable")
             result = obb.equity.price.historical(
                 symbol=ticker,
                 start_date=start_date,

@@ -20,6 +20,7 @@ import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_db, query_df
+from nuri.core.openbb_compat import get_obb
 
 logger = logging.getLogger(__name__)
 
@@ -96,8 +97,9 @@ class EtfFlowsCollector(BaseCollector):
         """단일 ETF 정보. OpenBB → yfinance 직접 폴백."""
         # 1차: OpenBB
         try:
-            from openbb import obb
-
+            obb = get_obb()
+            if obb is None:
+                raise RuntimeError("openbb unavailable")
             r = obb.etf.info(ticker, provider="yfinance")
             df = r.to_df()
             if not df.empty:

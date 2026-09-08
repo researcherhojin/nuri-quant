@@ -16,6 +16,7 @@ import logging
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_news
+from nuri.core.openbb_compat import get_obb
 
 
 class NewsCollector(BaseCollector):
@@ -62,8 +63,9 @@ class NewsCollector(BaseCollector):
         """단일 종목 뉴스. OpenBB → yfinance 직접 폴백."""
         # 1차: OpenBB
         try:
-            from openbb import obb
-
+            obb = get_obb()
+            if obb is None:
+                raise RuntimeError("openbb unavailable")
             result = obb.news.company(symbol=ticker, provider="yfinance", limit=10)
             df = result.to_dataframe()
             if not df.empty:
