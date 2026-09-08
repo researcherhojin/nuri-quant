@@ -137,8 +137,13 @@ class TechnicalAgent(BaseAgent):
             sell_signals += 1
             reasons.append("MACD<Signal")
 
-        # 차트 패턴 기여 (시각 정보)
-        if chart is not None and chart.price > 0:
+        # 차트 패턴 기여 (시각 정보). analyze_chart 는 DB 를 직접 읽어 위 정제를 안 거치므로 비교 전에
+        # non-finite 를 걷어낸다 — inf BB/추세가 판정을 BUY 로 뒤집었다 (Codex P2, #1485)
+        if chart is not None and finite_or_none(chart.price) and chart.price > 0:
+            bb_pos = finite_or_none(chart.bb_position)
+            dist_low = finite_or_none(chart.dist_from_52w_low)
+            dist_high = finite_or_none(chart.dist_from_52w_high)
+            trend = finite_or_none(chart.trend_strength)
             if chart.macd_turn == "bullish":
                 buy_signals += 2
                 reasons.append("MACD 히스토그램 양전환")
@@ -146,26 +151,26 @@ class TechnicalAgent(BaseAgent):
                 sell_signals += 2
                 reasons.append("MACD 히스토그램 음전환")
 
-            if chart.bb_position >= 80:
+            if bb_pos is not None and bb_pos >= 80:
                 buy_signals += 1
-                reasons.append(f"BB 상단({chart.bb_position:.0f})")
-            elif chart.bb_position <= 20:
+                reasons.append(f"BB 상단({bb_pos:.0f})")
+            elif bb_pos is not None and bb_pos <= 20:
                 buy_signals += 1  # BB 하단은 반등 신호 (RSI와 동일 컨셉)
-                reasons.append(f"BB 하단({chart.bb_position:.0f})")
+                reasons.append(f"BB 하단({bb_pos:.0f})")
 
-            if chart.dist_from_52w_low <= 10 and chart.trend_strength > 0:
+            if dist_low is not None and trend is not None and dist_low <= 10 and trend > 0:
                 buy_signals += 1
-                reasons.append(f"52주 저점 +{chart.dist_from_52w_low:.0f}% 반등")
-            elif chart.dist_from_52w_high >= -3:
+                reasons.append(f"52주 저점 +{dist_low:.0f}% 반등")
+            elif dist_high is not None and dist_high >= -3:
                 sell_signals += 1
-                reasons.append(f"52주 고점 근접({chart.dist_from_52w_high:.0f}%)")
+                reasons.append(f"52주 고점 근접({dist_high:.0f}%)")
 
-            if chart.trend_strength >= 30:
+            if trend is not None and trend >= 30:
                 buy_signals += 1
-                reasons.append(f"추세강세({chart.trend_strength:+.0f})")
-            elif chart.trend_strength <= -30:
+                reasons.append(f"추세강세({trend:+.0f})")
+            elif trend is not None and trend <= -30:
                 sell_signals += 1
-                reasons.append(f"추세약세({chart.trend_strength:+.0f})")
+                reasons.append(f"추세약세({trend:+.0f})")
 
         # FINVIZ 스크리너 보조 시그널 (external_analysis 테이블)
         finviz_signals = self._get_finviz_signals(ticker, db_path=db_path)

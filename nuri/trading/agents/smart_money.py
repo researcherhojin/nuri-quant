@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.timezone import kst_now
-from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 _CFG = AGENT_CONFIG.get("smart_money", {})
 _CONF = _CFG.get("confidence", {})
@@ -93,7 +93,7 @@ class SmartMoneyAgent(BaseAgent):
                 notes.append(f"슈퍼투자자 13F 낡음(최신 {latest}) — 제외")
         if si_rows:
             investors = [r["investor"] for r in si_rows[:3]]
-            max_pct = si_rows[0]["portfolio_pct"]
+            max_pct = finite_or_none(si_rows[0]["portfolio_pct"])
             score += min(2, len(si_rows))
             reasons.append(f"슈퍼투자자 {len(si_rows)}명 보유 ({', '.join(investors[:2])})")
             if max_pct > pct_high:
@@ -138,8 +138,8 @@ class SmartMoneyAgent(BaseAgent):
         if est_rows:
             est = est_rows[0]
             rec = est.get("recommendation", "")
-            target = est.get("target_mean")
-            current = est.get("current_price")
+            target = finite_or_none(est.get("target_mean"))  # -inf 목표가가 SELL 을 만들었다 (#1485)
+            current = finite_or_none(est.get("current_price"))
 
             if rec in ("buy", "strong_buy"):
                 score += 1

@@ -6,7 +6,7 @@ WSB 전체 활동 증가 = 시장 관심도 과열.
 """
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 _CFG = AGENT_CONFIG.get("retail", {})
 _CONF = _CFG.get("confidence", {})
@@ -52,8 +52,8 @@ class RetailAgent(BaseAgent):
         post_high = _CFG.get("post_count_high", 1000)
 
         # 1. 종목별 언급 — 높으면 과열 (역발상 매도)
-        if mention_rows and mention_rows[0]["value"] is not None:
-            mentions = mention_rows[0]["value"]
+        mentions = finite_or_none(mention_rows[0]["value"]) if mention_rows else None  # NaN 은 부재 (#1485)
+        if mentions is not None:
             data["wsb_mentions"] = mentions
 
             if mentions >= hot_th:
@@ -67,8 +67,8 @@ class RetailAgent(BaseAgent):
                 reasons.append(f"WSB 적정 관심 ({mentions}건)")
 
         # 2. 전체 게시물 수 — 시장 전체 과열 판단
-        if post_rows and post_rows[0]["value"] is not None:
-            posts = post_rows[0]["value"]
+        posts = finite_or_none(post_rows[0]["value"]) if post_rows else None
+        if posts is not None:
             data["wsb_post_count"] = posts
 
             if posts >= post_high:

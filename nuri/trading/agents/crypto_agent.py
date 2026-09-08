@@ -6,7 +6,7 @@ BTC 지배력(dominance) 하락 = 알트코인 강세 = 투기 심리 과열.
 """
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 _CFG = AGENT_CONFIG.get("crypto", {})
 _CONF = _CFG.get("confidence", {})
@@ -51,9 +51,13 @@ class CryptoAgent(BaseAgent):
         reasons = []
         data = {}
 
+        # NaN/±inf 가 macro 에 들어와도 `is not None` 은 통과한다 — finite 만 값으로 친다 (#1485)
+        change = finite_or_none(change_rows[0]["value"]) if change_rows else None
+        dom = finite_or_none(dom_rows[0]["value"]) if dom_rows else None
+        btc_price = finite_or_none(btc_rows[0]["value"]) if btc_rows else None
+
         # 1. BTC 24h 변화율
-        if change_rows and change_rows[0]["value"] is not None:
-            change = change_rows[0]["value"]
+        if change is not None:
             data["btc_24h_change"] = round(change, 2)
 
             strong_rally = _CFG.get("btc_strong_rally", 10)
@@ -75,8 +79,7 @@ class CryptoAgent(BaseAgent):
                 reasons.append(f"BTC {change:.1f}% 리스크오프")
 
         # 2. BTC 지배력
-        if dom_rows and dom_rows[0]["value"] is not None:
-            dom = dom_rows[0]["value"]
+        if dom is not None:
             data["btc_dominance"] = round(dom, 1)
 
             dom_high = _CFG.get("dominance_high", 60)
@@ -90,8 +93,8 @@ class CryptoAgent(BaseAgent):
                 reasons.append(f"BTC 지배력 {dom:.0f}% (알트 강세, 투기 심리)")
 
         # 3. BTC 가격 (참고용)
-        if btc_rows and btc_rows[0]["value"] is not None:
-            data["btc_price"] = round(btc_rows[0]["value"], 0)
+        if btc_price is not None:
+            data["btc_price"] = round(btc_price, 0)
 
         if not reasons:
             return self._no_data(

@@ -7,7 +7,7 @@ PCR 낮음(≤0.7) = 과도한 낙관 → 경계 신호.
 """
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_values
 
 _CFG = AGENT_CONFIG.get("options", {})
 _CONF = _CFG.get("confidence", {})
@@ -33,7 +33,7 @@ class OptionsAgent(BaseAgent):
                 failed_reason="PCR 조회 실패",
             )
 
-        values = [r["value"] for r in rows if r["value"] is not None]
+        values = finite_values(r["value"] for r in rows)  # NULL 뿐 아니라 NaN/±inf 도 부재 (#1485)
         if not values:
             # 조회는 성공했고 행도 있는데 값이 전부 NULL — 실패가 아니라 부재다.
             return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 값 없음", abstained=True)

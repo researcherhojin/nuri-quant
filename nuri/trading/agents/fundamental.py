@@ -1,7 +1,7 @@
 """펀더멘탈 분석 에이전트 — PE, ROE, 성장률, 부채 기반 판정."""
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_or_none
 
 _CFG = AGENT_CONFIG.get("fundamental", {})
 _CONF = _CFG.get("confidence", {})
@@ -23,10 +23,11 @@ class FundamentalAgent(BaseAgent):
             )
 
         f = rows[0]
-        pe = f.get("pe_ratio")
-        roe = f.get("roe")
-        growth = f.get("revenue_growth")
-        debt = f.get("debt_to_equity")
+        # NaN/±inf 는 값이 아니다 — 아래 전부-NULL 게이트와 data_points 양쪽에 같은 규칙 (#1485)
+        pe = finite_or_none(f.get("pe_ratio"))
+        roe = finite_or_none(f.get("roe"))
+        growth = finite_or_none(f.get("revenue_growth"))
+        debt = finite_or_none(f.get("debt_to_equity"))
 
         # 행은 있는데 소비하는 네 필드가 **전부 NULL** 이면 읽은 게 없다 (#1436, codex R8).
         # 앞 게이트(`if not rows`)는 행이 있으면 통과시키므로 여기서 한 번 더 본다. 전에는

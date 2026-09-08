@@ -4,7 +4,7 @@
 from nuri.core.agent_config import AGENT_CONFIG
 from nuri.core.db import query_df
 from nuri.core.sectors import classify_sector
-from nuri.trading.agents.base import AgentVerdict, BaseAgent
+from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_values
 
 _CFG = AGENT_CONFIG.get("macro", {})
 _CONF = _CFG.get("confidence", {})
@@ -76,10 +76,10 @@ class MacroAgent(BaseAgent):
                 pass
 
         min_candles = _CFG.get("min_candles", 10)
-        if len(df) >= min_candles:
-            close = df["close"]
-            ret_5d = (close.iloc[0] - close.iloc[4]) / close.iloc[4] * 100 if len(df) >= 5 else 0
-            ret_10d = (close.iloc[0] - close.iloc[9]) / close.iloc[9] * 100 if len(df) >= 10 else 0
+        closes = finite_values(df["close"].tolist()) if not df.empty and "close" in df.columns else []
+        if len(closes) >= min_candles:  # NULL/NaN/±inf 행은 캔들이 아니다 (#1485)
+            ret_5d = (closes[0] - closes[4]) / closes[4] * 100 if closes[4] else 0
+            ret_10d = (closes[0] - closes[9]) / closes[9] * 100 if closes[9] else 0
 
             mom_5d_bull = _CFG.get("momentum_5d_bull", 8)
             mom_10d_bull = _CFG.get("momentum_10d_bull", 10)
