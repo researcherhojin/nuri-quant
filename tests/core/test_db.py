@@ -85,6 +85,36 @@ class TestUpsertPrices:
         assert len(result) == 1
         assert result[0]["close"] == 255.0
 
+    def _row(self, date, close, volume=1000000):
+        return {
+            "ticker": "TSLA",
+            "date": date,
+            "open": close,
+            "high": close,
+            "low": close,
+            "close": close,
+            "volume": volume,
+            "adj_close": close,
+        }
+
+    def test_half_row_without_close_is_not_written(self, db_path):
+        """#1480 — yfinance 미확정 세션(가격 NaN, volume 만)은 '데이터 없음' 이지 NULL 가격이 아니다."""
+        df = pd.DataFrame([self._row("2026-08-27", 250.0), self._row("2026-08-28", float("nan"), volume=38500185)])
+        assert upsert_prices(df, db_path) == 1
+        rows = query("SELECT date, close FROM prices WHERE ticker='TSLA' ORDER BY date", db_path=db_path)
+        assert [r["date"] for r in rows] == ["2026-08-27"]
+        assert query("SELECT count(*) n FROM prices WHERE close IS NULL", db_path=db_path)[0]["n"] == 0
+
+    def test_half_row_does_not_replace_a_good_row(self, db_path):
+        """INSERT OR REPLACE 라 반쪽 행이 같은 (ticker, date) 의 정상 행을 NULL 로 덮을 수 있었다."""
+        upsert_prices(pd.DataFrame([self._row("2026-08-28", 255.0)]), db_path)
+        assert upsert_prices(pd.DataFrame([self._row("2026-08-28", None)]), db_path) == 0
+        assert query("SELECT close FROM prices WHERE ticker='TSLA'", db_path=db_path)[0]["close"] == 255.0
+
+    def test_all_half_rows_returns_zero_without_touching_db(self, db_path):
+        assert upsert_prices(pd.DataFrame([self._row("2026-08-28", float("nan"))]), db_path) == 0
+        assert query("SELECT count(*) n FROM prices", db_path=db_path)[0]["n"] == 0
+
     def test_upsert_idempotent(self, db_path):
         """같은 데이터 두 번 삽입 시 레코드 수 1 유지."""
         df = pd.DataFrame(
