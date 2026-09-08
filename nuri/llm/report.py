@@ -212,6 +212,9 @@ def gather_context(db_path=None) -> ReportContext:
 
     # ── 5. Candidates (drift + conflict + tier 반영) ──
     candidates_section = "매매 후보 없음"
+    candidates = (
+        None  # 섹션 6(conflicts)이 재사용한다 — 스크리너는 signal backtest 라 두 번 돌리면 브리프 비용이 두 배 (#1496)
+    )
     try:
         from nuri.trading.recommend.candidates import (
             TIER_ACTIONABLE,
@@ -263,7 +266,7 @@ def gather_context(db_path=None) -> ReportContext:
     try:
         from nuri.trading.engine.conflicts import detect_conflicts
 
-        conflicts = detect_conflicts(db_path=db_path)
+        conflicts = detect_conflicts(candidates=candidates, db_path=db_path)  # None 이면 conflicts 가 직접 스크린한다
         if conflicts:
             lines = [f"시그널 충돌 {len(conflicts)}건:"]
             for cf in conflicts:
