@@ -596,7 +596,7 @@ jobs:
       # shard 의 200+ 패키지 캐시를 불필요하게 복원하지 않도록.
       - name: Cache uv tool dir
         if: needs.changes.outputs.run_local_llm_gate == 'true'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/uv-cache
           key: uv-local-llm-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}
