@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from nuri.core.brief_scope import brief_scope
 from nuri.quant.regime.classifier import (
     RegimeState,
     _classify_single,
@@ -213,7 +214,16 @@ def map_regime_to_strategy(
     macro_score: MacroScore | None = None,
     db_path=None,
 ) -> StrategyRecommendation | None:
-    """현재 레짐에 맞는 전략 추천 (데이터 기반 + 규칙 폴백)."""
+    """현재 레짐에 맞는 전략 추천 (데이터 기반 + 규칙 폴백). 종목 루프가 가중치·레짐을 되풀이하지 않게 범위를 연다 (#1499)."""
+    with brief_scope():
+        return _map_regime_to_strategy(regime_state, macro_score, db_path)
+
+
+def _map_regime_to_strategy(
+    regime_state: RegimeState | None = None,
+    macro_score: MacroScore | None = None,
+    db_path=None,
+) -> StrategyRecommendation | None:
     if regime_state is None:
         regime_state = classify_regime(db_path=db_path)
     if regime_state is None:
