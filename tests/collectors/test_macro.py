@@ -89,7 +89,6 @@ class TestMacroCollectorFREDAndYFinance:
         mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         assert MacroCollector()._collect_yfinance(days=30) == []
 
     def test_collect_yfinance_exception(self, monkeypatch, db_with_portfolio):
@@ -99,7 +98,6 @@ class TestMacroCollectorFREDAndYFinance:
         mock_obb.equity.price.historical.side_effect = Exception("connection error")
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         assert MacroCollector()._collect_yfinance(days=30) == []
 
     def test_collect_prefers_fred(self, monkeypatch, db_with_portfolio):
@@ -138,7 +136,6 @@ class TestMacroCollectorFREDAndYFinance:
         mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         results = MacroCollector()._collect_yfinance(days=30)
         for r in results:
             assert not pd.isna(r["value"])
@@ -160,7 +157,6 @@ class TestMacroCollectorEdgeCases:
         mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         # toss FX 실 HTTP 차단 (#829)
         monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
         collector = MacroCollector()
@@ -180,7 +176,6 @@ class TestMacroCollectorEdgeCases:
         mock_result.to_df.return_value = mock_df
         mock_obb = MagicMock()
         mock_obb.equity.price.historical.return_value = mock_result
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
         # toss FX 실 HTTP 차단 (#829)
         monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
         collector = MacroCollector()

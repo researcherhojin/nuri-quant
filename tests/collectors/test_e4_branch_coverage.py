@@ -346,21 +346,11 @@ class TestStockYfinanceFallback:
         mock_yf = MagicMock()
         mock_yf.download.return_value = raw
 
-        # Force OpenBB failure → fallback to yfinance direct
         c = StockCollector()
         with (
             patch.dict(
                 sys.modules,
-                {
-                    "yfinance": mock_yf,
-                    "openbb": MagicMock(
-                        obb=MagicMock(
-                            equity=MagicMock(
-                                price=MagicMock(historical=MagicMock(side_effect=RuntimeError("OpenBB down")))
-                            )
-                        )
-                    ),
-                },
+                {"yfinance": mock_yf},
             ),
         ):
             result = c._collect_ticker("AAPL", "2026-01-01", "2026-01-31")
@@ -370,7 +360,7 @@ class TestStockYfinanceFallback:
         assert "date" in result.columns
 
     def test_yfinance_direct_also_fails(self, db_path):
-        """Both providers fail → returns None (warning logged)."""
+        """yfinance fails → returns None (warning logged)."""
         from nuri.collectors.stock import StockCollector
 
         mock_yf = MagicMock()
@@ -379,14 +369,7 @@ class TestStockYfinanceFallback:
         c = StockCollector()
         with patch.dict(
             sys.modules,
-            {
-                "yfinance": mock_yf,
-                "openbb": MagicMock(
-                    obb=MagicMock(
-                        equity=MagicMock(price=MagicMock(historical=MagicMock(side_effect=RuntimeError("OpenBB"))))
-                    )
-                ),
-            },
+            {"yfinance": mock_yf},
         ):
             result = c._collect_ticker("FAKE", "2026-01-01", "2026-01-31")
         assert result is None

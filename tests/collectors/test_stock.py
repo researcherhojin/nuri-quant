@@ -37,36 +37,33 @@ class TestStockCollectorTickerCollection:
                 "adj_close": [194.0],
             }
         )
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = mock_df
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        raw = (
+            mock_df.rename(columns=str.title)
+            .rename(columns={"Adj_Close": "Adj Close", "Date": "Date"})
+            .set_index("Date")
+        )
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=raw)))
         df = StockCollector()._collect_ticker("AAPL", "2025-01-01", "2025-01-30")
         assert df is not None and not df.empty
 
     def test_collect_ticker_empty(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.stock import StockCollector
-
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = pd.DataFrame()
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.stock import StockCollector
+
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=pd.DataFrame())))
         assert StockCollector()._collect_ticker("AAPL", "2025-01-01", "2025-01-30") is None
 
     def test_collect_ticker_exception(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.stock import StockCollector
-
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.side_effect = Exception("provider error")
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.stock import StockCollector
+
+        monkeypatch.setitem(
+            sys.modules, "yfinance", MagicMock(download=MagicMock(side_effect=Exception("provider error")))
+        )
         assert StockCollector()._collect_ticker("AAPL", "2025-01-01", "2025-01-30") is None
 
     def test_collect_ticker_no_adj_close(self, monkeypatch, db_with_portfolio):
@@ -82,13 +79,10 @@ class TestStockCollectorTickerCollection:
                 "volume": [50000000],
             }
         )
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = mock_df
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        raw = mock_df.rename(columns=str.title).set_index("Date")
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=raw)))
         df = StockCollector()._collect_ticker("AAPL", "2025-01-01", "2025-01-30")
         assert df is not None and "adj_close" in df.columns
 
@@ -128,13 +122,10 @@ class TestStockCollectorEdgeCases:
                 "adj_close": [194.0],
             }
         )
-        mock_result = MagicMock()
-        mock_result.to_dataframe.return_value = mock_df
-        mock_obb = MagicMock()
-        mock_obb.equity.price.historical.return_value = mock_result
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        raw = mock_df.rename(columns=str.title).set_index("Date")
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=raw)))
         assert not StockCollector().collect(period="5d").empty
 
 

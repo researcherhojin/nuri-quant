@@ -10,65 +10,66 @@ import pandas as pd
 
 class TestNewsCollectorScenarios:
     def test_collect_success(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        news_df = pd.DataFrame(
-            {"title": ["Apple beats"], "url": ["https://example.com/1"], "source": ["Reuters"]},
-            index=pd.to_datetime(["2025-01-28"]),
-        )
-        mock_obb = MagicMock()
-        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.news import NewsCollector
+
+        raw = [
+            {
+                "content": {
+                    "title": "Apple beats",
+                    "canonicalUrl": {"url": "https://example.com/1"},
+                    "provider": {"displayName": "Reuters"},
+                    "pubDate": "2025-01-28T12:00:00Z",
+                }
+            }
+        ]
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(news=raw))))
         results = NewsCollector().collect()
         assert results[0]["title"] == "Apple beats"
 
     def test_collect_no_url(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        news_df = pd.DataFrame(
-            {"title": ["No link"], "url": [""], "source": ["Unknown"]}, index=pd.to_datetime(["2025-01-28"])
-        )
-        mock_obb = MagicMock()
-        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.news import NewsCollector
+
+        raw = [{"content": {"title": "No link", "canonicalUrl": {"url": ""}, "pubDate": "2025-01-28T00:00:00Z"}}]
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(news=raw))))
         assert NewsCollector().collect() == []
 
     def test_collect_date_in_column(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        news_df = pd.DataFrame(
-            {"title": ["News"], "url": ["https://example.com/1"], "source": ["Reuters"], "date": ["2025-01-28"]}
-        )
-        mock_obb = MagicMock()
-        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=news_df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.news import NewsCollector
+
+        raw = [
+            {
+                "content": {
+                    "title": "News",
+                    "canonicalUrl": {"url": "https://example.com/1"},
+                    "provider": {"displayName": "Reuters"},
+                    "pubDate": "2025-01-28T09:30:00Z",
+                }
+            }
+        ]
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(news=raw))))
         results = NewsCollector().collect()
         assert results[0]["date"] == "2025-01-28"
 
     def test_collect_empty(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        mock_obb = MagicMock()
-        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=pd.DataFrame()))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.news import NewsCollector
+
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(news=[]))))
         assert NewsCollector().collect() == []
 
     def test_collect_exception(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        mock_obb = MagicMock()
-        mock_obb.news.company.side_effect = Exception("API error")
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
+        from nuri.collectors.news import NewsCollector
+
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(side_effect=Exception("API error"))))
         assert NewsCollector().collect() == []
 
 
@@ -87,11 +88,6 @@ class TestYfinanceFallback:
         import sys
 
         from nuri.collectors.news import NewsCollector
-
-        # OpenBB primary 강제 실패시킴 → fallback 유도
-        mock_obb = MagicMock()
-        mock_obb.news.company.side_effect = ImportError("OBBject_CompanyNews not found")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
 
         nested = [
             {
@@ -123,10 +119,6 @@ class TestYfinanceFallback:
 
         from nuri.collectors.news import NewsCollector
         from nuri.core.timezone import KST
-
-        mock_obb = MagicMock()
-        mock_obb.news.company.side_effect = ImportError("OBBject_CompanyNews not found")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
 
         # UTC 2026-04-16 14:00:00 → KST 2026-04-16 23:00 (같은 날)
         epoch_same_day = int(datetime(2026, 4, 16, 14, 0, 0, tzinfo=timezone.utc).timestamp())
@@ -170,10 +162,6 @@ class TestYfinanceFallback:
 
         from nuri.collectors.news import NewsCollector
 
-        mock_obb = MagicMock()
-        mock_obb.news.company.side_effect = ImportError("broken")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
-
         mixed = [
             # nested 정상
             {
@@ -215,10 +203,6 @@ class TestYfinanceFallback:
 
         from nuri.collectors.news import NewsCollector
 
-        mock_obb = MagicMock()
-        mock_obb.news.company.side_effect = ImportError("broken")
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
-
         mock_yf = MagicMock()
         mock_yf.Ticker.side_effect = RuntimeError("network fail")
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
@@ -254,27 +238,16 @@ class TestYfinanceFallback:
 
 
 class TestNewsCollectorDefaultDateFallback:
-    """`_parse_openbb_news` 의 today_kst() fallback 분기 (line 100).
-
-    row.name 가 strftime 없는 객체이고 row.index 에 'date' 도 없을 때 today_kst() 사용.
-    """
+    """yfinance 항목에 pubDate 가 없으면 today_kst() 로 채운다 (#1477 — openbb 파서 제거 후 유일한 파서)."""
 
     def test_falls_back_to_today_when_no_date_anywhere(self, monkeypatch, db_with_portfolio):
-        from nuri.collectors.news import NewsCollector
-
-        # index 가 정수 (no strftime) + columns 에 'date' 없음
-        df = pd.DataFrame(
-            {"title": ["No date anywhere"], "url": ["https://example.com/x"], "source": ["X"]}
-        )  # default RangeIndex (integers)
-
-        mock_obb = MagicMock()
-        mock_obb.news.company.return_value = MagicMock(to_dataframe=MagicMock(return_value=df))
         import sys
 
-        monkeypatch.setitem(sys.modules, "openbb", MagicMock(obb=mock_obb))
-
+        from nuri.collectors.news import NewsCollector
         from nuri.core.timezone import today_kst
 
+        raw = [{"content": {"title": "No date anywhere", "canonicalUrl": {"url": "https://example.com/x"}}}]
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=MagicMock(return_value=MagicMock(news=raw))))
         results = NewsCollector().collect()
         assert len(results) >= 1
         assert results[0]["date"] == today_kst()

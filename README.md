@@ -329,7 +329,6 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 ![pandas](https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white)
 ![TA-Lib](https://img.shields.io/badge/TA--Lib-indicators-2C3E50)
 ![walk-forward](https://img.shields.io/badge/walk--forward-null--safe_gate-orange)
-![OpenBB](https://img.shields.io/badge/OpenBB-data-FFD23F)
 ![Riskfolio-Lib](https://img.shields.io/badge/Riskfolio--Lib-optimization-lightgrey)
 ![yfinance](https://img.shields.io/badge/yfinance-market_data-purple)
 
@@ -349,7 +348,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 8,217 collected across 377 files | ✅ |
+| **Backend tests** | 8,209 collected across 376 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,722 across 146 vitest files — 99.87% statement coverage (2,410 of 2,413) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
@@ -393,7 +392,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence pattern |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
-| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) · [OpenBB](https://docs.openbb.co/) | Walk-forward null-safe gate · optimization · data |
+| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Walk-forward null-safe gate · optimization · data |
 
 Academic foundations: O'Neil _CAN SLIM_, Minervini _SEPA_, Shefrin & Statman 1985 (disposition effect), Markowitz, Damodaran, Bernstein.
 
