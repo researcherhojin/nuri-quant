@@ -279,7 +279,8 @@ class KoreanMarketAgent(BaseAgent):
         for row in rows:
             cat = row["category"]
             cnt = row["cnt"]
-            conf = row["avg_conf"] or 0.5
+            conf = finite_or_none(row["avg_conf"])
+            conf = 0.5 if conf is None else min(max(float(conf), 0.0), 1.0)  # inf 가 최대 부스트를 받았다 (#1485)
             if cnt < 2:
                 continue  # 1건은 노이즈 가능성
             if cat in ("export_surge", "demand_growth") and sector in EXPORT_SECTORS:

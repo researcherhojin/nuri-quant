@@ -725,6 +725,14 @@ class TestRealSdkWireContract:
 
 
 class TestRetrySemantics:
+    @pytest.fixture(autouse=True)
+    def _no_backoff_sleep(self, monkeypatch):
+        """SDK 의 지수 backoff(0.5s → 1s → …) 를 잠재운다 — 이 클래스는 **시도 횟수와 원장 행 수**를
+        잠그지 대기 시간을 잠그지 않는다. CI 4-core 러너에서 이 sleep 이 12s 짜리 call 로 부풀었다 (#1475)."""
+        from openai._base_client import SyncAPIClient
+
+        monkeypatch.setattr(SyncAPIClient, "_sleep_for_retry", lambda self, *a, **k: None)
+
     """재시도가 감사 원장에 어떻게 나타나는지를 **동작으로** 잠근다 (#1410).
 
     docstring 이 "The wrapper does NOT retry internally" 라고 단언했지만 실제로는
