@@ -1294,7 +1294,7 @@ class TestIncidentAutoResolve:
         _seed_open_incident(patched_db, "orphan_run", "stuck-actor", hours_ago=48)
         detected = [{"incident_type": "orphan_run", "target": "stuck-actor"}]
 
-        resolved = SREIncidentAgent()._auto_resolve(detected, failed_detectors=set())
+        resolved, _errors = SREIncidentAgent()._auto_resolve(detected, failed_detectors=set())
 
         assert not [r for r in resolved if r["target"] == "stuck-actor"]
         assert [r for r in _open_rows(patched_db) if r["target"] == "stuck-actor"]
@@ -1628,3 +1628,156 @@ class TestFrontendBuildStaleDetector:
 
         meta = _SRE_KIND_META["sre_frontend_build_stale"]
         assert "--retry" in meta["action"]
+
+
+# ═══════════════════════════════════════════════════════
+# #1466 — 같은 (type, target) 을 두 번 resolve 할 수 있어야 한다
+# ═══════════════════════════════════════════════════════
+
+
+class TestIncidentCanBeResolvedTwice:
+    """#1466 Gotcha-Test Pair — 'SRE 스캔이 38시간째 UNIQUE 충돌로 죽는데 아무도 모른다'.
+
+    `UNIQUE(incident_type, target, status)` 는 resolved 에도 걸려 두 번째 해소가 첫 번째와
+    충돌했다. 2026-09-06 16:01 부터 `_auto_resolve` 가 매시간 그 지점에서 스캔 전체를 죽였다.
+    migration 63 이 유일성을 open 행 한정 partial index 로 바꾼다 — 그 마이그레이션을 빼면
+    `test_second_resolution_of_the_same_incident_succeeds` 가 IntegrityError 로 FAIL 한다.
+    """
+
+    def test_second_resolution_of_the_same_incident_succeeds(self, db_path):
+        """open → resolve → 재발(open) → resolve. 두 번째 resolve 가 프로덕션에서 죽던 줄이다."""
+        first = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 1}, db_path=db_path)
+        assert resolve_incident(first, db_path=db_path) is True
+        second = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 2}, db_path=db_path)
+        assert second != first, "재발이 새 행이어야 두 번째 resolve 가 의미가 있다"
+        assert resolve_incident(second, db_path=db_path) is True
+        rows = query(
+            "SELECT status FROM incidents WHERE incident_type='scheduler_heartbeat' AND target='scheduler'",
+            db_path=db_path,
+        )
+        assert [r["status"] for r in rows] == ["resolved", "resolved"]
+
+    def test_open_uniqueness_is_still_enforced(self, db_path):
+        """불변식은 그대로다 — open 은 (type,target) 당 하나. 이게 없으면 dedupe 가 무너진다."""
+        from nuri.core.db import DatabaseError  # IntegrityError 의 상위 — sqlite3 직접 import 금지
+
+        log_incident("disk_full", "warning", "disk", {}, db_path=db_path)
+        with get_db(db_path) as conn, pytest.raises(DatabaseError):
+            conn.execute(
+                "INSERT INTO incidents (incident_type, severity, target, status, evidence_json) "
+                "VALUES ('disk_full', 'warning', 'disk', 'open', '{}')"
+            )
+
+    def test_schema_has_partial_index_not_table_unique(self, db_path):
+        """구조 잠금 — 테이블 UNIQUE 가 되살아나면 위 동작 테스트보다 먼저 여기서 이름을 댄다."""
+        table_sql = query("SELECT sql FROM sqlite_master WHERE name='incidents'", db_path=db_path)[0]["sql"]
+        assert "UNIQUE" not in table_sql, "테이블 UNIQUE(type,target,status) 가 돌아왔다 — #1466 재발"
+        idx = query(
+            "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_incidents_open_unique'",
+            db_path=db_path,
+        )
+        assert idx and "WHERE status = 'open'" in idx[0]["sql"]
+
+    def test_auto_resolve_closes_a_recurrence_whose_first_episode_was_already_resolved(self, patched_db, no_publish):
+        """프로덕션 상태 재현 — #7 resolved + #8 open(3h 지남) → 스캔이 PASS 하고 #8 이 닫힌다."""
+        first = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 1}, db_path=patched_db)
+        resolve_incident(first, db_path=patched_db)
+        _seed_open_incident(patched_db, "scheduler_heartbeat", "scheduler", hours_ago=48)
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            result = actor.run({"action": "scan"})
+        assert result.outcome == Outcome.PASS
+        assert any(r["target"] == "scheduler" for r in result.output["auto_resolved"])
+        assert result.output["resolve_errors"] == []
+        assert not [r for r in _open_rows(patched_db) if r["target"] == "scheduler"]
+
+    def test_a_failing_resolve_does_not_kill_the_scan(self, patched_db, no_publish):
+        """원장 정리 한 행의 실패가 detector 전부를 멈추면 안 된다 (#894 유형). 삼키지도 않는다."""
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.db_resolve_incident",
+                side_effect=RuntimeError("UNIQUE constraint failed: incidents.incident_type"),
+            ),
+        ):
+            result = actor.run({"action": "scan"})
+        assert result.outcome == Outcome.PASS
+        errs = result.output["resolve_errors"]
+        assert len(errs) == 1 and errs[0]["target"] == "ghost-actor" and "UNIQUE" in errs[0]["error"]
+        assert result.output["summary"]["resolve_errors"] == 1
+        assert result.output["auto_resolved"] == []
+
+    def test_a_failing_candidate_query_does_not_kill_the_scan(self, patched_db, no_publish):
+        """후보 조회 자체가 죽어도(락·fd 고갈) detector 결과는 살아남는다 — 조회 실패는 output 에 남긴다."""
+        real_query = __import__("nuri.core.db", fromlist=["query"]).query
+
+        def flaky(sql, *a, **kw):
+            if "FROM incidents" in sql and "last_detected_at) <" in sql:
+                raise RuntimeError("database is locked")
+            kw.setdefault("db_path", patched_db)
+            return real_query(sql, *a, **kw)
+
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+            patch("nuri.agents.actors.sre_incident_agent.query", side_effect=flaky),
+        ):
+            result = actor.run({"action": "scan"})
+        assert result.outcome == Outcome.PASS
+        assert "incidents" in result.output and result.output["auto_resolved"] == []
+        errs = result.output["resolve_errors"]
+        assert len(errs) == 1 and "locked" in errs[0]["error"] and errs[0]["incident_id"] is None
+
+    def test_upgrade_from_v62_preserves_rows_and_unblocks_the_second_resolve(self, tmp_path):
+        """업그레이드 경로 — 프로덕션 모양(v62 + resolved·open·acknowledged 같은 키)의 DB 에 63 을
+        적용한다. 신규 DB 테스트만으로는 `INSERT … SELECT` 컬럼 매핑 오류가 안 잡힌다 (Codex P2)."""
+        from nuri.core.db import connection as conn_mod
+        from nuri.core.db_migrations import _MIGRATIONS
+
+        path = tmp_path / "v62.db"
+        with patch.object(conn_mod, "_MIGRATIONS", [m for m in _MIGRATIONS if m[0] <= 62]):
+            init_db(path)
+        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == 62
+        first = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 1}, db_path=path)
+        assert resolve_incident(first, db_path=path)
+        second = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 2}, db_path=path)
+        third = log_incident("disk_full", "warning", "disk", {"n": 3}, db_path=path)
+        assert acknowledge_incident(third, db_path=path)
+        with get_db(path) as conn:  # v62 는 두 번째 resolve 를 거부한다 — 프로덕션 오류 재현
+            with pytest.raises(Exception, match="UNIQUE"):
+                conn.execute("UPDATE incidents SET status='resolved' WHERE incident_id = ?", (second,))
+        before = query(
+            "SELECT incident_id, incident_type, target, status, evidence_json FROM incidents ORDER BY incident_id",
+            db_path=path,
+        )
+
+        init_db(path)  # → 63
+
+        after = query(
+            "SELECT incident_id, incident_type, target, status, evidence_json FROM incidents ORDER BY incident_id",
+            db_path=path,
+        )
+        assert [dict(r) for r in after] == [dict(r) for r in before], "재생성이 행/컬럼을 바꿨다"
+        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == 63
+        assert resolve_incident(second, db_path=path) is True, "프로덕션에서 죽던 두 번째 resolve"
+        fourth = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 4}, db_path=path)
+        assert fourth > third, "AUTOINCREMENT 가 재생성 뒤에도 이어진다"

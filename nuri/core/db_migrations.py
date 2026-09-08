@@ -1990,4 +1990,47 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        63,
+        "incidents — UNIQUE(type,target,status) 를 open 한정 partial index 로 (#1466)",
+        # `UNIQUE(incident_type, target, status)` 는 open 을 (type,target) 당 하나로 묶으려던
+        # 것인데 `resolved` 에도 걸린다. 같은 (type,target) 이 한 번 해소된 뒤 다시 열리고 다시
+        # 해소되는 순간 두 번째 resolved 행이 첫 번째와 충돌한다. #944 의 자동 해소가 그 경로를
+        # 매시간 밟게 됐고, 2026-09-06 16:01 부터 프로덕션 스캔이 38회 연속 그 한 줄에서 죽었다
+        # — 그동안 인프라 감시가 전부 꺼져 있었다. 코드가 실제로 기대는 불변식은 "open 은 하나"
+        # 뿐이라(`log_incident` 는 status='open' 만 조회) 그것만 partial index 로 남긴다.
+        # SQLite 는 제약 변경 미지원 → 45/46/49/62 와 같은 재생성. 인덱스는 DROP 과 함께
+        # 사라지므로 다시 만든다.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale',
+                'alpha_report_stale','schema_version_drift','required_table_missing',
+                'writer_role','frontend_build_stale'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_open_unique
+            ON incidents(incident_type, target) WHERE status = 'open';
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]
