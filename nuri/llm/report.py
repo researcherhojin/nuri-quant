@@ -26,6 +26,8 @@ from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
+from nuri.core.brief_scope import brief_scope
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -114,7 +116,12 @@ def format_agent_summary(verdicts) -> str:
 
 
 def gather_context(db_path=None) -> ReportContext:
-    """모든 데이터 소스를 수집하여 구조화된 컨텍스트 생성."""
+    """모든 데이터 소스를 수집하여 구조화된 컨텍스트 생성. 한 브리프 = 한 범위 — 가중치·레짐은 1회 (#1499)."""
+    with brief_scope():
+        return _gather_context(db_path)
+
+
+def _gather_context(db_path=None) -> ReportContext:
     known_tickers = set()
     known_numbers = set()
 
