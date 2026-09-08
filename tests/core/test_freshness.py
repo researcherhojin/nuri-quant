@@ -1044,3 +1044,83 @@ class TestDecisionsContextPolicy:
         result = check_freshness("decisions_context", db_path=db_path)
         assert 24 <= result["age_hours"] < 48, result
         assert result["status"] == "WARN", result
+
+
+class TestHolidayCalendar:
+    """`holiday_calendar: us_federal` — 소스가 쉬는 공휴일은 나이에서 뺀다 (#1469).
+
+    2026-09-08(노동절 다음 날) 14:30 KST 에 macro_market 이 FAIL 134.5h 였는데 FRED 는
+    realtime_end 09-04 로 최신이었다. 132h 임계는 평상 주말 실측(#1242)이라 3일 연휴를 못 덮는다.
+    """
+
+    _LABOR_DAY_NOW = datetime(2026, 9, 8, 14, 30, tzinfo=KST)
+
+    @staticmethod
+    def _seed_macro(db_path, three_month: str, others: str):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            for ind, d in (
+                ("us_3m_yield", three_month),
+                ("us_10y_yield", others),
+                ("us_2y_yield", others),
+                ("put_call_ratio", others),
+            ):
+                conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?, ?, 1.0)", (ind, d))
+
+    def test_labor_day_gap_is_warn_not_fail(self, db_path):
+        """프로덕션 재현 — DGS3MO 09-03(목), 나머지 09-04(금), 09-07 노동절, 지금 09-08 14:30."""
+        from nuri.core.freshness import check_freshness
+
+        self._seed_macro(db_path, "2026-09-03", "2026-09-04")
+        with patch("nuri.core.freshness.kst_now", return_value=self._LABOR_DAY_NOW):
+            r = check_freshness("macro_market", db_path=db_path)
+        assert r["age_hours"] == 134.5
+        assert r["holidays_excused"] == ["2026-09-07"]
+        assert r["status"] == "WARN", r
+        assert "공휴일 1일 제외" in r["message"]
+
+    def test_same_gap_without_a_holiday_is_still_fail(self, db_path):
+        """잠금 — 면제는 공휴일이 있을 때만. 한 주 뒤 같은 간격(09-10 목 → 09-15 화)은 FAIL 이 맞다."""
+        from nuri.core.freshness import check_freshness
+
+        self._seed_macro(db_path, "2026-09-10", "2026-09-11")
+        with patch("nuri.core.freshness.kst_now", return_value=datetime(2026, 9, 15, 14, 30, tzinfo=KST)):
+            r = check_freshness("macro_market", db_path=db_path)
+        assert r["age_hours"] == 134.5 and r["holidays_excused"] == []
+        assert r["status"] == "FAIL"
+
+    def test_policies_without_a_calendar_are_untouched(self, db_path):
+        """prices 는 달력이 없다 — 같은 창에 공휴일이 있어도 면제하지 않는다 (KR 종목은 미국 휴일과 무관)."""
+        from nuri.core.db import get_db
+        from nuri.core.freshness import check_freshness
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('SPY', '2026-09-03', 100, 100, 100, 100, 1000)"
+            )
+        with patch("nuri.core.freshness.kst_now", return_value=self._LABOR_DAY_NOW):
+            r = check_freshness("prices", db_path=db_path)
+        assert r["holidays_excused"] == [] and r["status"] == "FAIL"
+
+    def test_vix_shares_the_calendar_with_macro_market(self):
+        """같은 FRED T+1 물리 — 임계를 같이 두는 이유(#1242)와 같은 이유로 달력도 같이 둔다."""
+        from nuri.core.freshness import FRESHNESS_POLICIES
+
+        assert FRESHNESS_POLICIES["macro_market"]["holiday_calendar"] == "us_federal"
+        assert FRESHNESS_POLICIES["macro_vix"]["holiday_calendar"] == "us_federal"
+
+    def test_config_rejects_an_unknown_calendar(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+
+        import nuri.core.freshness as fresh_mod
+
+        with open(fresh_mod._CONFIG_PATH, encoding="utf-8") as f:
+            cfg = _yaml.safe_load(f)
+        cfg["thresholds"]["macro_market"]["holiday_calendar"] = "klingon"
+        bad = tmp_path / "freshness.yaml"
+        bad.write_text(_yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+        monkeypatch.setattr(fresh_mod, "_CONFIG_PATH", bad)
+        with pytest.raises(ValueError, match="holiday_calendar"):
+            fresh_mod._load_config()

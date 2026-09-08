@@ -12,6 +12,7 @@ FRED_API_KEY가 있으면 FRED 우선, 없으면 yfinance에서 핵심 지표를
 
 import logging
 import os
+import time
 from datetime import timedelta
 
 import pandas as pd
@@ -24,6 +25,10 @@ from nuri.core.timezone import kst_now, today_kst
 load_dotenv()
 
 # FRED 시리즈 ID 매핑 (확장: 풀 수익률 곡선 + 경제 지표 + crash precursor)
+# FRED 호출 시도 횟수와 재시도 간격(초) — 간헐 5xx 흡수용 (#1469)
+FRED_ATTEMPTS = 2
+FRED_RETRY_DELAY_SEC = 2.0
+
 FRED_SERIES = {
     # 기존
     "fed_funds_rate": "FEDFUNDS",
@@ -173,22 +178,35 @@ class MacroCollector(BaseCollector):
 
         records = []
         for indicator, series_id in FRED_SERIES.items():
-            try:
-                # units 는 FRED_UNITS 에 등재된 지표만 붙인다 — 나머지는 원본 단위가
-                # 이름과 일치하므로 기본값(`lin`)이 맞다.
-                extra = {"units": FRED_UNITS[indicator]} if indicator in FRED_UNITS else {}
-                series = fred.get_series(series_id, observation_start=start_date, **extra)
-                for date, value in series.dropna().items():
-                    records.append(
-                        {
-                            "indicator": indicator,
-                            "date": date.strftime("%Y-%m-%d"),
-                            "value": float(value),
-                            "source": "FRED",
-                        }
-                    )
-            except Exception as e:
-                self.logger.warning(f"{indicator} ({series_id}): FRED 수집 실패 — {e}")
+            # units 는 FRED_UNITS 에 등재된 지표만 붙인다 — 나머지는 원본 단위가
+            # 이름과 일치하므로 기본값(`lin`)이 맞다.
+            extra = {"units": FRED_UNITS[indicator]} if indicator in FRED_UNITS else {}
+            # FRED 는 간헐 5xx 를 낸다 — 프로덕션 실측 매일 11~23건 WARNING 이 8/30 이후 만성이었고
+            # 다음 시간 실행이 채워 데이터는 늘 최신이었다 (#1469). 한 번 더 시도하고, 그래도
+            # 실패한 것만 WARNING 으로 남긴다 — 첫 실패는 사건이 아니라 잡음이다.
+            series = None
+            last_err: Exception | None = None
+            for attempt in range(FRED_ATTEMPTS):
+                try:
+                    series = fred.get_series(series_id, observation_start=start_date, **extra)
+                    break
+                except Exception as e:  # noqa: BLE001 — 5xx·타임아웃·파싱 전부 재시도 대상
+                    last_err = e
+                    if attempt + 1 < FRED_ATTEMPTS:
+                        self.logger.debug(f"{indicator} ({series_id}): FRED 1차 실패, 재시도 — {e}")
+                        time.sleep(FRED_RETRY_DELAY_SEC)
+            if series is None:
+                self.logger.warning(f"{indicator} ({series_id}): FRED 수집 실패 ({FRED_ATTEMPTS}회) — {last_err}")
+                continue
+            for date, value in series.dropna().items():
+                records.append(
+                    {
+                        "indicator": indicator,
+                        "date": date.strftime("%Y-%m-%d"),
+                        "value": float(value),
+                        "source": "FRED",
+                    }
+                )
 
         return records
 

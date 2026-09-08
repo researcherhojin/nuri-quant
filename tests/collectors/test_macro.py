@@ -492,3 +492,50 @@ class TestFredUnitsMatchIndicatorNames:
         )
         # 오버라이드가 없는 지표에는 units 를 붙이면 안 된다 (원본 단위가 맞다).
         assert by_series.get("UNRATE") is None, "UNRATE 는 이미 퍼센트라 units 를 붙이면 안 된다"
+
+
+class TestFredRetry:
+    """FRED 간헐 5xx 는 한 번 더 시도하고, 그래도 실패한 것만 WARNING (#1469).
+
+    프로덕션 실측: 8/30 이후 매일 11~23건 `FRED 수집 실패` WARNING 이 만성이었고 다음 시간 실행이
+    채워 데이터는 늘 최신이었다 — 첫 실패를 사건으로 적으면 읽는 사람이 진짜 장애와 구분 못 한다.
+    """
+
+    def _collector(self, monkeypatch, side_effects):
+        import sys
+
+        from nuri.collectors.macro import MacroCollector
+
+        mock_fred = MagicMock()
+        mock_fred.get_series.side_effect = side_effects
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+        monkeypatch.setattr("nuri.collectors.macro.time.sleep", lambda _s: None)
+        c = MacroCollector()
+        c.api_key = "test_key"
+        return c, mock_fred
+
+    def test_transient_failure_is_retried_and_not_a_warning(self, monkeypatch, db_with_portfolio, caplog):
+        from nuri.collectors.macro import FRED_SERIES
+
+        ok = pd.Series([4.2], index=pd.to_datetime(["2026-09-04"]))
+        # 첫 시리즈만 1회 5xx 뒤 성공, 나머지는 바로 성공
+        effects = [Exception("Internal Server Error"), ok] + [ok] * (len(FRED_SERIES) - 1)
+        c, mock_fred = self._collector(monkeypatch, effects)
+        with caplog.at_level("WARNING", logger="nuri.collectors.macro"):
+            records = c._collect_fred(days=30)
+        assert len(records) == len(FRED_SERIES), "재시도 성공분이 빠졌다"
+        assert mock_fred.get_series.call_count == len(FRED_SERIES) + 1
+        assert not [r for r in caplog.records if "FRED 수집 실패" in r.getMessage()], (
+            "재시도로 성공했는데 WARNING 을 남겼다"
+        )
+
+    def test_persistent_failure_warns_once_with_attempt_count(self, monkeypatch, db_with_portfolio, caplog):
+        from nuri.collectors.macro import FRED_ATTEMPTS, FRED_SERIES
+
+        c, mock_fred = self._collector(monkeypatch, Exception("Internal Server Error"))
+        with caplog.at_level("WARNING", logger="nuri.collectors.macro"):
+            assert c._collect_fred(days=30) == []
+        warns = [r for r in caplog.records if "FRED 수집 실패" in r.getMessage()]
+        assert len(warns) == len(FRED_SERIES), "시리즈당 WARNING 하나"
+        assert all(f"({FRED_ATTEMPTS}회)" in r.getMessage() for r in warns)
+        assert mock_fred.get_series.call_count == len(FRED_SERIES) * FRED_ATTEMPTS
