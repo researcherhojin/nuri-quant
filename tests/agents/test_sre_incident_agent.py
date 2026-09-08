@@ -1795,7 +1795,7 @@ class TestScanFailuresAreRealIncidents:
     모르는 형태였고 #1466 이 그 침묵 속에서 38시간을 갔다.
     """
 
-    def _scan(self, **extra_patches):
+    def _scan(self):
         actor = SREIncidentAgent()
         with (
             patch("nuri.agents.actors.sre_incident_agent.kst_now", return_value=_EVAL_FIXED_NOW),
@@ -1851,6 +1851,27 @@ class TestScanFailuresAreRealIncidents:
         assert any(
             i["target"] == "_auto_resolve" and "UNIQUE" in i["evidence"]["error"] for i in result.output["incidents"]
         )
+
+    def test_resolve_failure_row_closes_on_a_later_clean_scan(self, patched_db, no_publish):
+        """실패 row 는 스캔 뒤에 append 되므로 같은 스캔의 still_open 에 없다 — 다음 정상 스캔에서
+        grace 가 지나면 닫혀야 하고, 되풀이 실패는 같은 row 를 갱신만 한다(재발행·증식 없음)."""
+        _seed_open_incident(patched_db, "orphan_run", "ghost-actor", hours_ago=48)
+        with patch(
+            "nuri.agents.actors.sre_incident_agent.db_resolve_incident",
+            side_effect=RuntimeError("UNIQUE constraint failed"),
+        ):
+            self._scan()
+            self._scan()  # 되풀이 실패
+        rows = [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
+        assert len(rows) == 1, "되풀이 실패가 row 를 늘렸다"
+        assert len([c for c in no_publish.call_args_list if c.args[3] == "_auto_resolve"]) == 1
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "UPDATE incidents SET last_detected_at = datetime('now', '-48 hours') WHERE target = '_auto_resolve'"
+            )
+        out = self._scan().output  # resolve 가 다시 되는 정상 스캔
+        assert any(r["target"] == "_auto_resolve" for r in out["auto_resolved"]), "감시 실패 row 가 영영 열려 있다"
+        assert not [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
 
     def test_recording_failure_falls_back_to_a_synthetic_entry(self, patched_db, no_publish):
         """DB 가 진짜 죽었으면 기록도 못 한다 — 그래도 스캔은 PASS 하고 output 에는 남는다."""
