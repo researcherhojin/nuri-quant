@@ -25,6 +25,7 @@ import pytest
 LAUNCHD_DIR = Path("scripts/launchd")
 DEPLOY_SCRIPT = Path("scripts/deploy/deploy_to_mini.sh")
 AUTOPULL_SCRIPT = Path("scripts/deploy/autopull_receiver.sh")
+BUILD_SCRIPT = Path("scripts/deploy/build_frontend.sh")
 
 # dashboard 는 상주지만 npm 빌드 산출물을 서빙한다 — 빌드가 바뀔 때만 바운스하는 게 맞고,
 # 그 조건부 처리는 4단계에 이미 있다. python 판정에서 자연히 빠지지만 의도를 명시해 둔다.
@@ -124,6 +125,39 @@ class TestDeployBouncesEveryResidentPythonService:
     def test_dashboard_stays_conditional(self):
         """dashboard 는 이 규칙 대상이 아니다 — 빌드 산출물 서빙이라 조건부가 맞다."""
         assert not any(label in _NOT_PYTHON_BY_DESIGN for label in resident_python_labels())
+
+
+class TestBothPathsBuildTheFrontendTheSameWay:
+    """프론트 빌드도 두 경로가 **같은 스크립트**를 부른다 (#1462).
+
+    2026-07-27 에 수동 경로에만 재빌드를 넣고 자동 경로는 WARN 로그로 두었다가, 2026-09-08 에
+    프로덕션이 9일 된 빌드를 서빙하는 것을 발견했다 — 위 `TestAutopullDeclaresTheSameServices`
+    가 잠근 데몬 재기동(#940→#1023)과 같은 비대칭이다. 목록 대조로는 부족했다(로직이 두 벌이면
+    다시 갈라진다) — 로직을 한 파일에 두고 두 경로는 호출만 하게 하고, 그 호출을 여기서 본다.
+    """
+
+    @pytest.mark.parametrize("path", [AUTOPULL_SCRIPT, DEPLOY_SCRIPT], ids=["autopull", "deploy_to_mini"])
+    def test_path_invokes_the_shared_build_script(self, path):
+        """주석이 아니라 **호출**을 본다 — 줄머리가 `#` 이 아닌 줄에서 `bash …/build_frontend.sh`."""
+        src = path.read_text(encoding="utf-8")
+        # autopull 은 형제 경로(`$(dirname "$0")/build_frontend.sh`)로, deploy_to_mini 는 원격의
+        # `scripts/deploy/build_frontend.sh` 로 부른다 — 파일명만 고정하고 경로 표기는 안 본다.
+        assert re.search(r"^[^#\n]*\bbash\b[^\n]*build_frontend\.sh", src, re.M), (
+            f"{path} 가 build_frontend.sh 를 부르지 않는다 — 그 경로로 배포하면 프론트가 낡은 채 남는다"
+        )
+
+    @pytest.mark.parametrize("path", [AUTOPULL_SCRIPT, DEPLOY_SCRIPT], ids=["autopull", "deploy_to_mini"])
+    def test_path_has_no_inline_npm_logic(self, path):
+        """npm 을 직접 부르는 줄이 다시 생기면 두 경로가 또 갈라진다 — 스크립트 안에서만."""
+        src = path.read_text(encoding="utf-8")
+        assert not re.search(r"^[^#\n]*\bnpm (ci|run build)\b", src, re.M), (
+            f"{path} 에 인라인 npm 호출이 있다 — build_frontend.sh 로 옮길 것"
+        )
+
+    def test_the_shared_script_is_where_npm_lives(self):
+        """캐너리 — 위 두 테스트가 '아무도 npm 을 안 부른다' 로도 통과하는 상태를 배제."""
+        src = BUILD_SCRIPT.read_text(encoding="utf-8")
+        assert re.search(r'"\$NPM_BIN" run build', src) and re.search(r'"\$NPM_BIN" ci\b', src)
 
 
 class TestDeployVerifiesApiLiveness:

@@ -10,7 +10,8 @@
 #   3. 변경 없으면 종료 (silent)
 #   4. 변경 있으면 ff-only merge → 비-FF면 거부 + 로그 (수동 처리 유도)
 #   5. 변경된 파일 분석 → dependency/schema 변경 시 경고
-#   6. (선택) 24/7 서비스 재시작 hook — 현재는 placeholder
+#   6. 상주 python 서비스 재기동 (#1023)
+#   7. frontend 빌드 self-heal — 새 커밋이 없는 주기에도 (#1462)
 #
 # 수동 테스트:
 #   bash scripts/autopull_receiver.sh
@@ -43,6 +44,19 @@ cd "$REPO" || { echo "[$(date '+%F %T')] FATAL: $REPO 없음" >> "$LOG"; exit 0;
 ts() { date '+%F %T'; }
 log() { echo "[$(ts)] $*" >> "$LOG"; }
 
+# 프론트 빌드는 별도 스크립트가 맡는다 (#1462) — 수동 경로(deploy_to_mini.sh 4단계)와 **같은
+# 것**을 부른다. 새 커밋이 없는 주기에도 부른다: 판정이 "코드 > 빌드" 라 밀린·실패한 빌드를
+# self-heal 하고, 최신이면 아무것도 안 찍는다. 이전에는 여기가 `frontend/package*.json` 변경에만
+# 찍히는 WARN 한 줄이었다 — 8/30 이후 17번 찍혔지만 아무도 안 받았고, 소스만 바뀐 커밋은 그
+# WARN 조차 없어서 프로덕션이 9일 된 빌드를 서빙했다.
+ensure_frontend_build() {
+    # 형제 스크립트는 **이 파일 기준**으로 찾는다 — $REPO 기준이면 NURI_REPO 로 임시 레포를
+    # 가리키는 실행 테스트에서 스크립트가 없어 조용히 실패한다 (첫 판에서 실제로 그랬다).
+    if ! bash "$(cd "$(dirname "$0")" && pwd)/build_frontend.sh" >>"$LOG" 2>&1; then
+        log "ERROR: frontend 빌드 실패 — 이전 빌드 유지 (위 출력 참조). 같은 커밋은 재시도하지 않는다(frontend/.next.failed) — 새 frontend 커밋 또는 deploy_to_mini 가 지운다; 재기동만 실패했으면 다음 주기에 재기동 재시도"
+    fi
+}
+
 # 로그 회전 — 1MB 넘으면 백업 후 새로 시작
 if [ -f "$LOG" ] && [ "$(stat -f%z "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ]; then
     mv "$LOG" "${LOG}.1"
@@ -62,7 +76,9 @@ fi
 UPSTREAM=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
 
 if [ "$BEFORE" = "$UPSTREAM" ]; then
-    # 변경 없음 — 조용히 종료 (로그 줄이려고)
+    # 변경 없음 — 조용히 종료 (로그 줄이려고). 프론트 빌드만 확인한다: 최신이면 무출력이고,
+    # 지난 주기에 실패했거나 밀렸으면 여기서 따라잡는다.
+    ensure_frontend_build
     exit 0
 fi
 
@@ -97,10 +113,9 @@ if echo "$CHANGED" | grep -qE "^(pyproject\.toml|uv\.lock)$"; then
     DEPS_CHANGED=1
 fi
 
-if echo "$CHANGED" | grep -qE "^frontend/package(-lock)?\.json$"; then
-    log "WARN: Frontend deps changed. Run manually:"
-    log "  cd $REPO/frontend && npm ci"
-fi
+# frontend/ 변경은 여기서 보지 않는다 — 맨 아래 ensure_frontend_build 가 커밋 시각 vs 빌드
+# 시각으로 판정한다 (package-lock 이 빌드보다 새로우면 npm ci 까지). 파일명 grep 은 소스만 바뀐
+# 커밋을 놓친다 — 그게 #1462 의 무신호 경로였다.
 
 if echo "$CHANGED" | grep -qE "^(nuri/core/db/.*\.py|nuri/core/db_migrations\.py|scripts/db/migrate\.py)$"; then
     log "WARN: DB schema may have changed. Run manually:"
@@ -167,7 +182,7 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
 
     # 상주 python 서비스. plist 판정 기준(StartInterval 없음 + .venv/bin/python)과
     # 일치해야 하며 `tests/scripts/test_deploy_bounces_resident_services.py` 가 대조한다.
-    # dashboard 는 빌드 산출물을 서빙하므로 제외 — 프론트 변경은 위 WARN 이 담당.
+    # dashboard 는 빌드 산출물을 서빙하므로 제외 — 재빌드했을 때만 build_frontend.sh 가 재기동한다 (#1462).
     RESIDENT_SERVICES=(com.nuri-quant.scheduler com.nuri-quant.api com.nuri-quant.discord-bot)
     for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
         if ! launchctl list 2>/dev/null | grep -q "${RESIDENT}\$"; then
@@ -183,3 +198,7 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
 else
     log "no python code/dep changes — services left running"
 fi
+
+# ── frontend 빌드 (#1462) ────────────────────────────────────────────────
+# python 재기동 **뒤**에 둔다: 빌드가 수십 초 걸리는 동안 데몬이 구코드로 남아 있을 이유가 없다.
+ensure_frontend_build
