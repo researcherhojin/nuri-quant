@@ -12,6 +12,7 @@ yfinance에서 직접 데이터를 가져오며 별도 API 키 불필요.
 """
 
 import logging
+import re
 from datetime import timedelta
 
 from nuri.core.agent_config import AGENT_CONFIG
@@ -25,6 +26,8 @@ _CONF = _CFG.get("confidence", {})
 
 
 # yfinance에서 데이터가 없는 종목 (ETF, 한국주, 레버리지) — 스킵하여 속도 개선
+_ETF_TOKEN = re.compile(r"\bETF\b", re.IGNORECASE)  # "ETF/Semiconductor", "Leveraged ETF", " etf " 전부 (#1501)
+
 SKIP_TICKERS = {
     "VOO",
     "SH",
@@ -62,7 +65,7 @@ class WallStreetAgent(BaseAgent):
 
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         # ETF, 한국주, 레버리지 종목은 yfinance Wall Street 데이터 없음 → 즉시 스킵
-        if ticker in SKIP_TICKERS or ticker.endswith(".KS"):
+        if ticker in SKIP_TICKERS or ticker.endswith(".KS") or self._unsupported_by_data(ticker, db_path):
             return AgentVerdict(self.name, ticker, "HOLD", 20, "Wall Street 데이터 미지원 종목", abstained=True)
 
         # DB에 캐시된 데이터 먼저 확인 (yfinance 호출 최소화). 그 조회들의 실패 여부를 같이
@@ -256,6 +259,24 @@ class WallStreetAgent(BaseAgent):
             "; ".join(reasons),
             data_points,
         )
+
+    def _unsupported_by_data(self, ticker: str, db_path=None) -> bool:
+        """하드코딩 `SKIP_TICKERS` 를 못 따라오는 종목을 데이터로 거른다 (#1501).
+
+        - 포트폴리오 sector 가 `ETF/…` 인 종목: 애널리스트 등급·실적 서프라이즈·내부자 거래가 없어 yfinance
+          4개 엔드포인트가 전부 **느리게** 실패한다 — mini 실측 DRAM/NASA/QTUM 각 3.6~5.5s, 브리프 34s 중 18.6s.
+        - `prices` 에 행이 없는 종목: 비상장 자리표시자(예: 사모 지분) — 상장 심볼이 아니다.
+        DB 조회 실패는 "지원" 으로 둔다(기권으로 위장하지 않는다, #1436) — 그러면 예전처럼 yfinance 로 간다.
+        """
+        sector_rows = self._safe_query("SELECT sector FROM portfolio WHERE ticker = ? LIMIT 1", (ticker,), db_path)
+        if not sector_rows:
+            return False  # 포트폴리오 밖(스캐너 종목) — 판정 근거가 없다, 가격 조회도 하지 않는다
+        if _ETF_TOKEN.search(str(sector_rows[0].get("sector") or "")):
+            return True
+        price_rows = self._safe_query("SELECT 1 AS one FROM prices WHERE ticker = ? LIMIT 1", (ticker,), db_path)
+        # 조회 실패는 "지원" — DB 장애가 기권으로 위장하면 안 된다 (#1436).
+        # **Test:** tests/trading/agents/test_wallstreet_skip_unsupported.py::TestSkipByData::test_failed_price_probe_does_not_abstain
+        return not price_rows.failed and not price_rows
 
     def _check_cached(self, ticker: str, db_path=None, failures: list | None = None) -> AgentVerdict | None:
         """DB에 캐시된 Wall Street 데이터로 판정 (yfinance 호출 없이).
