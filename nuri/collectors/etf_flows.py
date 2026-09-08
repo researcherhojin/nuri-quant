@@ -2,10 +2,8 @@
 """
 ETF 자금흐름 수집기 — 섹터 ETF AUM/거래량 추적.
 
-(OpenBB BaseApp 동적 attribute (etf 등) stub 부재 — runtime 정상.)
-
-OpenBB etf.info primary + yfinance `Ticker.info` fallback → total_assets, volume_avg,
-nav_price. OpenBB 상류 bug (#274, upstream #7379/#7460) 동안 yfinance 로 자동 수집.
+yfinance `Ticker.info` 직접 호출 → total_assets, volume_avg, nav_price. openbb etf.info 1차 경로는
+#1477 로 제거 (상류 bug #274 이후로도 실제 수집은 늘 이 경로였다).
 
 AUM 변화를 주기적으로 수집하여 섹터 자금흐름(rotation)을 추정한다.
 
@@ -20,7 +18,6 @@ import pandas as pd
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_db, query_df
-from nuri.core.openbb_compat import get_obb
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +54,7 @@ class EtfFlowsCollector(BaseCollector):
         super().__init__("etf_flows")
 
     def collect(self, **kwargs) -> list[dict]:
-        """ETF 정보 수집. OpenBB etf.info primary + yfinance `Ticker.info` fallback."""
+        """ETF 정보 수집 (yfinance `Ticker.info`)."""
         import warnings
 
         from tqdm import tqdm
@@ -94,28 +91,8 @@ class EtfFlowsCollector(BaseCollector):
         return results
 
     def _fetch_etf(self, ticker: str, label: str, today: str) -> dict | None:
-        """단일 ETF 정보. OpenBB → yfinance 직접 폴백."""
-        # 1차: OpenBB
-        try:
-            obb = get_obb()
-            if obb is None:
-                raise RuntimeError("openbb unavailable")
-            r = obb.etf.info(ticker, provider="yfinance")
-            df = r.to_df()
-            if not df.empty:
-                row = df.iloc[0]
-                return {
-                    "ticker": ticker,
-                    "date": today,
-                    "name": str(row.get("name", label))[:100],
-                    "total_assets": float(row["total_assets"]) if pd.notna(row.get("total_assets")) else None,
-                    "volume_avg": float(row["volume_avg"]) if pd.notna(row.get("volume_avg")) else None,
-                    "nav_price": float(row["nav_price"]) if pd.notna(row.get("nav_price")) else None,
-                }
-        except Exception as e:
-            self.logger.debug(f"{ticker}: OpenBB etf.info 실패 — {e}")
-
-        # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
+        """단일 ETF 정보 (yfinance .info)."""
+        # yfinance 직접 호출 — openbb 1차 경로는 #1477 로 제거
         try:
             import yfinance as yf
 

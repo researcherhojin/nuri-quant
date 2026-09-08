@@ -767,6 +767,7 @@
     "selftext",
     "setattr",
     "setdefault",
+    "setitem",
     "setuptools",
     "sharpes",
     "shefrin",

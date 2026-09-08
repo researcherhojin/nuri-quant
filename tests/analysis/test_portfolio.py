@@ -4,6 +4,7 @@
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 
 class TestPortfolioAnalysis:
@@ -72,23 +73,16 @@ class TestPortfolioAnalysis_R9:
 class TestPortfolioCoverageGaps:
     """Lock-tests for portfolio.py missing lines."""
 
-    def test_get_exchange_rate_via_openbb(self, db_path, monkeypatch):
-        """No DB rate → OpenBB returns price (lines 52-58)."""
+    def test_get_exchange_rate_via_yfinance(self, db_path, monkeypatch):
+        """No DB rate → yfinance KRW=X 마지막 종가 (#1477 — openbb 경로 제거)."""
         import sys
         from unittest.mock import MagicMock
 
         import nuri.analysis.portfolio as port_mod
 
         monkeypatch.setattr(port_mod, "query", lambda *a, **kw: [])
-
-        fake_obb = MagicMock()
-        fake_result = MagicMock()
-        fake_df = pd.DataFrame({"close": [1430.0, 1440.0]})
-        fake_result.to_dataframe.return_value = fake_df
-        fake_obb.currency.price.historical.return_value = fake_result
-        fake_module = MagicMock()
-        fake_module.obb = fake_obb
-        monkeypatch.setitem(sys.modules, "openbb", fake_module)
+        fake_df = pd.DataFrame({"Close": [1430.0, 1440.0]})
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=fake_df)))
 
         rate = port_mod.get_exchange_rate()
         assert rate == 1440.0
@@ -196,21 +190,33 @@ class TestPortfolioCoverageGaps:
         assert "데이터가 없습니다" in out
 
     def test_get_exchange_rate_openbb_failure_raises(self, db_path, monkeypatch):
-        """OpenBB raise → StaleExchangeRateError (lines 59-62)."""
+        """yfinance raise → StaleExchangeRateError (#1477 — openbb 경로 제거)."""
         import sys
         from unittest.mock import MagicMock
 
         import nuri.analysis.portfolio as port_mod
 
         monkeypatch.setattr(port_mod, "query", lambda *a, **kw: [])
-
-        fake_obb = MagicMock()
-        fake_obb.currency.price.historical.side_effect = RuntimeError("openbb down")
-        fake_module = MagicMock()
-        fake_module.obb = fake_obb
-        monkeypatch.setitem(sys.modules, "openbb", fake_module)
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(side_effect=RuntimeError("yf down"))))
 
         import pytest
 
         with pytest.raises(port_mod.StaleExchangeRateError):
             port_mod.get_exchange_rate()
+
+    @pytest.mark.parametrize("multiindex", [False, True])
+    def test_get_exchange_rate_one_row_frame(self, db_path, monkeypatch, multiindex):
+        """1행 결과 — squeeze() 였다면 스칼라가 돼 iloc 이 죽고 StaleExchangeRateError 로 새던 자리 (Codex P2, #1477).
+        신형 yfinance 는 단일 종목도 MultiIndex 컬럼으로 준다."""
+        import sys
+        from unittest.mock import MagicMock
+
+        import nuri.analysis.portfolio as port_mod
+
+        monkeypatch.setattr(port_mod, "query", lambda *a, **kw: [])
+        if multiindex:
+            df = pd.DataFrame([[1450.0]], columns=pd.MultiIndex.from_tuples([("Close", "KRW=X")]))
+        else:
+            df = pd.DataFrame({"Close": [1450.0]})
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=df)))
+        assert port_mod.get_exchange_rate() == 1450.0

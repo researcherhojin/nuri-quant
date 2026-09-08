@@ -5,7 +5,7 @@
 # Catches the "commit 1 alone breaks suite" pattern that hit this session
 # during PR #91 staging — initial 3-commit split broke after commit 1
 # because test_estimates.py was migrated to yfinance but
-# nuri/collectors/estimates.py still used OpenBB.
+# nuri/collectors/estimates.py still used OpenBB (since removed, #1477).
 #
 # Cost: ~3 min × N commits. Run only before final push of a multi-commit branch.
 #

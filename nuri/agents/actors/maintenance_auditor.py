@@ -522,7 +522,7 @@ def _stuck_detail(
 
     실측 2026-09-08: 막힘 2 건(`pandas` 2.3.3/3.0.5 · `uvicorn` 0.40.0/0.52.4) + 부분 이동
     1 건(`vectorbt` 도달 1.0.0 / 최신 1.1.0). 상류 캡 2 개가 원인이다 (`pykrx` 의
-    `pandas<3.0`, `openbb-core` 의 `uvicorn<0.41`).
+    `pandas<3.0`, 당시 `openbb-core` 의 `uvicorn<0.41` — openbb 는 #1477 로 제거됐으니 uvicorn 은 재측정 대상).
 
     ⚠️ 그때 이 스캔이 무엇을 적고 있었는지에 대해 **처음에 틀리게 썼다**: "업데이트 후보
     0건 만 적고 있었다" 고 했으나 실은 **아무것도 안 적고 있었다** — `dependency_lag` 축이

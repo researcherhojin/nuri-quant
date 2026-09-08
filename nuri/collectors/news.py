@@ -1,12 +1,8 @@
 # pyright: reportAttributeAccessIssue=false
 """
-뉴스 수집기 — OpenBB Platform primary + yfinance direct fallback.
+뉴스 수집기 — yfinance `Ticker.news` 직접 호출.
 
-(OpenBB BaseApp 동적 attribute (news 등) stub 부재 — runtime 정상.)
-
-OpenBB 상류 bug (#274, upstream OpenBB-finance/OpenBB #7379/#7460) 로 news.company import
-가 깨진 상태 — yfinance `Ticker.news` 로 자동 fallback 하여 수집 지속. upstream release
-이 수정되면 OpenBB 경로가 자연 복원됨 (stock.py 와 동일 패턴).
+openbb 1차 경로(news.company)는 #1477 로 제거 — 상류 bug(#274) 이후로도 실제 수집은 늘 이 경로였다.
 
 사용법:
     python -m nuri.collectors.news
@@ -16,11 +12,10 @@ import logging
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import upsert_news
-from nuri.core.openbb_compat import get_obb
 
 
 class NewsCollector(BaseCollector):
-    """OpenBB primary + yfinance fallback 으로 종목별 뉴스 수집."""
+    """yfinance `Ticker.news` 로 종목별 뉴스 수집."""
 
     def __init__(self):
         super().__init__("news")
@@ -60,20 +55,8 @@ class NewsCollector(BaseCollector):
         return records
 
     def _fetch_ticker_news(self, ticker: str) -> list[dict]:
-        """단일 종목 뉴스. OpenBB → yfinance 직접 폴백."""
-        # 1차: OpenBB
-        try:
-            obb = get_obb()
-            if obb is None:
-                raise RuntimeError("openbb unavailable")
-            result = obb.news.company(symbol=ticker, provider="yfinance", limit=10)
-            df = result.to_dataframe()
-            if not df.empty:
-                return self._parse_openbb_news(df, ticker)
-        except Exception as e:
-            self.logger.debug(f"{ticker}: OpenBB news 실패 — {e}")
-
-        # 2차: yfinance 직접 호출 (OpenBB 장애 시 폴백)
+        """단일 종목 뉴스 (yfinance .news)."""
+        # yfinance 직접 호출 — openbb 1차 경로는 #1477 로 제거
         try:
             import yfinance as yf
 
@@ -82,36 +65,6 @@ class NewsCollector(BaseCollector):
         except Exception as e:
             self.logger.debug(f"{ticker}: yfinance news 폴백 실패 — {e}")
             return []
-
-    def _parse_openbb_news(self, df, ticker: str) -> list[dict]:
-        """OpenBB DataFrame → news record list."""
-        from nuri.core.timezone import today_kst
-
-        records: list[dict] = []
-        for _, row in df.iterrows():
-            url = row.get("url", "")
-            if not url:
-                continue
-
-            # 날짜: index 또는 컬럼
-            if hasattr(row.name, "strftime"):
-                date = row.name.strftime("%Y-%m-%d")
-            elif "date" in row.index:
-                date = str(row["date"])[:10]
-            else:
-                date = today_kst()
-
-            records.append(
-                {
-                    "ticker": ticker,
-                    "date": date,
-                    "title": str(row.get("title", ""))[:500],
-                    "url": str(url)[:1000],
-                    "source": str(row.get("source", ""))[:100],
-                    "sentiment": None,
-                }
-            )
-        return records
 
     def _parse_yfinance_news(self, raw: list, ticker: str) -> list[dict]:
         """yfinance Ticker.news → news record list.
