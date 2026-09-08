@@ -2033,4 +2033,44 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        64,
+        "incidents incident_type enum 확장 — scan_failure (#1473)",
+        # #1467 이 detector 예외·원장 정리 실패를 실제 인시던트로 기록하되 타입은 옛 합성 항목의
+        # `db_lock` 을 이어 썼다. 그래서 (1) KeyError 로 죽은 detector 도 "DB SELECT 실패 …
+        # 스케줄러 재시작" 문구로 나가고, (2) `_auto_resolve` 가 `_detect_db_lock` 실패 시
+        # `db_lock` 전체를 보호하느라 다른 detector 의 실패 row 까지 복구 뒤에도 안 닫혔다.
+        # 감시 자체의 실패는 자기 타입을 가진다. 45/46/49/62/63 과 같은 재생성 패턴.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale',
+                'alpha_report_stale','schema_version_drift','required_table_missing',
+                'writer_role','frontend_build_stale','scan_failure'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_open_unique
+            ON incidents(incident_type, target) WHERE status = 'open';
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]

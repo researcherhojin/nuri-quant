@@ -775,9 +775,9 @@ class TestAlphaReportStaleDetector:
         assert len(stale) == 1
         assert stale[0]["evidence"]["last_skip_reason"] == "unparseable"
         assert stale[0]["evidence"]["last_error"] is None
-        # detector 가 살아 있었다는 증거 — 죽었으면 scan 루프가 db_lock 으로 감싼다
+        # detector 가 살아 있었다는 증거 — 죽었으면 scan 루프가 scan_failure 로 감싼다
         assert not [
-            i for i in incidents if i["incident_type"] == "db_lock" and i["target"] == "_detect_alpha_report_stale"
+            i for i in incidents if i["incident_type"] == "scan_failure" and i["target"] == "_detect_alpha_report_stale"
         ]
 
     @pytest.mark.parametrize("raw", ["null", "[]", '"x"', "5"])
@@ -1576,7 +1576,9 @@ class TestFrontendBuildStaleDetector:
             incidents = self._scan()
         assert self._mine(incidents) == []
         failures = [
-            i for i in incidents if i["incident_type"] == "db_lock" and i["target"] == "_detect_frontend_build_stale"
+            i
+            for i in incidents
+            if i["incident_type"] == "scan_failure" and i["target"] == "_detect_frontend_build_stale"
         ]
         assert len(failures) == 1
 
@@ -1777,7 +1779,7 @@ class TestIncidentCanBeResolvedTwice:
             db_path=path,
         )
         assert [dict(r) for r in after] == [dict(r) for r in before], "재생성이 행/컬럼을 바꿨다"
-        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == 63
+        assert query("SELECT MAX(version) v FROM schema_version", db_path=path)[0]["v"] == _MIGRATIONS[-1][0]
         assert resolve_incident(second, db_path=path) is True, "프로덕션에서 죽던 두 번째 resolve"
         fourth = log_incident("scheduler_heartbeat", "critical", "scheduler", {"n": 4}, db_path=path)
         assert fourth > third, "AUTOINCREMENT 가 재생성 뒤에도 이어진다"
@@ -1812,10 +1814,10 @@ class TestScanFailuresAreRealIncidents:
             result = self._scan()
         assert result.outcome == Outcome.PASS
         rows = [r for r in _open_rows(patched_db) if r["target"] == "_detect_orphan_runs"]
-        assert rows and rows[0]["incident_type"] == "db_lock", "감시 실패가 DB 에 없다 — 예전의 침묵"
+        assert rows and rows[0]["incident_type"] == "scan_failure", "감시 실패가 DB 에 없다 — 예전의 침묵"
         # 이 머신의 writer_role 같은 다른 인시던트도 publish 되므로 대상으로 거른다
         mine = [c for c in no_publish.call_args_list if c.args[3] == "_detect_orphan_runs"]
-        assert len(mine) == 1 and mine[0].args[1] == "db_lock" and mine[0].args[2] == "warning", (
+        assert len(mine) == 1 and mine[0].args[1] == "scan_failure" and mine[0].args[2] == "warning", (
             "warning 은 #ops 로 나가야 한다"
         )
 
@@ -1847,7 +1849,7 @@ class TestScanFailuresAreRealIncidents:
             result = self._scan()
         assert result.outcome == Outcome.PASS
         rows = [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
-        assert rows and rows[0]["incident_type"] == "db_lock"
+        assert rows and rows[0]["incident_type"] == "scan_failure"
         assert any(
             i["target"] == "_auto_resolve" and "UNIQUE" in i["evidence"]["error"] for i in result.output["incidents"]
         )
@@ -1872,6 +1874,33 @@ class TestScanFailuresAreRealIncidents:
         out = self._scan().output  # resolve 가 다시 되는 정상 스캔
         assert any(r["target"] == "_auto_resolve" for r in out["auto_resolved"]), "감시 실패 row 가 영영 열려 있다"
         assert not [r for r in _open_rows(patched_db) if r["target"] == "_auto_resolve"]
+
+    def test_recovered_detector_closes_even_while_db_lock_detector_is_down(self, patched_db, no_publish):
+        """잠금(#1473) — 실패 타입을 db_lock 과 나눈 이유. `_detect_db_lock` 이 죽어 있으면 blocked_types
+        가 db_lock 을 보호하는데, 다른 detector 의 실패 row 가 같은 타입이면 그 detector 가 복구돼도
+        영영 안 닫힌다. 전용 타입이면 복구된 쪽은 닫히고 죽어 있는 쪽은 still_open 으로 남는다."""
+        with patch.object(SREIncidentAgent, "_detect_orphan_runs", autospec=True, side_effect=RuntimeError("boom")):
+            self._scan()
+        with get_db(patched_db) as conn:
+            conn.execute(
+                "UPDATE incidents SET last_detected_at = datetime('now', '-48 hours') WHERE target = '_detect_orphan_runs'"
+            )
+        # orphan 은 복구, db_lock detector 는 이제 죽어 있다
+        with patch.object(SREIncidentAgent, "_detect_db_lock", autospec=True, side_effect=RuntimeError("probe down")):
+            out = self._scan().output
+        assert any(r["target"] == "_detect_orphan_runs" for r in out["auto_resolved"]), (
+            "복구된 detector 의 실패 row 가 안 닫힌다"
+        )
+        assert [r for r in _open_rows(patched_db) if r["target"] == "_detect_db_lock"], (
+            "죽어 있는 쪽은 열려 있어야 한다"
+        )
+
+    def test_scan_failure_has_its_own_summary_and_outbox_meta(self):
+        from nuri.agents.discord.outbox import _SRE_KIND_META
+
+        text = _human_incident_summary("scan_failure", "_detect_orphan_runs", {"error": "KeyError: 'x'"})
+        assert "_detect_orphan_runs" in text and "KeyError" in text and "DB 접근" not in text
+        assert "traceback" in _SRE_KIND_META["sre_scan_failure"]["action"]
 
     def test_recording_failure_falls_back_to_a_synthetic_entry(self, patched_db, no_publish):
         """DB 가 진짜 죽었으면 기록도 못 한다 — 그래도 스캔은 PASS 하고 output 에는 남는다."""
