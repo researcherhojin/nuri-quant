@@ -237,36 +237,39 @@ class TestMeasurementMode:
 
         assert RULES["measurement_mode"]["benchmark"] == DEFAULT_BENCHMARK_TICKER
 
-    def test_benchmark_by_market_us_equals_the_locked_criterion(self):
-        """시장별 map 의 us 항목은 사전등록된 판정 기준과 **같은 값**이어야 한다 (#833).
+    def test_benchmark_by_asset_class_us_equity_equals_the_locked_criterion(self):
+        """자산군 map 의 us_equity 항목은 사전등록된 판정 기준과 **같은 값**이어야 한다 (#833 → #1459).
 
         map 은 기록용 측정 인프라이고 `benchmark` 는 §3.11 판정 기준이다. 둘이
-        갈라지면 US 표본이 판정 기준과 다른 벤치마크로 측정되면서 아무 게이트도
-        울리지 않는다 — 사전등록의 조용한 개정.
+        갈라지면 KRX 상장 US 추종 ETF 가 판정 기준과 다른 벤치마크로 측정되면서 아무
+        게이트도 울리지 않는다 — 같은 기초자산이 상장 시장에 따라 다른 자로 재지는 것.
 
-        Gotcha-Test Pair: `benchmark_by_market.us` 를 SPY 아닌 값으로 바꾸면 FAIL.
+        Gotcha-Test Pair: `benchmark_by_asset_class.us_equity` 를 SPY 아닌 값으로 바꾸면 FAIL.
         """
         from nuri.agents.actors.forward_outcome_tracker import DEFAULT_BENCHMARK_TICKER
         from nuri.core.rules import RULES
 
         mm = RULES["measurement_mode"]
-        assert mm["benchmark_by_market"]["us"] == mm["benchmark"] == DEFAULT_BENCHMARK_TICKER
+        assert mm["benchmark_by_asset_class"]["us_equity"] == mm["benchmark"] == DEFAULT_BENCHMARK_TICKER
 
-    def test_benchmark_by_market_covers_every_market_the_classifier_emits(self):
-        """`benchmark_for` 는 모든 티커를 us/kr 둘 중 하나로 보낸다 — map 도 딱 그 둘.
+    def test_benchmark_by_asset_class_covers_every_class_the_classifier_emits(self):
+        """`_classify_asset_class` 가 낼 수 있는 자산군 전부가 map 에 있어야 한다 — 딱 그만큼.
 
-        키가 빠지면 폴백이 US 벤치마크를 조용히 쓰고, 남는 키는 아무도 안 읽는
-        죽은 설정이 된다.
+        키가 빠지면 폴백이 US 벤치마크를 조용히 쓰고(원자재를 SPY 로 재는 #1459 의
+        원형), 남는 키는 아무도 안 읽는 죽은 설정이 된다. 분류기의 safety net 이
+        `us_equity` 라 규칙 목록에 없어도 그 키는 있어야 한다.
         """
         from nuri.core.rules import RULES
 
-        assert set(RULES["measurement_mode"]["benchmark_by_market"]) == {"us", "kr"}
+        emitted = {r["asset_class"] for r in RULES["siege_gates"]["asset_class_rules"]} | {"us_equity"}
+        assert set(RULES["measurement_mode"]["benchmark_by_asset_class"]) == emitted
 
-    def test_every_market_benchmark_is_actually_collected(self):
+    def test_every_asset_class_benchmark_is_actually_collected(self):
         """벤치마크가 수집 배선에 없으면 alpha 가 영구 NULL 이 된다 (#860 과 같은 고장).
 
         `069500.KS`(KODEX 200) 는 prices 에 단 한 행도 없어 KR 벤치마크로 쓰면
         모든 KR alpha 가 NULL 이 된다. 실제 수집되는 식별자만 등재되어야 한다.
+        None 은 "벤치마크 없음" 이라 검사 대상이 아니다.
 
         Gotcha-Test Pair: 수집 배선에 없는 티커를 map 에 넣으면 FAIL.
         """
@@ -275,8 +278,38 @@ class TestMeasurementMode:
         from nuri.core.rules import RULES
 
         collected = set(_load_freshness_tickers()) | set(StockKRCollector.INDEX_TICKERS.values())
-        for market, ticker in RULES["measurement_mode"]["benchmark_by_market"].items():
-            assert ticker in collected, f"{market} 벤치마크 {ticker} 가 일일 수집 대상에 없음"
+        by_class = RULES["measurement_mode"]["benchmark_by_asset_class"]
+        assert any(v for v in by_class.values()), "map 에 실제 벤치마크가 하나도 없다 — 검사가 공허하다"
+        for asset_class, ticker in by_class.items():
+            if ticker is None:
+                continue
+            assert ticker in collected, f"{asset_class} 벤치마크 {ticker} 가 일일 수집 대상에 없음"
+
+    @pytest.mark.parametrize(
+        ("ticker", "sector", "expected"),
+        [
+            ("000000.KS", "ETF/USNasdaq", "us_equity"),  # #1459 원형 — 예전 규칙은 kr_equity 로 떨어뜨렸다
+            ("000000.KS", "ETF/USAerospace", "us_equity"),
+            ("000000.KS", "ETF/USIndex", "us_equity"),
+            ("000000.KS", "ETF/USTech", "us_equity"),
+            ("000000.KS", "ETF/Commodity", "commodity"),
+            ("000000.KS", "ETF/Bond", "bond"),
+            ("000000.KS", "ETF/KRIndex", "kr_index"),
+            ("000000.KS", "반도체", "kr_equity"),
+            ("000000.KS", "", "kr_equity"),  # 보유하지 않은 KR 종목 — 접미사 폴백
+            ("TESTAA", "", "us_equity"),
+        ],
+    )
+    def test_asset_class_rules_classify_by_underlying_not_listing(self, ticker, sector, expected):
+        """상장 시장(.KS)이 아니라 기초자산(sector)이 먼저다 (#1459).
+
+        원장 실측(mini, 2026-09-08): KOSPI 로 잰 1,200 행 중 USNasdaq·USAerospace 252 행이
+        `ETF/USIndex`·`ETF/USTech` 두 접두사에만 걸려 `.KS` 규칙으로 kr_equity 가 됐다.
+        """
+        from nuri.core.rules import RULES
+        from nuri.trading.engine.certification import _classify_asset_class
+
+        assert _classify_asset_class(ticker, sector, RULES["siege_gates"]["asset_class_rules"]) == expected
 
     def test_primary_window_supported_by_tracker(self):
         """판정 창은 tracker 가 실제 측정하는 window 여야 함."""

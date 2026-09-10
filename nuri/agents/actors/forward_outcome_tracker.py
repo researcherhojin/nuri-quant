@@ -58,21 +58,46 @@ SUPPORTED_WINDOWS: tuple[int, ...] = (7, 14, 30)
 DEFAULT_BENCHMARK_TICKER = "SPY"  # 시장 베타 — alpha 산출 baseline (US, §3.11 사전등록 판정 기준)
 
 
-def benchmark_for(ticker: str) -> str:
-    """티커가 속한 시장의 벤치마크 (#833).
+def benchmark_for(ticker: str, sector: str = "") -> Optional[str]:
+    """결정의 **기초자산**이 속한 시장의 벤치마크 (#833 → #1459). None = 적합한 벤치마크 없음.
 
     KR 결정을 SPY 로 재면 alpha 에 환율 + 시장 스타일 차이가 통째로 섞인다 —
     KOSPI 가 -3%, SPY 가 +1% 인 날 KR 종목의 -2% 는 SPY 기준 -3% alpha 지만
     실제로는 시장 대비 +1% 다. 부호까지 뒤집히므로 KR 표본은 SPY 기준으로는
-    해석 불가다.
+    해석 불가다. **같은 논리가 KRX 상장 US 추종 ETF 에는 반대로 적용된다**: 기초가
+    S&P500 인데 KOSPI 를 빼면 바로 그 FX + 스타일 차이를 도입한다. #833 은 상장
+    시장(.KS)으로 골랐고, 원장 실측(2026-09-08, mini) KOSPI 행 1,200 중 525 가
+    비-한국 기초자산이었다 — US 지수 ETF 의 30d "alpha" 가 −15%p 로, 그 창의
+    KOSPI−S&P 스프레드였다. 그래서 상장 시장이 아니라 `siege_gates.asset_class_rules`
+    (분류 정본 하나)로 고른다.
 
-    `benchmark_by_market` 이 없거나 시장이 미등재면 US 기준으로 폴백한다 —
-    조용히 틀린 값을 쓰는 게 아니라, 어느 쪽을 썼는지는 매 outcome row 의
-    `benchmark_ticker` 컬럼에 그대로 기록되므로 사후 판별이 된다.
+    두 경계를 지킨다.
+    - **US 상장 결정은 map 을 보지 않는다** — §3.11 판정 표본이고 벤치마크는 SPY 로
+      사전등록됐다. US 상장 원자재·채권 ETF 를 여기서 "벤치마크 없음" 으로 바꾸면 판정
+      표본의 결측이 움직인다 — 그건 사후 개정이라 STRATEGY PR 대상이다.
+    - **채권·원자재는 None** — 어떤 주식 지수도 맞지 않는다. 대체 지수를 고르는 대신
+      alpha 를 내지 않는다. tracker 는 벤치마크 가격 부재를 이미 alpha NULL 로 다루므로
+      새 상태가 아니고, `benchmark_ticker` NULL 이 "설계상 없음" 을 자기기술한다
+      (가격 결측은 시도한 티커가 남고 `benchmark_return` 만 NULL 이라 구분된다).
+
+    map 이 없거나 자산군이 미등재면 US 기준으로 폴백한다 — 조용히 틀린 값을 쓰는 게
+    아니라, 어느 쪽을 썼는지는 매 outcome row 의 `benchmark_ticker` 에 기록된다.
     """
-    by_market = (RULES.get("measurement_mode") or {}).get("benchmark_by_market") or {}
-    market = "kr" if is_kr_ticker(ticker) else "us"
-    return str(by_market.get(market) or DEFAULT_BENCHMARK_TICKER)
+    mm = RULES.get("measurement_mode") or {}
+    if not is_kr_ticker(ticker):
+        return str(mm.get("benchmark") or DEFAULT_BENCHMARK_TICKER)
+
+    # 분류 정본은 certification 의 것 하나 — 사본을 두면 두 분류가 갈라진다. deferred:
+    # nuri/agents 는 스테이지가 아니지만 engine 모듈을 로드 시점에 끌어오지 않는다.
+    from nuri.trading.engine.certification import _classify_asset_class
+
+    rules = (RULES.get("siege_gates") or {}).get("asset_class_rules") or []
+    asset_class = _classify_asset_class(ticker, sector or "", rules)
+    by_class = mm.get("benchmark_by_asset_class") or {}
+    if asset_class not in by_class:
+        return DEFAULT_BENCHMARK_TICKER
+    value = by_class[asset_class]
+    return str(value) if value else None
 
 
 def backfill_agent_decisions_from_recommendations() -> int:
@@ -342,9 +367,10 @@ class ForwardOutcomeTracker(Actor):
         # ─── 가격 조회 ───
         entry = self._fetch_close_on_or_before(ticker, as_of_date)
         exit_p = self._fetch_close_on_or_after(ticker, target_date)
-        benchmark = benchmark_for(ticker)
-        bench_entry = self._fetch_close_on_or_before(benchmark, as_of_date)
-        bench_exit = self._fetch_close_on_or_after(benchmark, target_date)
+        # 기초자산은 portfolio.sector 에서 — 보유하지 않은 종목은 "" 라 접미사 규칙으로 떨어진다.
+        benchmark = benchmark_for(ticker, self._sector_of(ticker))
+        bench_entry = self._fetch_close_on_or_before(benchmark, as_of_date) if benchmark else None
+        bench_exit = self._fetch_close_on_or_after(benchmark, target_date) if benchmark else None
 
         if entry is None or exit_p is None:
             log_decision_outcome(
@@ -432,6 +458,16 @@ class ForwardOutcomeTracker(Actor):
         from datetime import timedelta
 
         return start + timedelta(days=n)
+
+    @staticmethod
+    def _sector_of(ticker: str) -> str:
+        """portfolio 에 기록된 섹터 — 벤치마크 선택의 기초자산 판별용 (#1459). 없으면 ""."""
+        rows = query(
+            "SELECT sector FROM portfolio WHERE ticker = ? AND sector IS NOT NULL AND sector != '' "
+            "ORDER BY updated_at DESC LIMIT 1",
+            (ticker,),
+        )
+        return str(dict(rows[0]).get("sector") or "") if rows else ""
 
     @staticmethod
     def _fetch_close_on_or_before(ticker: str, date_str: str) -> Optional[float]:
