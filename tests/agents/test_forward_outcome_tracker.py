@@ -118,6 +118,17 @@ def _seed_decision(
     )
 
 
+def _seed_portfolio(db_path, ticker: str, sector: str):
+    """portfolio 행 시드 — 벤치마크 선택이 읽는 기초자산(sector) (#1459). 계좌·수량은 자리표시자."""
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?, ?, ?, ?, ?, ?)",
+            ("Brokerage Alpha", ticker, 10, 100.0, "KRW", sector),
+        )
+
+
 def _seed_hypothesis(db_path, hypothesis_id: str, claim: str):
     """open hypothesis 시드 — claim 다르면 새 row."""
     register_hypothesis(
@@ -315,18 +326,106 @@ class TestPerMarketBenchmark:
         assert result.output["alpha"] == pytest.approx(0.07, abs=1e-6)
         assert self._outcome_row(patched_db, "dc-us")["benchmark_ticker"] == "SPY"
 
+    def test_krx_listed_us_tracker_is_measured_against_spy(self, patched_db):
+        """#1459 원형 — `.KS` 인데 기초자산이 나스닥이면 KOSPI 가 아니라 SPY 다.
+
+        Gotcha-Test Pair: `_measure_one` 이 `portfolio.sector` 를 안 읽고 접미사만 보면
+        KOSPI 로 떨어져 alpha 가 0.02 가 되어 FAIL. 원장 실측에서 이 형태가 525 행이었고
+        US 지수 ETF 의 30d "alpha" 는 −15%p — 그 창의 KOSPI−S&P 스프레드였다.
+        """
+        _seed_decision(patched_db, decision_id="dc-krx-us", ticker="TESTUS.KS", hypothesis_id=None)
+        _seed_portfolio(patched_db, "TESTUS.KS", "ETF/USNasdaq")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTUS.KS", "2026-04-20", 100.0),
+                ("TESTUS.KS", "2026-04-27", 108.0),  # +8%
+                ("KOSPI", "2026-04-20", 2500.0),
+                ("KOSPI", "2026-04-27", 2650.0),  # +6% — 접미사 규칙이면 이걸 뺀다
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 505.0),  # +1% — 기초자산 규칙이면 이걸 뺀다
+            ],
+        )
+        result = ForwardOutcomeTracker().run(
+            {"action": "track_one", "decision_id": "dc-krx-us", "observation_window": 7}
+        )
+
+        assert result.output["alpha"] == pytest.approx(0.07, abs=1e-6), "KRX 상장 US ETF 가 KOSPI 기준으로 계산됨"
+        row = self._outcome_row(patched_db, "dc-krx-us")
+        assert row["benchmark_ticker"] == "SPY"
+        assert row["benchmark_return"] == pytest.approx(0.01, abs=1e-6)
+
+    def test_commodity_etf_gets_no_benchmark_and_no_alpha(self, patched_db):
+        """채권·원자재는 어떤 주식 지수도 맞지 않는다 — 대체 지수 대신 alpha 를 내지 않는다.
+
+        벤치마크 가격이 둘 다 있어도 쓰지 않는다. 실현수익 판정은 그대로다 (7d +8% → pass).
+        `benchmark_ticker` NULL 이 "설계상 없음" 을 자기기술한다 — 가격 결측(시도한 티커가 남고
+        return 만 NULL)과 구분된다.
+        """
+        _seed_decision(patched_db, decision_id="dc-cmdty", ticker="TESTCM.KS", hypothesis_id=None)
+        _seed_portfolio(patched_db, "TESTCM.KS", "ETF/Commodity")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTCM.KS", "2026-04-20", 100.0),
+                ("TESTCM.KS", "2026-04-27", 108.0),
+                ("KOSPI", "2026-04-20", 2500.0),
+                ("KOSPI", "2026-04-27", 2650.0),
+                ("SPY", "2026-04-20", 500.0),
+                ("SPY", "2026-04-27", 505.0),
+            ],
+        )
+        result = ForwardOutcomeTracker().run(
+            {"action": "track_one", "decision_id": "dc-cmdty", "observation_window": 7}
+        )
+
+        assert result.output["alpha"] is None
+        assert result.output["validation"] == "pass", "벤치마크가 없어도 실현수익 판정은 나와야 한다"
+        row = self._outcome_row(patched_db, "dc-cmdty")
+        assert row["benchmark_ticker"] is None and row["benchmark_return"] is None and row["alpha"] is None
+
     def test_kosdaq_routes_to_the_kr_benchmark(self):
-        """`.KQ` 도 KR — `.KS` 만 보면 KOSDAQ 종목이 US 벤치마크로 새어나간다 (#764)."""
+        """`.KQ` 도 KR — `.KS` 만 보면 KOSDAQ 종목이 US 벤치마크로 새어나간다 (#764).
+
+        섹터가 없으면(보유하지 않은 종목) 분류기의 접미사 규칙이 kr_equity 를 낸다.
+        """
         from nuri.agents.actors.forward_outcome_tracker import benchmark_for
 
         assert benchmark_for("TESTKR.KQ") == benchmark_for("TESTKR.KS") == "KOSPI"
         assert benchmark_for("TESTAA") == "SPY"
 
-    def test_unmapped_market_falls_back_to_the_us_benchmark(self):
+    @pytest.mark.parametrize(
+        ("sector", "expected"),
+        [
+            ("ETF/USNasdaq", "SPY"),
+            ("ETF/USAerospace", "SPY"),
+            ("ETF/KRIndex", "KOSPI"),
+            ("반도체", "KOSPI"),
+            ("ETF/Commodity", None),
+            ("ETF/Bond", None),
+        ],
+    )
+    def test_kr_listed_decision_is_routed_by_underlying(self, sector, expected):
+        from nuri.agents.actors.forward_outcome_tracker import benchmark_for
+
+        assert benchmark_for("TESTKR.KS", sector) == expected
+
+    @pytest.mark.parametrize("sector", ["", "ETF/Commodity", "ETF/Bond", "ETF/USNasdaq"])
+    def test_us_listed_decision_never_consults_the_map(self, sector):
+        """US 상장 결정은 §3.11 판정 표본이고 벤치마크는 SPY 로 사전등록됐다.
+
+        US 상장 원자재·채권 ETF 를 여기서 "벤치마크 없음" 으로 바꾸면 판정 표본의 결측이
+        움직인다 — 사후 개정이라 STRATEGY PR 대상이지 이 map 의 일이 아니다.
+        """
+        from nuri.agents.actors.forward_outcome_tracker import DEFAULT_BENCHMARK_TICKER, benchmark_for
+
+        assert benchmark_for("TESTAA", sector) == DEFAULT_BENCHMARK_TICKER
+
+    def test_unmapped_asset_class_falls_back_to_the_us_benchmark(self):
         """map 이 비어도 죽지 않고 US 기준으로 폴백한다 — 단 그 사실이 행에 남는다."""
         from nuri.agents.actors import forward_outcome_tracker as fot
 
-        with patch.dict(fot.RULES["measurement_mode"], {"benchmark_by_market": {}}):
+        with patch.dict(fot.RULES["measurement_mode"], {"benchmark_by_asset_class": {}}):
             assert fot.benchmark_for("TESTKR.KS") == fot.DEFAULT_BENCHMARK_TICKER
 
 

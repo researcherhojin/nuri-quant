@@ -61,7 +61,7 @@ def scoped_tickers() -> list[str]:
     mm = RULES.get("measurement_mode") or {}
     if mm.get("benchmark"):  # 판정 기준 (문자열, 사전등록 잠금)
         out.add(str(mm["benchmark"]))
-    for v in (mm.get("benchmark_by_market") or {}).values():  # 시장별 (map)
+    for v in (mm.get("benchmark_by_asset_class") or {}).values():  # 자산군별 (map, None = 벤치마크 없음)
         if v:
             out.add(str(v))
     return sorted(out)
