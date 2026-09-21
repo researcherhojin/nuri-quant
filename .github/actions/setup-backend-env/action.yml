@@ -10,6 +10,20 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # 캐시 키에 러너 **이미지 버전**을 넣는다 (#14748). `runner.os` 는 ubuntu-24.04 와
+    # 26.04 에서 똑같이 `Linux` 라, 그것만으로는 24.04 에서 만든 venv/TA-Lib 가 26.04
+    # 러너에 cache-hit 으로 복원되고 `if: cache-hit != 'true'` 설치가 건너뛰어진다.
+    # 실측(run 35591177648, ubuntu-26.04): 백엔드 8 샤드 + e2e seed 가 전부
+    # `.venv/bin/python: No such file` → exit 127.
+    # ⚠️ `env.ImageOS` 로는 안 된다 — `env` 컨텍스트는 워크플로/잡/스텝의 `env:`
+    # 블록만 담고 러너 프로세스 환경변수는 없다. 빈 문자열로 풀려 키가 `Linux--` 가
+    # 되고, "새 키라 cold" 라서 우연히 통과할 뿐 OS 를 구분하지 못한다 (run 35591658464).
+    # 셸에서 읽어 output 으로 넘기는 이 경로만 실제 값을 준다.
+    - name: Resolve runner image id
+      id: image
+      shell: bash
+      run: echo "id=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
     - name: Install uv
       uses: astral-sh/setup-uv@v7
       with:
@@ -28,9 +42,9 @@ runs:
       uses: actions/cache@v5
       with:
         path: ${{ runner.temp }}/uv-cache
-        key: uv-tool-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        key: uv-tool-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
         restore-keys: |
-          uv-tool-${{ runner.os }}-py${{ inputs.python-version }}-
+          uv-tool-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-
 
     - name: Set UV_CACHE_DIR
       shell: bash
@@ -41,7 +55,7 @@ runs:
       uses: actions/cache@v5
       with:
         path: /tmp/talib-installed
-        key: talib-0.4.0-${{ runner.os }}-v5
+        key: talib-0.4.0-${{ runner.os }}-${{ steps.image.outputs.id }}-v5
 
     - name: Build TA-Lib from source
       if: steps.cache-talib.outputs.cache-hit != 'true'
@@ -73,12 +87,12 @@ runs:
       uses: actions/cache@v5
       with:
         path: .venv
-        key: venv-${{ runner.os }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        key: venv-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
         # uv.lock 이 살짝 바뀌어도 (예: pytest-shard → pytest-split, 1줄 diff)
         # venv cache 가 완전 miss → 221 패키지 재설치를 막기 위한 fallback.
         # 부분 hit 면 uv sync 가 변경된 패키지만 install (~수초).
         restore-keys: |
-          venv-${{ runner.os }}-py${{ inputs.python-version }}-
+          venv-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-
 
     - name: Install deps
       if: steps.cache-venv.outputs.cache-hit != 'true'
