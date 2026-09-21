@@ -261,11 +261,18 @@ measurement_mode:
   benchmark: SPY                 # forward_outcome_tracker DEFAULT_BENCHMARK_TICKER 와 일치 (#675)
                                  # ⚠️ 이 값은 **US 판정 기준**이며 2026-07-08 사전등록으로 잠겼다.
                                  # 아래 map 을 늘리는 것과 달리 이 줄을 바꾸는 건 사전등록 개정이다.
-  benchmark_by_market:           # 기록용 시장별 벤치마크 (#833). 판정 기준이 아니라 측정 인프라.
-                                 # KR 결정을 SPY 로 재던 FX/스타일 불일치를 제거한다. KR 판정 자체는
-                                 # 별도 사전등록 대상 (§3.11 벤치마크 행) — 여기서 승격하지 않는다.
-    us: SPY                      # us 값은 위 benchmark 와 항상 같아야 한다 (lock test)
-    kr: KOSPI                    # siege_gates.kr_equity.freshness_primary 와 동일 — 이미 매일 수집됨
+  benchmark_by_asset_class:      # 기록용 벤치마크 — KR 상장 결정을 **기초자산**으로 고른다 (#833 → #1459).
+                                 # 분류는 siege_gates.asset_class_rules 하나. 상장 시장(.KS)으로 고르면 KRX 상장
+                                 # US 지수·채권·원자재 ETF 가 KOSPI 로 재져 "alpha" 가 두 시장의 스프레드가 된다
+                                 # (원장 실측: KOSPI 행 1,200 중 525 가 비-한국 기초자산, US 지수 ETF alpha −15%p).
+                                 # 판정 기준이 아니라 측정 인프라 — KR 판정은 별도 사전등록 대상 (§3.11 벤치마크
+                                 # 행). **US 상장 결정은 이 map 을 보지 않고** 위 benchmark(SPY) 로 고정 — 사전등록
+                                 # 표본이라 기초자산이 무엇이든 바꾸면 사후 개정이다.
+    us_equity: SPY               # 위 benchmark 와 항상 같아야 한다 (lock test). KRX 상장 US 추종 ETF 가 여기로 온다
+    kr_equity: KOSPI             # siege_gates.kr_equity.freshness_primary 와 동일 — 이미 매일 수집됨
+    kr_index: KOSPI
+    commodity: null              # 주식 지수가 안 맞는다 — 대체 지수를 고르지 않고 alpha 를 내지 않는다
+    bond: null                   #   (tracker: 벤치마크 없음 = alpha NULL, 실현수익 판정은 그대로)
   primary_window_days: 30        # 판정 창 (7/14d 는 진단용, §3.11 표 — 파일럿 기반 선택 경위 명시)
   min_n_us_buy_decisions: 200    # US BUY 결정만 (KR/SELL 은 진단 전용 — §3.11 표본 규약), distinct decision_id
   permutation_p_max: 0.05        # one-sided. scheme 은 아래 사전 고정 (구현만 follow-up — §3.11 미구축 ②)
@@ -300,9 +307,10 @@ siege_gates:
   # 포트폴리오 holdings 를 asset_class 로 분류. 위에서부터 순서대로 matching —
   # 더 구체적인 rule 우선. default 는 마지막.
   asset_class_rules:
-    - match: {sector_prefix: "ETF/USIndex"}
-      asset_class: us_equity
-    - match: {sector_prefix: "ETF/USTech"}
+    # "ETF/US*" 는 상장 시장과 무관하게 US 주식 기초자산 — KRX 상장 US 추종 ETF 포함 (#1459).
+    # 예전엔 USIndex·USTech 만 등재돼 USNasdaq·USAerospace 가 .KS 접미사 규칙으로 kr_equity 에
+    # 떨어졌다 (원장 실측 252 행). 접두사 하나로 두어 새 US 섹터가 같은 구멍에 빠지지 않게 한다.
+    - match: {sector_prefix: "ETF/US"}
       asset_class: us_equity
     - match: {sector_prefix: "ETF/Commodity"}
       asset_class: commodity
