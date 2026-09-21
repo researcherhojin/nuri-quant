@@ -75,11 +75,9 @@ describe("호출부 불투명도 수식어 (#1433)", () => {
   it("텍스트 토큰에 붙은 알파가 AA 아래로 내려가지 않는다", () => {
     const card = darkToken("card");
     const offenders: string[] = [];
-    let scanned = 0;
     for (const file of FILES) {
       const text = readFileSync(file, "utf8");
       for (const m of text.matchAll(TEXT_ALPHA)) {
-        scanned++;
         const eff = ratio(over(darkToken(m[1]), Number(m[2]) / 100, card), card);
         if (eff < 4.5) {
           offenders.push(`${file.slice(SRC.length + 1)}  ${m[0]}  ${eff.toFixed(2)}:1`);
