@@ -117,6 +117,10 @@ c.close()
         }
         echo "[primary] cleanup snapshot >7 days"
         find "$SNAPSHOTS_DIR" -name 'snapshot_*.db' -mtime +7 -delete 2>/dev/null || true
+        # 성공 시각 마커 — `_detect_replica_stale` 이 이 mtime 만 본다 (#1531). 로그를 파싱하지
+        # 않는 이유: 이 잡은 실패해도 로그에 계속 쓰므로 "최근 줄이 있다" 가 성공을 뜻하지
+        # 않는다. 실제로 9 일간 매시간 실패 줄이 쌓였다. rsync 가 0 을 낸 뒤에만 찍는다.
+        touch "$REPLICAS_DIR/.last_push_ok"
         echo " ✅ primary push OK ($DIGEST)"
         ;;
 

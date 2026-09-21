@@ -137,6 +137,7 @@ _DETECTOR_INCIDENT_TYPES: dict[str, tuple[str, ...]] = {
     "_detect_signal_evaluation_stale": ("signal_evaluation_stale",),
     "_detect_alpha_report_stale": ("alpha_report_stale",),
     "_detect_frontend_build_stale": ("frontend_build_stale",),
+    "_detect_replica_stale": ("replica_stale",),
 }
 # 당일은 이 시각(KST) 이후부터 미실행으로 계상 — 07:00 cron 전 새벽 scan false positive 방지
 SIGNAL_EVAL_GRACE_HOUR = 12
@@ -154,6 +155,11 @@ HEARTBEAT_PATH = Path(__file__).resolve().parents[3] / "data" / ".scheduler_hear
 # scripts/deploy/build_frontend.sh 가 쓴다(그쪽 헤더가 계약의 정본).
 REPO_ROOT = Path(__file__).resolve().parents[3]
 FRONTEND_DIR = REPO_ROOT / "frontend"
+# DR 복제 성공 마커 (`scripts/deploy/state_replicator.sh` primary 가 쓴다 — 그쪽 헤더가 계약의
+# 정본). 푸시는 시간당이지만 임계는 48h 다: 수신측이 **노트북**이라 밤새·주말 닫혀 있는 게
+# 정상이고, 몇 시간으로 잡으면 상시 발화해 무시당하는 게이트가 된다. 2026-09-12 사고는
+# 9 일(216 주기) 침묵이었으므로 48h 로도 같은 사고를 이틀 안에 잡는다.
+REPLICA_STALE_HOURS = 48
 FRONTEND_BUILD_STALE_MIN = 60
 FRONTEND_GIT_TIMEOUT_SEC = 10
 
@@ -221,6 +227,7 @@ class SREIncidentAgent(Actor):
             self._detect_signal_evaluation_stale,
             self._detect_alpha_report_stale,
             self._detect_frontend_build_stale,
+            self._detect_replica_stale,
         ):
             try:
                 detected.extend(detector(ctx))
@@ -729,6 +736,72 @@ class SREIncidentAgent(Actor):
                 severity="warning",
                 target="alpha_report",
                 evidence=evidence,
+                ctx=ctx,
+            )
+        ]
+
+    def _detect_replica_stale(self, ctx: RunContext) -> list[dict[str, Any]]:
+        """DR 복제가 멎었다 (#1531).
+
+        2026-09-12 14:46 부터 `state_replicator.sh primary` 가 **534 회 연속** 실패했는데
+        9 일간 아무 신호가 없었다. launchd 잡의 exit 2 를 보는 게 아무것도 없고,
+        `make state-verify` 는 사람이 쳐야 하는 데다 **복제본의 나이를 안 본다** — replica
+        모드는 가장 최근 `.db` 를 찾아 digest 만 찍고 "✅ replica verify OK" 로 끝나서 9 일
+        된 파일도 통과했다. 그래서 신선도 축을 스크립트가 아니라 **시간당 도는 이 스캔**에
+        붙인다. 그쪽만 고치면 침묵은 그대로다.
+
+        판정은 성공 마커 mtime 하나다. 로그 최신 줄을 보면 안 된다 — 이 잡은 실패해도
+        로그에 계속 쓰므로 "최근 줄이 있다" 가 성공을 뜻하지 않는다. 실제로 9 일간 매시간
+        실패 줄이 쌓였고, 로그 기반 술어였다면 내내 초록이었다.
+
+        primary 에서만 본다. 마커는 push 를 **보내는** 쪽이 남기므로 replica 머신에는
+        존재할 이유가 없고, 거기서 켜면 영구 발화한다.
+        """
+        if _machine_role() != "primary":
+            return []
+
+        import time as _time
+
+        marker = REPO_ROOT / "data" / "replicas" / ".last_push_ok"
+        now = _time.time()
+
+        if marker.exists():
+            age_h = (now - marker.stat().st_mtime) / 3600.0
+            if age_h <= REPLICA_STALE_HOURS:
+                return []
+            reason = "stale"
+        else:
+            # 마커 부재는 "한 번도 성공 안 함" 과 "이 커밋 이전부터 돌고 있었음" 이 겹친다.
+            # 후자는 배포 직후 한 주기 동안만이고, 그 뒤 첫 성공이 마커를 만든다. 임계를
+            # 넘긴 부재만 사고로 치면 그 창을 오보 없이 넘긴다 — 판단 근거가 없으므로
+            # 복제본 자체의 나이로 대신 잰다.
+            replicas = sorted(
+                (REPO_ROOT / "data" / "replicas").glob("*.db"),
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+            if not replicas:
+                return []
+            age_h = (now - replicas[0].stat().st_mtime) / 3600.0
+            if age_h <= REPLICA_STALE_HOURS:
+                return []
+            reason = "marker_missing"
+
+        return [
+            self._record_incident(
+                incident_type="replica_stale",
+                severity="warning",
+                target="dr_replica",
+                evidence={
+                    "reason": reason,
+                    "age_hours": round(age_h, 1),
+                    "threshold_hours": REPLICA_STALE_HOURS,
+                    "marker_mtime_utc": _utc_str(marker.stat().st_mtime) if marker.exists() else None,
+                    "hint": (
+                        "state_replicator.sh primary 의 push 실패 — 수신측 SSH(원격 로그인) 와 "
+                        "DEV2_PATH 를 볼 것. 복구 지점이 age_hours 만큼 밀려 있다"
+                    ),
+                },
                 ctx=ctx,
             )
         ]
