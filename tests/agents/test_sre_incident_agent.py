@@ -36,6 +36,7 @@ from nuri.agents.actors.sre_incident_agent import (
     FRONTEND_BUILD_STALE_MIN,
     ORPHAN_CRIT_HOURS,
     ORPHAN_WARN_HOURS,
+    REPLICA_STALE_HOURS,
     SIGNAL_EVAL_CRIT_DAYS,
     SIGNAL_EVAL_WARN_DAYS,
     SREIncidentAgent,
@@ -1913,3 +1914,105 @@ class TestScanFailuresAreRealIncidents:
         synth = [i for i in result.output["incidents"] if i["target"] == "_detect_orphan_runs"]
         assert len(synth) == 1 and synth[0]["is_new"] is False
         assert "disk I/O error" in synth[0]["evidence"]["record_error"]
+
+
+@pytest.fixture
+def dr_replica(tmp_path):
+    """primary 머신 흉내 + `data/replicas/` 를 tmp 로 돌린다 (#1531).
+
+    `place(marker_age_h=..., replica_age_h=...)` 로 두 mtime 을 따로 놓는다. None 이면
+    그 파일을 만들지 않는다 — 마커 부재 경로가 복제본 나이로 폴백하는지 보려면 둘이
+    독립이어야 한다.
+    """
+    repo = tmp_path / "repo"
+    replicas = repo / "data" / "replicas"
+    replicas.mkdir(parents=True)
+
+    def place(marker_age_h=None, replica_age_h=None):
+        now = time.time()
+        if marker_age_h is not None:
+            m = replicas / ".last_push_ok"
+            m.write_text("")
+            os.utime(m, (now - marker_age_h * 3600, now - marker_age_h * 3600))
+        if replica_age_h is not None:
+            r = replicas / "portfolio_Mini.db"
+            r.write_text("x")
+            os.utime(r, (now - replica_age_h * 3600, now - replica_age_h * 3600))
+
+    with (
+        patch("nuri.agents.actors.sre_incident_agent._machine_role", return_value="primary"),
+        patch("nuri.agents.actors.sre_incident_agent.REPO_ROOT", repo),
+    ):
+        yield type("R", (), {"repo": repo, "replicas": replicas, "place": staticmethod(place)})
+
+
+class TestReplicaStaleDetector:
+    """#1531 Gotcha-Test Pair — 'DR 복제가 9일간 멎었는데 아무 신호가 없었다'.
+
+    술어가 **성공 마커의 mtime** 이어야 한다는 게 핵심이다. 로그 최신 줄을 보면 안 된다 —
+    실패해도 로그는 매시간 쌓이므로 그 술어는 사고 내내 초록이었다. 마커는 rsync 가 0 을
+    낸 뒤에만 찍힌다 (`scripts/deploy/state_replicator.sh`).
+    """
+
+    def _scan(self):
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            return actor.run({"action": "scan"}).output["incidents"]
+
+    def _mine(self, incidents):
+        return [i for i in incidents if i["incident_type"] == "replica_stale"]
+
+    def test_fresh_marker_is_silent(self, patched_db, no_publish, dr_replica):
+        dr_replica.place(marker_age_h=1, replica_age_h=1)
+        assert self._mine(self._scan()) == []
+
+    def test_marker_just_inside_threshold_is_silent(self, patched_db, no_publish, dr_replica):
+        dr_replica.place(marker_age_h=REPLICA_STALE_HOURS - 1, replica_age_h=200)
+        assert self._mine(self._scan()) == []
+
+    def test_stale_marker_warns(self, patched_db, no_publish, dr_replica):
+        """2026-09-12 사고 재현 — 9일(216h) 동안 성공이 없었다."""
+        dr_replica.place(marker_age_h=216, replica_age_h=216)
+        found = self._mine(self._scan())
+        assert len(found) == 1
+        e = found[0]["evidence"]
+        assert e["reason"] == "stale"
+        assert e["age_hours"] > REPLICA_STALE_HOURS
+        assert found[0]["severity"] == "warning"
+
+    def test_fresh_replica_file_does_not_mask_a_dead_marker(self, patched_db, no_publish, dr_replica):
+        """복제본 파일이 새것이어도 마커가 낡았으면 사고다.
+
+        복제본은 수신측에 있으므로 primary 의 `data/replicas/` 에 남은 파일은 **과거의
+        잔재**일 수 있다. 판정은 마커여야 한다.
+        """
+        dr_replica.place(marker_age_h=216, replica_age_h=1)
+        assert len(self._mine(self._scan())) == 1
+
+    def test_missing_marker_falls_back_to_replica_age(self, patched_db, no_publish, dr_replica):
+        """마커 도입 이전부터 돌던 머신 — 부재만으로 발화하면 배포 직후 오보가 난다."""
+        dr_replica.place(replica_age_h=216)
+        found = self._mine(self._scan())
+        assert len(found) == 1
+        assert found[0]["evidence"]["reason"] == "marker_missing"
+
+    def test_missing_marker_with_recent_replica_is_silent(self, patched_db, no_publish, dr_replica):
+        dr_replica.place(replica_age_h=1)
+        assert self._mine(self._scan()) == []
+
+    def test_nothing_at_all_is_silent(self, patched_db, no_publish, dr_replica):
+        """아직 한 번도 복제한 적 없는 머신을 사고로 만들지 않는다."""
+        assert self._mine(self._scan()) == []
+
+    def test_replica_machine_never_fires(self, patched_db, no_publish, dr_replica):
+        """마커는 push 를 보내는 쪽이 남긴다 — replica 에서 켜면 영구 발화한다."""
+        dr_replica.place(marker_age_h=216, replica_age_h=216)
+        for role in ("replica", "unknown"):
+            with patch("nuri.agents.actors.sre_incident_agent._machine_role", return_value=role):
+                assert self._mine(self._scan()) == []

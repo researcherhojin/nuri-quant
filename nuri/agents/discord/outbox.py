@@ -565,6 +565,11 @@ _SRE_KIND_META: dict[str, dict[str, str]] = {
         "what": "프로덕션 프론트 빌드가 코드보다 낡았거나 빌드/재기동이 실패한 채 남음 — 대시보드가 옛 코드를 서빙",
         "action": "조치: mini `~/Library/Logs/nuri-quant-autopull.log` 확인 → `bash scripts/deploy/build_frontend.sh --retry` (실패 마커 무시하고 재빌드)",
     },
+    "sre_replica_stale": {
+        "label": "🧬 DR 복제 멎음",
+        "what": "state_replicator primary push 가 임계 시간 넘게 성공하지 못함 — 복구 지점이 그만큼 밀려 있음",
+        "action": "조치: mini `data/logs/state_replicator.err` 의 마지막 줄 확인 — 수신측 원격 로그인(sshd) 과 `DEV2_PATH` 가 흔한 원인",
+    },
 }
 
 

@@ -2073,4 +2073,45 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        65,
+        "incidents incident_type enum 확장 — replica_stale (#1531)",
+        # DR 복제가 2026-09-12 14:46 부터 534 회 연속 실패했는데 9 일간 아무 신호가 없었다.
+        # launchd 잡의 exit 2 를 보는 게 아무것도 없고, `make state-verify` 는 사람이 쳐야 하는
+        # 데다 **복제본의 나이를 안 본다** — `state_replicator.sh` replica 모드가 가장 최근
+        # `.db` 를 찾아 digest 만 찍고 "✅ replica verify OK" 로 끝나서 9 일 된 파일도 통과했다.
+        # 신선도 축을 스크립트에 더해도 침묵은 안 풀린다(아무도 안 돌리므로). 이미 시간당 도는
+        # SRE 스캔에 붙여야 #ops 로 나간다. 45/46/49/62/63/64 와 같은 재생성 패턴.
+        """
+        CREATE TABLE incidents_new (
+            incident_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_type TEXT NOT NULL CHECK(incident_type IN (
+                'orphan_run','disk_full','db_lock','scheduler_heartbeat',
+                'actor_failure_streak','data_freshness_critical','signal_evaluation_stale',
+                'alpha_report_stale','schema_version_drift','required_table_missing',
+                'writer_role','frontend_build_stale','scan_failure','replica_stale'
+            )),
+            severity TEXT NOT NULL CHECK(severity IN ('critical','warning','info')),
+            target TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('open','acknowledged','resolved')),
+            first_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            last_detected_at TEXT NOT NULL DEFAULT (datetime('now')),
+            resolved_at TEXT,
+            evidence_json TEXT NOT NULL,
+            run_id TEXT
+        );
+        INSERT INTO incidents_new
+            (incident_id, incident_type, severity, target, status,
+             first_detected_at, last_detected_at, resolved_at, evidence_json, run_id)
+            SELECT incident_id, incident_type, severity, target, status,
+                   first_detected_at, last_detected_at, resolved_at, evidence_json, run_id
+              FROM incidents;
+        DROP TABLE incidents;
+        ALTER TABLE incidents_new RENAME TO incidents;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_incidents_open_unique
+            ON incidents(incident_type, target) WHERE status = 'open';
+        CREATE INDEX IF NOT EXISTS idx_incidents_status ON incidents(status, severity);
+        CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
+    """,
+    ),
 ]
