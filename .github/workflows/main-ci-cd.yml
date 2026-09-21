@@ -594,14 +594,20 @@ jobs:
       # setup-backend-env 와 같은 캐시 디렉토리 패턴이지만 key 를 분리한다 —
       # 공유 uv wheel 캐시(uv-tool-*)에 llama wheel 이 섞이거나, 이 job 이
       # shard 의 200+ 패키지 캐시를 불필요하게 복원하지 않도록.
+      # 캐시 키에 러너 이미지 버전을 넣는다 (#1533) — setup-backend-env 와 같은 이유.
+      - name: Resolve runner image id
+        id: image
+        if: needs.changes.outputs.run_local_llm_gate == 'true'
+        run: echo "id=${ImageOS:-unknown}" >> "$GITHUB_OUTPUT"
+
       - name: Cache uv tool dir
         if: needs.changes.outputs.run_local_llm_gate == 'true'
         uses: actions/cache@v6
         with:
           path: ${{ runner.temp }}/uv-cache
-          key: uv-local-llm-${{ runner.os }}-py3.12-${{ hashFiles('uv.lock') }}
+          key: uv-local-llm-${{ runner.os }}-${{ steps.image.outputs.id }}-py3.12-${{ hashFiles('uv.lock') }}
           restore-keys: |
-            uv-local-llm-${{ runner.os }}-py3.12-
+            uv-local-llm-${{ runner.os }}-${{ steps.image.outputs.id }}-py3.12-
 
       - name: Build + import llama-cpp-python at the locked version
         if: needs.changes.outputs.run_local_llm_gate == 'true'
