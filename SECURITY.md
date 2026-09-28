@@ -77,7 +77,9 @@ documentation must **never** contain real broker names, real account
 identifiers, real holdings, real quantities, real prices, or real
 balances. The full policy is in
 [`docs/STRATEGY.md` §4.4 + §4.4.1](docs/STRATEGY.md), enforced by
-`scripts/verify/check_privacy_leak.py`.
+`scripts/verify/check_privacy_leak.py`. The same scanner also refuses
+personal identifiers by shape — `<account>@<host>.local`, `/Users/<account>/`,
+Korean-default macOS hostnames — so the scanner itself never has to name them.
 
 If you discover a leak in `main` history, report it via the security
 advisory channel above so the maintainer can request GitHub Support

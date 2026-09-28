@@ -328,13 +328,14 @@ PR 전 확인.
 | **개인 식별자** (#1557) | 모양만: `<name>ui-Macmini` (한국어 기본 호스트명 로마자) · `<account>@<host>.local` · `/Users/<account>/` · `-Users-<account>-` (Claude 프로젝트 경로). 값은 스캐너에도 테스트에도 적지 않는다 — 정확한 이름은 `tests/test_no_personal_identifiers.py` 가 런타임 조립으로 잠근다. 소스 + `--message` + unpushed commit 스캔. | `user@macmini.local`, `/Users/USER/`, `Test-Macmini` |
 **의도적 제외**: `한국투자증권` (KIS) 은 Open API 통합 대상 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 자격 증명은 `config/kis/kis_devlp.yaml` (gitignored by `config/kis/*`, `~/KIS/` legacy 호환).
 **Plan / spec 노트 보호 (2026-04-30 Session 8 통합)**: `docs/plans/` 디렉토리 전체가 `.gitignore` 처리됨. 이전에는 개별 파일 (`E3_symmetric_amplifier_design.md`, `507_buy_candidate_emitter_phase1.md`)만 등록됐으나, 새 spec 추가 시 누락 위험 — 디렉토리 단위로 통합. 기존 tracked 3건 (`E3_phase2_paired_counterfactual.md`, `E3_symmetric_amplifier_design.md`, `e4_0b.md`)는 `git rm --cached` 처리. 사용자 본인 spec 노트의 broker name / financial figure 누설 방어. **새 spec 작성 시 broker name placeholder 사용** (`Brokerage Alpha Main` 등) — gitignored 라도 future commit 사고 회피.
-**방어 layer 3개** (defense in depth):
+**방어 layer 4개** (defense in depth):
 1. `scripts/verify/check_privacy_leak.py` — 핵심 scanner (stdlib only).
 2. `scripts/verify/pre_push_check.sh` Section 4 — local pre-push gate.
 3. `.github/workflows/main-ci-cd.yml` `privacy-scan` — CI gate 모든 PR (frontend-only 예외 없음).
+4. `.claude/settings.json` PreToolUse 훅 — Edit/Write 의 `new_string` 을 `--message` 로 편집 시점에 검사. 레포 밖·gitignored 경로는 면제(불변식은 **공개 트리**, #1567 — 로컬 handoff 에 자기 호스트명을 적을 수 있어야 한다). 잠금: `tests/test_hook_guard_execution.py::TestPrivacyGuard`.
 **새 broker 추가**: `scripts/verify/check_privacy_leak.py` `BROKER_NAMES_KO`/`BROKER_NAMES_EN` 튜플 + `tests/scripts/test_check_privacy_leak.py` + 위 표 동시 갱신.
 Commit message 스캔 (PR #202 방지):
-- pre_push_check.sh Section 4b: `origin/main..HEAD` 의 unpushed commit 을 `--unpushed-commits` 로 스캔 → push 차단
+- pre_push_check.sh Section 4b: `origin/main..HEAD` 의 unpushed commit 을 `--unpushed-commits` 로 스캔 → push 차단 (ticker+PnL + 개인 식별자 모양, #1567)
 - 로컬 hook 이 정답 — push 후 history 박힘 (Stage 2 필요)
 - CLI: `git log -1 --format=%B | python scripts/verify/check_privacy_leak.py --message`
 History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지됨. 이전 commit leak 은 GitHub Support 또는 filter-repo (사용자 명시 승인 필수) 필요. §5.4 스코프 + CLAUDE.md force push 금지 동시 준수 위해 분리.

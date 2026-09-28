@@ -17,6 +17,8 @@
 | `nuri/api/` (FastAPI routes) | `nuri/api/CLAUDE.md` — router registration, no-`response_model` convention, error-handling split, cache TTL gotchas |
 | `scripts/` (shell automation, no scoped CLAUDE.md) | source docstring; `make lint-sh` (shellcheck); `scripts/verify/pre_push_check.sh` for safety contract |
 | `nuri/mcp/` (read-model MCP server, no scoped CLAUDE.md) | `nuri/mcp/server.py` + `readmodels.py` 모듈 독스트링 — stdio 전용 · 전 쿼리 `readonly=True` · `ALLOWED` 컬럼 dict 가 곧 SQL · `decisions` 전체 제외(보유 오라클). 잠금: `tests/mcp_server/test_readmodels_privacy.py` |
+| `.github/**`, `uv.lock`, `frontend/package-lock.json`, `pyproject.toml`, lock 게이트 스크립트 | `.claude/rules/ci-deps.md` (path-scoped, 자동 로드) — override 하한·dependabot semver·venv 캐시 gotcha |
+| `.claude/settings.json`, `scripts/hooks/**` | `.claude/rules/hooks.md` (path-scoped, 자동 로드) — `printf` 만·POSIX sh 만, mutation 실측 |
 | DB migrations / schema changes | `nuri/core/CLAUDE.md` + `_MIGRATIONS` list in `nuri/core/db_migrations.py` (forward-only, never edit existing migration) |
 | Investment-rule / strategy / regime decisions | `docs/STRATEGY.md` §2 (principles) + §3 (decisions) |
 | Harness debugging (mock fail / phantom fix / scope creep) | `/nuri-harness-debug` skill + `docs/STRATEGY.md §5` |

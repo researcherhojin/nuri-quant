@@ -30,7 +30,7 @@ scripts/
 | `verify_doc_counts.sh` | doc count drift check (CI-enforced) | `make verify-doc-counts` |
 | `check_drift.py` | universe / strategy drift detect | `.venv/bin/python scripts/verify/check_drift.py` (pre-push gate Section 1) |
 | `check_atomic.sh` | commit atomicity (1 logical change/commit) | `bash scripts/verify/check_atomic.sh` |
-| `check_privacy_leak.py` | block personal financial data leak | pre-push hook + CI privacy-scan |
+| `check_privacy_leak.py` | block personal financial data + personal-identifier shapes | pre-push hook + PreToolUse hook + CI `Privacy Leak Scan` |
 | `check_universe_coverage.py` | universe.yaml coverage validate | `.venv/bin/python scripts/verify/check_universe_coverage.py` |
 | `pre_push_check.sh` | pre-push gate (privacy + lint + test) | git pre-push hook |
 | `gate_check.py` | pre-stage gate validation (Makefile 단계 실행 전 호출) | `make validate` / `make regime` / `make recommend` 내부 |
