@@ -348,7 +348,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 8,380 collected across 385 files | ✅ |
+| **Backend tests** | 8,386 collected across 386 files | ✅ |
 | **Backend statement coverage** | 99% — 41 of 24,533 statements uncovered, 96 partial branches (`make test-fast`, 2026-08-29; excludes the 27 slow-marked tests, so it understates. Codecov `backend` flag is the CI ground truth) | |
 | **Frontend tests** | 1,722 across 146 vitest files — 99.87% statement coverage (2,410 of 2,413) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
