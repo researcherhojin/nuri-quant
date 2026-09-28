@@ -37,7 +37,8 @@ pip 은 `uv.lock` 을 쓰는 코드 경로가 없어 이 일이 불가능했다.
 major 경계를 **안 넘는** 파손은 못 본다 (numpy 2.5→2.6 의 private API 제거 같은 것).
 yanked wheel, 같은 버전의 아티팩트 교체도 못 본다. CalVer 패키지(`tzdata 2025.3`,
 `pywin32 312`)는 major 판정 대상에서 제외된다 — 안 그러면 매년 오탐한다.
-`frontend/package-lock.json` 은 같은 노출이 있으나 이 스크립트 범위 밖이다.
+`frontend/package-lock.json` 도 `--ecosystem npm` 으로 본다 (#1367). 다만 0.x 경계는
+**직접** 의존성에만 적용한다 — 근거는 `crossing_npm` 독스트링 (#1551).
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ import json
 import re
 import sys
 import tomllib
+from functools import partial
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -136,21 +138,53 @@ def parse_npm_lock(text: str) -> dict[str, str]:
     return out
 
 
-def crossing_npm(base: str, head: str) -> str | None:
-    """npm 은 **major 만** 본다 — 0.x minor 는 여기서 노이즈다.
+def npm_package_name(key: str) -> str:
+    """lock 의 **경로** 키에서 패키지 이름을 뽑는다 (`a/node_modules/b` -> `b`)."""
+    return key.split("node_modules/")[-1]
 
-    실측 근거: npm 트리는 0.x 가 9%(823 중 80)뿐이고 그마저 대부분 헤드라인
-    패키지의 내부 서브패키지다. 0.x 규칙을 켜면 dependabot PR 102건 중 차단이
-    4 → 6 으로 늘어나는데, 늘어난 2건이 `@base-ui/react` 의 `@base-ui/utils` 와
-    vite 의 `@oxc-project/types` — 부모와 함께 움직이는 게 설계인 것들이다.
-    uv 는 반대다: 0.x 가 24% 고 fastapi/vectorbt/ta-lib 같은 **직접** 의존성이
-    거기 있어서 0.x 규칙이 값을 한다. 규칙이 생태계마다 다른 건 실측 결과다.
+
+def npm_direct_dependencies(text: str) -> frozenset[str]:
+    """`packages[""]` 이 선언한 **직접** 의존성 이름 (#1551).
+
+    전이 의존성과 갈라야 0.x 규칙이 값을 한다 — 아래 `crossing_npm` 참조.
+    optional/peer 까지 포함한다: 셋 다 manifest 가 직접 적은 것이고, 빠뜨리면
+    규칙이 조용히 덜 적용된다.
+    """
+    root = json.loads(text).get("packages", {}).get("", {})
+    names: set[str] = set()
+    for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+        names |= set((root.get(field) or {}).keys())
+    return frozenset(names)
+
+
+def crossing_npm(base: str, head: str, name: str = "", *, direct: frozenset[str] = frozenset()) -> str | None:
+    """npm 은 major + **직접 의존성의** 0.x minor 를 본다 (#1367 -> #1551).
+
+    처음엔 major 만 봤다. 근거는 실측이었다: npm 트리는 0.x 가 9%(823 중 80)뿐이고
+    그마저 대부분 헤드라인 패키지의 내부 서브패키지다. 0.x 규칙을 통째로 켜면
+    dependabot PR 102건 중 차단이 4 -> 6 으로 늘어나는데, 늘어난 2건이
+    `@base-ui/react` 의 `@base-ui/utils` 와 vite 의 `@oxc-project/types` —
+    부모와 함께 움직이는 게 설계인 것들이었다.
+
+    그 실측이 가리킨 건 "npm 은 0.x 를 보면 안 된다" 가 아니라 **"전이 0.x 를 보면
+    안 된다"** 였다. 오탐 2건은 **둘 다 전이 의존성**이고, uv 가 0.x 규칙으로 값을
+    보는 이유도 fastapi/vectorbt/ta-lib 같은 게 **직접** 의존성이기 때문이다.
+    통일된 원리는 생태계가 아니라 **직접 의존성 여부**다.
+
+    그래서 0.x minor 는 `direct` 에 든 이름에만 적용한다. 실측(2026-09-28):
+    직접 의존성 31개 중 0.x 는 `class-variance-authority` · `next-themes` 둘뿐이고,
+    위 오탐 2건은 직접 의존성이 아니라 자동 제외된다.
+
+    왜 지금 켰나: #1550 이 단독 minor 를 자동머지로 열면서 npm 단독 minor 29건/11주가
+    사람 눈을 안 거치게 됐다. 그 전까지는 사람이 봤으므로 이 공백이 노출되지 않았다.
     """
     mb, mh = _SEMVER.match(base.strip()), _SEMVER.match(head.strip())
     if not mb or not mh:
         return "unparseable version"
     if mb.group(1) != mh.group(1):
         return "major"
+    if mb.group(1) == "0" and mb.group(2) != mh.group(2) and npm_package_name(name) in direct:
+        return "0.x minor (breaking by convention, direct dependency)"
     return None
 
 
@@ -166,7 +200,7 @@ def _is_calendar(rel: tuple[int, ...]) -> bool:
     return len(rel) == 1 or rel[0] >= _CALENDAR_FLOOR or rel[1] >= _CALENDAR_FLOOR
 
 
-def crossing(base: str, head: str) -> str | None:
+def crossing(base: str, head: str, name: str = "") -> str | None:
     """경계를 넘으면 사유 문자열, 아니면 None."""
     rb, rh = release(base), release(head)
     if rb is None or rh is None:
@@ -200,7 +234,7 @@ def compare_locks(
     for name in sorted(base.keys() & head.keys()):
         if base[name] == head[name]:
             continue
-        reason = rule(base[name], head[name])
+        reason = rule(base[name], head[name], name)
         if reason:
             crossings.append((name, base[name], head[name], reason))
         else:
@@ -216,16 +250,22 @@ def main(argv: list[str] | None = None) -> int:
         "--ecosystem",
         choices=("uv", "npm"),
         default="uv",
-        help="uv=uv.lock (0.x minor 도 경계) / npm=package-lock.json (major 만)",
+        help="uv=uv.lock (0.x minor 도 경계) / npm=package-lock.json (major + 직접 의존성 0.x minor)",
     )
     args = parser.parse_args(argv)
 
-    parse_fn, rule = (parse_lock, crossing) if args.ecosystem == "uv" else (parse_npm_lock, crossing_npm)
-    label = "uv.lock" if args.ecosystem == "uv" else "package-lock.json"
+    is_uv = args.ecosystem == "uv"
+    parse_fn = parse_lock if is_uv else parse_npm_lock
+    label = "uv.lock" if is_uv else "package-lock.json"
 
     try:
-        base = parse_fn(Path(args.base).read_text(encoding="utf-8"))
-        head = parse_fn(Path(args.head).read_text(encoding="utf-8"))
+        base_text = Path(args.base).read_text(encoding="utf-8")
+        head_text = Path(args.head).read_text(encoding="utf-8")
+        base = parse_fn(base_text)
+        head = parse_fn(head_text)
+        # 0.x 규칙을 **직접** 의존성에만 적용하려면 이름 집합이 필요하다 (#1551).
+        # head 를 기준으로 읽는다 — 새로 추가된 직접 의존성은 base 에 없다.
+        rule = crossing if is_uv else partial(crossing_npm, direct=npm_direct_dependencies(head_text))
     except (OSError, tomllib.TOMLDecodeError, json.JSONDecodeError, LockFormatError) as exc:
         print(f"✗ {label} 을 읽지 못했다 — '경계 없음' 이 아니라 '미확인' 이다: {exc}")
         return 1

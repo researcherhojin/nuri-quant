@@ -343,9 +343,20 @@ class TestBlockingCiGate:
         assert "lock-bump-reviewed" in runs, "사람 검토 후 통과시킬 라벨 경로가 없다"
 
 
-def _npm_lock(*packages: tuple[str, str], nested: tuple[str, str, str] | None = None) -> str:
-    """최소한이지만 **진짜** package-lock.json (lockfileVersion 3)."""
-    pkgs: dict = {"": {"name": "frontend", "version": "0.1.0"}}
+def _npm_lock(
+    *packages: tuple[str, str],
+    nested: tuple[str, str, str] | None = None,
+    direct: tuple[str, ...] = (),
+) -> str:
+    """최소한이지만 **진짜** package-lock.json (lockfileVersion 3).
+
+    `direct` 는 `packages[""]` 이 선언하는 **직접** 의존성이다 — 0.x 규칙이 거기에만
+    걸리므로(#1551), 기본값 `()` 이면 모든 패키지가 전이로 취급된다.
+    """
+    root: dict = {"name": "frontend", "version": "0.1.0"}
+    if direct:
+        root["dependencies"] = {name: "^0.0.0" for name in direct}
+    pkgs: dict = {"": root}
     for name, version in packages:
         pkgs[f"node_modules/{name}"] = {"version": version}
     if nested is not None:
@@ -374,17 +385,66 @@ class TestNpmLockGate:
         assert rc == 1, out
         assert "immer 10.2.0 -> 11.1.11" in out and "(major)" in out, out
 
-    def test_a_zero_x_minor_is_allowed_on_npm(self, tmp_path, capsys):
-        """uv 와 정반대다 — 이 테스트가 그 차이의 근거다.
+    def test_a_transitive_zero_x_minor_is_allowed_on_npm(self, tmp_path, capsys):
+        """**전이** 0.x 는 통과한다 — 이게 npm 0.x 규칙을 좁힌 이유다.
 
         npm 은 0.x 가 9% 뿐이고 대부분 헤드라인 패키지의 내부 서브패키지다.
-        0.x 규칙을 켜면 `@base-ui/react` 의 `@base-ui/utils`, vite 의
+        0.x 규칙을 통째로 켜면 `@base-ui/react` 의 `@base-ui/utils`, vite 의
         `@oxc-project/types` 처럼 부모와 함께 움직이는 것들이 걸린다 (실측 2건).
+        여기 `@base-ui/utils` 는 `direct` 에 없으므로 그 오탐 재현이다.
+
+        짝: `test_a_direct_zero_x_minor_is_refused_on_npm` — 한쪽만 두면 반쪽이
+        조용히 회귀한다 (규칙을 통째로 끄거나 통째로 켜거나).
         """
         before = _npm_lock(("@base-ui/react", "1.5.0"), ("@base-ui/utils", "0.2.9"))
         after = _npm_lock(("@base-ui/react", "1.6.0"), ("@base-ui/utils", "0.3.1"))
         rc, out = self._run(tmp_path, before, after, capsys)
         assert rc == 0, out
+
+    def test_a_direct_zero_x_minor_is_refused_on_npm(self, tmp_path, capsys):
+        """**직접** 0.x 는 차단한다 (#1551).
+
+        #1550 이 단독 minor 를 자동머지로 열면서 npm 단독 minor 29건/11주가 사람 눈을
+        안 거치게 됐다. 그 전까지는 사람이 봤으므로 이 공백이 노출되지 않았다.
+
+        실측(2026-09-28) 기준 해당 패키지는 `class-variance-authority` 와
+        `next-themes` 둘뿐이고, 위 오탐 2건은 직접 의존성이 아니라 자동 제외된다.
+
+        짝: `test_a_transitive_zero_x_minor_is_allowed_on_npm`.
+        """
+        before = _npm_lock(("next-themes", "0.4.6"), direct=("next-themes",))
+        after = _npm_lock(("next-themes", "0.5.0"), direct=("next-themes",))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, out
+        assert "next-themes 0.4.6 -> 0.5.0" in out, out
+        assert "direct dependency" in out, out
+
+    def test_a_direct_zero_x_patch_is_allowed_on_npm(self, tmp_path, capsys):
+        """0.x **patch** 는 경계가 아니다 — 규칙이 minor 축에만 걸린다."""
+        before = _npm_lock(("next-themes", "0.4.6"), direct=("next-themes",))
+        after = _npm_lock(("next-themes", "0.4.7"), direct=("next-themes",))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 0, out
+
+    def test_a_direct_dep_in_a_nested_slot_is_matched_by_name(self, tmp_path, capsys):
+        """lock 키는 **경로**다 — 이름으로 비교하지 않으면 중첩 슬롯을 놓친다."""
+        before = _npm_lock(("a", "1.0.0"), nested=("a", "next-themes", "0.4.6"), direct=("next-themes",))
+        after = _npm_lock(("a", "1.0.0"), nested=("a", "next-themes", "0.5.0"), direct=("next-themes",))
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, out
+        assert "direct dependency" in out, out
+
+    def test_dev_and_optional_direct_deps_count_too(self, tmp_path, capsys):
+        """devDependencies 만 훑고 끝내면 규칙이 조용히 덜 적용된다."""
+        import json as _json
+
+        def lock(version: str) -> str:
+            data = _json.loads(_npm_lock(("vitest-ish", version)))
+            data["packages"][""]["devDependencies"] = {"vitest-ish": "^0.4.0"}
+            return _json.dumps(data)
+
+        rc, out = self._run(tmp_path, lock("0.4.6"), lock("0.5.0"), capsys)
+        assert rc == 1, out
 
     def test_nested_duplicates_at_different_versions_are_normal(self, tmp_path, capsys):
         """npm 중첩 트리는 같은 패키지를 여러 버전으로 갖는 게 정상이다.
