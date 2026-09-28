@@ -143,16 +143,45 @@ def npm_package_name(key: str) -> str:
     return key.split("node_modules/")[-1]
 
 
+#: `packages[""]` 이 직접 의존성을 적는 네 필드. 하나라도 빠뜨리면 0.x 규칙이
+#: **조용히 덜 적용**된다 — 그래서 상수로 빼고 테스트가 네 개를 다 훑는다.
+_NPM_DIRECT_FIELDS = ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies")
+
+
 def npm_direct_dependencies(text: str) -> frozenset[str]:
     """`packages[""]` 이 선언한 **직접** 의존성 이름 (#1551).
 
     전이 의존성과 갈라야 0.x 규칙이 값을 한다 — 아래 `crossing_npm` 참조.
-    optional/peer 까지 포함한다: 셋 다 manifest 가 직접 적은 것이고, 빠뜨리면
-    규칙이 조용히 덜 적용된다.
+
+    ## 지원하지 않는 레이아웃은 **거부**한다 (빈 집합으로 넘기지 않는다)
+
+    이 함수는 루트(`packages[""]`)만 본다. npm **workspaces** 레이아웃에서는 직접
+    의존성이 `packages["frontend"]` 같은 워크스페이스 항목에 들어가므로 루트만
+    읽으면 안 보인다. 그 상태로 빈 집합을 돌려주면 `crossing_npm` 의 `in direct`
+    가 전부 거짓이 되어 게이트가 **출력 한 줄 없이** major-only 로 회귀한다.
+    "실행 불가 ≠ 통과" (#910/#953 계열)가 금지하는 바로 그 형태다.
+
+    ⚠️ 탐지 기준이 "집합이 비었나" 가 **아닌** 이유: workspaces 루트가 devDeps 를
+    일부 갖고 있으면 집합은 안 비면서 워크스페이스의 직접 의존성만 안 보인다.
+    그래서 "이 lock 이 지원하는 레이아웃인가" 를 본다 — 실측(2026-09-28, 817 항목)
+    기준 현 lock 은 루트 외 모든 키가 `node_modules/` 로 시작하고 `workspaces` 키가
+    없다. 둘 중 하나라도 깨지면 거부한다.
     """
-    root = json.loads(text).get("packages", {}).get("", {})
+    packages = json.loads(text).get("packages", {})
+    root = packages.get("", {})
+    if "workspaces" in root:
+        raise LockFormatError(
+            "workspaces 레이아웃이다 — 직접 의존성이 루트가 아니라 워크스페이스 항목에 "
+            "있어 0.x 규칙이 조용히 꺼진다. 지원을 추가하기 전에는 차단한다 (#1551)."
+        )
+    foreign = sorted(k for k in packages if k and not k.startswith("node_modules/"))
+    if foreign:
+        raise LockFormatError(
+            f"모르는 패키지 키 레이아웃: {foreign[:3]} — 루트 외 키는 `node_modules/` 로 "
+            "시작해야 한다. 직접 의존성 판정이 틀릴 수 있으므로 차단한다 (#1551)."
+        )
     names: set[str] = set()
-    for field in ("dependencies", "devDependencies", "optionalDependencies", "peerDependencies"):
+    for field in _NPM_DIRECT_FIELDS:
         names |= set((root.get(field) or {}).keys())
     return frozenset(names)
 
@@ -166,10 +195,13 @@ def crossing_npm(base: str, head: str, name: str = "", *, direct: frozenset[str]
     `@base-ui/react` 의 `@base-ui/utils` 와 vite 의 `@oxc-project/types` —
     부모와 함께 움직이는 게 설계인 것들이었다.
 
-    그 실측이 가리킨 건 "npm 은 0.x 를 보면 안 된다" 가 아니라 **"전이 0.x 를 보면
-    안 된다"** 였다. 오탐 2건은 **둘 다 전이 의존성**이고, uv 가 0.x 규칙으로 값을
-    보는 이유도 fastapi/vectorbt/ta-lib 같은 게 **직접** 의존성이기 때문이다.
-    통일된 원리는 생태계가 아니라 **직접 의존성 여부**다.
+    그 실측이 가리킨 건 "npm 은 0.x 를 보면 안 된다" 가 아니라 **"npm 의 전이 0.x 를
+    보면 안 된다"** 였다 — 오탐 2건은 둘 다 전이 의존성이다.
+
+    ⚠️ uv 와 규칙이 **통일된 게 아니다.** uv 의 `crossing` 은 여전히 전이 0.x 도
+    본다(#1355 가 잡은 numba/llvmlite 가 전이였다). 좁힌 건 npm 쪽뿐이고, 근거는
+    두 생태계의 0.x 분포가 다르다는 실측이다 — npm 은 0.x 가 9% 이고 대부분 내부
+    서브패키지, uv 는 24% 이고 fastapi/vectorbt/ta-lib 같은 직접 의존성이 거기 있다.
 
     그래서 0.x minor 는 `direct` 에 든 이름에만 적용한다. 실측(2026-09-28):
     직접 의존성 31개 중 0.x 는 `class-variance-authority` · `next-themes` 둘뿐이고,
@@ -264,8 +296,12 @@ def main(argv: list[str] | None = None) -> int:
         base = parse_fn(base_text)
         head = parse_fn(head_text)
         # 0.x 규칙을 **직접** 의존성에만 적용하려면 이름 집합이 필요하다 (#1551).
-        # head 를 기준으로 읽는다 — 새로 추가된 직접 의존성은 base 에 없다.
-        rule = crossing if is_uv else partial(crossing_npm, direct=npm_direct_dependencies(head_text))
+        # base 와 head 의 **합집합**이다. head 만 읽으면 직접 -> 전이로 내리면서 같은
+        # PR 에서 0.x minor 를 올리는 조합이 빠져나간다. 합집합이 fail-closed 방향이고,
+        # "새 직접 의존성은 base 에 없다" 는 head 를 **포함**할 근거일 뿐 base 를
+        # **제외**할 근거가 아니다.
+        direct = frozenset() if is_uv else npm_direct_dependencies(base_text) | npm_direct_dependencies(head_text)
+        rule = crossing if is_uv else partial(crossing_npm, direct=direct)
     except (OSError, tomllib.TOMLDecodeError, json.JSONDecodeError, LockFormatError) as exc:
         print(f"✗ {label} 을 읽지 못했다 — '경계 없음' 이 아니라 '미확인' 이다: {exc}")
         return 1

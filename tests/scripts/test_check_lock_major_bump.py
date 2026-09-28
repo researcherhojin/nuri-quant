@@ -426,25 +426,98 @@ class TestNpmLockGate:
         rc, out = self._run(tmp_path, before, after, capsys)
         assert rc == 0, out
 
-    def test_a_direct_dep_in_a_nested_slot_is_matched_by_name(self, tmp_path, capsys):
-        """lock 키는 **경로**다 — 이름으로 비교하지 않으면 중첩 슬롯을 놓친다."""
+    def test_a_slot_sharing_a_direct_dependency_name_is_refused(self, tmp_path, capsys):
+        """계약은 "**선언된 직접 의존성과 이름을 공유한다**" 이지 "그 슬롯이 루트의
+        직접 의존성이다" 가 아니다.
+
+        lock 키는 **경로**(`a/node_modules/b`)라 이름으로 환산해 비교한다. 그래서
+        중첩 슬롯이 직접 의존성과 동명이면 — 실제로는 다른 부모의 별도 해석이어도 —
+        직접 취급된다. **의도된 과매칭**이다: fail-closed 방향이고 `lock-bump-reviewed`
+        라벨이라는 탈출구가 있다. 실측(2026-09-28) 기준 복수 슬롯을 점유하는 이름
+        49개 중 직접인 것은 `zod` 하나이고 0.x 가 아니라 현재 오탐은 0건이다.
+        """
         before = _npm_lock(("a", "1.0.0"), nested=("a", "next-themes", "0.4.6"), direct=("next-themes",))
         after = _npm_lock(("a", "1.0.0"), nested=("a", "next-themes", "0.5.0"), direct=("next-themes",))
         rc, out = self._run(tmp_path, before, after, capsys)
         assert rc == 1, out
         assert "direct dependency" in out, out
 
-    def test_dev_and_optional_direct_deps_count_too(self, tmp_path, capsys):
-        """devDependencies 만 훑고 끝내면 규칙이 조용히 덜 적용된다."""
+    @pytest.mark.parametrize(
+        "field",
+        ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"],
+    )
+    def test_every_direct_dependency_field_counts(self, tmp_path, capsys, field):
+        """네 필드를 **각각** 확인한다 — 하나만 구성하면 나머지는 무잠금이다.
+
+        실제로 그랬다: 처음엔 `devDependencies` 하나만 세워놓고 이름은
+        `..._dev_and_optional_...` 이라고 붙였다. `optionalDependencies` 와
+        `peerDependencies` 를 루프에서 빼도 43개가 전부 통과했다 — docstring 이
+        "빠뜨리면 조용히 덜 적용된다" 고 주장하는데 그 주장에 대응하는 테스트가
+        없었다(§5.3.1 이 금지하는 folklore).
+        """
         import json as _json
 
         def lock(version: str) -> str:
-            data = _json.loads(_npm_lock(("vitest-ish", version)))
-            data["packages"][""]["devDependencies"] = {"vitest-ish": "^0.4.0"}
+            data = _json.loads(_npm_lock(("thing", version)))
+            data["packages"][""][field] = {"thing": "^0.4.0"}
             return _json.dumps(data)
 
         rc, out = self._run(tmp_path, lock("0.4.6"), lock("0.5.0"), capsys)
-        assert rc == 1, out
+        assert rc == 1, f"{field} 가 직접 의존성으로 안 세어진다:\n{out}"
+        assert "direct dependency" in out, out
+
+    @staticmethod
+    def _degraded_lock(version: str, *, workspaces: bool, foreign_key: bool) -> str:
+        """루트가 직접 의존성을 **안** 선언하는 lock — 두 탐지 축을 따로 세운다.
+
+        한 합성 lock 에 `workspaces` 키와 외래 키를 **동시에** 넣으면 어느 가드를
+        지워도 나머지가 잡아서 테스트가 두 축을 구분하지 못한다. 실제로 그렇게
+        써놨다가 mutation 에서 양쪽 다 48 passed 로 통과하는 걸 봤다.
+        """
+        import json as _json
+
+        root: dict = {"name": "root", "version": "1.0.0"}
+        if workspaces:
+            root["workspaces"] = ["frontend"]
+        packages: dict = {"": root, "node_modules/next-themes": {"version": version}}
+        if foreign_key:
+            packages["frontend"] = {"dependencies": {"next-themes": "^0.4.6"}}
+        return _json.dumps({"lockfileVersion": 3, "packages": packages})
+
+    @pytest.mark.parametrize(
+        ("workspaces", "foreign_key"),
+        [(True, False), (False, True)],
+        ids=["workspaces-key-only", "foreign-package-key-only"],
+    )
+    def test_an_unsupported_layout_is_refused_instead_of_silently_degrading(
+        self, tmp_path, capsys, workspaces, foreign_key
+    ):
+        """지원 안 하는 레이아웃은 **차단**한다 — 빈 direct 집합으로 넘기지 않는다.
+
+        `npm_direct_dependencies` 는 `packages[""]` 만 본다. workspaces 레이아웃에서는
+        직접 의존성이 `packages["frontend"]` 에 있어 루트만 읽으면 집합이 비고,
+        `crossing_npm` 의 `in direct` 가 전부 거짓이 되어 게이트가 **출력 한 줄 없이**
+        major-only 로 회귀한다 — "실행 불가 ≠ 통과"(#910/#953) 위반이다.
+
+        두 축을 따로 잠근다. 파라미터 하나씩만 켜므로 해당 가드를 지우면 그 케이스가
+        rc=0 으로 통과한다(다른 가드가 대신 잡아주지 못한다).
+        """
+        before = self._degraded_lock("0.4.6", workspaces=workspaces, foreign_key=foreign_key)
+        after = self._degraded_lock("0.5.0", workspaces=workspaces, foreign_key=foreign_key)
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, f"지원 안 하는 레이아웃이 조용히 통과했다:\n{out}"
+        assert "읽지 못했다" in out, out
+
+    def test_a_demotion_with_a_bump_is_still_refused(self, tmp_path, capsys):
+        """직접 -> 전이로 내리면서 같은 PR 에서 0.x minor 를 올리는 조합.
+
+        head 만 읽으면 head 의 direct 집합에 없어 빠져나간다. base 와 head 의
+        **합집합**을 쓰는 이유다.
+        """
+        before = _npm_lock(("nt", "0.4.6"), direct=("nt",))
+        after = _npm_lock(("nt", "0.5.0"), direct=())
+        rc, out = self._run(tmp_path, before, after, capsys)
+        assert rc == 1, f"demotion+bump 가 빠져나갔다:\n{out}"
 
     def test_nested_duplicates_at_different_versions_are_normal(self, tmp_path, capsys):
         """npm 중첩 트리는 같은 패키지를 여러 버전으로 갖는 게 정상이다.
