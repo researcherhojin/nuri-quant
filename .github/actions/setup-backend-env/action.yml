@@ -103,3 +103,23 @@ runs:
       # 각 shard 에서 중복 컴파일하지 않도록 한다 (#1406).
       # Test: tests/scripts/test_local_llm_extra.py::TestLocalLlmExtraPolicy::test_ci_excludes_local_llm
       run: uv sync --frozen --extra dev
+
+    # ── PROBE (#1534) — 병합 금지. 복원된 .venv 의 실체를 본다.
+    - name: Diagnose venv (probe)
+      shell: bash
+      run: |
+        echo "cache-hit=${{ steps.cache-venv.outputs.cache-hit }}"
+        echo "--- ls -la .venv/bin ---"
+        ls -la .venv/bin/ 2>&1 | head -20
+        echo "--- readlink .venv/bin/python ---"
+        readlink -f .venv/bin/python 2>&1 || echo "(readlink failed)"
+        echo "--- exists? ---"
+        test -e .venv/bin/python && echo "EXISTS" || echo "MISSING (dangling or absent)"
+        echo "--- pyvenv.cfg ---"
+        cat .venv/pyvenv.cfg 2>&1 || echo "(no pyvenv.cfg)"
+        echo "--- uv python list ---"
+        uv python list 2>&1 | head -10
+        echo "--- system python3.12 ---"
+        which -a python3.12 2>&1 || echo "(none on PATH)"
+        echo "--- uv managed dir ---"
+        ls -la "$HOME/.local/share/uv/python/" 2>&1 | head -10 || true

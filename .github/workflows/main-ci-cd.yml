@@ -651,7 +651,7 @@ jobs:
   backend-tests-shard:
     name: Backend Tests · Fast ${{ matrix.shard }}
     needs: changes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # PROBE #1534
     timeout-minutes: 10
     env:
       # per-test DB 격리 사본(832KB × 테스트당 1회)을 tmpfs 로 — ubuntu 의 /tmp 는
@@ -812,7 +812,7 @@ jobs:
     name: Backend Tests · Coverage Aggregate
     needs: [changes, backend-tests-shard, backend-tests-slow]
     if: ${{ !cancelled() && needs.changes.outputs.run_backend == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04  # PROBE #1534
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
