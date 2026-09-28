@@ -50,19 +50,29 @@ def _label_step() -> dict:
     raise AssertionError("`id: label` 스텝을 못 찾았다 — 게이트가 옮겨졌나?")
 
 
-def _run_step(tmp_path: Path, *, labels: list[str] | None, gh_fails: bool = False) -> str:
-    """스텝 본문을 셸로 돌리고 `skip=` 출력을 돌려준다.
+def _run_step(tmp_path: Path, *, labels: list[str] | None, gh_fails: bool = False) -> tuple[str, str]:
+    """스텝 본문을 셸로 돌리고 `(skip 출력, gh 에 넘어간 argv)` 를 돌려준다.
 
     `gh` 를 PATH 앞단의 가짜로 바꿔 라벨 응답을 통제한다. 네트워크도 토큰도 안 쓴다.
+
+    ⚠️ 가짜 `gh` 는 **argv 를 기록한다.** 처음엔 안 봤는데, 그러면 라벨 문자열 분기만
+    잠기고 **"어느 PR 의 현재 라벨을 조회하는가"** — 이 변경의 요지 — 는 안 잠긴다.
+    교차리뷰 실측(2026-09-28): `--jq` 삭제 · PR 번호를 999999 로 고정 · env 에서
+    `GH_TOKEN`/`REPO`/`PR_NUMBER` 제거, **4종 변이가 전부 8 passed 로 생존**했다.
+    그중 PR 번호 변이는 fail-closed 도 아니다 — 엉뚱한 PR 에 escape 라벨이 붙어
+    있으면 대상 PR 의 승인 없이 skip 된다.
+
+    셸은 러너 기본값(`bash -e {0}`)에 맞춘다 — 드리프트가 생기면 여기서 보인다.
     """
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
+    argv_log = tmp_path / "argv"
     if gh_fails:
         body = "echo 'gh: API 실패' >&2\nexit 1\n"
     else:
         body = "".join(f"echo {name}\n" for name in (labels or []))
     gh = fake_bin / "gh"
-    gh.write_text("#!/bin/sh\n" + body)
+    gh.write_text(f'#!/bin/sh\nprintf \'%s\\n\' "$@" > "{argv_log}"\n' + body)
     gh.chmod(0o755)
 
     output = tmp_path / "gh_output"
@@ -78,9 +88,9 @@ def _run_step(tmp_path: Path, *, labels: list[str] | None, gh_fails: bool = Fals
     }
     script = tmp_path / "step.sh"
     script.write_text(_label_step()["run"])
-    result = subprocess.run(["bash", str(script)], capture_output=True, text=True, env=env, timeout=30)
+    result = subprocess.run(["bash", "-e", str(script)], capture_output=True, text=True, env=env, timeout=30)
     assert result.returncode == 0, f"스텝이 죽었다:\n{result.stderr}"
-    return output.read_text()
+    return output.read_text(), (argv_log.read_text() if argv_log.exists() else "")
 
 
 class TestEscapeHatchLabelLookup:
@@ -98,15 +108,15 @@ class TestEscapeHatchLabelLookup:
         )
 
     def test_the_label_present_skips_the_gate(self, tmp_path):
-        out = _run_step(tmp_path, labels=["backend", "scope-expand-approved", "ci"])
+        out, _ = _run_step(tmp_path, labels=["backend", "scope-expand-approved", "ci"])
         assert "skip=true" in out, out
 
     def test_no_label_runs_the_gate(self, tmp_path):
-        out = _run_step(tmp_path, labels=["backend", "ci"])
+        out, _ = _run_step(tmp_path, labels=["backend", "ci"])
         assert "skip=false" in out, out
 
     def test_no_labels_at_all_runs_the_gate(self, tmp_path):
-        out = _run_step(tmp_path, labels=[])
+        out, _ = _run_step(tmp_path, labels=[])
         assert "skip=false" in out, out
 
     @pytest.mark.parametrize(
@@ -116,7 +126,7 @@ class TestEscapeHatchLabelLookup:
     )
     def test_a_similar_label_does_not_open_the_escape_hatch(self, tmp_path, label):
         """부분 일치로 열리면 안 된다 — `grep -qx` 가 아니라 `grep -q` 면 뚫린다."""
-        out = _run_step(tmp_path, labels=[label])
+        out, _ = _run_step(tmp_path, labels=[label])
         assert "skip=false" in out, f"{label!r} 가 escape 를 열었다:\n{out}"
 
     def test_a_failed_lookup_runs_the_gate_instead_of_skipping(self, tmp_path):
@@ -125,5 +135,45 @@ class TestEscapeHatchLabelLookup:
         "라벨을 확인 못 했다" 를 "라벨이 있다" 로 보고하면, `gh` 가 죽는 날 커밋 수
         검사가 통째로 무력해진다. 그 상태는 초록이라 아무 신호가 없다.
         """
-        out = _run_step(tmp_path, labels=None, gh_fails=True)
+        out, _ = _run_step(tmp_path, labels=None, gh_fails=True)
         assert "skip=false" in out, out
+
+    def test_it_queries_this_pr_by_number_with_a_label_jq(self, tmp_path):
+        """**어느 PR 의** 라벨을 조회하는지까지 잠근다.
+
+        라벨 문자열 분기만 보면 `--jq` 삭제 · PR 번호 하드코딩 · env 바인딩 제거가
+        전부 통과한다(교차리뷰 실측 4종 생존). 특히 PR 번호 변이는 fail-closed 가
+        아니다 — 엉뚱한 PR 에 escape 라벨이 있으면 대상 PR 의 승인 없이 skip 된다.
+        """
+        _, argv = _run_step(tmp_path, labels=["backend"])
+        assert argv, "가짜 gh 가 호출되지 않았다 — 조회 자체가 사라졌나?"
+        args = argv.split("\n")
+
+        assert "api" in args, f"`gh api` 가 아니다: {args}"
+        assert "repos/owner/repo/pulls/1" in args, f"env 의 REPO/PR_NUMBER 로 **이 PR** 을 조회하지 않는다: {args}"
+        assert "--jq" in args, f"--jq 없이 원시 JSON 을 받는다: {args}"
+        jq = args[args.index("--jq") + 1]
+        assert "labels" in jq and "name" in jq, f"라벨 이름을 뽑는 jq 가 아니다: {jq!r}"
+
+    @pytest.mark.parametrize("binding", ["GH_TOKEN", "REPO", "PR_NUMBER"])
+    def test_the_step_declares_every_env_binding_it_uses(self, binding):
+        """워크플로의 `env:` 에서 하나라도 빠지면 FAIL.
+
+        하네스가 세 값을 자기가 주입하므로, 워크플로에서 지워도 실행 테스트는 모른다
+        (교차리뷰 실측: 3종 전부 생존). 형태 검사로 그 축을 따로 앵커한다.
+        """
+        env = _label_step().get("env") or {}
+        assert binding in env, f"`env:` 에 {binding} 이 없다: {sorted(env)}"
+
+    def test_the_lookup_is_not_piped_into_grep(self):
+        """`gh ... | grep -q` 금지 — 미래의 `pipefail` 이 SIGPIPE 로 뒤집는다.
+
+        `grep -q` 는 첫 매치에서 조기 종료하므로 출력이 파이프 버퍼를 넘으면 `gh` 가
+        141 로 죽는다. 바로 아래 `Count commits in PR` 이 이미 `set -euo pipefail` 을
+        쓰므로 다음 편집자에게 강한 로컬 선례가 있다 — 그때 **라벨이 있는데 게이트가
+        도는** 회귀가 된다.
+        """
+        run = _label_step()["run"]
+        # `|| true` 의 `||` 는 파이프가 아니다 — 지우고 남은 단일 `|` 만 본다.
+        piped = [ln for ln in run.splitlines() if "gh api" in ln and "|" in ln.replace("||", "")]
+        assert not piped, f"gh 출력을 파이프로 넘긴다: {piped}"
