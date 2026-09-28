@@ -111,9 +111,11 @@ runs:
         restore-keys: |
           venv-v2-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-
 
-    # `cache-hit` 은 "복원됐다" 이지 "쓸 수 있다" 가 아니다 (#1534). 캐시가 어떤
-    # 이유로든 못 쓰게 되면 설치를 건너뛰고 `exit 127` 로 죽는 대신 그냥 다시 깐다.
-    # Test: tests/scripts/test_ci_venv_cache.py::TestInstallDoesNotTrustCacheHit::test_install_is_gated_on_a_working_interpreter
+    # 인터프리터가 **실제로 도는지** 본다. `cache-hit` 은 "복원됐다" 이지 "쓸 수
+    # 있다" 가 아니다 (#1534) — 26.04 에서 복원된 venv 는 심링크가 끊겨 있는데도
+    # `cache-hit=true` 로 보고된다.
+    # ⚠️ 이건 인터프리터 **실재**만 본다. 패키지가 다 깔렸는지는 못 본다 —
+    # 그 축은 아래 `cache-hit` 조건이 맡는다. 둘 중 하나라도 어긋나면 다시 깐다.
     - name: Check restored venv
       id: venv
       shell: bash
@@ -124,8 +126,18 @@ runs:
           echo "usable=false" >> "$GITHUB_OUTPUT"
         fi
 
+    # **정확 hit 이면서 인터프리터가 도는** 경우에만 건너뛴다. 두 조건은 서로 다른
+    # 것을 막는다:
+    #   - `cache-hit != true` — restore-keys 부분 복원이면 복원된 venv 는 **구
+    #     lock** 의 것이다. 인터프리터는 멀쩡히 돌아서 `usable=true` 가 되므로,
+    #     이 조건이 없으면 sync 가 생략되고 **구 의존성으로 새 소스를 테스트**한다
+    #     (샤드는 `uv run` 이 아니라 `.venv/bin/python` 을 직접 쓴다 —
+    #     main-ci-cd.yml:724 · :790). uv.lock 이 바뀌는 PR = dependabot 전부다.
+    #   - `usable != true` — 정확 hit 이어도 복원본이 못 쓰는 상태일 수 있다(#1534).
+    #     그때 `exit 127` 로 죽는 대신 다시 깐다.
+    # Test: tests/scripts/test_ci_venv_cache.py::TestInstallGate
     - name: Install deps
-      if: steps.venv.outputs.usable != 'true'
+      if: steps.cache-venv.outputs.cache-hit != 'true' || steps.venv.outputs.usable != 'true'
       shell: bash
       # restore-keys 로 일부 복원되었거나 빈 .venv 라면 uv sync 가 ① uv 캐시
       # (~/.cache/uv) 에서 wheel 즉시 link → 다운로드 skip, ② 변경된 deps 만 추가.

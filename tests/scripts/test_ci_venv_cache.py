@@ -14,9 +14,17 @@
 실측(run 36395976186): cold 런은 Coverage Aggregate 하나만 죽지만, 같은 런을 rerun 해
 캐시가 더워지면 **fast shard 8개가 전부** 죽는다.
 
-세 축을 다 잠근다. 하나라도 되돌리면:
+설치를 건너뛰는 조건은 **"정확 hit 이면서 인터프리터가 돈다"** 이고, 두 축은 서로 다른 것을
+막는다. `cache-hit` 을 빼고 인터프리터 검사로 **교체**하면 새로운 파손이 생긴다: restore-keys
+부분 복원은 **구 lock** 의 venv 를 되살리는데 그 인터프리터는 멀쩡히 돌아 설치가 생략되고,
+샤드가 `uv run` 이 아니라 `.venv/bin/python` 을 직접 쓰므로(main-ci-cd.yml:724 · :790) 아무도
+안 되돌린다 → **구 의존성으로 새 소스를 테스트**한다. uv.lock 이 바뀌는 PR = dependabot 전부라
+빈도가 높고, 26.04 와 달리 **오늘의 24.04 에서도** 난다.
+
+네 축을 잠근다. 하나라도 되돌리면:
 - 인터프리터를 캐시에서 빼면 → 26.04 에서 복원본이 dangling
-- `cache-hit` 으로 설치를 가르면 → 못 쓰는 캐시에 exit 127 (원인 무관 방어선 소실)
+- 설치 조건에서 `cache-hit` 을 빼면 → 부분 복원에서 구 lock 으로 테스트
+- 설치 조건에서 인터프리터 검사를 빼면 → 못 쓰는 캐시에 exit 127
 - 설치 경로를 `setup-uv` 에 맡기면 → 그쪽이 경로를 바꾸는 날 조용히 재발
 """
 
@@ -96,29 +104,52 @@ class TestVenvCacheIsSelfContained:
         )
 
 
-class TestInstallDoesNotTrustCacheHit:
-    """Gotcha-Test Pair: 설치 조건을 `cache-hit` 으로 되돌리면 FAIL."""
+class TestInstallGate:
+    """Gotcha-Test Pair: 두 조건 중 **하나라도** 빼면 FAIL.
 
-    def test_install_is_gated_on_a_working_interpreter(self):
-        """`cache-hit` 은 "복원됐다" 이지 "쓸 수 있다" 가 아니다.
+    계약은 "cache-hit 을 쓰지 마라" 가 아니라 **"정확 hit 이면서 인터프리터가 돌 때만
+    설치를 건너뛴다"** 이다. 두 조건은 서로 다른 파손을 막고, 어느 쪽도 다른 쪽을
+    대신하지 못한다.
+    """
 
-        이게 원인-무관 방어선이다. 캐시가 어떤 이유로든 못 쓰게 되면 설치를 건너뛰고
-        exit 127 로 죽는 대신 그냥 다시 깔아야 한다.
+    def test_skip_requires_an_exact_hit(self):
+        """restore-keys 부분 복원이면 복원된 venv 는 **구 lock** 의 것이다.
+
+        인터프리터는 멀쩡히 돌아 `usable=true` 가 되므로, `cache-hit` 축이 없으면
+        sync 가 생략되고 구 의존성으로 새 소스를 테스트한다. 샤드는 `uv run` 이 아니라
+        `.venv/bin/python` 을 직접 실행하므로 뒤에서 되돌려주는 것도 없다.
+        uv.lock 이 바뀌는 PR = dependabot 전부라 빈도가 높다.
         """
         condition = _step("Install deps")["if"]
-        assert "cache-hit" not in condition, (
-            "`Install deps` 가 다시 cache-hit 으로 갈렸다 — 복원된 venv 가 못 쓰는 "
-            f"상태여도 설치를 건너뛰어 exit 127 로 죽는다 (#1534).\n조건: {condition}"
+        assert "cache-venv" in condition and "cache-hit" in condition, (
+            "`Install deps` 가 exact-hit 여부를 안 본다 — restore-keys 부분 복원에서 "
+            f"sync 가 생략되고 **구 lock 의 의존성**으로 테스트가 돈다.\n조건: {condition}"
         )
 
+    def test_skip_requires_a_working_interpreter(self):
+        """`cache-hit` 은 "복원됐다" 이지 "쓸 수 있다" 가 아니다 (#1534).
+
+        26.04 에서 복원된 venv 는 심링크가 끊겨 있는데도 `cache-hit=true` 로 보고된다.
+        원인이 무엇이든 `exit 127` 대신 재설치로 떨어지는 방어선.
+        """
+        condition = _step("Install deps")["if"]
         check = _step("Check restored venv")
         step_id = check.get("id")
         assert step_id and step_id in condition, (
-            f"`Install deps` 조건이 검사 스텝(id={step_id!r}) 결과를 안 본다: {condition}"
+            f"`Install deps` 조건이 검사 스텝(id={step_id!r}) 결과를 안 본다 — 못 쓰는 "
+            f"캐시에 exit 127 로 죽는다 (#1534).\n조건: {condition}"
         )
         assert ".venv/bin/python" in check["run"], (
             "검사 스텝이 인터프리터를 **실행**해 보지 않는다 — `test -f` 류는 dangling "
             f"심링크를 통과시킨다.\n{check['run']}"
+        )
+
+    def test_the_two_conditions_are_or_ed_not_and_ed(self):
+        """AND 면 둘 다 어긋나야 설치된다 — 각각이 단독으로 파손을 잡아야 한다."""
+        condition = _step("Install deps")["if"]
+        assert "||" in condition and "&&" not in condition, (
+            "두 조건은 OR 여야 한다. AND 면 한쪽만 어긋난 경우(부분 복원인데 "
+            f"인터프리터는 멀쩡 / 정확 hit 인데 인터프리터가 끊김)를 놓친다.\n조건: {condition}"
         )
 
 
