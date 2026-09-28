@@ -293,7 +293,7 @@ measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,428 tests, 388 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,455 tests, 388 files (statement coverage **99%** — 17/23,311 미커버 9개 파일, partial branch 81, `make ci-cov` 2026-08-14) |
 | Frontend tests | 목표 ≥ 90% | 1,722 tests, 146 files |
 | E2E | 핵심 flow | 87 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -325,6 +325,7 @@ PR 전 확인.
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
 | Suspect monetary literal | 7자리 이상 정수 + `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` 키 | round million (`1_000_000`...`100_000_000`) 자동 허용 |
 | **Ticker + PnL 조합** (PR #202) | (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` (`-34% (TEM)`) (b) 인접 `TICKER <signed %>` (`PL +43%`). 소스 + unpushed commit message 스캔. | 규칙 threshold text (`손절 -7%`) ticker 컨텍스트 없으면 통과. `TICKER_FALSE_POSITIVES` frozenset (HWM/SL/MDD/CPI/VIX/BTC/ETH 등 120개). | <!-- privacy-allow: ticker_pnl — §4.4.1 패턴 표 자체 (#981) -->
+| **개인 식별자** (#1557) | 모양만: `<name>ui-Macmini` (한국어 기본 호스트명 로마자) · `<account>@<host>.local` · `/Users/<account>/` · `-Users-<account>-` (Claude 프로젝트 경로). 값은 스캐너에도 테스트에도 적지 않는다 — 정확한 이름은 `tests/test_no_personal_identifiers.py` 가 런타임 조립으로 잠근다. 소스 + `--message` + unpushed commit 스캔. | `user@macmini.local`, `/Users/USER/`, `Test-Macmini` |
 **의도적 제외**: `한국투자증권` (KIS) 은 Open API 통합 대상 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 자격 증명은 `config/kis/kis_devlp.yaml` (gitignored by `config/kis/*`, `~/KIS/` legacy 호환).
 **Plan / spec 노트 보호 (2026-04-30 Session 8 통합)**: `docs/plans/` 디렉토리 전체가 `.gitignore` 처리됨. 이전에는 개별 파일 (`E3_symmetric_amplifier_design.md`, `507_buy_candidate_emitter_phase1.md`)만 등록됐으나, 새 spec 추가 시 누락 위험 — 디렉토리 단위로 통합. 기존 tracked 3건 (`E3_phase2_paired_counterfactual.md`, `E3_symmetric_amplifier_design.md`, `e4_0b.md`)는 `git rm --cached` 처리. 사용자 본인 spec 노트의 broker name / financial figure 누설 방어. **새 spec 작성 시 broker name placeholder 사용** (`Brokerage Alpha Main` 등) — gitignored 라도 future commit 사고 회피.
 **방어 layer 3개** (defense in depth):

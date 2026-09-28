@@ -311,13 +311,86 @@ class TestGateTextHelper:
 
         assert gate_text("legitimate transcript chunk") == []
 
-    def test_aggregates_all_three_categories(self):
-        from scripts.verify.check_privacy_leak import gate_text
+    def test_aggregates_all_four_categories(self):
+        from scripts.verify.check_privacy_leak import ALL_CATEGORIES, gate_text
 
-        text = "kakaopay account NVDA +57% cash_balance 12345678"
-        findings = gate_text(text)
-        cats = {f.category for f in findings}
-        # 3 categories all surface
-        assert "broker_name" in cats
-        assert "ticker_pnl" in cats
-        assert "suspect_numeric" in cats
+        # 식별자 값은 런타임 조립 — 리터럴로 적으면 이 파일이 자기 자신을 잡는다.
+        text = "kakaopay account NVDA +57% cash_balance 12345678 ssh " + "hong" + "@" + "mini.local"
+        cats = {f.category for f in gate_text(text)}
+        assert cats == ALL_CATEGORIES, cats
+
+
+class TestPersonalIdentifier:
+    """#1557 후속 — 계정명·기기명·홈 경로의 **모양**을 잡는다. 값은 런타임 조립으로만 만든다:
+    리터럴로 적으면 (a) 이 파일이 자기 자신을 잡고 (b) 공개 레포에 그 값이 남는다."""
+
+    HOST = "Hong" + "gildong" + "ui-Macmini"  # "<이름>의 Mac mini" 로마자
+    HOST_HYPHEN = "Hong" + "gildong" + "ui-Mac-mini"  # macOS 가 실제로 만드는 형태 (공백 → 하이픈)
+    HOST_MBP = "Hong" + "gildong" + "ui-MacBook-Pro"
+    HOST_HYPHEN = "Hong" + "gildong" + "ui-Mac-mini"  # macOS 가 실제로 만드는 형태 (공백 → 하이픈)
+    HOST_MBP = "Hong" + "gildong" + "ui-MacBook-Pro"
+    SSH = "hong" + "@" + "mini.local"
+    HOME = "/Users/" + "hong" + "/workspace/x.py"
+    PROJ = "~/.claude/projects/-Users-" + "hong" + "-workspace-nuri-quant/memory/"
+
+    @pytest.mark.parametrize(
+        "text",
+        [HOST, HOST_HYPHEN, HOST_MBP, SSH, HOME, PROJ],
+        ids=["hostname", "hostname-hyphen", "hostname-mbp", "ssh-target", "home-path", "claude-project"],
+    )
+    def test_each_shape_is_detected(self, text):
+        from scripts.verify.check_privacy_leak import scan_text_for_personal_identifiers
+
+        found = scan_text_for_personal_identifiers("see " + text + " here")
+        assert [f.category for f in found] == ["personal_identifier"], found
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "user@macmini.local",  # 문서 예시 플레이스홀더
+            "USER@macbook.local",
+            "/Users/USER/workspace/nuri-quant",  # launchd plist 플레이스홀더 (#980)
+            "/Users/someone/nuri/x.py",  # tests/api/test_ticker.py 의 redaction fixture
+            "/Users/<name>/nuri",
+            "~/.claude/projects/<sanitized-cwd>/memory/",
+            "Test-Macmini",  # test_sre_incident_agent 의 fixture — 접미 `ui-` 가 없다
+            "macmini.local",
+            "git@github.com:owner/repo.git",
+            "MACMINI_HOST=macmini.local",
+            "/Users/Shared/data",  # macOS 시스템 디렉터리
+        ],
+    )
+    def test_placeholders_and_generic_hosts_are_not_flagged(self, text):
+        from scripts.verify.check_privacy_leak import scan_text_for_personal_identifiers
+
+        assert scan_text_for_personal_identifiers(text) == []
+
+    def test_file_scan_includes_the_category(self, tmp_file):
+        from scripts.verify.check_privacy_leak import scan_path
+
+        p = tmp_file("REMOTE=" + self.SSH + "\n")
+        assert {f.category for f in scan_path(p)} == {"personal_identifier"}
+
+    def test_inline_marker_exempts_the_line(self, tmp_file):
+        from scripts.verify.check_privacy_leak import scan_path
+
+        p = tmp_file("REMOTE=" + self.SSH + "  # privacy-allow: personal_identifier\n")
+        assert scan_path(p) == []
+
+    def test_message_mode_scans_commit_text_for_identifiers(self, monkeypatch, capsys):
+        """`--message` 는 ticker_pnl 만 봤다 — ssh 대상이 커밋 본문에 들어가는 것도 같은 부류다."""
+        import io
+
+        from scripts.verify import check_privacy_leak as mod
+
+        monkeypatch.setattr("sys.argv", ["check_privacy_leak.py", "--message"])
+        monkeypatch.setattr("sys.stdin", io.StringIO("deploy target " + self.SSH))
+        assert mod.main() == 1
+        assert "personal id" in capsys.readouterr().out
+
+    def test_the_tracked_tree_is_clean(self):
+        """#1557 이 치환한 뒤의 트리에 이 범주의 잔여가 없다 — 범주를 켜는 순간의 baseline."""
+        from scripts.verify.check_privacy_leak import iter_repo_files, scan_path
+
+        hits = [f for path in iter_repo_files() for f in scan_path(path) if f.category == "personal_identifier"]
+        assert hits == [], [(str(f.file), f.line, f.pattern) for f in hits]

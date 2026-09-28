@@ -164,3 +164,26 @@ class TestPrivacyGuard:
             {"tool_input": {"file_path": f"{REPO_ROOT}/docs/x.md", "new_string": "# 제목\n\n평범한 문장.\n"}},
         )
         assert rc == 0, "무해한 내용이 차단됐다 — 오탐"
+
+    # 개인 식별자(#1557) — 값은 런타임 조립. 훅은 `--message` 라 ALLOWLIST 도 인라인 marker 도 안 통한다.
+    _SSH_TARGET = "hong" + "@" + "mini.local"
+
+    def test_blocks_personal_identifier_in_a_tracked_path(self, shell, command):
+        payload = {"tool_input": {"file_path": f"{REPO_ROOT}/docs/x.md", "new_string": f"REMOTE={self._SSH_TARGET}\n"}}
+        assert _run(shell, command, payload) == 2, "계정@기기.local 이 추적 경로에 쓰이는데 안 막혔다"
+
+    def test_allows_the_same_content_in_a_gitignored_file(self, shell, command):
+        """불변식은 **공개 트리**다 — NEXT_SESSION.md / docs/OPERATIONS.md 같은 로컬 문서는 ssh 대상을 적어야 한다.
+        훅이 `git check-ignore` 로 비켜가지 않으면 이 머신의 자기 호스트명을 어디에도 못 쓴다 (#1567 Codex P1)."""
+        target = REPO_ROOT / "NEXT_SESSION.md"
+        assert subprocess.run(["git", "check-ignore", "-q", str(target)], cwd=REPO_ROOT).returncode == 0, (
+            "전제: gitignored"
+        )
+        payload = {"tool_input": {"file_path": str(target), "new_string": f"REMOTE={self._SSH_TARGET}\n"}}
+        assert _run(shell, command, payload) == 0, (
+            "gitignored 로컬 파일까지 막는다 — 자기 호스트명을 handoff 에 못 적는다"
+        )
+
+    def test_allows_a_file_outside_the_repo(self, shell, command):
+        payload = {"tool_input": {"file_path": "/tmp/x.md", "new_string": f"REMOTE={self._SSH_TARGET}\n"}}
+        assert _run(shell, command, payload) == 0, "레포 밖 파일까지 막는다"
