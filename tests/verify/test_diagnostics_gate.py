@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -157,6 +158,28 @@ class TestGateIsWired:
     def test_the_invoked_script_exists(self):
         """문자열 일치만으로는 이사간 스크립트를 못 잡는다 — 그러면 훅이 rc=127 로 죽는다."""
         assert (REPO_ROOT / "scripts" / "verify" / "check_pyright_diff.py").is_file()
+
+    def test_ci_quick_checks_invokes_the_strict_spellcheck(self):
+        """CI 층 (#1560). 훅이 유일한 층이면 한 번의 우회로 main 이 빨간 채 남는다 (#1554→#1555)."""
+        import yaml
+
+        data = yaml.safe_load((REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml").read_text(encoding="utf-8"))
+        runs = [step.get("run", "") for step in data["jobs"]["quick-checks"]["steps"]]
+        assert any("make spellcheck-ci" in r for r in runs), f"quick-checks 가 spellcheck-ci 를 안 부른다: {runs}"
+
+    def test_the_strict_spellcheck_target_fails_closed(self):
+        """`spellcheck-ci` 는 `|| true` 도 `--no-summary` 도 없어야 한다 — 전자는 exit code 를
+        삼키고 후자는 "돌았다" 는 증거를 지운다. `make -n` 은 실행 없이 명령만 펼친다."""
+        out = subprocess.run(
+            ["make", "-n", "spellcheck-ci"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
+        ).stdout
+        # `-n` 은 `@#` 주석 줄도 뱉는다 — 주석이 금지어를 언급하므로 실제 명령 줄만 본다.
+        cmds = [line for line in out.splitlines() if line.lstrip().startswith("npx")]
+        assert len(cmds) == 1, out
+        cmd = cmds[0]
+        assert "cspell" in cmd and "--config .cspell.json" in cmd, cmd
+        assert "|| true" not in cmd and "--no-summary" not in cmd, cmd
+        assert '"nuri/**/*.py"' in cmd and '".github/workflows/*.yml"' in cmd, "검사 대상 목록이 비었다"
 
     def test_the_retired_baseline_is_gone(self):
         """숫자 파일이 되살아나면 낡는 게이트도 같이 돌아온다 (#1088)."""
