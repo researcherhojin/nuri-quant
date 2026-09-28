@@ -34,6 +34,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -143,8 +144,11 @@ def run_policy(
     harness = (
         "const outputs = {};\n"
         "const core = {\n"
-        "  info: () => {},\n"
+        # 실환경 `core` 가 가진 로깅 API 를 명시적으로 스텁한다. 전면 no-op Proxy 로
+        # 덮으면 오타나 미지원 API 까지 숨어버린다 — 없는 메서드는 여기서 죽는 게 맞다.
+        "  info: () => {}, debug: () => {}, warning: () => {}, notice: () => {}, error: () => {},\n"
         "  setOutput: (k, v) => { outputs[k] = String(v); },\n"
+        # setFailed 는 실행을 멈추지 않는다(실환경도 그렇다) — 기록해두고 호출부가 거부한다.
         "  setFailed: (m) => { outputs.__failed = String(m); },\n"
         "};\n" + _policy_script() + "\nconsole.log(JSON.stringify(outputs));\n"
     )
@@ -165,8 +169,18 @@ def run_policy(
 
 
 def _merges(**kwargs) -> bool:
+    """정책이 이 입력에서 자동머지를 켜는가.
+
+    `setFailed` 를 **거부**한다. 기록만 하고 넘어가면 fail-open 이다: 실환경에서
+    policy 스텝이 빨개지면 `if: steps.policy.outputs.should-merge == 'true'` 인
+    후속 스텝이 통째로 스킵돼 **자동머지가 안 켜지는데**, 하네스는 출력만 보고
+    "머지된다" 고 초록을 준다. 2026-09-28 교차리뷰가 `core.setFailed("boom")` 한 줄로
+    12개 전부를 통과시켰다.
+    """
     out = run_policy(**kwargs)
+    assert "__failed" not in out, f"정책이 core.setFailed 를 호출했다: {out['__failed']}"
     assert "should-merge" in out, f"should-merge 출력이 없다: {out}"
+    assert out["should-merge"] in ("true", "false"), f"should-merge 가 불리언 문자열이 아니다: {out}"
     return out["should-merge"] == "true"
 
 
@@ -189,14 +203,45 @@ class TestMergePolicyBySemver:
     def test_patch_auto_merges(self):
         assert _merges(update_type="version-update:semver-patch") is True
 
-    def test_single_minor_auto_merges(self):
-        """`&& isGrouped` 를 어떤 형태로든 되살리면 FAIL.
+    @pytest.mark.parametrize("ecosystem", ["uv", "pip", "npm_and_yarn", "github_actions"])
+    def test_single_minor_auto_merges_in_every_ecosystem(self, ecosystem):
+        """`&& isGrouped` 를 어떤 형태로든 되살리면 FAIL — **생태계마다** 확인한다.
 
         group 패턴이 좁아(ruff*/pytest*/pandas*/numpy*/scipy*/fastapi*/uvicorn*/httpx*)
         대부분의 minor 가 단독으로 도착한다 — 11주 실측으로 grouped 5건 vs 단독 minor
-        43건(npm 29 · uv 14).
+        43건(**npm 29 · uv 14**).
+
+        생태계를 고정하지 않으면 `updateType===minor && ecosystem==="npm_and_yarn"`
+        같은 카브아웃이 조용히 통과한다(교차리뷰 M8 실측: 그 카브아웃에도 12개 전부
+        통과했다). #1551 이 정확히 그 모양의 생태계별 minor 로직을 넣을 예정이라
+        지금 앵커해 둔다. 메타데이터 이름은 **리터럴**로 적는다 — `METADATA_NAME`
+        을 거치면 그 dict 가 틀렸을 때 테스트가 틀린 값으로 초록이 된다(M6).
         """
-        assert _merges(update_type="version-update:semver-minor", group="", names="lucide-react")
+        assert _merges(ecosystem=ecosystem, update_type="version-update:semver-minor", group="", names="somepkg"), (
+            f"{ecosystem} 의 단독 minor 가 자동머지되지 않는다"
+        )
+
+    @pytest.mark.parametrize("ecosystem", ["uv", "pip", "npm_and_yarn", "github_actions"])
+    def test_major_is_blocked_in_every_ecosystem(self, ecosystem):
+        """major 차단도 생태계별로 앵커한다 — 한 생태계만 열려도 잡힌다."""
+        assert not _merges(ecosystem=ecosystem, update_type="version-update:semver-major")
+
+    def test_the_reason_string_distinguishes_single_from_grouped(self):
+        """`reason` 은 잡 로그에서 **왜 머지됐는지**를 읽는 유일한 단서다.
+
+        교차리뷰 M5 실측: 삼항식을 `reason = "WRONG"` 으로 갈아치워도 아무 테스트가
+        안 울었다 — 이 PR 이 바꾼 줄의 절반이 무잠금이었다.
+        """
+        single = run_policy(update_type="version-update:semver-minor", group="", names="onepkg")
+        assert single["reason"] == "minor update", single
+
+        grouped = run_policy(update_type="version-update:semver-minor", group="python-dev")
+        assert "python-dev" in grouped["reason"], grouped
+
+        multi = run_policy(update_type="version-update:semver-minor", group="", names="a,b,c")
+        assert "3 dependencies" in multi["reason"], multi
+
+        assert run_policy(update_type="version-update:semver-patch")["reason"] == "patch update"
 
     def test_grouped_minor_still_auto_merges(self):
         assert _merges(update_type="version-update:semver-minor", group="python-dev")
