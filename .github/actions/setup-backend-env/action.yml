@@ -123,7 +123,7 @@ runs:
         fi
 
     - name: Install deps
-      if: steps.venv.outputs.usable != 'true'
+      if: steps.cache-venv.outputs.cache-hit != 'true' || steps.venv.outputs.usable != 'true'
       shell: bash
       # restore-keys 로 일부 복원되었거나 빈 .venv 라면 uv sync 가 ① uv 캐시
       # (~/.cache/uv) 에서 wheel 즉시 link → 다운로드 skip, ② 변경된 deps 만 추가.
