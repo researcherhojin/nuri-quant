@@ -194,7 +194,7 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 	@# check_privacy_leak.py 가 차단한다 — 2026-08-02 실측, 가드가 정상 동작한 것이다.
 	@# IDE 는 열린 파일을 직접 검사하므로 config 경고는 거기서만 보이고,
 	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
-	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary \
+	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary --gitignore \
 		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
 		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
 		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
@@ -720,7 +720,7 @@ sync-status:
 	bash scripts/deploy/dev_sync.sh status
 
 scheduler-reload-remote: ## Reload scheduler on Mac mini (nuri/scheduler.py 변경 반영)
-	@test -n "$$DEV2_HOST" || { echo "❌ DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=ehbebe@Ehbebeui-Macmini.local 추가 필요"; exit 1; }
+	@test -n "$$DEV2_HOST" || { echo "❌ DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=user@macmini.local 추가 필요"; exit 1; }
 	@echo "→ Mac mini scheduler reload..."
 	@bash scripts/deploy/ssh_dev2.sh "$$DEV2_HOST" '\
 		launchctl unload ~/Library/LaunchAgents/com.nuri-quant.scheduler.plist 2>/dev/null; \

@@ -9,7 +9,7 @@ set -euo pipefail
 if [ -f .env ]; then source .env; fi
 
 REMOTE_HOST="${MACMINI_HOST:-macmini.local}"
-REMOTE_USER="${MACMINI_USER:-ehbebe}"
+REMOTE_USER="${MACMINI_USER:?MACMINI_USER 미설정 — Mac mini 계정명을 .env 또는 환경변수에 넣을 것 (.env.example 참고)}"
 REMOTE_PATH="${MACMINI_PATH:-~/nuri-quant}"
 
 echo "=== Deploying Nuri-Quant to Mac Mini ($REMOTE_USER@$REMOTE_HOST) ==="
