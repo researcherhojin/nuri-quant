@@ -35,6 +35,17 @@ runs:
         # uv 캐시 hit 보장 (codex consult uv-cache-pattern-2026-05-05 §codex).
         enable-cache: false
 
+    # uv 가 받아오는 인터프리터의 설치 위치를 **우리가** 고정한다 (#1534).
+    # setup-uv 는 이걸 `$RUNNER_TEMP/uv-python-dir` 로 잡는데, 그 디렉터리는
+    # 잡마다 새로 생기고 캐시되지 않는다. `.venv/bin/python` 은 거기로 가는
+    # 심링크라, venv 만 캐시하면 복원본이 **dangling** 이 된다.
+    # setup-uv 의 내부 선택에 기대지 않으려고 뒤에서 덮어쓴다 — uv 는 이 값을
+    # `uv sync` 시점에 읽으므로 우리 값이 이긴다.
+    # Test: tests/scripts/test_ci_venv_cache.py::TestVenvCacheIsSelfContained
+    - name: Pin uv interpreter dir
+      shell: bash
+      run: echo "UV_PYTHON_INSTALL_DIR=${{ runner.temp }}/uv-python" >> "$GITHUB_ENV"
+
     # uv tool 캐시 (wheel 다운로드 저장소). venv cache miss 시 uv sync 가
     # 이 디렉토리에서 wheel 을 link → PyPI 다운로드 skip → 2:50 → ~30s.
     # restore-keys 가 broad 매칭이라 lockfile 변경에도 가장 가까운 캐시 reuse.
@@ -86,16 +97,35 @@ runs:
       id: cache-venv
       uses: actions/cache@v5
       with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
+        # 인터프리터를 함께 담는다 — 둘은 심링크로 묶여 있어 따로 캐시하면
+        # 한쪽만 복원된 순간 venv 가 통째로 못 쓰게 된다 (#1534).
+        path: |
+          .venv
+          ${{ runner.temp }}/uv-python
+        # `-v2`: 인터프리터를 담기 전에 만들어진 캐시는 복원돼도 못 쓴다 (#1534).
+        #        키를 올려 한 번 새로 굽는다 — talib 키의 `-v5` 와 같은 관례.
+        key: venv-v2-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-${{ hashFiles('uv.lock') }}
         # uv.lock 이 살짝 바뀌어도 (예: pytest-shard → pytest-split, 1줄 diff)
         # venv cache 가 완전 miss → 221 패키지 재설치를 막기 위한 fallback.
         # 부분 hit 면 uv sync 가 변경된 패키지만 install (~수초).
         restore-keys: |
-          venv-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-
+          venv-v2-${{ runner.os }}-${{ steps.image.outputs.id }}-py${{ inputs.python-version }}-
+
+    # `cache-hit` 은 "복원됐다" 이지 "쓸 수 있다" 가 아니다 (#1534). 캐시가 어떤
+    # 이유로든 못 쓰게 되면 설치를 건너뛰고 `exit 127` 로 죽는 대신 그냥 다시 깐다.
+    # Test: tests/scripts/test_ci_venv_cache.py::TestInstallDoesNotTrustCacheHit::test_install_is_gated_on_a_working_interpreter
+    - name: Check restored venv
+      id: venv
+      shell: bash
+      run: |
+        if .venv/bin/python -c "import sys" 2>/dev/null; then
+          echo "usable=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "usable=false" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Install deps
-      if: steps.cache-venv.outputs.cache-hit != 'true'
+      if: steps.venv.outputs.usable != 'true'
       shell: bash
       # restore-keys 로 일부 복원되었거나 빈 .venv 라면 uv sync 가 ① uv 캐시
       # (~/.cache/uv) 에서 wheel 즉시 link → 다운로드 skip, ② 변경된 deps 만 추가.
