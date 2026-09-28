@@ -20,12 +20,37 @@ jobs:
     name: Commit count gate (≤ 3)
     runs-on: ubuntu-latest
     steps:
+      # 이벤트 페이로드가 아니라 **현재** 라벨을 조회한다 (#1552).
+      #
+      # 페이로드(`github.event.pull_request.labels.*.name`)는 **낡을 수 있다.** 실측
+      # (#1550, 2026-09-28): `scope-expand-approved` 가 09:32:05 에 붙었는데 09:32:07
+      # 의 `synchronize` 런 페이로드에는 **없었다** — labeled 와 push 가 겹치면
+      # 스냅샷이 2초 뒤처진다. 그 실패는 rollup 에 남고, `gh run rerun` 은 **원래
+      # 페이로드를 재생**하므로 다시 실패한다(09:37:32 attempt=2 도 failure). 라벨을
+      # 떼었다 다시 붙여 새 `labeled` 이벤트를 만들어야 초록이 됐다.
+      #
+      # 이 게이트는 required check 이 아니라 머지를 막지는 않는다. 그래서 피해는
+      # "막힘" 이 아니라 **빨간불의 의미가 닳는 것**이다 — escape 를 정당하게 쓸
+      # 때마다 무해한 빨간 체크가 남으면 빨간 체크를 무시하는 습관이 생긴다.
+      #
+      # 조회가 실패하면 `labels` 가 비어 매치가 없고, 게이트가 **그대로 돈다**.
+      # "라벨을 확인 못 했다" 를 "라벨이 있다" 로 보고하지 않는다 (#910/#953 계열).
+      # 실측 6경로(gh 부재·rc=1·빈 출력·토큰 부재·raw JSON·정상) 전부 fail-closed.
+      #
+      # ⚠️ `gh ... | grep -q` 로 **파이프하지 않는다.** `grep -q` 는 첫 매치에서
+      # 조기 종료하므로 출력이 파이프 버퍼(64KB)를 넘으면 `gh` 가 SIGPIPE(141)로
+      # 죽는다. 지금은 라벨이 적어 안 터지지만, 바로 아래 `Count commits in PR` 이
+      # 이미 `set -euo pipefail` 을 쓴다 — 다음 편집자가 여기도 켜는 순간 **라벨이
+      # 있는데 게이트가 도는** 회귀가 된다. 변수로 받아 herestring 으로 넘긴다.
       - name: Check escape hatch label
         id: label
         env:
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if echo "$LABELS" | grep -q '"scope-expand-approved"'; then
+          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' || true)"
+          if grep -qxF 'scope-expand-approved' <<< "$labels"; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::scope-expand-approved label present — gate skipped"
           else
