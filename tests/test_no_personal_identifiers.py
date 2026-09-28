@@ -1,7 +1,7 @@
 """추적 파일에 개인 식별자(macOS 계정명 · 실명 기기명)가 없다 (#1557).
 
-privacy 스캐너(`scripts/verify/check_privacy_leak.py`)는 STRATEGY §4.4.1 정의대로 **금융**
-데이터만 본다. 그 범위 밖의 식별자 — 배포 스크립트의 계정명 fallback, 테스트 fixture 의
+privacy 스캐너(`scripts/verify/check_privacy_leak.py`)는 이제 `personal_identifier` 범주로 이 식별자의
+**모양**을 잡지만 값은 모른다 — 정확한 이름은 여기서만 잠근다. 처음(#1557 이전)엔 §4.4.1 금융 데이터만 봤다. 그 범위 밖의 식별자 — 배포 스크립트의 계정명 fallback, 테스트 fixture 의
 실명 기기명, 문서에 붙여넣은 `ls -l` 소유자 — 가 2026-09-28 감사에서 추적 파일 10곳에
 남아 있었다. 치환한 뒤 이 테스트가 재유입을 막는다.
 

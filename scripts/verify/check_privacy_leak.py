@@ -30,6 +30,16 @@ Patterns
    flag literals >= 1_000_000 in test files AND check the surrounding
    context for keys like total_invested, cash_balance, deposit, withdraw.
 
+3. Ticker + PnL co-occurrence (PR #202) — see TICKER_PNL_* below.
+
+4. Personal identifiers — **shapes only, never the values** (#1557 걷어낸
+   10곳의 형태에서 도출). 이 스캐너는 공개 레포의 일부라 계정명·기기명을
+   여기 적는 순간 그게 유출이다. 잡는 모양: macOS 한국어 기본 호스트명의
+   로마자(`<name>ui-Macmini`), 개인 ssh 대상(`<account>@<host>.local`),
+   실제 홈 경로(`/Users/<account>/`), Claude Code 프로젝트 경로
+   (`-Users-<account>-…`). 정확한 이름 잠금은
+   `tests/test_no_personal_identifiers.py` 가 런타임 조립으로 따로 한다.
+
 Allow-list
 ----------
 - `config/portfolio.yaml` is gitignored — never scanned
@@ -160,6 +170,26 @@ SUSPECT_NUMERIC_KEYS: tuple[str, ...] = (
 # noisy (CAN SLIM rule text, HWM, SL/MDD abbreviations all trigger).
 TICKER_PNL_PAREN = re.compile(r"[-+]\d+(?:\.\d+)?%\s*\(([A-Z]{2,5}(?:\.(?:KS|KQ))?)\)")
 TICKER_PNL_ADJACENT = re.compile(r"\b([A-Z]{2,5}(?:\.(?:KS|KQ))?)\s{1,3}([-+]\d+(?:\.\d+)?%)")
+
+# 개인 식별자 — 모양만 (docstring 4). 플레이스홀더는 명시적으로 뺀다: 문서·스크립트가
+# `user@macmini.local`, `/Users/USER/`, `/Users/someone/` 로 예시를 적을 수 있어야 한다.
+_PLACEHOLDER_ACCOUNTS = r"(?:USER|user|you|root|admin|someone|example|name|account|username)"
+# a. "<이름>의 Mac mini" 로마자 — 접미 `ui-` + 기기 종류. `Test-Macmini` 같은 fixture 는 안 잡는다.
+PERSONAL_HOSTNAME = re.compile(r"\b[A-Za-z]{2,}ui-(?:Macmini|MacBookPro|MacBookAir|MacBook|MacStudio|MacPro|iMac)\b")
+# b. `<계정>@<host>.local` — 개인 ssh 대상. `git@github.com` 은 .local 이 아니라 무관.
+PERSONAL_SSH_TARGET = re.compile(
+    r"(?<![\w.-])(?!" + _PLACEHOLDER_ACCOUNTS + r"@)[A-Za-z][\w.-]+@[A-Za-z0-9-]+\.local\b"
+)
+# c. `/Users/<계정>/` — 실제 홈 경로. 템플릿(`/Users/<…>/`, `/Users/{…}/`, `/Users/$…/`)은 첫 글자가 문자가 아니라 제외.
+PERSONAL_HOME_PATH = re.compile(r"/Users/(?!" + _PLACEHOLDER_ACCOUNTS + r"/)[A-Za-z][\w.-]*/")
+# d. `~/.claude/projects/-Users-<계정>-…` — 홈 경로의 sanitized 형태.
+PERSONAL_CLAUDE_PROJECT_PATH = re.compile(r"/projects/-Users-(?!" + _PLACEHOLDER_ACCOUNTS + r"-)[A-Za-z][A-Za-z0-9]*-")
+_PERSONAL_PATTERNS = (
+    ("hostname", PERSONAL_HOSTNAME),
+    ("ssh-target", PERSONAL_SSH_TARGET),
+    ("home-path", PERSONAL_HOME_PATH),
+    ("claude-project-path", PERSONAL_CLAUDE_PROJECT_PATH),
+)
 
 # Ticker-lookalikes that are abbreviations, not equity symbols.
 # Keep conservative — false negatives on obscure tickers are acceptable; the
@@ -305,7 +335,7 @@ TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
 # 이제 값은 그 경로에서 끌 규칙의 집합이다. `ALL` 은 스캐너 자신처럼 세 카테고리를
 # 전부 문서화하는 파일에만 쓴다. 사유에 적은 카테고리만 끄면, 사유 밖의 유출은
 # 계속 걸린다.
-ALL_CATEGORIES: frozenset[str] = frozenset({"broker_name", "suspect_numeric", "ticker_pnl"})
+ALL_CATEGORIES: frozenset[str] = frozenset({"broker_name", "suspect_numeric", "ticker_pnl", "personal_identifier"})
 
 ALLOWLIST: dict[str, frozenset[str]] = {
     # 스캐너 본체와 그 테스트 — 세 카테고리의 패턴을 전부 적어 둔다.
@@ -352,7 +382,7 @@ class Finding:
     line: int
     pattern: str
     snippet: str
-    category: str  # "broker_name" | "suspect_numeric" | "ticker_pnl"
+    category: str  # "broker_name" | "suspect_numeric" | "ticker_pnl" | "personal_identifier"
 
 
 def is_allowlisted(path: Path, category: str | None = None) -> bool:
@@ -453,14 +483,15 @@ def scan_file_for_numerics(path: Path) -> list[Finding]:
 def gate_text(text: str, source: Path | str = "<stream>") -> list[Finding]:
     """E3 #579 — single-call privacy gate for agent transcripts.
 
-    Aggregates all 4 categories (broker_name / suspect_numeric / ticker_pnl)
-    on a text chunk before publishing to a Discord agent channel. Used by
-    both `--stream` CLI mode and `stage_agent_dev_log` runtime gate.
+    Aggregates all 4 categories (broker_name / suspect_numeric / ticker_pnl /
+    personal_identifier) on a text chunk before publishing to a Discord agent
+    channel. Used by both `--stream` CLI mode and `stage_agent_dev_log` runtime gate.
     """
     return (
         scan_text_for_brokers(text, source)
         + scan_text_for_numerics(text, source)
         + scan_text_for_ticker_pnl(text, source)
+        + scan_text_for_personal_identifiers(text, source)
     )
 
 
@@ -514,6 +545,34 @@ def scan_file_for_ticker_pnl(path: Path) -> list[Finding]:
     return scan_text_for_ticker_pnl(text, source=path)
 
 
+def scan_text_for_personal_identifiers(text: str, source: Path | str = "<input>") -> list[Finding]:
+    """개인 식별자의 **모양**을 잡는다 (docstring 4). 값은 어디에도 적지 않는다."""
+    findings: list[Finding] = []
+    file_path = source if isinstance(source, Path) else Path(str(source))
+    for ln_no, line in enumerate(text.splitlines(), start=1):
+        for label, rx in _PERSONAL_PATTERNS:
+            for m in rx.finditer(line):
+                findings.append(
+                    Finding(
+                        file=file_path,
+                        line=ln_no,
+                        pattern=f"{label}:{m.group(0)}",
+                        snippet=line.strip()[:120],
+                        category="personal_identifier",
+                    )
+                )
+    return findings
+
+
+def scan_file_for_personal_identifiers(path: Path) -> list[Finding]:
+    """File wrapper around scan_text_for_personal_identifiers."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, FileNotFoundError):
+        return []
+    return scan_text_for_personal_identifiers(text, source=path)
+
+
 def scan_path(path: Path) -> list[Finding]:
     """Scan one file for all categories. Skips allowlisted/binary."""
     if is_allowlisted(path):  # 전 카테고리 면제인 경로만 통째로 건너뛴다
@@ -531,6 +590,8 @@ def scan_path(path: Path) -> list[Finding]:
         out += scan_file_for_numerics(path)
     if not is_allowlisted(path, "ticker_pnl"):
         out += scan_file_for_ticker_pnl(path)
+    if not is_allowlisted(path, "personal_identifier"):
+        out += scan_file_for_personal_identifiers(path)
     # 줄 단위 면제 마커 적용 — 파일 면제를 좁힌 대신 남긴 정당한 탈출구.
     lines = _read_lines(path)
     return [f for f in out if not (0 < f.line <= len(lines) and line_allows(lines[f.line - 1], f.category))]
@@ -588,6 +649,7 @@ def print_findings(findings: list[Finding]) -> None:
         "broker_name": "broker name",
         "suspect_numeric": "suspect $",
         "ticker_pnl": "ticker+PnL",
+        "personal_identifier": "personal id",
     }
 
     for file_path, file_findings in by_file.items():
@@ -604,8 +666,10 @@ def print_findings(findings: list[Finding]) -> None:
     print(
         f"{YELLOW}Action: replace real broker names with placeholders "
         f"(Brokerage Alpha/Beta), use round-number placeholders for monetary "
-        f"fields, and avoid disclosing ticker + PnL combinations in commit "
-        f"messages / PR bodies. See docs/STRATEGY.md §4.4.{NC}"
+        f"fields, avoid disclosing ticker + PnL combinations in commit "
+        f"messages / PR bodies, and replace account names / real-name hostnames / "
+        f"home paths with placeholders (user@macmini.local, /Users/USER/). "
+        f"See docs/STRATEGY.md §4.4.{NC}"
     )
 
 
@@ -665,7 +729,7 @@ def main() -> int:
         "--stream",
         action="store_true",
         help="Read agent transcript from stdin (line-buffered) and gate-check all 4 "
-        "categories (broker / numeric / ticker_pnl). Exit 2 on any finding "
+        "categories (broker / numeric / ticker_pnl / personal_identifier). Exit 2 on any finding "
         "(stricter than commit-msg's exit 1) so callers can distinguish from "
         "lint-level failures. Used by stage_agent_dev_log() before publish.",
     )
@@ -695,10 +759,12 @@ def main() -> int:
     elif args.message:
         text = sys.stdin.read()
         findings.extend(scan_text_for_ticker_pnl(text, source="<stdin>"))
+        findings.extend(scan_text_for_personal_identifiers(text, source="<stdin>"))
     elif args.unpushed_commits:
         for sha, msg in iter_unpushed_commit_messages():
-            for f in scan_text_for_ticker_pnl(msg, source=f"<commit:{sha[:8]}>"):
-                findings.append(f)
+            src = f"<commit:{sha[:8]}>"
+            findings.extend(scan_text_for_ticker_pnl(msg, source=src))
+            findings.extend(scan_text_for_personal_identifiers(msg, source=src))
     else:
         if args.diff:
             targets = iter_staged_diff_files()
