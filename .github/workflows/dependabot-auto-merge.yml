@@ -138,12 +138,18 @@ jobs:
               // dependabot PR 100건 중 grouped 는 5건뿐이고 단독 minor 가 43건이다
               // (group 패턴이 ruff*/pytest*/pandas*/numpy*/scipy*/fastapi*/uvicorn*/
               // httpx* 로 좁아 대부분이 그물에 안 걸린다). 결과는 "minor 를 묶어서
-              // 검토" 가 아니라 **주당 4건의 수동 큐**였고, 사람이 거기서 더 보는
-              // 것은 초록불뿐이었다.
+              // 검토" 가 아니라 **주당 4건의 수동 큐**였다.
               //
               // 진짜 위험축인 전이 major 는 위의 `lockVerdict` 가 따로 잡는다
-              // (#1364 — #1355 가 바로 "minor 제목 아래 numpy major" 였다). 그쪽이
-              // 살아 있는 한 minor 라벨 자체는 게이트로서 값이 없다.
+              // (#1364 — #1355 가 바로 "minor 제목 아래 numpy major" 였다).
+              //
+              // ⚠️ lockVerdict 가 minor 라벨을 **완전히** 대체하지는 않는다. `clean`
+              // 의 뜻은 "내가 보는 경계를 안 넘었다" 이지 "호환된다" 가 아니다 —
+              // 같은 major 안의 API 제거 · yanked wheel · 아티팩트 교체는 그
+              // 스크립트도 못 본다(자기 독스트링이 자인한다). 남는 방어선은 전체
+              // 테스트 스위트이고, 외부 SDK 처럼 mock 으로만 검증되는 축에는 그
+              // 방어선이 얇다. 이 공백을 알고 여는 것이다.
+              // npm 0.x 직접 의존성에는 uv 와 달리 0.x 경계 규칙이 없다 (#1551).
               //
               // 부수 효과 하나가 더 있다: dependabot 의 force-push 는 GitHub
               // auto-merge 를 끈다. 워크플로는 `synchronize` 에 다시 돌지만

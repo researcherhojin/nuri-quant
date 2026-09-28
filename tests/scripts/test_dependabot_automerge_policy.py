@@ -26,7 +26,12 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -104,140 +109,119 @@ class TestAutoMergeCoversEveryConfiguredEcosystem:
         assert len(configured) >= 3, f"dependabot.yml 에서 읽어낸 생태계가 {configured} 뿐이다"
 
 
-def _policy_source() -> str:
-    """정책 분기(`shouldMerge` 결정부)의 JS 본문 — **주석을 걷어낸 것**.
+def _policy_script() -> str:
+    """`Evaluate merge policy` 스텝의 JS 본문을 YAML 에서 꺼낸다."""
+    workflow = yaml.safe_load(AUTOMERGE_WORKFLOW.read_text())
+    steps = workflow["jobs"]["enable-auto-merge"]["steps"]
+    policy = [step for step in steps if step.get("id") == "policy"]
+    assert policy, "`id: policy` 스텝을 못 찾았다 — 정책이 옮겨졌나?"
+    return policy[0]["with"]["script"]
 
-    주석을 남기면 테스트가 코드가 아니라 **산문에서 값을 읽는다.** 가설이 아니라
-    실제로 일어났다: 이 워크플로의 주석에 "shouldMerge=false 면 재부착을 안 하므로"
-    라는 문장이 있어서 minor 분기 조각에 `false` 가 하나 더 잡혔다. `hits[-1]` 이
-    코드 쪽 대입을 집어 **우연히** 통과했을 뿐, 주석을 대입문 뒤에 썼다면 판정이
-    뒤집혔다. 같은 이유로 주석 안의 `} else` 는 분기 절단도 망가뜨린다.
 
-    라인 단위 `//` 제거가 안전한 근거: 이 본문에는 `://` 가 없다 — 문자열 리터럴
-    안의 `//` 를 자를 위험이 없다. URL 이 들어오면 이 전제가 깨지므로
-    `test_the_policy_body_has_no_url_that_line_stripping_would_break` 가 잠근다.
+def run_policy(
+    *,
+    lock_verdict: str = "clean",
+    ecosystem: str = "uv",
+    update_type: str = "version-update:semver-patch",
+    group: str = "",
+    names: str = "somepkg",
+) -> dict[str, str]:
+    """정책 스텝을 **node 로 실제 실행**하고 출력을 돌려준다.
+
+    텍스트를 긁지 않는 이유: 긁는 방식은 if/else 체인의 **모양**만 보므로 체인
+    뒤에 후처리 가드 한 줄을 붙여 정책을 통째로 되돌려도 통과한다 (2026-09-28
+    교차리뷰가 실제로 그 mutation 으로 구조 테스트 7개를 전부 초록으로 만들었다).
+    실행하면 그 형태와 무관하게 최종 판정을 본다 — `tests/test_hook_guard_execution.py`
+    · `tests/test_pre_push_hook.py` 가 훅을 grep 하지 않고 실행하는 것과 같은 이유다.
+
+    node 부재는 skip 이 아니라 **실패**다. 조용히 건너뛴 게이트는 게이트가 아니고,
+    이 레포가 반복해서 데인 형태다(green dead gate).
     """
-    source = AUTOMERGE_WORKFLOW.read_text()
-    start = source.index("let shouldMerge = false;")
-    end = source.index('core.setOutput("should-merge"', start)
-    body = source[start:end]
-    return "\n".join(re.sub(r"//.*$", "", line) for line in body.splitlines())
+    node = shutil.which("node")
+    assert node, "node 를 찾을 수 없다 — 이 테스트는 skip 하지 않는다(dead gate 방지)"
 
-
-def _verdict_for(branch_marker: str) -> bool:
-    """해당 분기가 `shouldMerge` 를 무엇으로 두는지 읽는다.
-
-    분기 본문을 **다음 `} else` 까지**로 잘라 그 안의 마지막 `shouldMerge = X` 를 본다.
-    주석은 `_policy_source()` 가 이미 걷어냈다.
-    """
-    body = _policy_source()
-    i = body.index(branch_marker)
-    tail = body[i + len(branch_marker) :]
-    nxt = tail.find("} else")
-    tail = tail[: nxt if nxt != -1 else len(tail)]
-    hits = re.findall(r"shouldMerge\s*=\s*(true|false)", tail)
-    assert hits, f"{branch_marker!r} 분기에서 shouldMerge 대입을 못 찾았다:\n{tail}"
-    assert len(hits) == 1, (
-        f"{branch_marker!r} 분기에 shouldMerge 대입이 {len(hits)}개다 — 어느 것이 "
-        f"최종인지 위치로 추정하게 된다. 분기당 하나로 유지할 것:\n{tail}"
+    harness = (
+        "const outputs = {};\n"
+        "const core = {\n"
+        "  info: () => {},\n"
+        "  setOutput: (k, v) => { outputs[k] = String(v); },\n"
+        "  setFailed: (m) => { outputs.__failed = String(m); },\n"
+        "};\n" + _policy_script() + "\nconsole.log(JSON.stringify(outputs));\n"
     )
-    return hits[0] == "true"
+    env = {
+        **os.environ,
+        "LOCK_VERDICT": lock_verdict,
+        "PACKAGE_ECOSYSTEM": ecosystem,
+        "UPDATE_TYPE": update_type,
+        "DEPENDENCY_GROUP": group,
+        "DEPENDENCY_NAMES": names,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        script = Path(tmp) / "policy.mjs"
+        script.write_text(harness)
+        result = subprocess.run([node, str(script)], capture_output=True, text=True, env=env, timeout=30)
+    assert result.returncode == 0, f"정책 스크립트가 죽었다:\n{result.stderr}"
+    return json.loads(result.stdout.strip().splitlines()[-1])
+
+
+def _merges(**kwargs) -> bool:
+    out = run_policy(**kwargs)
+    assert "should-merge" in out, f"should-merge 출력이 없다: {out}"
+    return out["should-merge"] == "true"
 
 
 class TestMergePolicyBySemver:
-    """판정표를 잠근다 (#1549).
+    """판정표를 **실행해서** 잠근다 (#1549).
 
-    지금까지 이 파일은 **생태계 매핑만** 잠갔고 판정 로직 자체는 무방비였다. 그래서
-    `&& isGrouped` 같은 조건이 붙거나 빠져도 아무 테스트가 안 울었다.
+    지금까지 이 파일은 생태계 매핑만 잠갔고 판정 로직 자체는 무방비였다.
 
     정책의 근거: 진짜 위험축인 **전이 major** 는 `lockVerdict`(#1364)가 따로 잡는다.
     #1355 가 그 사례 — 제목은 "scipy minor" 인데 lock 에서는 numpy 가 major 로 움직였고
-    manifest 기반 semver 는 그걸 **볼 수 없다**. 그 게이트가 살아 있는 한 minor 라벨
-    자체는 게이트로서 값이 없고, 실제로도 그랬다: 2026-07-13~09-28 머지된 100건 중
-    단독 minor 43건이 전부 사람 손을 거쳤지만 사람이 더 본 것은 초록불뿐이다.
+    manifest 기반 semver 는 그걸 **볼 수 없다**.
+
+    다만 lock 게이트가 minor 라벨을 **완전히** 대체하지는 않는다. `clean` 의 뜻은
+    "내가 보는 경계를 안 넘었다" 이지 "호환된다" 가 아니다 — 같은 major 안의 API 제거,
+    yanked wheel, 아티팩트 교체는 그 스크립트도 못 본다(자기 독스트링이 자인한다).
+    남는 방어선은 전체 테스트 스위트이고, 외부 SDK 처럼 mock 으로만 검증되는 축에는
+    그 방어선이 얇다. 이 공백을 알고 여는 것이다.
     """
 
     def test_patch_auto_merges(self):
-        assert _verdict_for('updateType === "version-update:semver-patch"') is True
+        assert _merges(update_type="version-update:semver-patch") is True
 
-    def test_minor_auto_merges_even_when_not_grouped(self):
-        """`&& isGrouped` 를 되살리면 FAIL.
+    def test_single_minor_auto_merges(self):
+        """`&& isGrouped` 를 어떤 형태로든 되살리면 FAIL.
 
         group 패턴이 좁아(ruff*/pytest*/pandas*/numpy*/scipy*/fastapi*/uvicorn*/httpx*)
         대부분의 minor 가 단독으로 도착한다 — 11주 실측으로 grouped 5건 vs 단독 minor
-        43건. `isGrouped` 를 요구하면 그 43건이 **영영 자동머지되지 않는다.**
-
-        더 나쁜 2차 효과: dependabot 의 force-push 는 GitHub auto-merge 를 끄는데,
-        워크플로는 `synchronize` 에 다시 돌아도 shouldMerge=false 면 재부착을 안 한다.
-        사람이 손으로 켜도 rebase 한 번에 풀린다.
+        43건(npm 29 · uv 14).
         """
-        body = _policy_source()
-        minor = 'updateType === "version-update:semver-minor"'
-        assert minor in body, "minor 분기가 사라졌다"
-        assert f"{minor} && isGrouped" not in body, (
-            "minor 분기에 `&& isGrouped` 가 다시 붙었다 — 단독 minor 가 영영 "
-            "자동머지되지 않는 수동 큐로 돌아간다 (실측 43건/11주)."
-        )
-        assert _verdict_for(minor) is True
+        assert _merges(update_type="version-update:semver-minor", group="", names="lucide-react")
+
+    def test_grouped_minor_still_auto_merges(self):
+        assert _merges(update_type="version-update:semver-minor", group="python-dev")
 
     def test_major_still_requires_a_human(self):
-        """major 는 자동머지하지 않는다 — 여기를 열면 FAIL."""
-        assert _verdict_for('updateType === "version-update:semver-major"') is False
+        assert _merges(update_type="version-update:semver-major") is False
 
-    def test_a_dirty_lock_verdict_blocks_regardless_of_semver(self):
-        """lock 게이트가 semver 판정보다 **먼저** 그리고 무조건 막는다 (#1364).
+    def test_a_dirty_lock_verdict_blocks_even_a_patch(self):
+        """lock 게이트가 semver 판정을 이긴다 (#1364) — 이게 minor 를 열 수 있는 근거다."""
+        assert _merges(lock_verdict="blocked", update_type="version-update:semver-patch") is False
 
-        이게 minor 를 열 수 있는 근거다. 이 분기가 사라지거나 뒤로 밀리면 #1355
-        (minor 제목 아래 numpy major 무인 머지)가 그대로 재발한다.
-        """
-        body = _policy_source()
-        assert 'lockVerdict !== "clean"' in body, "lock verdict 분기가 사라졌다"
-        assert body.index('lockVerdict !== "clean"') < body.index('updateType === "version-update:semver-patch"'), (
-            "lock 게이트가 semver 판정보다 뒤로 밀렸다 — #1355 가 재발한다"
-        )
-        assert _verdict_for('lockVerdict !== "clean"') is False
+    def test_a_missing_lock_verdict_blocks(self):
+        """게이트 스텝이 죽거나 스킵돼 output 이 비면 **차단**이다 (#910/#953 계열)."""
+        assert _merges(lock_verdict="", update_type="version-update:semver-patch") is False
 
-    def test_the_policy_body_has_no_url_that_line_stripping_would_break(self):
-        """`_policy_source()` 의 라인 단위 `//` 제거가 안전하다는 **전제**를 잠근다.
+    def test_an_unsupported_ecosystem_blocks(self):
+        assert _merges(ecosystem="cargo", update_type="version-update:semver-patch") is False
 
-        전제가 깨지면 파서가 문자열 리터럴을 잘라 먹고, 그 결과는 예외가 아니라
-        **조용한 오판**이다 — 이 파일의 모든 판정이 의미를 잃는다.
-        """
-        raw_start = AUTOMERGE_WORKFLOW.read_text()
-        start = raw_start.index("let shouldMerge = false;")
-        end = raw_start.index('core.setOutput("should-merge"', start)
-        raw_body = raw_start[start:end]
+    def test_an_unknown_update_type_blocks(self):
+        assert _merges(update_type="") is False
 
-        offenders = [ln.strip() for ln in raw_body.splitlines() if "://" in ln]
-        assert not offenders, (
-            "정책 본문에 `://` 가 들어왔다 — 라인 단위 `//` 제거가 문자열을 훼손한다.\n"
-            f"{offenders}\n"
-            "URL 이 필요하면 `_policy_source()` 를 제대로 된 토크나이저로 바꿀 것."
-        )
-
-    def test_the_parser_ignores_values_written_in_comments(self):
-        """주석 안의 `shouldMerge = ...` 를 판정으로 읽지 않는다.
-
-        회귀 방지: 실제로 이 워크플로 주석에 "shouldMerge=false 면" 이라는 문장이
-        있었고, 주석을 안 걷어냈을 때 minor 분기에서 대입이 2개로 잡혔다.
-        """
-        assert "//" not in _policy_source(), "주석이 안 걷혔다 — 파서가 산문을 코드로 읽는다"
-
-        # 주석에 판정값을 심어도 읽히지 않아야 한다. 걷어내기 전 원문에는 잡히고,
-        # `_policy_source()` 를 거친 뒤에는 안 잡혀야 파서가 제 역할을 한 것이다.
-        raw = AUTOMERGE_WORKFLOW.read_text()
-        start = raw.index("let shouldMerge = false;")
-        end = raw.index('core.setOutput("should-merge"', start)
-        raw_body = raw[start:end]
-
-        pattern = r"shouldMerge\s*=\s*(?:true|false)"
-        in_comments = [
-            ln.strip() for ln in raw_body.splitlines() if re.search(pattern, ln) and ln.strip().startswith("//")
-        ]
-        if in_comments:
-            # 실제로 이런 줄이 있다 — 그렇다면 파서가 그걸 지웠는지가 진짜 검사다.
-            assert not [
-                ln
-                for ln in _policy_source().splitlines()
-                if re.search(pattern, ln) and not ln.strip().startswith(("shouldMerge", "let"))
-            ], f"주석의 판정값이 파서를 통과했다: {in_comments}"
+    def test_every_configured_ecosystem_actually_merges_a_patch(self):
+        """허용 목록이 문자열로는 맞는데 판정에서 빠지는 일이 없도록 **실행**으로 확인."""
+        for ecosystem in sorted(_configured_ecosystems()):
+            metadata_name = METADATA_NAME[ecosystem]
+            assert _merges(ecosystem=metadata_name, update_type="version-update:semver-patch"), (
+                f"{ecosystem} ({metadata_name}) 의 patch 가 자동머지되지 않는다"
+            )
