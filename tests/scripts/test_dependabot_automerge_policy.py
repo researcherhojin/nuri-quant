@@ -102,3 +102,80 @@ class TestAutoMergeCoversEveryConfiguredEcosystem:
         """카나리아 — dependabot.yml 파싱이 빈 집합을 내면 위 두 테스트가 공허해진다."""
         configured = _configured_ecosystems()
         assert len(configured) >= 3, f"dependabot.yml 에서 읽어낸 생태계가 {configured} 뿐이다"
+
+
+def _policy_source() -> str:
+    """정책 분기(`shouldMerge` 결정부)의 JS 본문."""
+    source = AUTOMERGE_WORKFLOW.read_text()
+    start = source.index("let shouldMerge = false;")
+    end = source.index('core.setOutput("should-merge"', start)
+    return source[start:end]
+
+
+def _verdict_for(branch_marker: str) -> bool:
+    """해당 분기가 `shouldMerge` 를 무엇으로 두는지 읽는다.
+
+    분기 본문을 **다음 `} else if` 까지**로 잘라 그 안의 마지막 `shouldMerge = X` 를 본다.
+    """
+    body = _policy_source()
+    i = body.index(branch_marker)
+    tail = body[i + len(branch_marker) :]
+    nxt = tail.find("} else")
+    tail = tail[: nxt if nxt != -1 else len(tail)]
+    hits = re.findall(r"shouldMerge\s*=\s*(true|false)", tail)
+    assert hits, f"{branch_marker!r} 분기에서 shouldMerge 대입을 못 찾았다:\n{tail}"
+    return hits[-1] == "true"
+
+
+class TestMergePolicyBySemver:
+    """판정표를 잠근다 (#1549).
+
+    지금까지 이 파일은 **생태계 매핑만** 잠갔고 판정 로직 자체는 무방비였다. 그래서
+    `&& isGrouped` 같은 조건이 붙거나 빠져도 아무 테스트가 안 울었다.
+
+    정책의 근거: 진짜 위험축인 **전이 major** 는 `lockVerdict`(#1364)가 따로 잡는다.
+    #1355 가 그 사례 — 제목은 "scipy minor" 인데 lock 에서는 numpy 가 major 로 움직였고
+    manifest 기반 semver 는 그걸 **볼 수 없다**. 그 게이트가 살아 있는 한 minor 라벨
+    자체는 게이트로서 값이 없고, 실제로도 그랬다: 2026-07-13~09-28 머지된 100건 중
+    단독 minor 43건이 전부 사람 손을 거쳤지만 사람이 더 본 것은 초록불뿐이다.
+    """
+
+    def test_patch_auto_merges(self):
+        assert _verdict_for('updateType === "version-update:semver-patch"') is True
+
+    def test_minor_auto_merges_even_when_not_grouped(self):
+        """`&& isGrouped` 를 되살리면 FAIL.
+
+        group 패턴이 좁아(ruff*/pytest*/pandas*/numpy*/scipy*/fastapi*/uvicorn*/httpx*)
+        대부분의 minor 가 단독으로 도착한다 — 11주 실측으로 grouped 5건 vs 단독 minor
+        43건. `isGrouped` 를 요구하면 그 43건이 **영영 자동머지되지 않는다.**
+
+        더 나쁜 2차 효과: dependabot 의 force-push 는 GitHub auto-merge 를 끄는데,
+        워크플로는 `synchronize` 에 다시 돌아도 shouldMerge=false 면 재부착을 안 한다.
+        사람이 손으로 켜도 rebase 한 번에 풀린다.
+        """
+        body = _policy_source()
+        minor = 'updateType === "version-update:semver-minor"'
+        assert minor in body, "minor 분기가 사라졌다"
+        assert f"{minor} && isGrouped" not in body, (
+            "minor 분기에 `&& isGrouped` 가 다시 붙었다 — 단독 minor 가 영영 "
+            "자동머지되지 않는 수동 큐로 돌아간다 (실측 43건/11주)."
+        )
+        assert _verdict_for(minor) is True
+
+    def test_major_still_requires_a_human(self):
+        """major 는 자동머지하지 않는다 — 여기를 열면 FAIL."""
+        assert _verdict_for('updateType === "version-update:semver-major"') is False
+
+    def test_a_dirty_lock_verdict_blocks_regardless_of_semver(self):
+        """lock 게이트가 semver 판정보다 **먼저** 그리고 무조건 막는다 (#1364).
+
+        이게 minor 를 열 수 있는 근거다. 이 분기가 사라지거나 뒤로 밀리면 #1355
+        (minor 제목 아래 numpy major 무인 머지)가 그대로 재발한다.
+        """
+        body = _policy_source()
+        assert 'lockVerdict !== "clean"' in body, "lock verdict 분기가 사라졌다"
+        assert body.index('lockVerdict !== "clean"') < body.index('updateType === "version-update:semver-patch"'), (
+            "lock 게이트가 semver 판정보다 뒤로 밀렸다 — #1355 가 재발한다"
+        )
+        assert _verdict_for('lockVerdict !== "clean"') is False

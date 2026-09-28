@@ -132,14 +132,29 @@ jobs:
             } else if (updateType === "version-update:semver-patch") {
               shouldMerge = true;
               reason = "patch update";
-            } else if (updateType === "version-update:semver-minor" && isGrouped) {
+            } else if (updateType === "version-update:semver-minor") {
+              // 단독 minor 도 머지한다. 예전엔 `&& isGrouped` 가 붙어 있었는데, 그
+              // 조건은 **사실상 죽은 가지**였다: 2026-07-13~09-28 에 머지된
+              // dependabot PR 100건 중 grouped 는 5건뿐이고 단독 minor 가 43건이다
+              // (group 패턴이 ruff*/pytest*/pandas*/numpy*/scipy*/fastapi*/uvicorn*/
+              // httpx* 로 좁아 대부분이 그물에 안 걸린다). 결과는 "minor 를 묶어서
+              // 검토" 가 아니라 **주당 4건의 수동 큐**였고, 사람이 거기서 더 보는
+              // 것은 초록불뿐이었다.
+              //
+              // 진짜 위험축인 전이 major 는 위의 `lockVerdict` 가 따로 잡는다
+              // (#1364 — #1355 가 바로 "minor 제목 아래 numpy major" 였다). 그쪽이
+              // 살아 있는 한 minor 라벨 자체는 게이트로서 값이 없다.
+              //
+              // 부수 효과 하나가 더 있다: dependabot 의 force-push 는 GitHub
+              // auto-merge 를 끈다. 워크플로는 `synchronize` 에 다시 돌지만
+              // shouldMerge=false 면 재부착을 안 하므로, 예전엔 사람이 손으로 켜도
+              // rebase 한 번에 풀렸다. true 가 되면 재부착이 저절로 된다.
               shouldMerge = true;
               reason = dependencyGroup
                 ? `grouped minor update (${dependencyGroup})`
-                : `grouped minor update (${dependencyNames.length} dependencies)`;
-            } else if (updateType === "version-update:semver-minor") {
-              shouldMerge = false;
-              reason = "minor update is not grouped";
+                : isGrouped
+                  ? `grouped minor update (${dependencyNames.length} dependencies)`
+                  : "minor update";
             } else if (updateType === "version-update:semver-major") {
               shouldMerge = false;
               reason = "major update requires manual review";
