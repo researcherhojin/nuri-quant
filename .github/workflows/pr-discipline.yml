@@ -20,12 +20,30 @@ jobs:
     name: Commit count gate (≤ 3)
     runs-on: ubuntu-latest
     steps:
+      # 이벤트 페이로드가 아니라 **현재** 라벨을 조회한다 (#1552).
+      #
+      # 페이로드(`github.event.pull_request.labels.*.name`)를 읽으면, 라벨을 나중에
+      # 붙인 PR 에 **영구히 빨간 체크가 남는다**: 라벨 이전 `synchronize` 런의 실패가
+      # rollup 에 남고, `gh run rerun` 은 **원래 이벤트 페이로드를 재생**하므로 새
+      # 라벨을 못 본다. 실측(#1550, 2026-09-28) — rerun 도 failure, 라벨을 떼었다
+      # 다시 붙여 새 `labeled` 이벤트를 만들어야 초록이 됐다.
+      #
+      # 이 게이트는 required check 이 아니라 머지를 막지는 않는다. 그래서 피해는
+      # "막힘" 이 아니라 **빨간불의 의미가 닳는 것**이다 — escape 를 정당하게 쓸
+      # 때마다 무해한 빨간 체크가 남으면 빨간 체크를 무시하는 습관이 생긴다.
+      #
+      # 조회 실패는 **통과가 아니다**: `gh api` 가 죽으면 조건이 거짓이 되어 아래
+      # 커밋 수 검사가 그대로 돈다. "라벨을 확인 못 했다" 를 "라벨이 있다" 로
+      # 보고하지 않는다 (#910/#953 계열).
       - name: Check escape hatch label
         id: label
         env:
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          if echo "$LABELS" | grep -q '"scope-expand-approved"'; then
+          if gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' \
+               | grep -qx 'scope-expand-approved'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::scope-expand-approved label present — gate skipped"
           else
