@@ -173,9 +173,14 @@ TICKER_PNL_ADJACENT = re.compile(r"\b([A-Z]{2,5}(?:\.(?:KS|KQ))?)\s{1,3}([-+]\d+
 
 # 개인 식별자 — 모양만 (docstring 4). 플레이스홀더는 명시적으로 뺀다: 문서·스크립트가
 # `user@macmini.local`, `/Users/USER/`, `/Users/someone/` 로 예시를 적을 수 있어야 한다.
-_PLACEHOLDER_ACCOUNTS = r"(?:USER|user|you|root|admin|someone|example|name|account|username)"
+# `Shared` 는 macOS 시스템 디렉터리(/Users/Shared/). 이 목록은 fail-open 이다(계정명이 하필 `admin` 이면
+# 못 잡는다) — 정확한 이름은 tests/test_no_personal_identifiers.py 가 런타임 조립으로 따로 잠그므로 감수한다.
+_PLACEHOLDER_ACCOUNTS = r"(?:USER|user|you|root|admin|someone|example|name|account|username|Shared)"
 # a. "<이름>의 Mac mini" 로마자 — 접미 `ui-` + 기기 종류. `Test-Macmini` 같은 fixture 는 안 잡는다.
-PERSONAL_HOSTNAME = re.compile(r"\b[A-Za-z]{2,}ui-(?:Macmini|MacBookPro|MacBookAir|MacBook|MacStudio|MacPro|iMac)\b")
+# macOS 는 공백을 하이픈으로 바꾼다("MacBook Pro" → `MacBook-Pro`) — 붙여 쓴 형태와 둘 다 잡는다.
+PERSONAL_HOSTNAME = re.compile(
+    r"\b[A-Za-z]{2,}ui-(?:Mac-?mini|MacBook-?Pro|MacBook-?Air|MacBook|Mac-?Studio|Mac-?Pro|iMac)\b"
+)
 # b. `<계정>@<host>.local` — 개인 ssh 대상. `git@github.com` 은 .local 이 아니라 무관.
 PERSONAL_SSH_TARGET = re.compile(
     r"(?<![\w.-])(?!" + _PLACEHOLDER_ACCOUNTS + r"@)[A-Za-z][\w.-]+@[A-Za-z0-9-]+\.local\b"
@@ -332,13 +337,13 @@ TICKER_FALSE_POSITIVES: frozenset[str] = frozenset(
 # "다계좌 NVDA/MSFT 시나리오" 인데 정작 가려진 건 픽스처 9곳의 증권사명이었다 —
 # **적어둔 사유와 실제로 면제된 것이 달랐다.**
 #
-# 이제 값은 그 경로에서 끌 규칙의 집합이다. `ALL` 은 스캐너 자신처럼 세 카테고리를
+# 이제 값은 그 경로에서 끌 규칙의 집합이다. `ALL` 은 스캐너 자신처럼 네 카테고리를
 # 전부 문서화하는 파일에만 쓴다. 사유에 적은 카테고리만 끄면, 사유 밖의 유출은
 # 계속 걸린다.
 ALL_CATEGORIES: frozenset[str] = frozenset({"broker_name", "suspect_numeric", "ticker_pnl", "personal_identifier"})
 
 ALLOWLIST: dict[str, frozenset[str]] = {
-    # 스캐너 본체와 그 테스트 — 세 카테고리의 패턴을 전부 적어 둔다.
+    # 스캐너 본체와 그 테스트 — 네 카테고리의 패턴을 전부 적어 둔다.
     "scripts/verify/check_privacy_leak.py": ALL_CATEGORIES,
     "tests/scripts/test_check_privacy_leak.py": ALL_CATEGORIES,
     # E3 #579 — privacy gate 테스트가 탐지를 검증하려면 leak 픽스처가 필요하다.

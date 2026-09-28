@@ -325,12 +325,18 @@ class TestPersonalIdentifier:
     리터럴로 적으면 (a) 이 파일이 자기 자신을 잡고 (b) 공개 레포에 그 값이 남는다."""
 
     HOST = "Hong" + "gildong" + "ui-Macmini"  # "<이름>의 Mac mini" 로마자
+    HOST_HYPHEN = "Hong" + "gildong" + "ui-Mac-mini"  # macOS 가 실제로 만드는 형태 (공백 → 하이픈)
+    HOST_MBP = "Hong" + "gildong" + "ui-MacBook-Pro"
+    HOST_HYPHEN = "Hong" + "gildong" + "ui-Mac-mini"  # macOS 가 실제로 만드는 형태 (공백 → 하이픈)
+    HOST_MBP = "Hong" + "gildong" + "ui-MacBook-Pro"
     SSH = "hong" + "@" + "mini.local"
     HOME = "/Users/" + "hong" + "/workspace/x.py"
     PROJ = "~/.claude/projects/-Users-" + "hong" + "-workspace-nuri-quant/memory/"
 
     @pytest.mark.parametrize(
-        "text", [HOST, SSH, HOME, PROJ], ids=["hostname", "ssh-target", "home-path", "claude-project"]
+        "text",
+        [HOST, HOST_HYPHEN, HOST_MBP, SSH, HOME, PROJ],
+        ids=["hostname", "hostname-hyphen", "hostname-mbp", "ssh-target", "home-path", "claude-project"],
     )
     def test_each_shape_is_detected(self, text):
         from scripts.verify.check_privacy_leak import scan_text_for_personal_identifiers
@@ -351,6 +357,7 @@ class TestPersonalIdentifier:
             "macmini.local",
             "git@github.com:owner/repo.git",
             "MACMINI_HOST=macmini.local",
+            "/Users/Shared/data",  # macOS 시스템 디렉터리
         ],
     )
     def test_placeholders_and_generic_hosts_are_not_flagged(self, text):

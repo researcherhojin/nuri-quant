@@ -48,7 +48,7 @@ class TestExemptionIsNarrow:
         )
 
     def test_only_the_scanner_itself_gets_a_blanket_exemption(self):
-        """ALL 면제는 세 카테고리를 전부 문서화하는 파일에만."""
+        """ALL 면제는 네 카테고리를 전부 문서화하는 파일에만."""
         blanket = {k for k, v in ALLOWLIST.items() if v == ALL_CATEGORIES}
         unexpected = {
             k
