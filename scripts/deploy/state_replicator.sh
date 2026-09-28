@@ -15,7 +15,7 @@
 #   scripts/state_replicator.sh verify
 #
 # 환경 변수:
-#   DEV2_HOST          — 상대 머신 hostname (예: Test-MacBookPro.local)
+#   DEV2_HOST          — 상대 머신 hostname (예: macbook.local)
 #   NURI_DB_PATH       — DB 경로 (default: data/portfolio.db)
 #   NURI_REPLICA_PATH  — 복제본 path (default: data/replicas/portfolio_$(hostname).db)
 #

@@ -37,7 +37,7 @@ def main() -> int:
                 title="Buy Candidates",
                 success=True,
                 body="3 candidates passed all 10 SIEGE gates:\n- AAPL\n- NVDA\n- MSFT",
-                fields={"exit": "0", "host": "Test-MacBookPro.local"},
+                fields={"exit": "0", "host": "macbook.local"},
             ),
         ),
         (
@@ -46,7 +46,7 @@ def main() -> int:
                 title="Health Check",
                 success=False,
                 body="single_writer.lock missing — pipeline halted.\n5 tables out of sync.",
-                fields={"exit": "2", "host": "Test-Macmini.local"},
+                fields={"exit": "2", "host": "macmini.local"},
             ),
         ),
         (

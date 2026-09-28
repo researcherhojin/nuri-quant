@@ -194,7 +194,7 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 	@# check_privacy_leak.py 가 차단한다 — 2026-08-02 실측, 가드가 정상 동작한 것이다.
 	@# IDE 는 열린 파일을 직접 검사하므로 config 경고는 거기서만 보이고,
 	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
-	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary \
+	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary --gitignore \
 		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
 		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
 		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \

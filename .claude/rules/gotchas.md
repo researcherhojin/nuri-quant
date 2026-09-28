@@ -24,4 +24,4 @@ Local-only (gitignored — internal infra / audit / map):
 - `docs/TRADING_AUDIT.md` — `nuri/trading/` internal audit (#552)
 - `docs/TODO.md` — forward-only backlog
 - `NEXT_SESSION.md` — handoff
-- `~/.claude/projects/-Users-USER-workspace-nuri-quant/memory/` — user-scoped auto-memory
+- `~/.claude/projects/<sanitized-cwd>/memory/` — user-scoped auto-memory
