@@ -683,7 +683,7 @@ class MaintenanceAuditor(Actor):
 
     @staticmethod
     def _privacy_ok(text: str) -> bool:
-        """staging 전 privacy 스캔 — **전 범주** `gate_text` (broker명·금액·ticker+PnL).
+        """staging 전 privacy 스캔 — **전 범주** `gate_text` (broker명·금액·ticker+PnL·개인 식별자).
 
         `--message` CLI 모드는 ticker+PnL 만 본다 (codex plan 리뷰 1 — blocking 지적).
         in-process import 는 `stage_agent_dev_log` 가 이미 쓰는 런타임 게이트 선례

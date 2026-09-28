@@ -244,7 +244,7 @@ def stage_agent_dev_log(
     Codex (Architect, spec) → Claude (Builder, patch) → Qwen (Adversarial Reviewer)
     각 단계의 산출물을 read-only transcript 로 publish.
 
-    E3 #579: payload 가 broker name / ticker+PnL / monetary literal 누설을
+    E3 #579: payload 가 broker name / ticker+PnL / monetary literal / 개인 식별자(#1557) 누설을
     포함하면 publish 차단 (return None) + WARNING log. `skip_privacy_gate=True`
     는 테스트/내부 디버깅 한정.
     """
