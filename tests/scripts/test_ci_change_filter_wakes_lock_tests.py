@@ -2,7 +2,7 @@
 
 CI 는 PR 이 건드린 경로로 `Backend Tests` 를 켜고 끈다. 그런데 어떤 루트 파일은 `.py` 가
 아니면서 백엔드 테스트가 잠근다 — `.cspell.json` 의 ASCII 정렬, `.gitignore` 의 개인 파생물
-커버. (`CODEOWNERS` 는 #1559 가 잠금과 함께 추가한다.) 그 파일만 바꾼 PR 이 필터를 못 깨우면 잠금이 **그 PR 에선
+커버, `CODEOWNERS` 패턴 존재 (#1559). 그 파일만 바꾼 PR 이 필터를 못 깨우면 잠금이 **그 PR 에선
 안 돌고** main 이 빨간 채 남아 다음 무관한 PR 이 대신 죽는다 (#1556 → #1558, 2026-09-28).
 `.test_durations` 가 #1419 에서 같은 이유로 들어갔다.
 """
@@ -21,6 +21,7 @@ WORKFLOW = REPO_ROOT / ".github" / "workflows" / "main-ci-cd.yml"
 LOCKED = [
     (".cspell.json", "tests/verify/test_diagnostics_gate.py"),
     (".gitignore", "tests/test_gitignore_covers_private_derivatives.py"),
+    (".github/CODEOWNERS", "tests/test_codeowners_paths.py"),
     (".test_durations", "tests/scripts/test_ci_shard_balance.py"),
 ]
 
