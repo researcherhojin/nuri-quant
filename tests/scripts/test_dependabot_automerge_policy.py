@@ -105,17 +105,30 @@ class TestAutoMergeCoversEveryConfiguredEcosystem:
 
 
 def _policy_source() -> str:
-    """정책 분기(`shouldMerge` 결정부)의 JS 본문."""
+    """정책 분기(`shouldMerge` 결정부)의 JS 본문 — **주석을 걷어낸 것**.
+
+    주석을 남기면 테스트가 코드가 아니라 **산문에서 값을 읽는다.** 가설이 아니라
+    실제로 일어났다: 이 워크플로의 주석에 "shouldMerge=false 면 재부착을 안 하므로"
+    라는 문장이 있어서 minor 분기 조각에 `false` 가 하나 더 잡혔다. `hits[-1]` 이
+    코드 쪽 대입을 집어 **우연히** 통과했을 뿐, 주석을 대입문 뒤에 썼다면 판정이
+    뒤집혔다. 같은 이유로 주석 안의 `} else` 는 분기 절단도 망가뜨린다.
+
+    라인 단위 `//` 제거가 안전한 근거: 이 본문에는 `://` 가 없다 — 문자열 리터럴
+    안의 `//` 를 자를 위험이 없다. URL 이 들어오면 이 전제가 깨지므로
+    `test_the_policy_body_has_no_url_that_line_stripping_would_break` 가 잠근다.
+    """
     source = AUTOMERGE_WORKFLOW.read_text()
     start = source.index("let shouldMerge = false;")
     end = source.index('core.setOutput("should-merge"', start)
-    return source[start:end]
+    body = source[start:end]
+    return "\n".join(re.sub(r"//.*$", "", line) for line in body.splitlines())
 
 
 def _verdict_for(branch_marker: str) -> bool:
     """해당 분기가 `shouldMerge` 를 무엇으로 두는지 읽는다.
 
-    분기 본문을 **다음 `} else if` 까지**로 잘라 그 안의 마지막 `shouldMerge = X` 를 본다.
+    분기 본문을 **다음 `} else` 까지**로 잘라 그 안의 마지막 `shouldMerge = X` 를 본다.
+    주석은 `_policy_source()` 가 이미 걷어냈다.
     """
     body = _policy_source()
     i = body.index(branch_marker)
@@ -124,7 +137,11 @@ def _verdict_for(branch_marker: str) -> bool:
     tail = tail[: nxt if nxt != -1 else len(tail)]
     hits = re.findall(r"shouldMerge\s*=\s*(true|false)", tail)
     assert hits, f"{branch_marker!r} 분기에서 shouldMerge 대입을 못 찾았다:\n{tail}"
-    return hits[-1] == "true"
+    assert len(hits) == 1, (
+        f"{branch_marker!r} 분기에 shouldMerge 대입이 {len(hits)}개다 — 어느 것이 "
+        f"최종인지 위치로 추정하게 된다. 분기당 하나로 유지할 것:\n{tail}"
+    )
+    return hits[0] == "true"
 
 
 class TestMergePolicyBySemver:
@@ -179,3 +196,48 @@ class TestMergePolicyBySemver:
             "lock 게이트가 semver 판정보다 뒤로 밀렸다 — #1355 가 재발한다"
         )
         assert _verdict_for('lockVerdict !== "clean"') is False
+
+    def test_the_policy_body_has_no_url_that_line_stripping_would_break(self):
+        """`_policy_source()` 의 라인 단위 `//` 제거가 안전하다는 **전제**를 잠근다.
+
+        전제가 깨지면 파서가 문자열 리터럴을 잘라 먹고, 그 결과는 예외가 아니라
+        **조용한 오판**이다 — 이 파일의 모든 판정이 의미를 잃는다.
+        """
+        raw_start = AUTOMERGE_WORKFLOW.read_text()
+        start = raw_start.index("let shouldMerge = false;")
+        end = raw_start.index('core.setOutput("should-merge"', start)
+        raw_body = raw_start[start:end]
+
+        offenders = [ln.strip() for ln in raw_body.splitlines() if "://" in ln]
+        assert not offenders, (
+            "정책 본문에 `://` 가 들어왔다 — 라인 단위 `//` 제거가 문자열을 훼손한다.\n"
+            f"{offenders}\n"
+            "URL 이 필요하면 `_policy_source()` 를 제대로 된 토크나이저로 바꿀 것."
+        )
+
+    def test_the_parser_ignores_values_written_in_comments(self):
+        """주석 안의 `shouldMerge = ...` 를 판정으로 읽지 않는다.
+
+        회귀 방지: 실제로 이 워크플로 주석에 "shouldMerge=false 면" 이라는 문장이
+        있었고, 주석을 안 걷어냈을 때 minor 분기에서 대입이 2개로 잡혔다.
+        """
+        assert "//" not in _policy_source(), "주석이 안 걷혔다 — 파서가 산문을 코드로 읽는다"
+
+        # 주석에 판정값을 심어도 읽히지 않아야 한다. 걷어내기 전 원문에는 잡히고,
+        # `_policy_source()` 를 거친 뒤에는 안 잡혀야 파서가 제 역할을 한 것이다.
+        raw = AUTOMERGE_WORKFLOW.read_text()
+        start = raw.index("let shouldMerge = false;")
+        end = raw.index('core.setOutput("should-merge"', start)
+        raw_body = raw[start:end]
+
+        pattern = r"shouldMerge\s*=\s*(?:true|false)"
+        in_comments = [
+            ln.strip() for ln in raw_body.splitlines() if re.search(pattern, ln) and ln.strip().startswith("//")
+        ]
+        if in_comments:
+            # 실제로 이런 줄이 있다 — 그렇다면 파서가 그걸 지웠는지가 진짜 검사다.
+            assert not [
+                ln
+                for ln in _policy_source().splitlines()
+                if re.search(pattern, ln) and not ln.strip().startswith(("shouldMerge", "let"))
+            ], f"주석의 판정값이 파서를 통과했다: {in_comments}"
