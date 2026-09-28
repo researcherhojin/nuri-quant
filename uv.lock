@@ -3026,7 +3026,7 @@ crypto = [
 
 [[package]]
 name = "pykrx"
-version = "1.2.8"
+version = "1.2.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deprecated" },
@@ -3036,9 +3036,9 @@ dependencies = [
     { name = "pandas" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/27/c0/e424304f0a6e6a95cca62a5da7fb463109a2cb1dc9af3f374fe9b75d1f81/pykrx-1.2.8.tar.gz", hash = "sha256:b2da03e62047db0ca7eefbcdf5bc2489857fa25a6faf1c2ddbb070b10fab0246", size = 5736268, upload-time = "2026-05-04T09:51:00.833Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/11/498e4dceb0296a7ffaf3d018f9c0d0abdcfcba145404edce9cd5f3489b26/pykrx-1.2.9.tar.gz", hash = "sha256:b286e91966e68d024552556e225982832668be5e1bbb2ed9dc0f830ba185cd39", size = 5807499, upload-time = "2026-09-19T07:26:51.358Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/df/1c5766fe9a79ad43992d086d4b5e787b1efb9a950b47b0c8712c293c08bc/pykrx-1.2.8-py3-none-any.whl", hash = "sha256:e6d6e206d81575fedfa6a6bcea2d3843ea880f24bc79c1059121829975a9bd70", size = 2196865, upload-time = "2026-05-04T09:50:59.408Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/87/c54da498f80f0839ec7b4145119b2d395600542d1301f626716538356e93/pykrx-1.2.9-py3-none-any.whl", hash = "sha256:e768a64830d21dee46b1a5dd3e9e33112c390d65dbdf931a6bb89ac5a7bea8ea", size = 2198034, upload-time = "2026-09-19T07:26:49.027Z" },
 ]
 
 [[package]]
