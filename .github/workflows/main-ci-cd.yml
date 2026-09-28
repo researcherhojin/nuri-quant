@@ -92,6 +92,7 @@ jobs:
               # 안 잡혀 `test_words_stay_sorted` 가 안 돌았고, main 이 빨간 채 다음 .py PR 이 죽었다.
               - '.cspell.json'
               - '.gitignore'
+              - '.github/CODEOWNERS'
               - '.github/workflows/**'
               - '.github/actions/**'
             frontend:

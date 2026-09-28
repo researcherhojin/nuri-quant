@@ -19,7 +19,7 @@
 /scripts/verify/gate_check.py            @researcherhojin
 /scripts/verify/check_privacy_leak.py    @researcherhojin
 /scripts/verify/check_universe_coverage.py @researcherhojin
-/scripts/pre_push_check.sh               @researcherhojin
+/scripts/verify/pre_push_check.sh        @researcherhojin
 /nuri/api/main.py                        @researcherhojin
 /nuri/api/auth.py                        @researcherhojin
 /.env.example                            @researcherhojin
