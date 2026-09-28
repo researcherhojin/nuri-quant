@@ -1358,8 +1358,8 @@ class TestAbsorbedHealthChecks:
     @pytest.mark.parametrize(
         ("hostname", "expect_incident", "role"),
         [
-            ("Ehbebeui-Macmini", False, "primary"),
-            ("Ehbebeui-MacBookPro", True, "replica"),
+            ("Test-Macmini", False, "primary"),
+            ("Test-MacBookPro", True, "replica"),
             ("some-random-host", True, "unknown"),
         ],
     )

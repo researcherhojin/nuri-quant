@@ -200,7 +200,7 @@ KR KOSPI 200 (current coverage: 99.0%)
 ### Mac mini scheduler heartbeat (running smoke proxy)
 ```
 $ ls -la data/logs/scheduler.log
-.rw-r--r--@ 40k ehbebe 29 Apr 23:11
+.rw-r--r--@ 40k user 29 Apr 23:11
 
 $ tail -3 data/logs/scheduler.log
 2026-04-29 23:10:59 ark WARNING ARK CSV 다운로드 실패: 404 Client Error

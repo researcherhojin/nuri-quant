@@ -15,7 +15,7 @@
 #   7. 최종 검증 (git HEAD, launchctl, scheduler --dry-run)
 #
 # 전제:
-#   - DEV2_HOST 가 ~/.zshrc 에 설정 (e.g. ehbebe@Ehbebeui-Macmini.local)
+#   - DEV2_HOST 가 ~/.zshrc 에 설정 (e.g. user@macmini.local)
 #   - MBP → Mac mini SSH 키 등록됨
 #   - Mac mini 에 ~/workspace/nuri-quant repo 존재
 #
@@ -48,7 +48,7 @@ warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
 fail() { echo -e "  ${RED}✗${NC} $1"; exit 1; }
 
 # ── 0. 사전 조건 ──
-[[ -z "${REMOTE}" ]] && fail "DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=ehbebe@Ehbebeui-Macmini.local 추가"
+[[ -z "${REMOTE}" ]] && fail "DEV2_HOST 미설정. ~/.zshrc 에 export DEV2_HOST=user@macmini.local 추가"
 
 echo -e "${CYAN}═══ Nuri-Quant: MBP → Mac mini deploy ═══${NC}"
 echo "  remote: ${REMOTE}:${REMOTE_PATH}"
