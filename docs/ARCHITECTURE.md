@@ -145,7 +145,7 @@ Category sub-directories since #557 — full per-script index: `scripts/README.m
 - `ops/import_portfolio.py` — Syncs `config/portfolio.yaml` → DB
 - `verify/verify.py` — Master verification orchestrator → `data/reports/YYYY-MM-DD/`
 - `verify/gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `verify/check_privacy_leak.py` — Privacy scanner (broker names, monetary literals)
+- `verify/check_privacy_leak.py` — Privacy scanner (broker names, monetary literals, ticker+PnL, personal-identifier shapes)
 - `verify/pre_push_check.sh` — Pre-push gate (drift + lint + tests + privacy + commits)
 - `deploy/deploy_remote.sh` — rsync dev → Mac Mini production
 - `deploy/sync_dev.sh` — dev↔dev state sync (gitignored files + ~/.claude Tier 3)
@@ -190,6 +190,8 @@ On push/PR to `main`:
 3. **Frontend** — `tsc --noEmit` + vitest with coverage
 4. **Privacy** — `check_privacy_leak.py` on all files
 5. **Security** — Trivy CRITICAL vulnerability scan
+6. **Spellcheck** — `make spellcheck-ci` inside `Quick Checks` (#1560; the pre-push hook was the only layer before, and one bypass left `main` unable to pass its own gate)
+7. **Lock boundaries** — `uv.lock Major Boundary` / `package-lock.json Major Boundary` refuse a major (or direct-dependency 0.x minor) bump without the `lock-bump-reviewed` label (#1364/#1367/#1551)
 PR-specific (`pr-discipline.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
 
 On PR close (`cache-cleanup.yml`): deletes that PR's `refs/pull/N/merge` action caches — 7 closed PRs were holding 6.1GB against the 10GB repo cache limit, LRU-evicting live main caches (2026-09-02 measurement; one-shot cleanup took the repo 15.4GB → 1.7GB).

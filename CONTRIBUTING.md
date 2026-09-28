@@ -29,7 +29,8 @@ them gets your push rejected:
 |------|---------------------|
 | `ruff check nuri/ tests/ scripts/` clean | `scripts/verify/pre_push_check.sh` Section 2 + CI Backend Lint |
 | All tests pass | `scripts/verify/pre_push_check.sh` Section 3 + CI Backend Tests |
-| No personal financial data leaks (broker names, suspect monetary literals) | `scripts/verify/pre_push_check.sh` Section 4 + CI `privacy-scan` |
+| No personal financial data leaks (broker names, suspect monetary literals, ticker+PnL) or personal identifiers (account@host.local, /Users/<account>/, real-name hostnames — matched by shape) | `scripts/verify/pre_push_check.sh` Section 4/4b + CI `Privacy Leak Scan` + PreToolUse hook on Edit/Write |
+| No unregistered words (`.cspell.json`, ASCII-sorted) | `scripts/verify/pre_push_check.sh` Section 2d + CI `Quick Checks` (`make spellcheck-ci`) |
 | Conventional commit format | `scripts/verify/pre_push_check.sh` Section 5 + CI PR Checks |
 | No `datetime.now()` — use `kst_now()` / `today_kst()` | Project hook + reviewers |
 | Force push to `main` | Blocked by branch protection (no exceptions) |
@@ -46,10 +47,12 @@ LLM failure mode):
 4. **Run `bash scripts/verify/pre_push_check.sh`** before pushing.
 5. **Open the PR with a "Closes #N" footer** and a Test Plan section.
 6. **Wait for CI green** before requesting merge. Branch protection
-   requires all 10 required checks (Backend Tests, Backend Lint,
+   requires all 14 required checks (Backend Tests, Backend Lint,
    Frontend Tests, Frontend Lint, Frontend Build, Security Scan,
    Universe Coverage Validation, Shell Lint, Doc Count Drift Check,
-   Privacy Leak Scan).
+   Privacy Leak Scan, Local-LLM Build Gate, uv.lock Major Boundary,
+   package-lock.json Major Boundary, Quick Checks). Branch protection
+   is canonical; `gh api repos/{owner}/{repo}/branches/main/protection`.
 7. **Squash-merge** is the default. Maintain a clean linear history.
 8. **Expect merges to serialize.** `main` requires branches to be up to date, so
    every merge puts the remaining open PRs behind. Each one then needs

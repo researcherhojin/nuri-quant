@@ -223,7 +223,7 @@ README / ARCHITECTURE / STRATEGY 가 조용히 재작성**된다. `cwd=` 로는 
 발화하지 않으므로 회귀 잠금이 아니다.
 
 ### Privacy 가드를 테스트하는 픽스처는 런타임 조립
-가드가 차단하는 패턴 자체를 **리터럴로** 적으면 파일을 저장하는 순간 PreToolUse 훅과 CI `privacy-scan` 이 그 테스트 파일을 차단한다 (2026-07-29 실측: `TS`+`LA` 를 리터럴로 쓴 Write 가 막혔다). `ticker = "TS" + "LA"` 처럼 조립해 리터럴이 파일에 남지 않게 할 것 — 스캐너는 정규식이라 이걸로 충분하다.
+가드가 차단하는 패턴 자체를 **리터럴로** 적으면 파일을 저장하는 순간 PreToolUse 훅과 CI `privacy-scan` 이 그 테스트 파일을 차단한다 (2026-07-29 실측: `TS`+`LA` 를 리터럴로 쓴 Write 가 막혔다). `ticker = "TS" + "LA"` 처럼 조립해 리터럴이 파일에 남지 않게 할 것 — 스캐너는 정규식이라 이걸로 충분하다. 계정명·기기명·홈 경로(`personal_identifier`, #1567)도 같다: `"hong" + "@" + "mini.local"` 식으로 조립하고, 실제 값은 어떤 픽스처에도 적지 않는다 — `tests/test_no_personal_identifiers.py` 가 트리 전체를 그 값으로 훑는다.
 **Test:** `tests/test_hook_guard_execution.py::TestPrivacyGuard::test_blocks_ticker_pnl_across_newlines` — 리터럴로 되돌리면 커밋 자체가 CI 에서 막힌다.
 
 ### 워크플로 스텝은 실행하고, 스텁은 argv 를 단언한다
@@ -245,4 +245,4 @@ README / ARCHITECTURE / STRATEGY 가 조용히 재작성**된다. `cwd=` 로는 
 
 ## Privacy in Test Data
 
-Never use real broker names, holdings, prices, or account identifiers. Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values like `1_000_000`.
+Never use real broker names, holdings, prices, account identifiers, macOS account names, real-name hostnames, or home paths. Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values like `1_000_000`, `user@macmini.local`, `/Users/USER/`, `Test-Macmini`.
