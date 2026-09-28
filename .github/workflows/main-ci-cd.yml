@@ -27,9 +27,14 @@ jobs:
   quick-checks:
     name: Quick Checks
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 3
     steps:
       - uses: actions/checkout@v7
+      # pre-push 훅(2d)이 spellcheck 의 유일한 층이었다 — 훅을 한 번만 지나치면 main 이 게이트를
+      # 못 넘고 이후 모든 push 가 막힌다 (#1554 → #1555, 2026-09-28). 여기서 한 겹 더 본다.
+      # `make spellcheck` 이 아니라 `spellcheck-ci` 다: 전자는 `|| true` 라 절대 실패하지 않는다.
+      - name: Spellcheck (cspell)
+        run: make spellcheck-ci
       - name: Reject files over 5MB
         run: |
           LARGE=$(find . -type f \

@@ -195,13 +195,23 @@ spellcheck: ## cspell check (uses .cspell.json — add words there for false pos
 	@# IDE 는 열린 파일을 직접 검사하므로 config 경고는 거기서만 보이고,
 	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
 	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary --gitignore \
-		--exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
-		"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
-		"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
-		"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" \
-		".claude/rules/*.md" ".claude/commands/nuri-*.md" ".claude/agents/nuri-*.md" \
-		".claude/skills/nuri-*/**/*.md" ".github/workflows/*.yml" "frontend/e2e/*.ts" \
-		"frontend/CLAUDE.md" "frontend/*.ts" "frontend/*.mjs" "frontend/.gitignore" 2>&1 | tail -80 || true
+		$(CSPELL_TARGETS) 2>&1 | tail -80 || true
+
+# 검사 대상은 한 곳에만 — spellcheck(로컬 advisory) 과 spellcheck-ci(CI 하드 게이트)가 같은 목록을 본다.
+CSPELL_TARGETS := --exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
+	"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
+	"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
+	"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" \
+	".claude/rules/*.md" ".claude/commands/nuri-*.md" ".claude/agents/nuri-*.md" \
+	".claude/skills/nuri-*/**/*.md" ".github/workflows/*.yml" "frontend/e2e/*.ts" \
+	"frontend/CLAUDE.md" "frontend/*.ts" "frontend/*.mjs" "frontend/.gitignore"
+
+spellcheck-ci: ## cspell, CI 용 — 미등록 단어나 실행 실패면 비영 exit (#1560)
+	@# `spellcheck` 은 `|| true` + `--no-summary` 라 CI 에선 못 쓴다: 실패해도 0 이고, 출력이
+	@# 비면 "깨끗함" 인지 "cspell 이 안 돌았음" 인지 구분이 없다. 여기는 exit code 를 그대로
+	@# 돌려주고 summary 를 남겨 돌았다는 증거를 로그에 둔다 (실행 불가 ≠ 통과, #910).
+	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
+	npx --yes -p cspell cspell --config .cspell.json --no-progress --gitignore $(CSPELL_TARGETS)
 
 diagnostics: typecheck spellcheck ## Run pyright + cspell — surfaces all IDE-level issues
 
