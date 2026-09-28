@@ -226,6 +226,23 @@ README / ARCHITECTURE / STRATEGY 가 조용히 재작성**된다. `cwd=` 로는 
 가드가 차단하는 패턴 자체를 **리터럴로** 적으면 파일을 저장하는 순간 PreToolUse 훅과 CI `privacy-scan` 이 그 테스트 파일을 차단한다 (2026-07-29 실측: `TS`+`LA` 를 리터럴로 쓴 Write 가 막혔다). `ticker = "TS" + "LA"` 처럼 조립해 리터럴이 파일에 남지 않게 할 것 — 스캐너는 정규식이라 이걸로 충분하다.
 **Test:** `tests/test_hook_guard_execution.py::TestPrivacyGuard::test_blocks_ticker_pnl_across_newlines` — 리터럴로 되돌리면 커밋 자체가 CI 에서 막힌다.
 
+### 워크플로 스텝은 실행하고, 스텁은 argv 를 단언한다
+`.github/workflows/*.yml` 안의 스텝(정책 JS · 셸)을 텍스트로 긁는 구조 테스트는 반복해서 뚫렸다 — if/else
+체인 **뒤에** 후처리 가드 한 줄을 붙이는 변이에 #1549 의 구조 테스트 7개가 전부 통과했다. 스텝 본문을 YAML
+에서 꺼내 실제로 돌리고(`node` 에 stub `core`, `bash -e` 에 `$GITHUB_OUTPUT`) 결과를 본다 —
+`tests/test_hook_guard_execution.py` 와 같은 방식이다. 실행 하네스에서 더 밟은 것(2026-09-28 실측):
+- **stub `core.setFailed` 를 삼키지 말 것** — 기록만 하고 진행하면 `setFailed("boom")` 을 넣어도 12/12 초록이다.
+  호출을 기록하고 모든 케이스가 그 부재를 단언한다.
+- **외부 명령을 가짜로 바꾸면 argv 를 기록·단언할 것** — 가짜 `gh` 가 인자를 안 보면 라벨 분기만 잠기고
+  "어느 PR 을 조회하는가" 는 안 잠긴다. `--jq` 삭제 · PR 번호 하드코딩 · env 바인딩 제거 4종 변이가 전부 생존했다.
+- **mutation 검증은 합성 입력 하나에 가드 하나** — 한 lock 에 `workspaces` 키와 외래 키를 같이 넣으면 어느
+  가드를 지워도 나머지가 잡아 양쪽 변이가 통과한다. 축마다 parametrize 로 나눈다.
+- **`sed` 로 변이를 넣었으면 diff 를 확인할 것** — 패턴이 안 맞아도 rc 0 이라 원본으로 돌리고 "생존" 을 오판한다.
+
+**Test:** `tests/scripts/test_dependabot_automerge_policy.py::TestMergePolicyBySemver` (node 실행) ·
+`tests/scripts/test_pr_discipline_label_lookup.py::TestEscapeHatchLabelLookup::test_it_queries_this_pr_by_number_with_a_label_jq` (argv) ·
+`tests/scripts/test_check_lock_major_bump.py::TestNpmLockGate::test_an_unsupported_layout_is_refused_instead_of_silently_degrading` (2축 parametrize)
+
 ## Privacy in Test Data
 
 Never use real broker names, holdings, prices, or account identifiers. Use placeholders: `Brokerage Alpha`, `Brokerage Beta`, round-million values like `1_000_000`.
