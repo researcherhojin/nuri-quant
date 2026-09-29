@@ -162,7 +162,7 @@ class TestMajorBoundary:
         assert "removed" in out, out
 
     def test_the_editable_root_entry_is_ignored(self, run, capsys):
-        """루트를 판정하면 레포 자체 버전 bump 마다 major 로 잡힌다 (e752a116 실제 사례)."""
+        """루트를 판정하면 레포 자체 버전 bump 마다 major 로 잡힌다 (3454ae23 실제 사례)."""
         before = _lock(("numpy", "1.26.4"), root_version="0.1.0")
         after = _lock(("numpy", "1.26.4"), root_version="0.2.0")
         rc, out = run(before, after, capsys)

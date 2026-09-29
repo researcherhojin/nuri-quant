@@ -55,7 +55,7 @@ class TestBacktestsEndpoint:
     def test_every_row_carries_the_code_revision_that_produced_it(self, client):
         """행이 어느 코드로 만들어졌는지 말할 수 있어야 한다 (#1115).
 
-        `backtests.id=3` 은 `p_value: 0.169` 를 담고 있고, 6시간 31분 뒤 커밋 `84a5e36` 이
+        `backtests.id=3` 은 `p_value: 0.169` 를 담고 있고, 6시간 31분 뒤 커밋 `15f774f` 이
         그 값을 철회했다(permutation null 퇴화, 정정값 0.791). **정정된 run 은 저장되지
         않았고** strategy_id 마다 행이 정확히 1개라 밀어낼 신규 행도 없어서, 이 엔드포인트가
         지금도 철회된 숫자를 현재 증거로 내보낸다.
@@ -145,6 +145,8 @@ class TestBacktestsEndpoint:
             max_drawdown=-1.0,
             win_rate=50.0,
         )
+        # `84a5e36` 은 **원장에 기록된** 정화 전 SHA 다 — 일부러 remap 하지 않는다.
+        # 이 픽스처의 의미는 "원장이 그 문자열을 담고 있다" 이고, `git show` 로 열리는지는 무관하다.
         with get_db() as conn:  # 전-#1305 행 재현 — 두 바인딩 컬럼 모두 NULL
             conn.execute(
                 'UPDATE backtests SET params = \'{"code_rev": "84a5e36"}\', '

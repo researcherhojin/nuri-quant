@@ -119,7 +119,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 모든 규칙에는 학술/실증 근거가 있다. 근거 없는 규칙 추가 금지.
 | 규칙 | 근거 | 출처 |
 |------|------|------|
-| 손절 -7% | CAN SLIM + 자체 validation PR F (2026-04-22). us_core 85 × SMA golden cross 250 entries paired counterfactual: ATR shadow surface 는 6-metric 3/6 로 acceptance 미달 → **PR F2 deferred**, -7% 유지. 상세: `scripts/episodes/pr_f_atr_validation.py` docstring + commit `c834049`. | O'Neil, *How to Make Money in Stocks* |
+| 손절 -7% | CAN SLIM + 자체 validation PR F (2026-04-22). us_core 85 × SMA golden cross 250 entries paired counterfactual: ATR shadow surface 는 6-metric 3/6 로 acceptance 미달 → **PR F2 deferred**, -7% 유지. 상세: `scripts/episodes/pr_f_atr_validation.py` docstring + commit `c834049` (squash 된 PR 브랜치 커밋 — clone 에서는 원래부터 resolve 되지 않는다). | O'Neil, *How to Make Money in Stocks* |
 | 익절 +20%/+40% | 손익비 3:1 유지 | Minervini, *Trade Like a Stock Market Wizard* |
 | 트레일링 -15% | 11년 백테스트 최적 (73.9% 누적) | 자체 백테스트 |
 | VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |
@@ -338,9 +338,20 @@ Commit message 스캔 (PR #202 방지):
 - pre_push_check.sh Section 4b: `origin/main..HEAD` 의 unpushed commit 을 `--unpushed-commits` 로 스캔 → push 차단 (ticker+PnL + 개인 식별자 모양, #1567)
 - 로컬 hook 이 정답 — push 후 history 박힘 (Stage 2 필요)
 - CLI: `git log -1 --format=%B | python scripts/verify/check_privacy_leak.py --message`
-History cleanup (Stage 2 — 별도 작업): main HEAD 는 깨끗하게 유지됨. 이전 commit leak 은 GitHub Support 또는 filter-repo (사용자 명시 승인 필수) 필요. §5.4 스코프 + CLAUDE.md force push 금지 동시 준수 위해 분리.
-알려진 미정리 leak (Stage 2 후보):
-- PR #202 (squash): commit message body TEM/RKLB/TSLA/PL + PnL. main history 박힘. Stage 2 미실행. §4.4.1 enforcement 는 PR #202 이후 ticker+PnL 사각지대 보완됨 — 신규 leak 은 commit 단계 차단. Tier 3 별도 작업.
+**History cleanup (Stage 2) — 2026-09-29 완료** (사용자 명시 승인 + 직접 실행, force push 1회):
+`main` 전체 1,471 커밋을 `filter-branch` 로 재작성해 **4범주를 전부** 걷어냈다. 착수 전 스캐너로 전수 검사한
+실측이 근거다 — 증권사명 7종 39회(18 커밋) · 개인 식별자 9 커밋 · ticker+PnL 2 커밋 · 금액 리터럴 1 커밋,
+그리고 과거 blob 626개. author/committer 239건의 `계정명@실명기기.local` 신원도 noreply 로 바꿨다.
+- **판정을 사람이 나열하지 않았다**: 치환기가 `check_privacy_leak.gate_text()` 가 0건이라고 할 때까지
+  반복하고, 끝난 뒤 커밋 메시지 1,471건 + (경로,blob) 6,632쌍을 같은 스캐너로 재검사해 0건을 확인했다.
+- **HEAD tree 는 바이트 단위로 동일**했다(`7abf77eb`) — 현재 코드는 한 글자도 안 바뀌었다는 증거다.
+- **정당한 예외는 보존**: 스캐너 본체·그 테스트·이 문서의 패턴 표 등 증권사명이 설계상 들어 있는 경로 10개는
+  제외했고, `test_held_add_mode.py` 는 ticker+PnL 픽스처만 남기고 과거 증권사명은 지웠다.
+- **부작용**: 모든 커밋 SHA 가 바뀌었다. 문서·코드의 짧은 SHA 참조 8개는 새 값으로 갱신했고, 프로덕션 원장의
+  `backtests.params.code_rev` 에 기록된 정화 전 SHA 는 **기록이므로 손대지 않았다**(`provenance.py` 주석 참조).
+  fork 1개는 옛 히스토리를 그대로 가지며, GitHub 의 unreachable 객체 캐시 제거는 Support 요청이 필요하다.
+- PR #202(squash) 의 commit message body 가 이 leak 의 원조였다. enforcement 는 그 뒤로 ticker+PnL 을
+  commit 단계에서 막아 왔고(§4.4.1 표), 이제 history 쪽도 닫혔다.
 #### 4.4.2 외부 데이터 처리 원칙
 모든 외부 서비스는 **데이터 클래스별 화이트리스트**.
 | 데이터 클래스 | 기본 정책 | 허용 조건 |

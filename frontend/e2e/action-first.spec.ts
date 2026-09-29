@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { ACTION, CONTEXT, OPPORTUNITY } from "../src/lib/strings";
 
-// 라벨 리터럴을 여기 박지 않는다 — strings.ts 가 단일 출처다. 410d385 가
+// 라벨 리터럴을 여기 박지 않는다 — strings.ts 가 단일 출처다. 6858d86 가
 // CONTEXT.SIEGE 값을 "SIEGE" → "Certification" 으로 바꿨을 때 vitest 는 같이
 // 갱신됐지만 이 파일은 안 됐고, playwright 가 어떤 게이트에도 없어서 3.5개월간
 // 아무도 몰랐다. import 로 묶어두면 다음 rename 은 단언이 따라온다.

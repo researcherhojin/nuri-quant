@@ -1512,7 +1512,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # 판정 표본을 나눌 수 없다 — 컬럼 하나로 모든 행을 자기기술하게 만든다.
         #
         # 기존 행 backfill 은 추정이 아니라 사실이다: DEFAULT_BENCHMARK_TICKER 는
-        # 도입(e9495aa) 이래 "SPY" 뿐이었고 다른 경로가 없었다. 단 benchmark_return
+        # 도입(c146c94) 이래 "SPY" 뿐이었고 다른 경로가 없었다. 단 benchmark_return
         # 이 NULL 인 행은 벤치마크가 아예 적용되지 않은 행(insufficient_data)이므로
         # NULL 로 남긴다 — "SPY 로 쟀다" 가 거짓이 되기 때문.
         """
