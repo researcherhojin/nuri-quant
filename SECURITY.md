@@ -85,6 +85,13 @@ If you discover a leak in `main` history, report it via the security
 advisory channel above so the maintainer can request GitHub Support
 cache invalidation (and, if necessary, coordinate a history rewrite).
 
+A full-history rewrite was carried out on 2026-09-29: all 1,471 commits on
+`main` were rewritten to purge broker names, personal identifiers,
+ticker+PnL pairs and monetary literals from commit messages and historical
+blobs, and to replace author identities that embedded a machine hostname.
+Commit SHAs therefore differ from any reference published before that date;
+`docs/STRATEGY.md` §4.4.1 records the measurements and what was preserved.
+
 ## LLM and Model Safety
 
 - **External LLM policy: whitelist per data tier** (updated 2026-04-14).
