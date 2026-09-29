@@ -29,7 +29,7 @@
   ## 확인
 
     sudo launchctl list | grep machine-alive
-    tail -20 /var/log/nuri-machine-alive.log
+    tail -20 /Users/USER/Library/Logs/nuri-quant-machine-alive.log
     git ls-remote origin 'refs/nuri/machine-mini'
 
   ## 제거
@@ -65,11 +65,17 @@
     <key>RunAtLoad</key>
     <true/>
 
+    <!-- 로그는 **`UserName` 이 쓸 수 있는 곳**이어야 한다. `/var/log` 는 root:wheel 이라
+         launchd 가 리다이렉트를 못 열고 프로그램을 **실행하지 않은 채** exit 78(EX_CONFIG)로
+         끝낸다 — 로그 파일이 안 생기므로 증거도 안 남는다. 설치 스크립트는 `✅ installed` 를
+         찍고 launchctl 등록도 성공하니 설치 로그로는 안 보인다 (#1574 실측: runs=1,
+         last exit code=78, 그 사이 refs/nuri/machine-mini 는 한 번도 갱신되지 않았다).
+         다른 plist 16개와 같은 `/Users/USER/...` 관례를 따른다. -->
     <key>StandardOutPath</key>
-    <string>/var/log/nuri-machine-alive.log</string>
+    <string>/Users/USER/Library/Logs/nuri-quant-machine-alive.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/var/log/nuri-machine-alive.log</string>
+    <string>/Users/USER/Library/Logs/nuri-quant-machine-alive.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
