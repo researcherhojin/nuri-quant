@@ -27,7 +27,8 @@ def code_rev() -> str | None:
     ## 왜 필요한가 (#1115)
 
     `backtests.id=3` 은 `p_value: 0.169` 를 담고 있다. 그 행이 쓰인 지 6시간 31분 뒤
-    커밋 `84a5e36` 이 그 값을 철회했다 — permutation null 이 퇴화해 있었고, 정정값은
+    커밋 `15f774f` 이 그 값을 철회했다 (원장의 `code_rev` 는 히스토리 정화 전 SHA `84a5e36` 을
+    그대로 담고 있다 — 기록은 손대지 않았다) — permutation null 이 퇴화해 있었고, 정정값은
     0.791 이었다. **정정된 run 은 저장된 적이 없다.** 이 테이블은 strategy_id 마다 행이
     정확히 1개라 그 행을 밀어낼 신규 행도 없고, `nuri/api/routes/research.py` 는 지금도
     그 숫자를 현재 증거로 서빙한다.

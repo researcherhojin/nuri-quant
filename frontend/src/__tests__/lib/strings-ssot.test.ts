@@ -3,7 +3,7 @@
  *
  * SSoT 밖의 카피는 두 가지를 망가뜨린다: UI 가 반영반한(半英半韓)이 되고, e2e/vitest 의
  * "문자열은 strings.ts 에서 import" 원칙(`frontend/CLAUDE.md`)이 **적용될 수가 없다.**
- * 후자가 실제 사고로 이어진 적이 있다 — `410d385` 가 `CONTEXT.SIEGE` 를 rename 했을 때
+ * 후자가 실제 사고로 이어진 적이 있다 — `6858d86` 가 `CONTEXT.SIEGE` 를 rename 했을 때
  * 리터럴을 박아 둔 e2e 단언 3개가 3.5개월간 조용히 죽어 있었다 (#1118).
  *
  * 잠금은 두 축이다:

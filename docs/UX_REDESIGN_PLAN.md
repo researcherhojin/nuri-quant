@@ -92,8 +92,8 @@
 ### 배포 포인트
 
 - **D1**: U1c 머지 후 — mini 1차 배포 (토큰+통화+반응형 파운데이션 묶음, 프론트 재빌드 필수) — **완료 2026-08-25** (served CSS 토큰 마커 검증)
-- **D2**: U2b 머지 후 — 대시보드 재구조 라이브 검증 (사용자 실경로 QA) — **완료 2026-08-25** (U2b 마커 5종 served 번들 확인, 27066ba)
-- **D3**: U4 머지 후 — 최종 + `/design-review` 라이브 폴리싱 패스 — **완료 2026-08-25** (배포 c72a239→01d19e8, U3/U4 마커 served 검증 · /design-review 5건 발견 2건 수정 #1222, Design A- · AI Slop A, 리포트 `~/.gstack/projects/nuri-quant/designs/design-audit-20260825/`)
+- **D2**: U2b 머지 후 — 대시보드 재구조 라이브 검증 (사용자 실경로 QA) — **완료 2026-08-25** (U2b 마커 5종 served 번들 확인, 6c3d4c8)
+- **D3**: U4 머지 후 — 최종 + `/design-review` 라이브 폴리싱 패스 — **완료 2026-08-25** (배포 bde39ea→4597193, U3/U4 마커 served 검증 · /design-review 5건 발견 2건 수정 #1222, Design A- · AI Slop A, 리포트 `~/.gstack/projects/nuri-quant/designs/design-audit-20260825/`)
 
 ## 4. 리스크 / 제약
 
