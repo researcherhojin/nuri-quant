@@ -128,7 +128,7 @@ PR/이슈 단위로 한 번 실행한 backfill / counterfactual / amplifier repl
 | `com.nuri-quant.discord-bot.plist` | continuous | Discord bot daemon |
 | `com.nuri-quant.health-check.plist` | hourly | health_check.sh — **prod 미설치** (#939: 고유 검사는 SRE detector 로 이식) |
 | `com.nuri-quant.heartbeat-watchdog.plist` | 15min | scheduler heartbeat watchdog + 자동 재시작 (#778/#779) |
-| `com.nuri-quant.state-replicator.plist` | daily | state_replicator.sh |
+| `com.nuri-quant.state-replicator.plist` | hourly | state_replicator.sh — 7일 넘은 `snapshot_*.db` 정리 포함 (#1576) |
 | `com.nuri-quant.sre-scan.plist` | hourly | SREIncidentAgent.scan |
 
 Install: `bash scripts/launchd/install_crons.sh [--only X] [--exclude Y] [--dry]`
