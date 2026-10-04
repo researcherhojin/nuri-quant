@@ -93,6 +93,12 @@ case "$MODE" in
             echo " ❌ primary mode 는 Mac mini 에서만 실행 (현재: $HOSTNAME)"
             exit 2
         fi
+        # 정리는 스냅샷 생성·push 보다 먼저 한다 (#1576) — 로컬 보관 정책은 그 둘의 성공과
+        # 무관하다. push 뒤에 있었을 때 push 실패의 `exit 2` 가 정리까지 건너뛰어, #1531 로
+        # 3주 실패하는 동안 스냅샷 717개 · 161G 가 쌓였다. VACUUM 뒤여도 같다 — 디스크가
+        # 차서 VACUUM 이 죽으면 `set -e` 가 정리를 건너뛰어 디스크가 영영 안 비워진다.
+        echo "[primary] cleanup snapshot >7 days"
+        find "$SNAPSHOTS_DIR" -name 'snapshot_*.db' -mtime +7 -delete 2>/dev/null || true
         SNAP="$SNAPSHOTS_DIR/snapshot_${TS}.db"
         echo "[primary] creating snapshot $SNAP"
         .venv/bin/python -c "
@@ -115,8 +121,6 @@ c.close()
             echo " ❌ rsync push failed"
             exit 2
         }
-        echo "[primary] cleanup snapshot >7 days"
-        find "$SNAPSHOTS_DIR" -name 'snapshot_*.db' -mtime +7 -delete 2>/dev/null || true
         # 성공 시각 마커 — `_detect_replica_stale` 이 이 mtime 만 본다 (#1531). 로그를 파싱하지
         # 않는 이유: 이 잡은 실패해도 로그에 계속 쓰므로 "최근 줄이 있다" 가 성공을 뜻하지
         # 않는다. 실제로 9 일간 매시간 실패 줄이 쌓였다. rsync 가 0 을 낸 뒤에만 찍는다.
