@@ -348,7 +348,7 @@ Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every P
 
 | Metric | Value | |
 |--------|-------|---|
-| **Backend tests** | 8,486 collected across 389 files | ✅ |
+| **Backend tests** | 8,489 collected across 390 files | ✅ |
 | **Backend statement coverage** | 99% — 150 of 25,528 statements uncovered across 26 files, 123 partial branches of 7,888 (`make ci-cov` — combines the CI shards, so it is the same basis Codecov's `backend` flag reports; 2026-09-29) | |
 | **Frontend tests** | 1,746 across 146 vitest files — 99.87% statement coverage (2,433 of 2,436) | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
