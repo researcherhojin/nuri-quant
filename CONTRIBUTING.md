@@ -34,9 +34,9 @@ The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
 |---------|----------------|----------|
 | 1 | Working-tree drift (`scripts/verify/check_drift.py --strict`): an uncommitted change that makes local checks pass while CI runs the committed version | Yes |
 | 2 | `ruff check nuri/ tests/ scripts/` | Yes |
-| 2b | `shellcheck` on `scripts/**/*.sh` | Yes |
-| 2c | Count claims in README / ARCHITECTURE / STRATEGY match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
-| 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) and a `pyright` ratchet on the lines the push adds | Yes |
+| 2b | `shellcheck` on `scripts/**/*.sh` | Yes when installed; a warning otherwise, CI enforces |
+| 2c | Count claims in README, ARCHITECTURE, STRATEGY and the scoped `CLAUDE.md` / rules files match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
+| 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) and a `pyright` ratchet on the lines the push adds | Yes when `npx` is available; skipped with a warning otherwise, CI enforces the spellcheck |
 | 3 | Tests (only without `--skip-tests`) | Yes |
 | 4 / 4b | Privacy scan of the tree and of unpushed commit messages (`scripts/verify/check_privacy_leak.py`) | Yes |
 | 5 | Conventional-commit format of the latest commit | No (warning) |
@@ -49,16 +49,16 @@ Branch protection on `main` requires these 14 checks (authoritative list:
 
 | Check | What it enforces |
 |-------|------------------|
-| Backend Tests | pytest across fast and slow shards; the job also aggregates coverage for Codecov |
+| Backend Tests | pytest across fast and slow shards (a separate, non-required job aggregates coverage for Codecov) |
 | Backend Lint | `ruff check` |
 | Frontend Tests / Frontend Lint / Frontend Build | vitest, eslint, `next build` |
 | Shell Lint | shellcheck |
-| Privacy Leak Scan | `check_privacy_leak.py` on the tree and the PR |
+| Privacy Leak Scan | `check_privacy_leak.py` on the checked-out tree |
 | Security Scan | Trivy, CRITICAL findings only |
 | Doc Count Drift Check | same as local section 2c (the CI job has no `.venv`, so the Python-derived counts are checked only by the local hook) |
 | Quick Checks | no file over 5 MB; `make spellcheck-ci` |
-| Universe Coverage Validation | inline sanity check of `config/universe.yaml` (it parses and its ticker lists are present; CI has no DB or network for the full coverage report) |
-| Local-LLM Build Gate | `llama-cpp-python` still builds on Linux when a dependency PR touches it; non-dependency PRs pass immediately |
+| Universe Coverage Validation | inline sanity check of `config/universe.yaml`: it parses and keeps at least 478 US and 190 KR tickers (CI has no DB or network for the full coverage report) |
+| Local-LLM Build Gate | `llama-cpp-python` still builds on Linux whenever `pyproject.toml` or `uv.lock` changes (any PR, and every push); other PRs pass immediately |
 | uv.lock Major Boundary / package-lock.json Major Boundary | a lock file does not cross a major version (or a 0.x boundary for direct dependencies) unnoticed. Escape hatch: the `lock-bump-reviewed` label, read from the API, so adding it later and re-running the failed job is enough |
 
 `required_status_checks.strict` is on: a PR must contain the current `main`
@@ -82,7 +82,7 @@ the others first.
 
 ## Workflow: one issue, one PR
 
-The workflow follows `docs/STRATEGY.md` §5.4, which identifies scope creep as
+The workflow follows `docs/STRATEGY.md` §5.1–5.6 (the "스코프 팽창" row of the failure-pattern table), which identifies scope creep as
 the most common failure mode for coding agents.
 
 1. Open an issue describing the problem and the proposed scope.
@@ -139,7 +139,7 @@ not precedent. Comments inside code may be Korean; identifiers are English.
 
 ## Dependencies
 
-Dependabot opens weekly PRs for `uv` and npm (`.github/dependabot.yml`), and
+Dependabot opens weekly PRs for `uv` and npm and monthly ones for GitHub Actions (`.github/dependabot.yml`), and
 `dependabot-auto-merge.yml` enables auto-merge for patch and minor updates
 whose lock file stays inside the major boundary. Lock-file PRs merge one at a
 time because of the strict up-to-date rule: rebase (`@dependabot rebase`),
