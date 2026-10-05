@@ -50,33 +50,18 @@ const sampleEvents = [
 ];
 
 const sampleHealth = {
-  siege: { score: 54, certified: false, passed: 6, failed: 1, warnings: 4, total: 11 },
   regime: { regime: "recovery", trend: "sideways", confidence: 75 },
   macro: { score: 56, interpretation: "Neutral" },
   freshness: { status: "WARN", fail_count: 0, warn_count: 2 },
 };
 
 describe("MarketContext", () => {
-  it("renders 4 health cards", () => {
+  it("renders 3 health rows (regime, macro, freshness)", () => {
     render(<MarketContext events={[]} health={sampleHealth} />);
-    expect(screen.getByText("Certification")).toBeTruthy();
+    expect(screen.queryByText("Certification")).toBeNull();
     expect(screen.getByText("레짐")).toBeTruthy();
     expect(screen.getByText("매크로")).toBeTruthy();
     expect(screen.getByText("데이터")).toBeTruthy();
-  });
-
-  it("shows SIEGE score with rejected status", () => {
-    render(<MarketContext events={[]} health={sampleHealth} />);
-    expect(screen.getByText("54%")).toBeTruthy();
-    // #1212: 실패 상태 sub 는 다음 행동 카피 포함
-    expect(screen.getByText("미인증 · 게이트 상세 →")).toBeTruthy();
-  });
-
-  it("shows certified SIEGE status in green", () => {
-    const certifiedHealth = { ...sampleHealth, siege: { ...sampleHealth.siege, score: 100, certified: true } };
-    render(<MarketContext events={[]} health={certifiedHealth} />);
-    expect(screen.getByText("100%")).toBeTruthy();
-    expect(screen.getByText("인증")).toBeTruthy();
   });
 
   it("shows regime info", () => {
@@ -117,16 +102,17 @@ describe("MarketContext", () => {
 
   it("health cards link to correct pages", () => {
     render(<MarketContext events={[]} health={sampleHealth} />);
-    const siegeLink = screen.getByText("Certification").closest("a");
-    expect(siegeLink?.getAttribute("href")).toBe("/engine");
+    // #1619: 레일에서 /engine 링크(Certification 행)는 사라졌다
+    expect(document.querySelector('a[href="/engine"]')).toBeNull();
     const regimeLink = screen.getByText("레짐").closest("a");
     expect(regimeLink?.getAttribute("href")).toBe("/strategy");
   });
 
   it("handles empty health gracefully", () => {
     render(<MarketContext events={[]} health={{}} />);
-    expect(screen.getByText("Certification")).toBeTruthy();
-    expect(screen.getByText("0%")).toBeTruthy();
+    expect(screen.getByText("레짐")).toBeTruthy();
+    expect(screen.getByText("매크로")).toBeTruthy();
+    expect(screen.getByText("데이터")).toBeTruthy();
   });
 
   it("shows FAIL freshness in red", () => {

@@ -3,8 +3,8 @@
  *
  * The Dashboard is one monolithic async Server Component (no nested sections),
  * so we render the whole OverviewPage() with targeted fixtures. The existing
- * page.coverage.test.tsx covers the cash merge / eventDday / pipeline-happy /
- * certify-race statements; this file targets the remaining *branch* arms:
+ * page.coverage.test.tsx covers the cash merge / eventDday / pipeline-happy
+ * statements; this file targets the remaining *branch* arms:
  *
  *  - L367  trend color ternary — bull / bear / sideways arms (3 fixtures)
  *  - L217  `h.latest_price || 0` falsy arm (holding missing latest_price)
@@ -17,8 +17,6 @@
  *  - L577/L578  coverage section gate — coverage present + checks.length > 0.
  *  - L602/L603  pipeline status color: known status (done) vs unknown status
  *          (fallback `bg-zinc-500`) — both arms of `colors[status] || fallback`.
- *  - L613/L614  siege failed severity ternary — "error" (✖ red) vs non-error
- *          (△ amber).
  *
  * RENDER GOTCHA (jsdom): page.tsx wraps Dashboard in <Suspense>. #1210 부터
  * CompositionSection 은 동기 server component (recharts 도넛·lazy 래퍼 삭제) 라
@@ -110,7 +108,6 @@ function makeFetchAPI(overrides: Record<string, Json>) {
       ],
       cash: { total_cash_usd: 500 },
     },
-    "/api/certify": { certified: true, passed: 5, total: 5, conditions: [] },
     "/api/rebalance-advisor": { total_violations: 0, actions: [] },
     "/api/targets": { targets: [] },
     "/api/actions": { urgent: [], check: [], hold: [], portfolio: [] },
@@ -348,7 +345,7 @@ describe("page.tsx branch coverage", () => {
   // One render with minimal/empty data drives all of those fallback arms at once
   // (no account_values, no cash, missing exchange_rate, missing
   // target_allocation, single winner so losers.length===0, advisor violations,
-  // freshness via items, siege fail) — complementing the happy-path fixtures.
+  // freshness via items) — complementing the happy-path fixtures.
   it("drives the missing-data fallback arms (?? / || right operands)", async () => {
     const container = await renderWith({
       "/api/dashboard": {
@@ -368,8 +365,6 @@ describe("page.tsx branch coverage", () => {
       },
       // advisor with violations -> L594 footer rule-violation line.
       "/api/rebalance-advisor": { total_violations: 2, actions: [] },
-      // siege all-pass (passed omitted -> L588 `|| 0`).
-      "/api/certify": { total: 2, conditions: [{ passed: true, severity: "info", description: "ok", detail: "d" }] },
       // freshness via items -> L599 items arm.
       // 형태는 소비자(FreshnessItem)에서 복사 — source/threshold_hours 는 실형태에 없고,
       // key 부재는 React key 경고를 냈다 (#1180 과 같은 mock-형태 결함, run #3161 stderr).
@@ -423,11 +418,10 @@ describe("page.tsx branch coverage", () => {
     expect(container.textContent || "").toContain("AAPL");
   });
 
-  // L229/L230/L252 RIGHT arms + L357 `?? null` arm2 — null siege & advisor &
-  // missing allocations. siege null -> L229 `|| []` + L230 `|| 0`; advisor null
-  // -> L252 `?? []`; both target_allocation AND allocation absent -> L357 final
-  // `?? null` arm. portfolio still has 1 holding so the page commits.
-  it("drives null siege/advisor + missing allocation fallbacks (L229/L230/L252/L357)", async () => {
+  // L252 RIGHT arm + L357 `?? null` arm2 — null advisor & missing allocations.
+  // advisor null -> L252 `?? []`; both target_allocation AND allocation absent
+  // -> L357 final `?? null` arm. portfolio still has 1 holding so the page commits.
+  it("drives null advisor + missing allocation fallbacks (L252/L357)", async () => {
     const container = await renderWith({
       "/api/dashboard": {
         verdict: "Hold", verdict_level: "neutral",
@@ -436,8 +430,6 @@ describe("page.tsx branch coverage", () => {
         // no allocation / target_allocation / actual_allocation at all.
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       } as unknown as Json,
-      // certify resolves to null -> siege is null in the page.
-      "/api/certify": null as unknown as Json,
       // rebalance-advisor resolves to null -> advisor is null.
       "/api/rebalance-advisor": null as unknown as Json,
     });
@@ -725,23 +717,6 @@ describe("page.tsx branch coverage", () => {
     expect(document.querySelector("span.bg-zinc-500")).not.toBeNull();
   });
 
-  // L610-614 — siege failed severity ternary: "error" (red) vs non-error (amber).
-  it("renders siege failures with error + non-error severities (L614 both arms)", async () => {
-    await renderWith({
-      "/api/certify": {
-        certified: false,
-        passed: 1,
-        total: 3,
-        conditions: [
-          { passed: false, severity: "error", description: "Hard veto", detail: "risk of ruin" },
-          { passed: false, severity: "warn", description: "Soft penalty", detail: "downgrade" },
-        ],
-      },
-    });
-    expect(document.querySelectorAll("span.text-red-400").length).toBeGreaterThan(0);
-    expect(document.querySelectorAll("span.text-amber-400").length).toBeGreaterThan(0);
-  });
-
   // L213/L214 arm1 + L227 arm1 — fallback arms: unknown verdict_level makes the
   // VerdictBanner 의 verdictLabels/BANNER_STYLES lookup undefined (`?? neutral`),
   // and an empty trend hits `d.regime.trend || "unknown"`.
@@ -892,25 +867,6 @@ describe("page.tsx branch coverage", () => {
     });
     // The hidden-pension note (SECTION.PENSION + count) renders next to the loser.
     expect(container.textContent || "").toContain("LOS");
-  });
-
-  // L587 arm1 — footer SIEGE quality "pass" line `siegeTotal > 0 &&
-  // siegeFailed.length === 0`: all conditions passed.
-  it("renders the SIEGE quality-pass footer (L587 arm)", async () => {
-    const container = await renderWith({
-      "/api/certify": {
-        certified: true,
-        passed: 3,
-        total: 3,
-        conditions: [
-          { passed: true, severity: "info", description: "ok1", detail: "d" },
-          { passed: true, severity: "info", description: "ok2", detail: "d" },
-          { passed: true, severity: "info", description: "ok3", detail: "d" },
-        ],
-      },
-    });
-    // pass line uses a green check glyph (✓ = ✓) in an emerald span.
-    expect(container.querySelector("span.text-emerald-500")).not.toBeNull();
   });
 
   // L598 arm1 — freshness bar `items.length > 0 || details.length > 0`: provide

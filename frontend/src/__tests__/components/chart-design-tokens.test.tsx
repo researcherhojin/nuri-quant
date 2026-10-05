@@ -11,7 +11,10 @@
  *   - **동작** — 실제로 recharts 에 넘어가는 값이 `var(--...)` 인가 (recharts 를 가로채
  *     받은 props 를 그대로 본다)
  *   - **구조** — 소스에 중립 hex 리터럴이 남지 않았는가 (동작 잠금은 한 차트만 보므로
- *     나머지 8개에 새 하드코딩이 생기면 놓친다)
+ *     나머지에 새 하드코딩이 생기면 놓친다)
+ *
+ * #1619: 동작 잠금의 표본은 GateFailureChart(인증 UI, 삭제) → PriceChart. 범례(Legend)와
+ * 툴팁 itemStyle 을 쓰는 차트가 남지 않아 그 두 단언은 함께 빠졌다.
  *
  * ⚠️ #1253 과 달리 **"hex 전면 금지" 가 아니다.** 차트에는 의미를 담은 계열색이
  * 정당하게 있다(`#10b981` pass, violation 색 등). 스윕이 그것까지 잡으면 멀쩡한 색을
@@ -21,15 +24,16 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { CertificationPoint, GateCondition } from "@/components/ui/siege-timeline-chart";
+import type { PriceData } from "@/components/ui/price-chart";
 
-// recharts 를 가로채 실제로 넘어온 props 를 노출시킨다.
-const captured: Record<string, Record<string, unknown>> = {};
+// recharts 를 가로채 실제로 넘어온 props 를 노출시킨다. 같은 요소가 여러 번 나오면
+// (PriceChart 의 YAxis 2개 — 두 번째는 숨김 volume 축) 순서대로 쌓는다.
+const captured: Record<string, Record<string, unknown>[]> = {};
 type StubProps = Record<string, unknown> & { children?: React.ReactNode };
 
 vi.mock("recharts", () => {
   const cap = (name: string, { children, ...props }: StubProps) => {
-    captured[name] = props;
+    (captured[name] ??= []).push(props);
     return <div data-testid={`rc-${name}`}>{children as React.ReactNode}</div>;
   };
   // 명명 함수 선언이다 — 팩토리로 만들면 displayName 을 붙여야 하는데 그 대입이
@@ -37,7 +41,7 @@ vi.mock("recharts", () => {
   function ResponsiveContainer({ children }: StubProps) {
     return <div>{children as React.ReactNode}</div>;
   }
-  function BarChart({ children }: StubProps) {
+  function ComposedChart({ children }: StubProps) {
     return <div>{children as React.ReactNode}</div>;
   }
   function CartesianGrid(p: StubProps) {
@@ -52,13 +56,16 @@ vi.mock("recharts", () => {
   function Tooltip(p: StubProps) {
     return cap("Tooltip", p);
   }
-  function Legend(p: StubProps) {
-    return cap("Legend", p);
-  }
   function Bar(p: StubProps) {
     return cap("Bar", p);
   }
-  return { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Legend, Bar };
+  function Area(p: StubProps) {
+    return cap("Area", p);
+  }
+  function Line(p: StubProps) {
+    return cap("Line", p);
+  }
+  return { ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Area, Line };
 });
 
 /** 차트 크롬에 쓰이던 zinc 계열 중립색. 의미를 담은 계열색은 **일부러** 제외한다. */
@@ -83,10 +90,8 @@ function stripSeriesPalette(src: string): string {
 }
 
 const CHART_FILES = [
-  "src/components/ui/gate-failure-chart.tsx",
   "src/components/ui/equity-curve-chart.tsx",
   "src/components/ui/price-chart.tsx",
-  "src/components/ui/siege-timeline-chart.tsx",
   "src/components/evidence/fear-greed-chart.tsx",
   "src/components/evidence/signal-performance-chart.tsx",
   "src/components/evidence/regime-chart.tsx",
@@ -94,47 +99,33 @@ const CHART_FILES = [
   "src/components/evidence/portfolio-treemap.tsx",
 ];
 
-function makePoint(): CertificationPoint {
-  const condition: GateCondition = {
-    id: "sector_limit",
-    description: "",
-    passed: false,
-    detail: "",
-    severity: "error",
-  };
-  return {
-    id: 1,
-    timestamp: "2026-04-20T10:00:00+09:00",
-    certified: false,
-    score: 55,
-    total_conditions: 10,
-    passed: 7,
-    failed: 1,
-    warnings: 0,
-    regime: null,
-    portfolio_hash: "h",
-    caller: "cli",
-    conditions: [condition],
-  };
+function makePrices(): PriceData[] {
+  return [1, 2, 3].map((i) => ({
+    date: `2026-04-0${i}`,
+    open: 100 + i,
+    high: 102 + i,
+    low: 99 + i,
+    close: 101 + i,
+    volume: 1_000_000,
+  }));
 }
 
 describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
-  it("grid · 축 · 툴팁 · 범례가 CSS 변수로 넘어간다", async () => {
-    const { GateFailureChart } = await import("@/components/ui/gate-failure-chart");
-    render(<GateFailureChart items={[makePoint()]} />);
+  it("grid · 축 · 툴팁이 CSS 변수로 넘어간다", async () => {
+    const { PriceChart } = await import("@/components/ui/price-chart");
+    render(<PriceChart data={makePrices()} ticker="AAPL" />);
 
     const isVar = (v: unknown) => expect(String(v)).toMatch(/var\(--/);
 
-    isVar(captured.CartesianGrid?.stroke);
-    isVar((captured.XAxis?.tick as { fill?: string })?.fill);
-    isVar((captured.YAxis?.tick as { fill?: string })?.fill);
+    isVar(captured.CartesianGrid?.[0]?.stroke);
+    isVar((captured.XAxis?.[0]?.tick as { fill?: string })?.fill);
+    // 첫 YAxis 가 가격 축 — 두 번째(volume)는 hide 라 tick 이 없다.
+    isVar((captured.YAxis?.[0]?.tick as { fill?: string })?.fill);
 
-    const content = captured.Tooltip?.contentStyle as { backgroundColor?: string; border?: string };
+    const content = captured.Tooltip?.[0]?.contentStyle as { backgroundColor?: string; border?: string };
     isVar(content?.backgroundColor);
     isVar(content?.border);
-    isVar((captured.Tooltip?.labelStyle as { color?: string })?.color);
-    isVar((captured.Tooltip?.itemStyle as { color?: string })?.color);
-    isVar((captured.Legend?.wrapperStyle as { color?: string })?.color);
+    isVar((captured.Tooltip?.[0]?.labelStyle as { color?: string })?.color);
   });
 
   it("차트 소스에 중립 hex 리터럴이 남아 있지 않다", () => {

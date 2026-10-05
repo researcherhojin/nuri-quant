@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Sidebar } from "@/components/ui/sidebar";
 import { NAV } from "@/lib/strings";
 
@@ -57,12 +57,6 @@ describe("Sidebar", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     mockPathname.mockReturnValue("/");
-
-    // Mock fetch for SIEGE status
-    global.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ certified: true, score: 90 }),
-    });
   });
 
   it("renders Nuri-Quant branding", () => {
@@ -142,15 +136,6 @@ describe("Sidebar", () => {
   it("shows System Online indicator", () => {
     render(<Sidebar />);
     expect(screen.getByText(NAV.SYSTEM_ONLINE)).toBeInTheDocument();
-  });
-
-  it("does not render SIEGE badge (moved to dashboard)", async () => {
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(screen.queryByText("CERTIFIED")).not.toBeInTheDocument();
-      expect(screen.queryByText("REJECTED")).not.toBeInTheDocument();
-    });
   });
 
   // dark-only 잠금 (#1195 U1a codex P2): 토글이 되살아나면 zinc 램프 재매핑과

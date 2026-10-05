@@ -7,7 +7,7 @@
  * - console error 로그
  * - 네트워크 응답 실패 (status >= 400)
  * - 페이지에 "Error" / "failed" / "500" 같은 가시 텍스트
- * - 주요 SIEGE 관련 element 가 렌더 됐는지 (home + engine pages)
+ * - 주요 element (engine 페이지의 게이트·충돌·메모리 섹션 등) 가 렌더 됐는지 — soft 검사
  */
 import { test, expect } from "@playwright/test";
 

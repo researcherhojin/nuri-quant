@@ -6,20 +6,21 @@ import { ACTION, CONTEXT, OPPORTUNITY } from "../src/lib/strings";
 // 갱신됐지만 이 파일은 안 됐고, playwright 가 어떤 게이트에도 없어서 3.5개월간
 // 아무도 몰랐다. import 로 묶어두면 다음 rename 은 단언이 따라온다.
 //
-// 시스템 건강 4-card 중 Certification 카드는 main 안의 /engine 링크다.
-// 사이드바에도 /engine 링크("Certification Engine")가 있어 main 스코프가 필요하다 —
-// body 전체를 훑으면 카드가 사라져도 사이드바 때문에 초록으로 통과한다.
-const healthCard = (page: import("@playwright/test").Page) =>
-  page.locator('main a[href="/engine"]');
+// 시스템 상태 레일(레짐 · 매크로 · 데이터)의 레짐 행은 main 안의 /strategy 링크다.
+// 사이드바에도 /strategy 링크("Strategy")가 있어 main 스코프가 필요하다 —
+// body 전체를 훑으면 행이 사라져도 사이드바 때문에 초록으로 통과한다. 매크로 행도
+// /strategy 로 가므로 라벨(CONTEXT.REGIME)로 행을 고른다. #1619: Certification 행 제거.
+const regimeRow = (page: import("@playwright/test").Page) =>
+  page.locator('main a[href="/strategy"]', { hasText: CONTEXT.REGIME });
 
 test.describe("Action-First Dashboard", () => {
-  test("renders system health cards (certification, regime, macro, freshness)", async ({ page }) => {
+  test("renders system health rail rows (regime, macro, freshness)", async ({ page }) => {
     await page.goto("/", { timeout: 20000 });
-    await expect(healthCard(page)).toContainText(CONTEXT.SIEGE, { timeout: 15000 });
-    // 카드 본문은 인증/미인증 상태를 함께 낸다
-    await expect(healthCard(page)).toContainText(
-      new RegExp(`${CONTEXT.CERTIFIED}|${CONTEXT.REJECTED}`),
-    );
+    await expect(regimeRow(page)).toContainText(CONTEXT.REGIME, { timeout: 15000 });
+    // 행 본문은 trend + 신뢰도 % 를 함께 낸다
+    await expect(regimeRow(page)).toContainText(/%/);
+    await expect(page.locator("main")).toContainText(CONTEXT.MACRO);
+    await expect(page.locator("main")).toContainText(CONTEXT.FRESHNESS);
   });
 
   test("renders action items with priority sections", async ({ page }) => {
@@ -35,7 +36,7 @@ test.describe("Action-First Dashboard", () => {
 
   // 이 테스트는 원래 "TSLA 가 15.4% 비중으로 urgent 에 뜬다" 를 박아뒀다. 셋 다
   // 2026-04-13 당시의 라이브 포트폴리오 값이라 매일 드리프트한다(오늘 TSLA 는
-  // 14.3% · check 버킷 · Certification 위반 없음). 티커도 수치도 API 가 실제로
+  // 14.3% · check 버킷 · 룰 위반 없음). 티커도 수치도 API 가 실제로
   // 낸 것에서 가져온다.
   test("action items surface the API's urgent/check tickers with their reasons", async ({
     page,
@@ -149,7 +150,7 @@ test.describe("Action-First Dashboard", () => {
     await page.goto("/", { timeout: 20000 });
     await page.waitForTimeout(5000);
     await expect(page.locator("text=오늘의 액션").first()).toBeVisible({ timeout: 10000 });
-    // Health cards should wrap on mobile
-    await expect(healthCard(page)).toContainText(CONTEXT.SIEGE, { timeout: 15000 });
+    // Health rail rows should still render on mobile
+    await expect(regimeRow(page)).toContainText(CONTEXT.REGIME, { timeout: 15000 });
   });
 });

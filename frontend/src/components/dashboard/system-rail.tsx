@@ -30,7 +30,7 @@ export function RegimeShiftBanner({ regime }: { regime: Partial<SystemHealth["re
   );
 }
 
-/* ── 시스템 상태 레일 (세로 4행 컴팩트) ──────────────────────── */
+/* ── 시스템 상태 레일 (세로 3행 컴팩트 — #1619 에서 Certification 행 제거) ── */
 function RailRow({ label, value, sub, href, color }: { label: string; value: string; sub: string; href: string; color: string }) {
   return (
     <Link href={href} className="flex items-center gap-2.5 px-3 py-2 hover:bg-zinc-800/40 transition-colors">
@@ -42,21 +42,12 @@ function RailRow({ label, value, sub, href, color }: { label: string; value: str
 }
 
 export function SystemHealthRail({ health }: { health: Partial<SystemHealth> }) {
-  const siege: Partial<SystemHealth["siege"]> = health.siege || {};
   const regime: Partial<SystemHealth["regime"]> = health.regime || {};
   const macro: Partial<SystemHealth["macro"]> = health.macro || {};
   const freshness: Partial<SystemHealth["freshness"]> = health.freshness || {};
   return (
     <div className="rounded-lg bg-zinc-900/60 border border-zinc-800/50 divide-y divide-zinc-800/50" data-testid="system-rail">
       <p className="px-3 py-2 text-[11px] font-semibold text-zinc-300">{CONTEXT.RAIL_TITLE}</p>
-      <RailRow
-        label={CONTEXT.SIEGE}
-        value={`${siege.score ?? 0}%`}
-        // #1212: 실패 상태는 상태만 말하지 않는다 — 다음 행동(행 링크 목적지)을 카피로
-        sub={siege.certified ? CONTEXT.CERTIFIED : `${CONTEXT.REJECTED} · ${CONTEXT.CHECK_ENGINE}`}
-        href="/engine"
-        color={siege.certified ? "text-emerald-400" : "text-red-400"}
-      />
       <RailRow
         label={CONTEXT.REGIME}
         value={regime.regime?.toUpperCase()?.slice(0, 6) ?? "—"}

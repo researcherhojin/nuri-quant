@@ -31,7 +31,7 @@ import { MarketStrip } from "@/components/dashboard/market-strip";
 import { VerdictBanner } from "@/components/dashboard/verdict-banner";
 import { EventsStrip } from "@/components/dashboard/events-strip";
 import { HoldingsSection } from "@/components/dashboard/holdings-section";
-import { DashboardFooter, type FooterCondition } from "@/components/dashboard/dashboard-footer";
+import { DashboardFooter } from "@/components/dashboard/dashboard-footer";
 
 // 헬퍼 re-export — 기존 소비자(테스트 포함)의 "@/app/page" import 경로 유지 (#1204)
 export { trendKo, vixZone, fgLabel, fgColor, macroLevel, accountKo, parseSparklinePeriod };
@@ -105,14 +105,6 @@ interface PortfolioData {
   cash?: { total_cash_usd?: number | null };
 }
 
-type CertifyCondition = FooterCondition;
-
-interface CertifyData {
-  conditions?: CertifyCondition[];
-  total?: number;
-  passed?: number;
-}
-
 interface AdvisorData {
   actions?: RawAdvisorAction[];
   total_violations?: number;
@@ -146,24 +138,12 @@ async function Dashboard({
   const compositionTab = parseCompositionTab(params.comp);
   const holdingsExpanded = params.holdings === "expanded";
 
-  const [d, freshness, pipelineStatus, portfolio, siege, advisor, targets, actionsData, opportunitiesData, marketCtx, coverage] = await Promise.all([
+  const [d, freshness, pipelineStatus, portfolio, advisor, targets, actionsData, opportunitiesData, marketCtx, coverage] = await Promise.all([
     // #1119 슬롯 shed(503) 포함 — 홈은 stale 배너 + 최소 shape 로 강등 (codex #1239 R2)
     fetchAPI<DashboardData>("/api/dashboard").catch((): DashboardData => EMPTY_DASHBOARD),
     fetchAPI<FreshnessData>("/api/freshness").catch((): FreshnessData => ({ items: [], details: [], overall: "FAIL", pass: 0, warn: 0, fail: 0 })),
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
     fetchAPI<PortfolioData>("/api/portfolio").catch(() => null),
-    Promise.race([
-      fetchAPI<CertifyData>("/api/certify"),
-      // 3s 타임아웃 방어용 fallback. jsdom+fake-timer 하네스에서 RSC await 가 settle
-      // 안 돼 setTimeout 콜백이 결정적으로 실행되지 않음 → 커버리지 제외.
-      new Promise<null>((resolve) => {
-        // setTimeout 콜백은 jsdom+fake-timer 하네스에서 결정적 실행 불가 → 함수째 커버리지 제외
-        /* v8 ignore next 3 */
-        setTimeout(() => {
-          resolve(null);
-        }, 3000);
-      }),
-    ]).catch(() => null),
     fetchAPI<AdvisorData>("/api/rebalance-advisor").catch(() => null),
     fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
     fetchAPI<ActionsData>("/api/actions").catch((): ActionsData => ({ urgent: [], check: [], hold: [], portfolio: [] })),
@@ -207,8 +187,6 @@ async function Dashboard({
   const fg = d.regime.fear_greed ?? null;
   const trend = d.regime.trend || "unknown";
   const _alertCount = d.alerts.length;
-  const siegeFailed: CertifyCondition[] = siege?.conditions?.filter((c) => !c.passed) || [];
-  const siegeTotal = siege?.total || 0;
 
   const holdings: PortfolioHolding[] = portfolio?.holdings || [];
   const winners = holdings.filter((h: PortfolioHolding) => h.latest_price && h.avg_price && h.latest_price > h.avg_price);
@@ -390,11 +368,8 @@ async function Dashboard({
         </div>
       )}
 
-      {/* ═══ 푸터: 품질 + 이벤트 + 파이프라인 ═══ */}
+      {/* ═══ 푸터: 규칙 위반 + freshness + 파이프라인 ═══ */}
       <DashboardFooter
-        siegeTotal={siegeTotal}
-        siegePassed={siege?.passed || 0}
-        siegeFailed={siegeFailed}
         advisorViolations={advisor?.total_violations || 0}
         showFreshness={showFreshness}
         freshnessItems={freshnessItems}

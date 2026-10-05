@@ -8,11 +8,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
-import { CertificationsCardLazy } from "@/components/ui/certifications-card-lazy";
-import type {
-  CertificationsListResponse,
-  CertificationsSummary,
-} from "@/components/ui/certifications-card";
 
 // === Types ===
 interface GateCondition {
@@ -167,16 +162,6 @@ export async function ConflictsSection() {
   );
 }
 
-// === Certifications History Section (V2 — E4-0a observation loop) ===
-// server-side fetch 만 담당; 실제 렌더는 CertificationsCard (unit-testable pure).
-export async function CertificationsSection() {
-  const [history, summary] = await Promise.all([
-    fetchAPI<CertificationsListResponse>("/api/certifications?limit=30"),
-    fetchAPI<CertificationsSummary>("/api/certifications/summary?days=30"),
-  ]);
-  return <CertificationsCardLazy history={history} summary={summary} />;
-}
-
 // === Memory Drift Section ===
 export async function MemorySection() {
   const data = await fetchAPI<{ drifts: Drift[]; critical: number; degrading: number }>("/api/memory");
@@ -211,11 +196,7 @@ export default function EnginePage() {
     <div className="space-y-5">
       <h1 className="text-2xl font-bold">{NAV.ROUTE_ENGINE}</h1>
 
-      {/* V2 — SIEGE history 관찰 loop (E4-0a persist + V1 API 소비) */}
-      <Suspense fallback={<Loading />}>
-        <CertificationsSection />
-      </Suspense>
-
+      {/* #1619: 인증 히스토리 카드 제거 — 이 페이지는 §2.6 결정 기계(게이트·충돌·메모리)만 보인다 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Suspense fallback={<Loading />}><GateSection /></Suspense>
         <div className="space-y-4">

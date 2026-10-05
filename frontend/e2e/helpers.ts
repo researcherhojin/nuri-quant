@@ -102,9 +102,6 @@ export async function mockAllAPIs(page: Page) {
   await page.route("**/api/portfolio", (route) =>
     route.fulfill({ json: mockPortfolio })
   );
-  await page.route("**/api/certify", (route) =>
-    route.fulfill({ json: { certified: true, score: 90, passed: 9, failed: 1, warnings: 0, total: 10, conditions: [], timestamp: "2026-03-31" } })
-  );
   await page.route("**/api/rebalance-advisor", (route) =>
     route.fulfill({ json: { actions: [], total_violations: 0, critical: 0 } })
   );

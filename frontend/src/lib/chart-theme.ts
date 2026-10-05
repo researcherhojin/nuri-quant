@@ -34,12 +34,6 @@ export const CHART_TOOLTIP_BG = "var(--popover)";
 /** 툴팁 테두리. `border` 단축 속성에 그대로 넣는 완성형 문자열이다. */
 export const CHART_TOOLTIP_BORDER = "1px solid var(--input)";
 
-/** 툴팁 **안쪽** 본문 텍스트 (배경이 `--popover` 이므로 그 짝을 쓴다). */
-export const CHART_TOOLTIP_ITEM = "var(--popover-foreground)";
-
-/** 셀 구분선 — 배경색으로 그어 타일을 갈라 보이게 한다 (siege 타임라인 dot). */
-export const CHART_CELL_STROKE = "var(--background)";
-
 /** treemap 의 **위반 없음** 채움. 격자 선과 값이 같아도 의미가 달라 분리한다. */
 export const CHART_EMPTY_FILL = "var(--muted)";
 
