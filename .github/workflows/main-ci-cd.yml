@@ -435,7 +435,12 @@ jobs:
             echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
             exit 0
           fi
-          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' || true)"
+          # 조회 실패는 라벨 없음으로 친다(fail-closed). 다만 "라벨 붙이고 rerun" 이 무한 반복되지
+          # 않도록 실패 자체는 드러낸다 — 403 이면 라벨이 있어도 계속 막힌다.
+          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')" || {
+            echo "::warning::라벨 조회 실패 — lock-bump-reviewed 를 확인하지 못해 차단으로 처리한다"
+            labels=""
+          }
           if grep -qxF 'lock-bump-reviewed' <<< "$labels"; then
             echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
             exit 0
@@ -480,7 +485,12 @@ jobs:
             echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
             exit 0
           fi
-          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name' || true)"
+          # 조회 실패는 라벨 없음으로 친다(fail-closed). 다만 "라벨 붙이고 rerun" 이 무한 반복되지
+          # 않도록 실패 자체는 드러낸다 — 403 이면 라벨이 있어도 계속 막힌다.
+          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')" || {
+            echo "::warning::라벨 조회 실패 — lock-bump-reviewed 를 확인하지 못해 차단으로 처리한다"
+            labels=""
+          }
           if grep -qxF 'lock-bump-reviewed' <<< "$labels"; then
             echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
             exit 0

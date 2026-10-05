@@ -42,8 +42,8 @@ def _gate_step(name: str) -> dict:
 
 def _run_step(
     tmp_path: Path, job: str, *, labels: list[str] | None, dependabot: bool = True, gh_fails: bool = False
-) -> tuple[int, str]:
-    """스텝 본문을 셸로 돌리고 `(exit code, gh 에 넘어간 argv)` 를 돌려준다. 네트워크·토큰 미사용."""
+) -> tuple[int, str, str]:
+    """스텝 본문을 셸로 돌리고 `(exit code, gh 에 넘어간 argv, stdout)` 를 돌려준다. 네트워크·토큰 미사용."""
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     argv_log = tmp_path / "argv"
@@ -74,7 +74,7 @@ def _run_step(
     script = tmp_path / "step.sh"
     script.write_text(_gate_step(job)["run"])
     result = subprocess.run(["bash", "-e", str(script)], capture_output=True, text=True, env=env, timeout=30)
-    return result.returncode, (argv_log.read_text() if argv_log.exists() else "")
+    return result.returncode, (argv_log.read_text() if argv_log.exists() else ""), result.stdout
 
 
 @pytest.mark.parametrize("job", JOBS)
@@ -87,39 +87,61 @@ class TestReviewedLabelLookup:
         assert not payload_refs, f"{job}: 이벤트 페이로드의 labels 를 다시 읽는다: {payload_refs} (#1592)"
 
     def test_the_label_present_passes(self, tmp_path, job):
-        rc, _ = _run_step(tmp_path, job, labels=["dependencies", "lock-bump-reviewed"])
+        rc, _, _ = _run_step(tmp_path, job, labels=["dependencies", "lock-bump-reviewed"])
         assert rc == 0
 
     def test_no_label_blocks(self, tmp_path, job):
-        rc, _ = _run_step(tmp_path, job, labels=["dependencies", "backend"])
+        rc, _, _ = _run_step(tmp_path, job, labels=["dependencies", "backend"])
         assert rc == 1
 
     @pytest.mark.parametrize("label", ["lock-bump-reviewed-v2", "not-lock-bump-reviewed", "lock-bump"])
     def test_a_similar_label_does_not_pass(self, tmp_path, job, label):
-        rc, _ = _run_step(tmp_path, job, labels=[label])
+        rc, _, _ = _run_step(tmp_path, job, labels=[label])
         assert rc == 1, f"{label!r} 가 게이트를 열었다"
 
     def test_a_failed_lookup_blocks_instead_of_passing(self, tmp_path, job):
         """조회 실패는 통과가 아니다 — required check 라 여기가 뚫리면 major 가 무인 머지된다."""
-        rc, _ = _run_step(tmp_path, job, labels=None, gh_fails=True)
+        rc, _, _ = _run_step(tmp_path, job, labels=None, gh_fails=True)
         assert rc == 1
 
     def test_it_queries_this_pr_by_number_with_a_label_jq(self, tmp_path, job):
         """엉뚱한 PR 의 라벨로 통과하면 안 된다 — PR 번호·jq 까지 잠근다 (#1552 교차리뷰 교훈)."""
-        _, argv = _run_step(tmp_path, job, labels=["backend"])
+        _, argv, _ = _run_step(tmp_path, job, labels=["backend"])
         args = argv.split("\n")
         assert "api" in args and "repos/owner/repo/pulls/1" in args, f"{job}: 이 PR 을 조회하지 않는다: {args}"
-        assert "--jq" in args and "labels" in args[args.index("--jq") + 1], f"{job}: 라벨 jq 가 아니다: {args}"
+        # 정확히 일치시킨다 — 가짜 gh 는 jq 를 무시하므로 `.labels | "lock-bump-reviewed"` 같은
+        # 상수 jq 가 부분 문자열 검사를 통과해 CI 에서 **모든 PR 을 승인**한다 (Codex P2, 2026-10-05).
+        assert "--jq" in args and args[args.index("--jq") + 1] == ".labels[].name", f"{job}: 라벨 jq 가 아니다: {args}"
 
     def test_a_human_pr_passes_without_a_lookup(self, tmp_path, job):
         """사람 PR 은 조회 없이 통과 — push 이벤트에는 PR 번호가 없어 조회가 앞서면 안 된다."""
-        rc, argv = _run_step(tmp_path, job, labels=[], dependabot=False)
+        rc, argv, _ = _run_step(tmp_path, job, labels=[], dependabot=False)
         assert rc == 0 and not argv, f"{job}: 사람 PR 에서 라벨을 조회했다: {argv!r}"
 
-    @pytest.mark.parametrize("binding", ["GH_TOKEN", "REPO", "PR_NUMBER"])
-    def test_the_step_declares_every_env_binding_it_uses(self, job, binding):
-        """하네스가 세 값을 주입하므로 워크플로에서 지워도 실행 테스트는 모른다 — 형태로 따로 잠근다."""
-        assert binding in (_gate_step(job).get("env") or {}), f"{job}: `env:` 에 {binding} 이 없다"
+    @pytest.mark.parametrize(
+        ("binding", "expr"),
+        [
+            ("GH_TOKEN", "${{ secrets.GITHUB_TOKEN }}"),
+            ("REPO", "${{ github.repository }}"),
+            ("PR_NUMBER", "${{ github.event.pull_request.number }}"),
+        ],
+    )
+    def test_the_step_binds_env_to_this_pr(self, job, binding, expr):
+        """하네스가 값을 주입하므로 워크플로에서 지우거나 바꿔도 실행 테스트는 모른다 — 식까지 잠근다.
+
+        `PR_NUMBER: ${{ github.run_number }}` 같은 변이는 엉뚱한 PR 의 라벨을 본다.
+        """
+        env = _gate_step(job).get("env") or {}
+        assert env.get(binding) == expr, f"{job}: {binding}={env.get(binding)!r}, 기대 {expr!r}"
+
+    def test_a_failed_lookup_is_surfaced(self, tmp_path, job):
+        """조회 실패를 조용히 삼키면 '라벨 붙이고 rerun' 이 무한 반복된다 — 경고로 드러낸다."""
+        rc, _, out = _run_step(tmp_path, job, labels=None, gh_fails=True)
+        assert rc == 1 and "::warning::" in out, f"{job}: 조회 실패가 드러나지 않는다:\n{out}"
+
+    def test_a_successful_lookup_does_not_warn(self, tmp_path, job):
+        _, _, out = _run_step(tmp_path, job, labels=["backend"])
+        assert "::warning::" not in out, out
 
     def test_the_job_can_read_pull_requests(self, job):
         """워크플로 기본 권한은 `contents: read` 뿐 — job 권한이 없으면 조회가 403 → 영구 차단."""

@@ -293,7 +293,7 @@ measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 
 PR 전 확인.
 ### 4.1 테스트
 | 항목 | 기준 | 현재 |
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,517 tests, 391 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,521 tests, 391 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,746 tests, 146 files |
 | E2E | 핵심 flow | 87 Playwright (9 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
