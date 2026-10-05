@@ -1,22 +1,44 @@
 # Nuri-Quant Frontend
 
-Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme.
+The Nuri-Quant dashboard: Next.js 16, React 19, Tailwind CSS 4 and shadcn/ui,
+with a dark-only theme. Development conventions, including Next.js 16 API
+changes and testing pitfalls, are in [`CLAUDE.md`](CLAUDE.md).
+
+## Setup
+
+```bash
+npm ci
+```
+
+The dashboard reads data from the FastAPI backend. Start it from the
+repository root with `make api`, or start both with `make start`.
+
+| Variable | Purpose |
+|----------|---------|
+| `NEXT_PUBLIC_API_URL` | Backend URL for the `/api/*` rewrite (default `http://localhost:8001`) |
+| `DASHBOARD_PASSWORD` | Enables cookie authentication when set. Read from `frontend/.env.local`, not the repository-root `.env` |
+| `AUTH_SECRET` | Cookie signing key (falls back to `DASHBOARD_PASSWORD`) |
 
 ## Commands
 
 ```bash
-npm run dev            # Dev server (:3000)
-npm run build          # Production build
-npm run test           # vitest (1606 tests, 134 files)
-npx playwright test    # E2E (89 tests, 10 specs)
+npm run dev            # development server on :3000
+npm run build          # production build
+npm run start          # serve the production build
+npm run lint           # eslint
+npm test               # vitest
+npm run test:coverage  # vitest with coverage
+npm run test:e2e       # Playwright
 ```
 
-## Architecture
+`npm run test:e2e` starts the backend from the repository-root `.venv` and the
+Next.js dev server, or reuses them if they are already running
+(`playwright.config.ts`). Run `make setup` first.
 
-See [`CLAUDE.md`](CLAUDE.md) for full details. Key points:
+## Structure
 
-- **18 routes** — Server Components with `force-dynamic`
-- **Action-First dashboard** — SystemHealth, ActionItems, OpportunityExplorer, MarketContext
-- **API proxy** — Next.js rewrites `/api/*` to FastAPI `:8001`
-- **i18n** — `src/lib/strings.ts` (Korean UI constants, not next-intl)
-- **Tests** — `src/__tests__/{components,lib,pages,coverage}/` (95 files) + 36 co-located (`src/app` / `src/components/ui` / `src/lib`) + `e2e/`
+- Pages are Server Components rendered with `force-dynamic`; data is fetched
+  server-side through `fetchAPI()` in `src/lib/api.ts`.
+- Next.js rewrites `/api/*` to the FastAPI backend (`next.config.ts`).
+- UI strings are Korean constants in `src/lib/strings.ts`.
+- Tests live in `src/__tests__/`, next to the code they cover, and in `e2e/`.

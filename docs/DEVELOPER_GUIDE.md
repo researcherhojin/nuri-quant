@@ -1,6 +1,6 @@
 # Developer Experience Guide
 
-세션 시간 낭비 패턴을 차단하는 5개 script + PR template. ~120분 누적 낭비를 막은 도구.
+세션 중 반복되던 시간 낭비 패턴을 줄이기 위한 4개 script 와 PR template 을 정리한다. 도입 당시 약 120분의 누적 낭비를 기준으로 만든 도구다.
 
 ## TL;DR — 매 push 전
 
@@ -9,24 +9,24 @@ bash scripts/verify/pre_push_check.sh           # full (106s)
 bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 ```
 
-이 한 명령이 4 패턴을 잡는다:
+`pre_push_check.sh` 는 drift, lint(ruff · shellcheck), doc count, spellcheck, pyright(변경 라인), 테스트, privacy scan, commit message 형식을 한 번에 검사한다. 아래 4개 패턴 중 앞의 3개를 이 명령이 잡고, atomicity 는 `check_atomic.sh` 를 따로 실행해야 한다.
 
 | 패턴 | Detection | 미감지 시 비용 |
 |---|---|---|
 | Drift bug (working tree ≠ committed) | `check_drift.py --strict` | CI roundtrip 1회 ≈ 3 min |
-| Lint stale config | `ruff check` against committed pyproject | CI roundtrip 1회 ≈ 3 min |
+| Lint stale config | `ruff check` (미커밋 `pyproject.toml` 은 drift check 가 감지) | CI roundtrip 1회 ≈ 3 min |
 | Test isolation flake | `pytest -n auto` (CI 는 fast shard 에서 `-n 8`, #1414) | CI roundtrip 1+ 회 |
-| Atomicity violation | `check_atomic.sh` (multi-commit) | reset + re-stage cycle |
+| Atomicity violation | `check_atomic.sh` (multi-commit, 별도 실행) | reset + re-stage cycle |
 
 ## 4 scripts + 1 PR template
 
 | Script | 역할 | Quick mode |
 |---|---|---|
-| `scripts/dev/ci_local.sh` | CI parity (`pytest -n auto`, Linux-only flake catch) | `--quick` (6.4s), `--lint` (0.05s — ruff is that fast) |
-| `scripts/verify/check_drift.py` | uncommitted vs committed 의존성 분석. 0/1-5/6-20/>20 severity band. | `--strict` (exit 1), `--silent` |
-| `scripts/verify/pre_push_check.sh` | drift + lint + tests + commit format 일괄 | `--quick`, `--skip-tests` |
-| `scripts/verify/check_atomic.sh` | multi-commit branch 각 commit 독립 검증 | `HEAD~3..HEAD` range |
-| `.github/pull_request_template.md` | PR 생성 시 자동 채움 — 패턴 checkbox 강제 | — |
+| `scripts/dev/ci_local.sh` | CI parity (`ruff check` + `pytest -n auto --cov`) | `--quick` (6.4s), `--lint` (0.05s) |
+| `scripts/verify/check_drift.py` | uncommitted 파일과 committed 파일 간 의존성 분석. 0 / 1-5 / 6-20 / >20 severity band. | `--strict` (exit 1), `--silent` |
+| `scripts/verify/pre_push_check.sh` | drift + lint + doc count + tests + privacy + commit format 일괄 | `--quick`, `--skip-tests` |
+| `scripts/verify/check_atomic.sh` | multi-commit branch 의 각 commit 을 독립 검증 (기본 범위 `origin/main..HEAD`) | `HEAD~3..HEAD` 같은 range 인자 |
+| `.github/pull_request_template.md` | PR 생성 시 자동으로 채워지는 체크리스트 (drift · atomicity · scope) | — |
 
 ## git hook 설치
 
@@ -34,20 +34,17 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 make setup-hooks     # `make setup` 에 포함 — pre-commit + pre-push 심볼릭 링크
 ```
 
-`scripts/hooks/*` 를 `.git/hooks/` 로 심는다. 훅 본문이 레포에 있으므로 갱신이 `git pull`
-로 따라온다. 우회는 `git push --no-verify`.
+`scripts/hooks/*` 를 `.git/hooks/` 에 심볼릭 링크로 설치한다(`scripts/dev/install_hooks.sh`). 훅 본문이 레포에 있으므로 갱신은 `git pull` 로 반영된다. 우회는 `git push --no-verify`.
 
-여기 원래 적혀 있던 것은 `.git/hooks/pre-push` 를 **손으로** 만들라는 안내였고, 그게
-#1070 의 원인이다 — 손 설치는 새 clone 에 따라오지 않고 잊히며, 실제로 pre-push 는
-설치된 적이 없는 채 `.claude/rules/enforcement.md` 만 게이트가 도는 것처럼 적혀 있었다.
+`.git/hooks/pre-push` 를 손으로 만들지 않는다. 수동 설치는 새 clone 에 따라오지 않는다(#1070).
 
 ## Anti-patterns (5)
 
-1. **Working tree drift accumulation** — 20+ uncommitted across sessions → CI 가 commit 만 보고 fail. **Fix**: `python scripts/verify/check_drift.py` 매 세션 시작.
-2. **Atomic commit violation** — commit 1 alone breaks suite (commit 2-3 가 missing piece) → bisect 깨짐. **Fix**: `bash scripts/verify/check_atomic.sh` 최종 push 전.
-3. **CI roundtrip debugging** — push → 3min wait → fail → fix 반복. **Fix**: `bash scripts/dev/ci_local.sh` 푸시 전.
-4. **Scope creep** — "fix X" → "fix X + refactor Y + cleanup Z". **Fix**: 1 PR = 1 issue ≤ 3 commits. 새 발견 → 새 branch.
-5. **Environment-only failures** (Linux CI vs macOS local) — **Mitigation**: `pytest -n auto` 로컬 + `tests/conftest.py` `journal_mode=MEMORY` (PR #93) + integration test 는 explicit fixture 사용.
+1. **Working tree drift accumulation**: 여러 세션에 걸쳐 uncommitted 파일이 20개 이상 쌓이면 CI 는 commit 만 보고 실패한다. **Fix**: 세션 시작 시 `python scripts/verify/check_drift.py`.
+2. **Atomic commit violation**: commit 1 만으로는 suite 가 깨지고 commit 2-3 이 빠진 부분을 채우면 bisect 가 깨진다. **Fix**: 최종 push 전 `bash scripts/verify/check_atomic.sh`.
+3. **CI roundtrip debugging**: push → 3분 대기 → 실패 → 수정의 반복. **Fix**: push 전 `bash scripts/dev/ci_local.sh`.
+4. **Scope creep**: "fix X" 가 "fix X + refactor Y + cleanup Z" 로 커진다. **Fix**: 1 PR = 1 issue, ≤ 3 commits. 새 발견은 새 branch 로.
+5. **Environment-only failures** (Linux CI vs macOS local): **Mitigation**: 로컬에서도 `pytest -n auto`, `tests/conftest.py` 의 `journal_mode=MEMORY` (PR #93), integration test 는 explicit fixture 사용.
 
 ## 이전 세션 ~120 min 낭비 매핑
 
