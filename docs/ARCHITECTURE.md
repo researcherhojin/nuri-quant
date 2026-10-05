@@ -61,7 +61,7 @@ flowchart TB
 
 The thick arrow marks the one in-memory hand-off: the consensus job passes its result to `record_decisions()` as a Python object rather than through a table.
 
-`certify` has no job of its own. After #1619 (PR 4) nothing in production calls `certify()`: the brief, the dashboard health and violations endpoints and `/api/certify` were detached, and the dashboard violations now come from `rebalance_advisor.detect_violations()` (prudential constraints only, execution fields stripped). The function and its CLI remain until the cleanup PR deletes the engine module; the `certifications` table stays as a historical ledger.
+`decide` (named `certify` until #1619) has no job of its own: `record_decisions()` runs inside the consensus job. The portfolio-wide certifier that used to live in this stage is gone — the brief, the dashboard health and violations endpoints and `/api/certify` were detached and the engine module deleted; dashboard violations come from `rebalance_advisor.detect_violations()` (prudential constraints only, execution fields stripped). The `certifications` table stays as a historical ledger.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|

@@ -23,7 +23,6 @@ EVENT_TYPES = {
     "step_success",
     "gate_evaluated",
     "regime_changed",
-    "certification_result",  # emitter 없음 — 폐기된 인증기(#1619)의 과거 행 때문에 어휘에 남긴다
     "conflict_detected",
     "drift_detected",
     # Mechanical penalty 발동 감사 로그 (STRATEGY §2.6 Escalation Ladder — soft penalty rung).

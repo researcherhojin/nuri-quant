@@ -1,6 +1,6 @@
 """파이프라인 스텝 의존성 + 실행 래퍼.
 
-5-stage 파이프라인: Collect → Analyze → Consensus → Certify → Track
+5-stage 파이프라인: Collect → Analyze → Consensus → Decide → Track
 각 스텝은 의존성 충족 시에만 실행 가능.
 
 ⚠️ 예전 6-step 어휘(Collect/Validate/Classify/Diagnose/Recommend/Track)는 #921 에서
