@@ -159,7 +159,7 @@ class TestGetPipelineStatus:
         """5개 스테이지 전체 상태 반환 (#921 — 예전 6-step 어휘 폐기)."""
         status = get_pipeline_status(db_path)
         assert len(status) == 5
-        expected_steps = {"collect", "analyze", "consensus", "certify", "track"}
+        expected_steps = {"collect", "analyze", "consensus", "decide", "track"}
         assert set(status.keys()) == expected_steps
 
     def test_mixed_states(self, db_path):
@@ -331,9 +331,9 @@ class TestCheckDependencies:
         assert result["ready"] is True
         assert result["missing"] == []
 
-    def test_certify_needs_consensus(self, db_path):
-        """certify 는 consensus 완료 필요 — 결정 기록은 합의 결과를 받는다."""
-        result = check_dependencies("certify", db_path)
+    def test_decide_needs_consensus(self, db_path):
+        """decide 는 consensus 완료 필요 — 결정 기록은 합의 결과를 받는다."""
+        result = check_dependencies("decide", db_path)
         assert result["ready"] is False
         assert result["missing"] == ["consensus"]
 
@@ -344,10 +344,10 @@ class TestCheckDependencies:
         assert result["ready"] is False
         assert result["missing"] == ["consensus"]
 
-    def test_certify_fully_ready(self, db_path):
-        """consensus 완료 후 certify 가 ready."""
+    def test_decide_fully_ready(self, db_path):
+        """consensus 완료 후 decide 가 ready."""
         emit_event("step_completed", "consensus", db_path=db_path)
-        result = check_dependencies("certify", db_path)
+        result = check_dependencies("decide", db_path)
         assert result["ready"] is True
         assert result["missing"] == []
 

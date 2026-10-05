@@ -300,7 +300,7 @@ universe 의 KR ticker 203개 × 0.4s ≈ 81초/run.
 | `rt_cd != 0` | 해당 ticker skip, debug 로그 | (없음) |
 | Connection error | 해당 ticker skip, debug 로그 | (없음) |
 
-**Surface only**: collector 인프라 장애는 market signal 이 아니므로 certify warning 이나 pipeline block 으로 승격하지 않는다. `institutional_flows` 테이블이 비어도 한국장 분석은 degraded mode 로 진행한다.
+**Surface only**: collector 인프라 장애는 market signal 이 아니므로 게이트 warning 이나 pipeline block 으로 승격하지 않는다. `institutional_flows` 테이블이 비어도 한국장 분석은 degraded mode 로 진행한다.
 
 ### UPSERT (B1 lesson, PR #311)
 

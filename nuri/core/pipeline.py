@@ -25,7 +25,7 @@ STEP_DEPENDENCIES: dict[str, list[str]] = {
     "collect": [],
     "analyze": ["collect"],
     "consensus": ["collect"],
-    "certify": ["consensus"],
+    "decide": ["consensus"],
     "track": ["consensus"],
 }
 

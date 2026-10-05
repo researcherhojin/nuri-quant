@@ -32,7 +32,7 @@ STAGES = {
     "collect": "nuri/collectors",
     "analyze": "nuri/analysis",
     "consensus": "nuri/trading/agents",
-    "certify": "nuri/trading/engine",
+    "decide": "nuri/trading/engine",
     "track": "nuri/trading/recommend",
 }
 

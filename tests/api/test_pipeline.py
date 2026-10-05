@@ -125,7 +125,7 @@ def _seed_pipeline_events_for_pipeline(db_path):
     events = [
         ("step_success", "collect", json.dumps({"detail": "11 collectors"}), 5000, 1500, None),
         ("step_success", "consensus", json.dumps({"detail": "regime=bull_low_vol"}), 3200, 1, None),
-        ("step_failed", "certify", json.dumps({"error": "timeout"}), 60000, 0, None),
+        ("step_failed", "decide", json.dumps({"error": "timeout"}), 60000, 0, None),
     ]
     with _get_db(db_path) as conn:
         conn.executemany(
@@ -414,7 +414,7 @@ class TestPipelineStatus:
         steps = data["steps"]
         assert isinstance(steps, list)
         by_step = {s["step"]: s for s in steps}
-        for step in ("collect", "analyze", "consensus", "certify", "track"):
+        for step in ("collect", "analyze", "consensus", "decide", "track"):
             assert step in by_step
             s = by_step[step]
             assert s["status"] in ("idle", "running", "done", "error")  # 프론트 enum
@@ -429,10 +429,10 @@ class TestPipelineStatus:
         data = r.json()
 
         by_step = {s["step"]: s for s in data["steps"]}
-        # step_success(collect) -> done, step_failed(certify) -> error
+        # step_success(collect) -> done, step_failed(decide) -> error
         assert by_step["collect"]["status"] == "done"
         assert by_step["collect"]["record_count"] == 1500  # seed record_count 컬럼 반영
-        assert by_step["certify"]["status"] == "error"
+        assert by_step["decide"]["status"] == "error"
 
 
 class TestPipelineTimeline:
@@ -595,12 +595,12 @@ class TestCoreEvents:
         from nuri.core.events import emit_event, get_pipeline_status
 
         emit_event("step_success", step="collect", duration_ms=5000, db_path=db_path)
-        emit_event("step_failed", step="certify", duration_ms=60000, db_path=db_path)
+        emit_event("step_failed", step="decide", duration_ms=60000, db_path=db_path)
 
         status = get_pipeline_status(db_path=db_path)
         # step_success 는 API 수동 실행의 레거시 철자 — completed 로 매핑된다 (#921)
         assert status["collect"]["status"] == "completed"
-        assert status["certify"]["status"] == "failed"
+        assert status["decide"]["status"] == "failed"
         assert status["analyze"]["status"] == "unknown"
 
     def test_get_timeline_filter(self, db_path):

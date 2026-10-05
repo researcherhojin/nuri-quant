@@ -21,14 +21,14 @@ _STEP_LABELS = {
     "collect": "Collect",
     "analyze": "Analyze",
     "consensus": "Consensus",
-    "certify": "Certify",
+    "decide": "Decide",
     "track": "Track",
 }
 _STEP_DESCRIPTIONS = {
     "collect": "27 collectors + external sites",
     "analyze": "Signals, regimes, factor composite",
     "consensus": "10 agents weighted vote",
-    "certify": "Decision record + veto gates",
+    "decide": "Decision record + veto gates",
     "track": "30/60/90d outcomes",
 }
 # core event status -> frontend PipelineStep.status enum (idle|running|done|error).

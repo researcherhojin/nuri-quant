@@ -53,7 +53,7 @@ def detect_conflicts(candidates=None, db_path=None) -> list[SignalConflict]:
     # low-sample/negative-edge (advisory/avoid) 도 동일 논리로 제외해야 함.
     # A-6: `Candidate.tier` 는 dataclass default 가 있어 항상 존재 → `getattr` 불필요.
     # #920: tier 상수를 import 하는 대신 `Candidate.is_actionable` 을 쓴다 —
-    # 상수 하나 때문에 certify 가 track 을 import 하고 있었다.
+    # 상수 하나 때문에 decide(engine) 가 track 을 import 하고 있었다.
     candidates = [c for c in candidates if c.is_actionable]
 
     if not candidates:
