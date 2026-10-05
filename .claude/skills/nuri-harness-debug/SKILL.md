@@ -36,6 +36,7 @@ description: >-
 | **5.14.2 Cross-context Inconsistency** | 같은 정량 filter / rule 을 시장 / 도메인 별로 다르게 적용 (예: KR universe blow-off 보류 → US universe blow-off 진입 권고) | Filter 기준 (60d return cap, vol threshold, blow-off 제외) 을 **명시 선언** 후 모든 시장에 동일 적용. 권고 전 self-check: "내가 컨텍스트 A 에서 적용한 rule 을 B 에 동일 적용하면 통과?" *(facts, no fix)* |
 
 **Case study 2026-05-27 세션** (구체 수치는 git log + NEXT_SESSION.md, gitignored):
+
 - §5.14.1: user 가 "데이터 수집" 요청 → universe top 보고 자의적으로 종목 진입 권고 슬라이드 → user 가 "갑자기 추천한 이유" + "당황스럽지 않을까요" 정정
 - §5.14.2: KR universe blow-off threshold (60d return cap) 적용 후 보류 권고, US universe 동일 threshold 적용 안 하고 "진입 가치" 권고 → user 일관성 위반 지적. Filter 기준은 시장 무관 동일 적용 원칙
 

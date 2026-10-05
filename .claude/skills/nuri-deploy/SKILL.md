@@ -8,8 +8,8 @@ description: Deploy to Mac Mini production server. Use when asked to "deploy", "
 ## Pre-deploy checks
 
 ```bash
-make pre-deploy        # Safety checks (lint + test + gate)
-make verify-all        # Full verification with network
+make pre-deploy        # Safety checks (config + DB + gate + frontend build + API + ports)
+make verify-all        # Full verification (tests + backend + frontend, no network)
 ```
 
 Both must pass before deploying. If either fails, fix the issue first.
@@ -20,8 +20,9 @@ Both must pass before deploying. If either fails, fix the issue first.
 make deploy-mini       # MBP → Mac mini 7-step sync (git pull ff-only + config scp + frontend rebuild + scheduler reload)
 ```
 
-`deploy_to_mini.sh` bounces **only** the scheduler. The API, dashboard, and
-discord-bot are separate launchd services — an API-only code change needs
+`deploy_to_mini.sh` reloads the scheduler (unload → load), restarts the resident
+API and discord-bot via `kickstart -k` (`RESIDENT_SERVICES`, #940), and bounces the dashboard only when
+`build_frontend.sh` rebuilds it. Manual equivalent for the API:
 `launchctl kickstart -k gui/$(id -u)/com.nuri-quant.api`. Editing a **plist**
 needs a full reinstall (`launchctl unload` → copy → `load`); `kickstart` re-execs
 the cached job definition and will not pick up an edited file.
@@ -43,6 +44,7 @@ over the LAN by design.
 ## Rollback
 
 If something breaks after deploy:
+
 ```bash
 # On Mac Mini
 make backup            # Ensure current DB is backed up first

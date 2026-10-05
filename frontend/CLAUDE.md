@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1680 tests, 141 files)
+npm run test           # vitest run (1746 tests, 146 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -74,7 +74,7 @@ This shipped: production ran an Apr-13 build for 3.5 months (108 `frontend/` com
 `package.json` has no comment syntax, so the reasoning lives here.
 
 `overrides.eslint = { "minimatch": ">=10.2.5" }` is **not** cosmetic. The blanket
-`overrides["brace-expansion"] = ">=5.0.8"` (GHSA-mh99-v99m-4gvg) is incompatible with
+`overrides["brace-expansion"] = ">=5.0.9"` (GHSA-mh99-v99m-4gvg) is incompatible with
 the `minimatch@3` that eslint 9 ships — v5 changed the export shape, so eslint dies at
 startup with `TypeError: expand is not a function` and lints **zero** files. The advisory
 range (`<=5.0.7`) covers the entire 1.x line by semver, so there is no v1 pin that both
@@ -82,13 +82,14 @@ satisfies the advisory and keeps eslint alive. Forcing minimatch ≥10 into esli
 is what makes both true at once.
 
 Two things that do **not** work, already tried (#913):
+
 - scoping `brace-expansion` to `>=1.1.16 <2` under eslint — lint runs, but the alert stays open forever
 - upgrading to eslint 10 — `eslint-config-next`'s plugins cap their peer range at `^9`, and lint fails there too
 
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **249**.
+should be **256**.
 
 ## E2E (Playwright) — runs against the real backend, gated by CI since #1234
 
@@ -109,4 +110,4 @@ should be **249**.
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/siege/gate 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
 - **`window.localStorage` 는 환경 의존**: 로컬 Node 26 jsdom 엔 **없고**(실험적 webstorage 게터가 `--localstorage-file` 없이 undefined), CI Node 22 jsdom 은 **실동작 스토리지**를 제공해 같은 파일 내 테스트 간 상태가 지속된다. 로컬 초록 ≠ CI 초록 — storage 를 쓰는 테스트는 인메모리 스텁 + `beforeEach` 초기화로 결정론화할 것 (CI run 32814106230, #1212). **Test:** `src/__tests__/components/action-items.test.tsx::NEW badge + ack (#1212)` — describe 레벨 스텁이 빠지면 CI 에서 ack 누수로 FAIL.
-- Test files: 105 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
+- Test files: 109 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 37 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).

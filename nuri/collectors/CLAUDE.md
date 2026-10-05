@@ -21,11 +21,12 @@ KIS Open API is NOT needed for KR fundamentals (was previously believed required
 ## Ticker Filtering + Source
 
 `_get_tickers(market=, source=)` (#272 Phase 2b):
+
 - `market`: `"us"` (excludes KR) | `"kr"` (KR only) | `None` (전체). KR 판정은 canonical `is_kr_ticker()` — `.KS` **및** `.KQ` (#764). `.KS` 로만 필터하면 KOSDAQ 이 kr 에서 누락되고 동시에 `not .KS` 인 us 로 새어 미국장 시간대(KOSDAQ 휴장)에 수집된다.
   **Test:** `tests/collectors/test_base.py::TestGetTickers::test_kosdaq_routes_to_kr_not_us` — 양방향 잠금(한쪽만 보면 반대 회귀가 통과한다).
 - `source`: `"portfolio"` (default, 보유종목 — `SELECT FROM portfolio`) | `"universe"` (`config/universe.yaml` 전체 ~746) | `"all"` (union)
 
-CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates, technical, events, news).
+CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental, wallstreet, estimates). technical, events, news accept `source=` only as a `collect()` argument — no CLI flag.
 
 **KR reference tickers bypass `source` entirely.** `stock_kr.collect()` unions `_reference_tickers()` (derived from `rules.yaml brief.benchmark.kr`) into every run. The KR benchmark is not a holding, so `portfolio` misses it, and `universe.yaml` is auto-synced from KRX constituents so a hand-added ETF is wiped by the next `make universe-sync` — it was collected by neither path and sat at **0 rows in production** while four consumers read it (brief benchmark, sector-mover fallback, events, risk_signals). Derived from config, not a second hardcoded list, so changing the benchmark moves collection with it.
 **Test:** `tests/collectors/test_stock_kr.py::TestStockKRCollectorScenarios::test_collect_without_kr_holdings_still_gets_reference` — dropping the union returns an empty frame again.
@@ -33,6 +34,7 @@ CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental
 ## Parallelism Pattern (yfinance vs KRX) ⚠️
 
 **yfinance**: 10 concurrent threads OK. Use `ThreadPoolExecutor(max_workers=10)`.
+
 **KRX (pykrx)**: rate-limits aggressively. Use sequential + 100ms delay.
 
 | Collector | Source | Parallelism | Why |
@@ -42,6 +44,7 @@ CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental
 | ark, finviz | ark-funds.com CSV / finviz | small loop | <20 items, no benefit |
 
 Standard parallel pattern (consistent across yfinance collectors):
+
 ```python
 def _fetch_one(ticker: str) -> tuple[str, ...]:
     """Returns (ticker, result, status)."""
@@ -59,6 +62,7 @@ ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlyin
 ## yfinance Direct (openbb removed, #1477)
 
 `stock` / `etf_flows` / `news` / `analysis.portfolio.get_exchange_rate` call yfinance directly. openbb was the nominal primary source until 2026-09-01, when a lower-bound-only `[tool.uv] override` let dependabot move fastapi past openbb-core's exact pin and `from openbb import obb` started failing on every machine; the yfinance path carried production for a week with no data gap, so the dependency (51 lock packages incl. 31 openbb-*, 3 overrides, a ruff cap) was dropped. `yfinance` is imported **inside functions**:
+
 - `patch("module.yf")` will FAIL — the name doesn't exist at module level
 - Stub the module for tests: `monkeypatch.setitem(sys.modules, "yfinance", MagicMock(...))`
 
@@ -75,6 +79,7 @@ scheduler 의 `status="failed"` + `error_message`, `step_failed` 파이프라인
 `collector_health` 의 실패 집계.
 
 두 가지가 미묘하다:
+
 - 조건은 `len(errors) == 2` 가 아니라 **`errors and not records`** — 한쪽이 예외이고
   다른 쪽이 빈 응답인 경우도 실패다. 반대로 **둘 다 200 인데 본문이 비면** 예외가
   없어 `[]` 가 그대로 나간다. 그게 NO_DATA 의 정의다.
