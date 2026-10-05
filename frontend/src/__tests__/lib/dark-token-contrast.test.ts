@@ -152,7 +152,7 @@ const TEXT_PAIRS: Pair[] = [
   { name: "muted-foreground/card", fg: "muted-foreground", bg: "card", why: "text-muted-foreground × bg-card" },
   { name: "muted-foreground/muted", fg: "muted-foreground", bg: "muted", why: "strategy/page.tsx: bg-muted text-muted-foreground" },
   { name: "muted-foreground/popover", fg: "muted-foreground", bg: "popover", why: "차트 툴팁 축·범례 — CHART_MUTED on CHART_TOOLTIP_BG" },
-  { name: "popover-foreground/popover", fg: "popover-foreground", bg: "popover", why: "차트 툴팁 본문 — chart-theme.ts CHART_TOOLTIP_ITEM = var(--popover-foreground)" },
+  { name: "popover-foreground/popover", fg: "popover-foreground", bg: "popover", why: "팝오버/툴팁 본문 — 배경 --popover 의 짝" },
   { name: "primary/card", fg: "primary", bg: "card", why: "text-primary 링크 (engine/page.tsx, decisions/page.tsx)" },
   { name: "primary/background", fg: "primary", bg: "background", why: "동일 링크가 카드 밖 표면에도 놓인다" },
   { name: "primary-foreground/primary", fg: "primary-foreground", bg: "primary", why: "button.tsx default: bg-primary text-primary-foreground" },

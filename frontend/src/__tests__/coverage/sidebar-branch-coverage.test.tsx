@@ -23,15 +23,6 @@ vi.mock("next/link", () => ({
 describe("Sidebar — collapsed state and branch coverage", () => {
   beforeEach(() => {
     vi.resetModules();
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/certify")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ certified: false, score: 60 }),
-        });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }) as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -89,35 +80,5 @@ describe("Sidebar — collapsed state and branch coverage", () => {
     // Current page "/" — Dashboard link should exist
     const dashLink = screen.getByText(NAV.ROUTE_DASHBOARD);
     expect(dashLink).toBeInTheDocument();
-  });
-
-  it("sidebar no longer renders SIEGE badge (moved to dashboard)", async () => {
-    const { Sidebar } = await import("@/components/ui/sidebar");
-    await act(async () => { render(<Sidebar />); });
-    await act(async () => { await new Promise(r => setTimeout(r, 300)); });
-
-    const text = document.body.textContent || "";
-    expect(text).not.toContain("CERTIFIED");
-    expect(text).not.toContain("REJECTED");
-  });
-
-  it("handles certify API returning non-ok response (lines 79-81)", async () => {
-    global.fetch = vi.fn().mockImplementation((url: string) => {
-      if (url.includes("/api/certify")) {
-        // Return { ok: false } to hit the null branch in .then(r => r.ok ? r.json() : null)
-        return Promise.resolve({ ok: false, status: 500 });
-      }
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    }) as unknown as typeof fetch;
-
-    const { Sidebar } = await import("@/components/ui/sidebar");
-    await act(async () => { render(<Sidebar />); });
-    await act(async () => { await new Promise(r => setTimeout(r, 300)); });
-
-    // Neither CERTIFIED nor REJECTED should appear since siegeStatus is null
-    expect(screen.queryByText("CERTIFIED")).toBeNull();
-    expect(screen.queryByText("REJECTED")).toBeNull();
-    // Sidebar should still render normally
-    expect(screen.getByText("Nuri-Quant")).toBeInTheDocument();
   });
 });

@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1746 tests, 146 files)
+npm run test           # vitest run (1674 tests, 141 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -89,17 +89,17 @@ Two things that do **not** work, already tried (#913):
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **256**.
+should be **247**.
 
 ## E2E (Playwright) — runs against the real backend, gated by CI since #1234
 
-`npm run test:e2e` (`npx playwright test`). 10 spec files under `e2e/`, 89 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
+`npm run test:e2e` (`npx playwright test`). 10 spec files under `e2e/`, 88 tests. `playwright.config.ts` starts both servers itself (`uvicorn` :8001, `npm run dev` :3000) with `reuseExistingServer: true`.
 
 - **CI: the `frontend-e2e` job in `main-ci-cd.yml` runs the suite on every PR that touches frontend OR backend** (the specs assert API response shapes, so backend changes can break them too). It seeds a synthetic DB via `scripts/dev/seed_e2e_db.py` and passes it through `NURI_DB_PATH` (#1240) — the webServer-spawned uvicorn inherits the job env. Before 2026-08-26 nothing gated this suite, which is exactly how `6858d86` (2026-05-04) renamed `CONTEXT.SIEGE` to `"Certification"`, updated the matching vitest files, and left three e2e assertions searching for `text=SIEGE` for 3.5 months (#1118). The wiring waited on two prerequisites: #1119 (heavy-slot gate — the suite used to saturate the backend with its own load) and #1240 (no populated DB in CI). There is still no Makefile / `scripts/verify/` hook — locally, run it by hand before touching the dashboard.
 - **The seed covers the full macro-indicator set** (#1422): before it, all 89 specs only ever exercised the missing-data-shrunk scoring path (7 of 9 macro components excluded) and the suite log drowned in 42 `매크로 지표 누락` lines. `compute_macro_score` on the seed now reports coverage 1.0 with zero warnings — locked by `tests/scripts/test_seed_e2e_db.py::TestMacroIndicatorsComplete`. If those warnings reappear in an e2e log, a seed indicator went missing.
 - **Local runs hit the dev DB; CI hits the seed DB.** A spec that depends on live dev-DB freshness (e.g. macro-events 7d window) can be red locally and green in CI, or vice versa — check which DB you're pointed at (`NURI_DB_PATH`) before calling it a regression.
 - **Never inline a user-facing string literal in a spec — import it from `src/lib/strings.ts`.** That file is the single source of truth and specs can import across the directory boundary (`import { ACTION, CONTEXT } from "../src/lib/strings"`). The contrast is on record: `dashboard.spec.ts:19` survived the same rename only because it OR'd several candidate strings, while the three brittle single-literal assertions all broke.
-- **Scope assertions to `main`.** The sidebar carries a "Certification Engine" link, so a `body`-wide `includes("Certification")` passes even when the health card is gone. A spec that can pass with the feature deleted is worse than no spec.
+- **Scope assertions to `main`.** The sidebar also links to `/strategy`, so a `body`-wide `a[href="/strategy"]` matches even when the system-rail regime row is gone (before #1619 the same trap was the sidebar's "Certification Engine" link vs. the health card). A spec that can pass with the feature deleted is worse than no spec.
 - **Don't assert live portfolio values.** `action-first.spec.ts:28` hardcoded `TSLA` at `15.4%` in the `urgent` bucket, captured 2026-04-13; by 2026-08-20 the same holding was 14.3% and in `check`. Read what the API actually returned and assert the UI matches it.
 - **`workers` is capped at 2 on purpose.** The default (cores/2 = 8 here) fires 8 spec files at one `next dev` and one uvicorn; every page is a `force-dynamic` Server Component issuing several API calls, so the backend saturates and unrelated specs time out. The cap is mitigation, not a fix — the real constraint is API concurrency (#1119). Do not raise a timeout to turn a red spec green without checking which side is actually slow.
 - **Per-assertion `{ timeout: N }` overrides `expect.timeout` from the config.** Two explore-search specs stayed red after the config budget was raised to 15 s because they carried an inline `5000`. Keep the waiting budget in one place.
@@ -107,7 +107,7 @@ should be **256**.
 
 ## Testing Gotchas
 
-- **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/siege/gate 차트 테스트에만 해당.)
+- **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/evidence 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
 - **`window.localStorage` 는 환경 의존**: 로컬 Node 26 jsdom 엔 **없고**(실험적 webstorage 게터가 `--localstorage-file` 없이 undefined), CI Node 22 jsdom 은 **실동작 스토리지**를 제공해 같은 파일 내 테스트 간 상태가 지속된다. 로컬 초록 ≠ CI 초록 — storage 를 쓰는 테스트는 인메모리 스텁 + `beforeEach` 초기화로 결정론화할 것 (CI run 32814106230, #1212). **Test:** `src/__tests__/components/action-items.test.tsx::NEW badge + ack (#1212)` — describe 레벨 스텁이 빠지면 CI 에서 ack 누수로 FAIL.
-- Test files: 109 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 37 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).
+- Test files: 105 in `src/__tests__/` (`components/lib/pages/coverage` subdirs + root `api-auth`/`middleware` tests) + 36 co-located next to sources (`src/app/**`, `src/components/ui/**`, `src/lib/**` — `*.coverage.test.tsx` / `*.branchcov.test.tsx`).

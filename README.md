@@ -110,7 +110,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | Metric | Value |
 |--------|-------|
 | Backend tests | 8,542 collected across 393 files |
-| Frontend test files | 146 vitest files |
+| Frontend test files | 141 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 59 cron entries |
 | API endpoints | 73 declared in `nuri/api/routes/` |

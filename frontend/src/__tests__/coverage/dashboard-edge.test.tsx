@@ -1,7 +1,7 @@
 /**
  * Dashboard (app/page.tsx) — error fallbacks + redirect + portfolio API failure branches.
  * Lines 62-64: .catch() for freshness & pipeline.
- * Lines 69-70: .catch(() => null) for certify & advisor.
+ * Lines 69-70: .catch(() => null) for advisor.
  * Line 76: redirect when portfolio empty.
  * Line 64: portfolio .catch(() => null) → empty holdings → redirect.
  *
@@ -49,7 +49,6 @@ describe("Dashboard — error fallbacks and redirect", () => {
         if (path === "/api/freshness") return Promise.reject(new Error("fail"));
         if (path === "/api/pipeline/status") return Promise.reject(new Error("fail"));
         if (path === "/api/portfolio") return Promise.resolve({ holdings: [], count: 0 });
-        if (path === "/api/certify") return Promise.reject(new Error("timeout"));
         if (path === "/api/rebalance-advisor") return Promise.reject(new Error("fail"));
         return Promise.resolve({});
       }),
@@ -98,7 +97,6 @@ describe("Dashboard — error fallbacks and redirect", () => {
           count: 2,
         });
         // Lines 69-70: catch(() => null)
-        if (path === "/api/certify") return Promise.reject(new Error("timeout"));
         if (path === "/api/rebalance-advisor") return Promise.reject(new Error("fail"));
         return Promise.resolve({});
       }),
@@ -118,51 +116,6 @@ describe("Dashboard — error fallbacks and redirect", () => {
       const text = document.body.textContent || "";
       expect(text).toContain("NVDA");
     }, { timeout: 3000 });
-  });
-
-  it("handles certify timeout gracefully (race with setTimeout)", async () => {
-    vi.doMock("@/lib/api", () => ({
-      API_BASE: "http://localhost:8001",
-      fetchAPI: vi.fn().mockImplementation((path: string) => {
-        if (path === "/api/dashboard") {
-          return Promise.resolve({
-            verdict: "Hold positions", verdict_level: "cautious",
-            regime: { regime: "sideways_high_vol", trend: "sideways", volatility: "high", confidence: 60, vix: 28, fear_greed: 35 },
-            macro: { score: 45, interpretation: "weak" },
-            allocation: { long: 40, short: 15, cash: 45 },
-            actions: [], alerts: [], gate_score: 70, n_positions: 3,
-          });
-        }
-        if (path === "/api/freshness") return Promise.resolve({ items: [], details: [], overall: "PASS", pass: 5, warn: 0, fail: 0 });
-        if (path === "/api/pipeline/status") return Promise.resolve({ steps: [] });
-        if (path === "/api/portfolio") return Promise.resolve({
-          holdings: [{ ticker: "AAPL", quantity: 10, avg_price: 180, latest_price: 195, currency: "USD" }],
-          count: 1,
-        });
-        // Certify: never resolves (simulates very slow response, timeout wins)
-        if (path === "/api/certify") return new Promise(() => {});
-        if (path === "/api/rebalance-advisor") return Promise.resolve({ total_violations: 0, has_critical: false });
-        return Promise.resolve({});
-      }),
-    }));
-
-    const { default: OverviewPage } = await import("@/app/page");
-
-    // Use fake timers to resolve the Promise.race timeout
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-
-    try {
-      const pageElement = OverviewPage();
-      await act(async () => {
-        render(pageElement);
-        // Advance past the 3-second certify timeout
-        await vi.advanceTimersByTimeAsync(3500);
-      });
-    } catch {
-      // May throw
-    }
-
-    vi.useRealTimers();
   });
 });
 
@@ -199,7 +152,6 @@ describe("Dashboard — portfolio API failure (line 64)", () => {
         if (path === "/api/pipeline/status") return Promise.resolve({ steps: [] });
         // Portfolio API FAILS — triggers .catch(() => null) on line 64
         if (path === "/api/portfolio") return Promise.reject(new Error("portfolio API down"));
-        if (path === "/api/certify") return Promise.resolve({ certified: true, score: 90 });
         if (path === "/api/rebalance-advisor") return Promise.resolve(null);
         return Promise.resolve({});
       }),

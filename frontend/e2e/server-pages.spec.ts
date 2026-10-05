@@ -22,10 +22,10 @@ test.describe("Server Component Pages (real backend)", () => {
     await page.waitForTimeout(2000);
   });
 
-  test("engine page renders SIEGE status", async ({ page }) => {
+  test("engine page renders gate status", async ({ page }) => {
     await page.goto("/engine", { timeout: 15000 });
     await page.waitForTimeout(2000);
-    // Should show SIEGE gate conditions
+    // Should show pipeline gate conditions (GateSection) — #1619 removed the certification card
     const body = await page.textContent("body");
     expect(body!.length).toBeGreaterThan(50);
   });

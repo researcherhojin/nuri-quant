@@ -74,7 +74,6 @@ const mockPortfolio = {
   ],
 };
 
-const mockSiege = { certified: true, score: 90, passed: 9, total: 10, conditions: [] };
 const mockAdvisor = { has_critical: false, total_violations: 0, total_recovery_usd: 0 };
 
 describe("DashboardPage", () => {
@@ -92,7 +91,6 @@ describe("DashboardPage", () => {
       if (path.includes("/api/pipeline/status")) return Promise.resolve(overrides.pipeline ?? mockPipelineStatus);
       if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
       if (path.includes("/api/portfolio")) return Promise.resolve(overrides.portfolio ?? mockPortfolio);
-      if (path.includes("/api/certify")) return Promise.resolve(overrides.siege ?? mockSiege);
       if (path.includes("/api/rebalance-advisor")) return Promise.resolve(overrides.advisor ?? mockAdvisor);
       return Promise.resolve({});
     });
@@ -108,29 +106,6 @@ describe("DashboardPage", () => {
       const total = screen.getByTestId("hero-total");
       expect(total.textContent).toContain("총 자산");
       expect(total.textContent).toContain("$8,850");
-    });
-  });
-
-  it("renders quality gate pass", async () => {
-    setupMocks();
-    const Page = await import("@/app/page");
-    await act(async () => { render(<Page.default />); });
-    await waitFor(() => {
-      expect(screen.getByText(/품질 9\/10/)).toBeInTheDocument();
-    });
-  });
-
-  it("renders quality gate fail with conditions", async () => {
-    setupMocks({
-      siege: {
-        certified: false, score: 40, passed: 4, total: 10,
-        conditions: [{ passed: false, severity: "error", description: "포지션 한도 초과", detail: "TSLA > 15%" }],
-      },
-    });
-    const Page = await import("@/app/page");
-    await act(async () => { render(<Page.default />); });
-    await waitFor(() => {
-      expect(screen.getByText(/품질 미통과/)).toBeInTheDocument();
     });
   });
 
@@ -275,7 +250,7 @@ describe("DashboardPage", () => {
 
   it("renders gracefully when side endpoints reject (fetchAPI catch branches)", async () => {
     // Dashboard + portfolio resolve (prevents redirect); everything else rejects.
-    // Exercises the .catch() defaults on freshness/pipeline/certify/advisor/targets.
+    // Exercises the .catch() defaults on freshness/pipeline/advisor/targets.
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/dashboard")) return Promise.resolve(mockDashboardData);
       if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
@@ -426,12 +401,13 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("hides violations and quality when zero", async () => {
-    setupMocks({ siege: { certified: true, score: 100, passed: 0, total: 0, conditions: [] } });
+  it("hides violations when zero", async () => {
+    setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.queryByText(/품질 검증/)).not.toBeInTheDocument();
+      expect(screen.getByTestId("hero-total")).toBeInTheDocument();
+      expect(screen.queryByText(/규칙 위반/)).not.toBeInTheDocument();
     });
   });
 

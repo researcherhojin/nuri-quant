@@ -9,8 +9,9 @@ export interface MacroEvent {
   source: string;
 }
 
+// #1619: `health.siege` 는 백엔드 /api/market-context 가 아직 내지만 대시보드는 더 이상
+// 읽지 않는다 — 타입에서 빼서 렌더 복귀를 컴파일러가 막게 한다.
 export interface SystemHealth {
-  siege: { score: number; certified: boolean; passed?: number; failed?: number; warnings?: number; total?: number };
   regime: { regime: string; trend: string; confidence: number };
   macro: { score: number; interpretation: string };
   freshness: { status: string; fail_count?: number; warn_count?: number };

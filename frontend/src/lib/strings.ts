@@ -157,8 +157,6 @@ export const MARKET = {
 
 /* ── Dashboard Footer ───────────────────────────────────────── */
 export const FOOTER = {
-  QUALITY: "품질",
-  QUALITY_FAIL: "품질 미통과",
   RULE_VIOLATION: "규칙 위반",
   COUNT_SUFFIX: "건",
 } as const;
@@ -570,14 +568,10 @@ export const CONTEXT = {
   TITLE: "시장 컨텍스트",
   SYSTEM_HEALTH: "시스템 건강",
   RAIL_TITLE: "시스템 상태",
-  SIEGE: "Certification",
   REGIME: "레짐",
   MACRO: "매크로",
   FRESHNESS: "데이터",
-  CERTIFIED: "인증",
-  REJECTED: "미인증",
-  // #1212: FAIL/미인증 행의 다음 행동 카피 (레일 sub — 상태만 말하지 말 것)
-  CHECK_ENGINE: "게이트 상세 →",
+  // #1212: FAIL 행의 다음 행동 카피 (레일 sub — 상태만 말하지 말 것)
   CHECK_PIPELINE: "파이프라인 확인 →",
   // #1252: 레짐 전환 배너 카피
   REGIME_SHIFT: "Regime 전환 신호",
@@ -612,7 +606,7 @@ export const NAV = {
   // 문자열을 직접 박게 되고 그게 #1118 의 3.5개월 무신호 회귀를 만든 경로다.
   ROUTE_DASHBOARD: "Dashboard",
   ROUTE_DECISIONS: "Decisions",
-  ROUTE_ENGINE: "Certification Engine",
+  ROUTE_ENGINE: "Decision Engine",
   ROUTE_EVIDENCE: "Evidence",
   ROUTE_PORTFOLIO: "Portfolio",
   ROUTE_REBALANCE: "Rebalance",

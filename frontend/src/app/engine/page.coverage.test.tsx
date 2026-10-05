@@ -1,8 +1,8 @@
 /**
  * Statement-coverage push for src/app/engine/page.tsx (#coverage/full-push).
  *
- * 모든 async Server Component (GateSection / ConflictsSection /
- * CertificationsSection / MemorySection) 를 직접 await 해 반환 JSX 만 렌더한다.
+ * 모든 async Server Component (GateSection / ConflictsSection / MemorySection)
+ * 를 직접 await 해 반환 JSX 만 렌더한다.
  * 페이지 전체(<EnginePage/>)는 형제 Suspense RSC 가 jsdom 에서 resolve 안 되어
  * 미커버 라인이 남으므로, 섹션별 격리 렌더로 100% statement 를 달성한다.
  *
@@ -11,10 +11,8 @@
  * - GateSection: ready/blocked StatusBadge, score 색상 3-arm, passed/failed 조건,
  *   마지막 phase divider 분기(L92) 모두.
  * - MemorySection: 빈 분기(L164) + drift row 분기(L166) 모두.
- * - CertificationsSection: Promise.all fetch 경로 (lazy card 는 stub).
  *
- * CertificationsCardLazy / ClientTable 은 가벼운 stub 으로 mock — recharts/next-dynamic
- * 가 jsdom 에서 깨지는 것을 피한다(파일-level recharts mock hoist gotcha 회피).
+ * ClientTable 은 가벼운 stub 으로 mock — next-dynamic 이 jsdom 에서 깨지는 것을 피한다.
  * PRIVACY: AAPL/MSFT placeholder + round numbers only (public repo).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -25,10 +23,6 @@ vi.mock("@/lib/api", () => ({
   fetchAPI: vi.fn(),
 }));
 
-vi.mock("@/components/ui/certifications-card-lazy", () => ({
-  CertificationsCardLazy: () => <div data-testid="certs-card-lazy" />,
-}));
-
 vi.mock("@/components/ui/client-table", () => ({
   ClientTable: () => <div data-testid="client-table" />,
 }));
@@ -36,7 +30,6 @@ vi.mock("@/components/ui/client-table", () => ({
 import {
   GateSection,
   ConflictsSection,
-  CertificationsSection,
   MemorySection,
 } from "./page";
 import EnginePage from "./page";
@@ -174,21 +167,6 @@ describe("engine/page sections (coverage)", () => {
     render(await MemorySection());
 
     expect(screen.getByTestId("client-table")).toBeInTheDocument();
-  });
-
-  it("CertificationsSection fetches history + summary and renders the lazy card", async () => {
-    mockFetchAPI.mockImplementation((path: string) => {
-      if (path.startsWith("/api/certifications/summary")) {
-        return Promise.resolve({ total: 0, certified: 0, rejected: 0, avg_score: 0 });
-      }
-      return Promise.resolve({ certifications: [], count: 0 });
-    });
-
-    render(await CertificationsSection());
-
-    expect(screen.getByTestId("certs-card-lazy")).toBeInTheDocument();
-    expect(mockFetchAPI).toHaveBeenCalledWith("/api/certifications?limit=30");
-    expect(mockFetchAPI).toHaveBeenCalledWith("/api/certifications/summary?days=30");
   });
 
   it("EnginePage renders the static heading + Suspense fallbacks (Loading)", () => {
