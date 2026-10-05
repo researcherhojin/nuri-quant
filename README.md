@@ -4,16 +4,16 @@
 
 [![CI/CD](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
-[![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
 
-**An auditable quant research platform that records and scores the evidence behind each investment decision.**
+**A quantitative decision-support platform that records and scores the evidence behind each investment recommendation.**
 
 </div>
 
-Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-based agents, and issues dated BUY / SELL / HOLD recommendations together with the evidence that produced them. Each recommendation is later scored against the realized outcome, and those results feed back into the agent weights.
+Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-based agents, and issues dated BUY / SELL / HOLD recommendations together with the evidence that produced them. Each recommendation is later scored against the realized outcome, and the scores are used to adjust the agent weights.
 
-- **Recommendation only.** The system never places orders; the operator executes every trade manually.
-- **No claimed edge.** Performance is not claimed until a pre-registered evaluation passes ([`docs/STRATEGY.md`](docs/STRATEGY.md) §3.11).
+- **Recommendation only.** The system does not place orders; every trade is executed manually by the operator.
+- **No performance claim.** No investment edge is claimed unless a pre-registered evaluation passes ([`docs/STRATEGY.md`](docs/STRATEGY.md) §3.11).
 
 ## Table of Contents
 
@@ -30,20 +30,20 @@ Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-base
 
 ## Security
 
-The repository is public; the running system operates on a real portfolio. Personal financial data is blocked from commits by a required CI scan, external LLM calls go through a single audited module, and the production API listens on `127.0.0.1` only. Details and vulnerability reporting: [`SECURITY.md`](SECURITY.md).
+The repository is public, while the deployed system operates on a real portfolio. A pre-push hook and a required CI check block personal financial data from entering the repository; all external LLM calls pass through a single module that logs each call; and the production API binds to `127.0.0.1`. See [`SECURITY.md`](SECURITY.md) for the security policy and vulnerability reporting.
 
 ## Background
 
 ### How it works
 
-The daily loop evaluates the holdings already in the portfolio and records the reasoning for each one. A separate scan surfaces candidates outside the portfolio.
+The scheduled daily run evaluates each current holding and records the reasoning behind its recommendation. A separate scan identifies candidates outside the portfolio.
 
 ```mermaid
 flowchart LR
     IN["Your holdings<br/>+ public market data"]
     RUN["Daily, on a schedule:<br/>score every holding, record why"]
     DEC["A dated BUY / SELL / HOLD<br/>per holding, with its evidence"]
-    YOU(["You place the order —<br/>the system never does"])
+    YOU(["Operator places the order<br/>(no automated execution)"])
     LED[("The same decision, scored later<br/>against what actually happened")]
 
     IN --> RUN --> DEC --> YOU
@@ -62,23 +62,23 @@ flowchart LR
 
 | Stage | Package | Role |
 |-------|---------|------|
-| **Collect** | `nuri/collectors` | Prices, fundamentals, macro data and news |
-| **Analyze** | `nuri/analysis` | Portfolio, risk and sector analysis; daily factor scores |
-| **Consensus** | `nuri/trading/agents` | 10 specialist agents vote on each holding, with a risk veto |
-| **Certify** | `nuri/trading/engine` | Policy gates that certify or reject the portfolio state |
-| **Track** | `nuri/trading/recommend` | Scores recommendations at 30, 60 and 90 days |
+| **Collect** | `nuri/collectors` | Collects prices, fundamentals, macroeconomic data and news |
+| **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; computes daily factor scores |
+| **Consensus** | `nuri/trading/agents` | Combines the weighted verdicts of 10 specialist agents per holding, subject to a risk veto |
+| **Certify** | `nuri/trading/engine` | Checks the portfolio against policy gates (position and sector limits, stop-loss, data freshness, volatility) and returns `CERTIFIED` or `REJECTED` |
+| **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
-The stages are not chained by an orchestrator: `nuri/scheduler.py` registers 59 independent APScheduler jobs, each reading its inputs from tables written by earlier jobs.
+The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
 
 - Scheduling: 59 cron jobs · in-process
 - Storage: SQLite WAL · 61 tables
-- Analytics: 22 signals · 10 regimes · a 4-factor composite
+- Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime topology and scoring model.
 
 ## Install
 
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), TA-Lib and Node.js 22. On macOS: `brew install uv ta-lib fnm && fnm install 22`.
+Requirements: Python 3.12 or later, [uv](https://docs.astral.sh/uv/), TA-Lib and Node.js 22. On macOS: `brew install uv ta-lib fnm && fnm install 22`.
 
 ```bash
 git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
@@ -88,29 +88,29 @@ cd frontend && npm ci && cd ..                          # frontend dependencies
 cp .env.example .env                                    # API keys (all optional)
 ```
 
-All API keys are optional; collectors without credentials skip themselves.
+All API keys are optional; a collector whose credentials are not configured is skipped.
 
 ## Usage
 
 ```bash
 make start          # API on :8001 (OpenAPI at /docs), dashboard on :3000
-make full-scan      # run every stage in order
-make consensus      # agent analysis and decision recording
+make full-scan      # run all pipeline stages in sequence
+make consensus      # run the agent consensus and record decisions
 make test-fast      # backend tests, excluding slow tests
 make verify-all     # pre-push checks: tests, lint, frontend
 make help           # list all targets
 ```
 
-Investment rules and thresholds live in [`config/rules.yaml`](config/rules.yaml); the rationale is in [`docs/STRATEGY.md`](docs/STRATEGY.md) §3–§6. The system runs without any LLM; optional integrations are listed in [`docs/STRATEGY.md`](docs/STRATEGY.md) §4.4.3.
+Investment rules and thresholds are defined in [`config/`](config/) (primarily `rules.yaml`), and their rationale in [`docs/STRATEGY.md`](docs/STRATEGY.md). The recommendation pipeline does not use an LLM; optional LLM features and their data-egress policy are described in [`docs/STRATEGY.md`](docs/STRATEGY.md) §4.4.3.
 
 ## Project Stats
 
-Checked on every pull request by `make verify-doc-counts`.
+These values are verified against the code by `make verify-doc-counts`, which runs in the pre-push hook and in CI (CI skips the counts that require the Python environment).
 
 | Metric | Value |
 |--------|-------|
 | Backend tests | 8,521 collected across 391 files |
-| Frontend tests | 1,746 across 146 vitest files |
+| Frontend test files | 146 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 59 cron entries |
 | API endpoints | 73 declared in `nuri/api/routes/` |
@@ -133,7 +133,7 @@ Checked on every pull request by `make verify-doc-counts`.
 
 ## Acknowledgements
 
-Design patterns from [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution), [OAE](https://github.com/nutshells3/orchestration-assurance-engine), [TradingAgents](https://github.com/TauricResearch/TradingAgents), [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) and [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/); investment rules after O'Neil (CAN SLIM) and Minervini (SEPA).
+Design patterns are adapted from [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution), [OAE](https://github.com/nutshells3/orchestration-assurance-engine), [TradingAgents](https://github.com/TauricResearch/TradingAgents) and [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies). Portfolio optimization uses [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/). The investment rules are based on O'Neil (CAN SLIM) and Minervini (SEPA).
 
 ## Contributing
 
@@ -141,4 +141,4 @@ Open an issue to agree on scope before submitting a pull request. See [`CONTRIBU
 
 ## License
 
-[AGPL-3.0](LICENSE)
+[AGPL-3.0-or-later](LICENSE)
