@@ -19,8 +19,8 @@ Email reports are not monitored.
 |-------|--------|
 | Acknowledgement and initial triage | within 48 hours |
 | HIGH / CRITICAL severity fix | within 7 days |
-| MEDIUM severity fix | within 30 days or next release |
-| LOW severity fix | next release |
+| MEDIUM severity fix | within 30 days |
+| LOW severity fix | best effort |
 
 If you do not receive an acknowledgement within 48 hours, add a comment to
 the advisory.
