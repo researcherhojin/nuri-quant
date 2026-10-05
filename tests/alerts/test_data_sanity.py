@@ -202,7 +202,7 @@ def test_divergence_3d_catches_slow_drift(db_path):
 
 
 def test_scoped_tickers_are_the_gate_inputs():
-    """검사 대상 = SIEGE freshness 기준 + 측정 벤치마크. 임의 목록이 아니다."""
+    """검사 대상 = freshness_tickers 기준 + 측정 벤치마크. 임의 목록이 아니다."""
     assert ds.scoped_tickers() == ["GC=F", "KOSPI", "SPY", "TLT"]
 
 

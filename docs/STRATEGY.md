@@ -3,7 +3,7 @@
 이 문서는 프로젝트의 존재 이유, 핵심 설계 결정의 근거, 개발 품질 기준을 정의한다. 새로운 기능을 만들거나 기존 구조를 변경할 때 이 문서의 원칙에 부합하는지 먼저 확인한다.
 
 <!--
-Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on demand" 로만 가리켜진다 (on-demand load). Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (CERTIFICATION_SPEC.md, data/llm_consults/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
+Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on demand" 로만 가리켜진다 (on-demand load). Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (data/llm_consults/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
 -->
 
 ---

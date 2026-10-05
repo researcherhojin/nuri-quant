@@ -20,7 +20,7 @@ Strategy-level decision modules. Each file is a self-contained strategy that con
 
 - **REGIME_ALLOCATION lives in `longshort.py`**, not config. Reason: the table encodes a research result (O'Neil + Minervini + 6-site review on 2026-03-28), not a tunable threshold. Changes require a STRATEGY PR with backtest evidence (STRATEGY §6 promotion gate).
 - **Strategies do not write to `recommendations`**. They emit dataclass signals consumed by `nuri/trading/recommend/` modules, which decide what reaches the user.
-- **`position.py` gate ≠ the retired portfolio-wide SIEGE certification (#1619)**. This file's gate is a thin enforcement helper at the strategy layer (regime-aligned, agent-consensus, factor-rank, drawdown, sector-cap). The full 11–30+ condition certification lives in `engine/`. Do not duplicate logic — call into engine when full certification is needed.
+- **`position.py` gate ≠ the retired portfolio-wide SIEGE certification (#1619)**. This file's gate is a thin enforcement helper at the strategy layer (regime-aligned, agent-consensus, factor-rank, drawdown, sector-cap). The portfolio-wide certification was retired (#1619); do not rebuild it here — prudential limits are surfaced by `rebalance_advisor`.
 - **Mean-reversion + pairs are research-grade**, not production daily emitters. They run on demand; promotion to scheduler requires win-rate evidence per STRATEGY §6.
 
 ## Regime dependency
