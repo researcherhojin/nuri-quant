@@ -399,34 +399,6 @@ class TestRouteCacheSingleFlight:
             lambda *a, **k: {"agents": [], "summary": {}},
         )
 
-    def test_certify_cache(self):
-        from types import SimpleNamespace
-
-        import nuri.api.routes.targets as m
-
-        def reset():
-            m._certify_cache["data"] = None
-            m._certify_cache["ts"] = 0
-
-        def cert(*a, **k):
-            return SimpleNamespace(
-                certified=True,
-                score=100,
-                passed=1,
-                failed=0,
-                warnings=0,
-                total_conditions=1,
-                conditions=[],
-                timestamp="2026-08-20",
-            )
-
-        self._race(
-            m.get_certification,
-            [lambda **kw: patch("nuri.trading.engine.certification.certify", **kw)],
-            [reset],
-            cert,
-        )
-
     def test_backtest_equity_cache(self):
         import nuri.api.routes.swing as m
 

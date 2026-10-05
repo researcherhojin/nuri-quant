@@ -257,13 +257,6 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         ),
         "label": "결정 컨텍스트 (완결)",
     },
-    "certification": {
-        # E4-0a (PR #410) 이후 SIEGE 인증 실행은 `certifications` 테이블에 직접 persist.
-        # 이전 policy 는 pipeline_events 'certification_result' 이벤트를 기대했으나 emitter 부재
-        # → 항상 FAIL. certifications.timestamp 는 ISO datetime (kst_now().isoformat()).
-        "query": "SELECT MAX(timestamp) FROM certifications",
-        "label": "Certification",
-    },
     "ark": {
         # ARK 는 **엔드포인트가 200 인 채로 내용만 언다** (#1145). 실측: ARKF 가 7.5개월 전
         # 보유를 담은 CSV 를 정상 서빙하는 동안 다른 4개 펀드는 최신이었다. 다운로드도
@@ -388,7 +381,7 @@ def _parse_timestamp(value: str) -> datetime:
     지원 포맷:
     - `YYYY-MM-DD`
     - `YYYY-MM-DD HH:MM:SS` / `YYYY-MM-DDTHH:MM:SS`
-    - `YYYY-MM-DDTHH:MM:SS.ffffff±HH:MM` (kst_now().isoformat() — E4-0a certifications)
+    - `YYYY-MM-DDTHH:MM:SS.ffffff±HH:MM` (kst_now().isoformat() 형식 — 예: `decisions`)
 
     fromisoformat 은 Python 3.11+ 에서 extended ISO 를 완전 지원.
     """

@@ -6,14 +6,13 @@ Discord + 로컬 artifact 를 생성. DST 자동 처리됨 (EDT 기간 KST 22:00
 
 Single source of truth (codex Plan consult Q2/Scope): 기존 actions API 의
 helper 를 재사용 — 새 로직 추가 없이 composition 만.
-- `_build_actions` — 4-bucket 종합 (stop-loss/SIEGE bucket 분리는 PR #429 후)
+- `_build_actions` — 4-bucket 종합 (stop-loss/portfolio bucket 분리는 PR #429 후)
 - `_build_opportunities` — 비보유 scan candidates
 - `_get_macro_events` — 24h macro events (DB)
 - `discord_bot.send_webhook` — 전송 공통 (daily_report 와 동일 경로)
 
 데이터 출처 (모두 DB):
 - Regime / macro_score / VIX / USD/KRW / F&G — DB `macro` 테이블 + classifier
-- SIEGE — `certify(caller="cli:premarket_brief")` (persist 됨, audit trail)
 - 4-bucket actions — `_build_actions()`
 - Opportunities — `_build_opportunities()`
 - Macro events — `macro_events` 테이블 (24h window)
@@ -64,7 +63,6 @@ def _collect_context(db_path=None) -> dict:
         "vix": None,
         "usd_krw": None,
         "fear_greed": None,
-        "siege": None,
         "actions": None,
         "opportunities": None,
         "macro_events": [],
@@ -89,7 +87,7 @@ def _collect_context(db_path=None) -> dict:
 
     # Data freshness (#513) — backend gate (#512 PR) 가 작동해도 brief 에 surface 되지 않으면
     # 사용자 가시성 0. 매 brief 에 PASS/WARN/FAIL 3-tier summary + per-policy detail 표시.
-    # FAIL 1+ → embed RED, WARN 1+ → embed AMBER 가능 (기존 SIEGE AMBER 와 동일 priority).
+    # FAIL 1+ → embed RED, WARN 1+ → embed AMBER 가능 (#1619 전 인증 AMBER 와 동일 priority).
     try:
         from nuri.core.freshness import get_freshness_summary
 
@@ -183,27 +181,6 @@ def _collect_context(db_path=None) -> dict:
                 ctx[key] = {"value": float(rows[0]["value"]), "date": rows[0]["date"]}
     except Exception:
         logger.warning("quick macro indicators 실패", exc_info=True)
-
-    # SIEGE certify
-    try:
-        from nuri.trading.engine.certification import certify
-
-        cert = certify(caller="cli:premarket_brief", swallow_persist_errors=True, db_path=db_path)
-        ctx["siege"] = {
-            "certified": cert.certified,
-            "score": round(cert.score, 1),
-            "passed": cert.passed,
-            "failed": cert.failed,
-            "warnings": cert.warnings,
-            "total": cert.total_conditions,
-            "failing_errors": [
-                {"id": c.id, "desc": c.description, "detail": (c.detail or "")[:100]}
-                for c in cert.conditions
-                if not c.passed and c.severity == "error"
-            ],
-        }
-    except Exception:
-        logger.warning("SIEGE certify 실패", exc_info=True)
 
     # 4-bucket actions (cache bypass)
     try:
@@ -320,15 +297,14 @@ def _brief_color(ctx: dict) -> int:
     """Brief 색상 priority — RED > AMBER > BLUE.
 
     RED:    urgent action OR freshness FAIL (#513)
-    AMBER:  SIEGE not certified OR freshness WARN (#513)
+    AMBER:  freshness WARN (#513) — 인증 트리거는 #1619 로 제거
     BLUE:   평상시
     """
     actions = ctx.get("actions") or {}
     fresh = ctx.get("freshness") or {}
     if actions.get("urgent") or fresh.get("fail", 0) > 0:
         return COLOR_RED
-    siege = ctx.get("siege") or {}
-    if siege.get("certified") is False or fresh.get("warn", 0) > 0:
+    if fresh.get("warn", 0) > 0:
         return COLOR_AMBER
     return COLOR_BLUE
 
@@ -402,15 +378,6 @@ def format_brief_embed(ctx: dict) -> dict:
         parts.append(f"USD/KRW {krw['value']:.0f}")
     if parts:
         fields.append({"name": "🧭 지표", "value": " · ".join(parts), "inline": False})
-
-    # SIEGE
-    siege = ctx.get("siege")
-    if siege:
-        status = "CERTIFIED" if siege["certified"] else "REJECTED"
-        siege_line = f"{status} ({siege['score']:.0f}% — {siege['passed']}P/{siege['failed']}F/{siege['warnings']}W)"
-        if siege["failing_errors"]:
-            siege_line += "\n" + "\n".join(f"❌ {e['id']}: {e['detail']}" for e in siege["failing_errors"][:3])
-        fields.append({"name": "🛡️ Certification", "value": siege_line, "inline": False})
 
     # Data Freshness (#513) — backend gate 결과를 사용자에게 surface.
     # PR #512 가 portfolio policy 등록 + dual-layer write/read filter 했지만
@@ -566,14 +533,6 @@ def format_brief_markdown(ctx: dict) -> str:
     if parts:
         lines.append("## Indicators")
         lines.append("- " + " · ".join(parts))
-        lines.append("")
-
-    siege = ctx.get("siege")
-    if siege:
-        lines.append(f"## Certification: {'CERTIFIED' if siege['certified'] else 'REJECTED'} ({siege['score']:.1f}%)")
-        lines.append(f"- {siege['passed']}P / {siege['failed']}F / {siege['warnings']}W of {siege['total']}")
-        for e in siege["failing_errors"]:
-            lines.append(f"- ❌ {e['id']}: {e['desc']} — {e['detail']}")
         lines.append("")
 
     # Data Freshness (#513) — markdown 출력. embed 와 동일 로직 (#512 backend → user surface).

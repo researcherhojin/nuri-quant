@@ -16,12 +16,9 @@ def _load_rules() -> dict:
     if _RULES_PATH.exists():
         with open(_RULES_PATH, encoding="utf-8") as f:
             return yaml.safe_load(f)
-    # 폴백 (파일 없을 때)
-    return {
-        "position_limits": {"max_single_position": 0.15, "max_sector_exposure": 0.35},
-        "stop_loss": {"per_stock": -20, "portfolio": -10},
-        "leverage": {"banned_etfs": ["TSLL", "TQQQ", "SQQQ", "UPRO", "SPXU"]},
-    }
+    # 폴백 없음 (#1619): 파일이 없으면 하드코딩 값으로 조용히 돌지 않는다. 이 폴백을 잡으려고
+    # SIEGE `rules_loaded` 게이트가 있었고, 게이트가 사라진 자리는 기동 시 예외가 맡는다.
+    raise FileNotFoundError(f"config/rules.yaml not found: {_RULES_PATH}")
 
 
 RULES = _load_rules()

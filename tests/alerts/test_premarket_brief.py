@@ -43,7 +43,6 @@ def empty_db_ctx(tmp_path, monkeypatch):
     import nuri.quant.regime.classifier  # noqa: F401
     import nuri.quant.regime.macro_score  # noqa: F401
     import nuri.quant.validation.market_signals  # noqa: F401
-    import nuri.trading.engine.certification  # noqa: F401
     from nuri.core.db import init_db
 
     empty = tmp_path / "empty.db"
@@ -53,7 +52,6 @@ def empty_db_ctx(tmp_path, monkeypatch):
     with (
         patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
         patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("no macro")),
-        patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("no certify")),
         patch(
             "nuri.api.routes.actions._build_actions",
             return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
@@ -73,7 +71,6 @@ class TestContextCollection:
         # 실패한 subsystem 은 None 또는 빈 list, 결코 raise 하지 않음
         assert ctx["regime"] is None
         assert ctx["macro"] is None
-        assert ctx["siege"] is None
         # actions/opportunities 는 빈 dict/list 로 폴백
         assert ctx["actions"] == {"urgent": [], "portfolio": [], "check": [], "hold": []}
         assert ctx["opportunities"] == []
@@ -143,7 +140,6 @@ class TestFormatBriefEmbed:
             "vix": None,
             "usd_krw": None,
             "fear_greed": None,
-            "siege": None,
             "actions": {},
             "opportunities": [],
             "macro_events": [],
@@ -165,23 +161,6 @@ class TestFormatBriefEmbed:
             }
         }
         assert format_brief_embed(ctx)["color"] == COLOR_RED
-
-    def test_siege_rejected_triggers_amber_color(self):
-        from nuri.alerts.premarket_brief import COLOR_AMBER, format_brief_embed
-
-        ctx = {
-            "actions": {},
-            "siege": {
-                "certified": False,
-                "score": 58,
-                "passed": 10,
-                "failed": 1,
-                "warnings": 6,
-                "total": 17,
-                "failing_errors": [],
-            },
-        }
-        assert format_brief_embed(ctx)["color"] == COLOR_AMBER
 
     def test_portfolio_bucket_rendered_distinct_from_urgent(self):
         """PR #429 alpha/portfolio 분리 — brief 도 두 bucket 따로 label."""
@@ -234,15 +213,6 @@ class TestMarkdownPersist:
             "vix": {"value": 15.5, "date": "2026-04-20"},
             "fear_greed": {"value": 70, "date": "2026-04-21"},
             "usd_krw": {"value": 1470, "date": "2026-04-20"},
-            "siege": {
-                "certified": True,
-                "score": 95,
-                "passed": 16,
-                "failed": 0,
-                "warnings": 1,
-                "total": 17,
-                "failing_errors": [],
-            },
             "actions": {
                 "urgent": [],
                 "portfolio": [],
@@ -273,7 +243,6 @@ class TestMarkdownPersist:
         }
         md = format_brief_markdown(ctx)
         assert "## Regime" in md
-        assert "## Certification" in md
         assert "## Hold" in md
         assert "## Opportunities" in md
         assert "## 24h Macro Events" in md
@@ -327,7 +296,7 @@ class TestFreshnessSurface:
                 ],
             },
         }
-        # WARN 1+ → AMBER (기존 SIEGE AMBER 와 동일 priority)
+        # WARN 1+ → AMBER (#1619 전 인증 AMBER 와 동일 priority)
         assert format_brief_embed(ctx)["color"] == COLOR_AMBER
 
     def test_freshness_fail_renders_red_color_and_problem_detail(self):
@@ -431,7 +400,6 @@ class TestGenerateBrief:
         with (
             patch("nuri.quant.regime.classifier.classify_regime", side_effect=RuntimeError("regime fail")),
             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=RuntimeError("macro fail")),
-            patch("nuri.trading.engine.certification.certify", side_effect=RuntimeError("siege fail")),
             patch("nuri.api.routes.actions._build_actions", side_effect=RuntimeError("actions fail")),
             patch("nuri.api.routes.actions._build_opportunities", side_effect=RuntimeError("ops fail")),
         ):
@@ -440,7 +408,6 @@ class TestGenerateBrief:
         assert ctx is not None
         assert ctx["regime"] is None
         assert ctx["macro"] is None
-        assert ctx["siege"] is None
 
     def test_embed_populated_covers_all_sections(self):
         """ctx 전부 채워서 format_brief_embed 내 모든 conditional branch 실행.
@@ -453,15 +420,6 @@ class TestGenerateBrief:
             "vix": {"value": 15.0, "date": "2026-04-20"},
             "fear_greed": {"value": 70, "date": "2026-04-21"},
             "usd_krw": {"value": 1470, "date": "2026-04-20"},
-            "siege": {
-                "certified": False,
-                "score": 58,
-                "passed": 10,
-                "failed": 1,
-                "warnings": 6,
-                "total": 17,
-                "failing_errors": [{"id": "position_limit", "desc": "종목 비중", "detail": "BAC>15%"}],
-            },
             "actions": {
                 "urgent": [{"ticker": "CRASH", "action": "SELL", "confidence": 85, "pnl_pct": -30, "position_pct": 5}],
                 "portfolio": [
@@ -494,7 +452,6 @@ class TestGenerateBrief:
         # 모든 섹션 label 존재 — 모든 branch 통과한 결과
         assert any("Regime" in n for n in names)
         assert any("지표" in n for n in names)
-        assert any("Certification" in n for n in names)
         assert any("Urgent" in n for n in names)
         assert any("Portfolio" in n for n in names)
         assert any("Check" in n for n in names)
@@ -565,24 +522,6 @@ class TestMarkdownEdgeCases:
         md = format_brief_markdown(ctx)
         assert "✓ pro1" in md
         assert "✗ con1" in md
-
-    def test_markdown_with_siege_failing_errors_rendered(self):
-        from nuri.alerts.premarket_brief import format_brief_markdown
-
-        ctx = {
-            "siege": {
-                "certified": False,
-                "score": 58,
-                "passed": 10,
-                "failed": 1,
-                "warnings": 6,
-                "total": 17,
-                "failing_errors": [{"id": "position_limit", "desc": "비중 초과", "detail": "BAC 19.8%>15%"}],
-            },
-        }
-        md = format_brief_markdown(ctx)
-        assert "❌ position_limit" in md
-        assert "BAC 19.8%>15%" in md
 
 
 class TestSchedulerRegistration:
@@ -683,7 +622,6 @@ class TestPremarketBriefExceptionFallbacks:
             patch("nuri.quant.validation.market_signals.detect_all", side_effect=Exception("sig")),
             patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception("macro")),
-            patch("nuri.trading.engine.certification.certify", side_effect=Exception("cert")),
             patch(
                 "nuri.api.routes.actions._build_actions",
                 return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},

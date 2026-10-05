@@ -51,12 +51,6 @@ def seeded_db(tmp_path):
     init_db(path)
     with get_db(path) as conn:
         conn.execute(
-            "INSERT INTO certifications (timestamp, certified, score, total_conditions,"
-            " passed, failed, warnings, regime, portfolio_hash, conditions_json, caller)"
-            " VALUES ('2026-08-29T09:00:00', 1, 0.9, 10, 9, 1, 0, 'bull_low_vol',"
-            " 'deadbeef', '{\"concentration_pct\": 41.2}', 'premarket_brief')"
-        )
-        conn.execute(
             "INSERT INTO candidate_runs (run_date, regime, vix, threshold, blocked_reason,"
             " n_scored, n_qualified, n_emitted, n_skipped)"
             " VALUES ('2026-08-29', 'bull_low_vol', 15.2, 0.6, NULL, 100, 4, 2, 2)"
@@ -95,11 +89,6 @@ class TestExactResponseSchemas:
     """키 집합 **동치** — 넓히는 변경은 여기서 반드시 걸린다 (blocklist 교집합 방식은
     새 민감 키 이름을 못 잡는다)."""
 
-    def test_certification_status(self, seeded_db):
-        rows = readmodels.certification_status(db_path=seeded_db)
-        assert len(rows) == 1
-        assert set(rows[0]) == set(ALLOWED["certifications"])
-
     def test_buy_candidates(self, seeded_db):
         out = readmodels.latest_buy_candidates(db_path=seeded_db)
         assert set(out) == {"run", "candidates"}
@@ -112,7 +101,7 @@ class TestExactResponseSchemas:
         out = readmodels.macro_facts(db_path=seeded_db)
         assert set(out) == {"vix", "regime"}
         assert set(out["vix"]) == set(ALLOWED["macro"])
-        assert set(out["regime"]) == {"regime", "timestamp", "caller"}
+        assert set(out["regime"]) == {"regime", "run_date"}
 
 
 class TestSemanticLeakCases:
@@ -120,7 +109,6 @@ class TestSemanticLeakCases:
 
     def _full_text(self, seeded_db) -> str:
         blob = {
-            "cert": readmodels.certification_status(db_path=seeded_db),
             "cand": readmodels.latest_buy_candidates(db_path=seeded_db),
             "macro": readmodels.macro_facts(db_path=seeded_db),
         }
@@ -134,7 +122,6 @@ class TestSemanticLeakCases:
 
     def test_no_forbidden_key_anywhere(self, seeded_db):
         blob = {
-            "cert": readmodels.certification_status(db_path=seeded_db),
             "cand": readmodels.latest_buy_candidates(db_path=seeded_db),
             "macro": readmodels.macro_facts(db_path=seeded_db),
         }

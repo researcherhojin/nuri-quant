@@ -61,7 +61,7 @@ flowchart TB
 
 The thick arrow marks the one in-memory hand-off: the consensus job passes its result to `record_decisions()` as a Python object rather than through a table.
 
-`certify` has no job of its own. `certify()` reads a database snapshot and is called by `premarket_brief`, `engine/remediation`, its own CLI, and three API routes (`/api/certify` and the health and violations endpoints under `/api/actions`). Each call writes a `certifications` row, so these API routes are not read-only.
+`certify` has no job of its own. After #1619 (PR 4) nothing in production calls `certify()`: the brief, the dashboard health and violations endpoints and `/api/certify` were detached, and the dashboard violations now come from `rebalance_advisor.detect_violations()` (prudential constraints only, execution fields stripped). The function and its CLI remain until the cleanup PR deletes the engine module; the `certifications` table stays as a historical ledger.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
@@ -217,9 +217,9 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from the DB instead of running analysis inline. Consensus comes from the `recommendations` table (populated by `make consensus`). The response includes `freshness` and `pipeline_status` so the dashboard can show data age. The one-line `verdict` is stale-gated (#1181): when any `verdict_gate` input (`config/freshness.yaml`) is FAIL-stale, the response carries `verdict_level: "stale"` and `verdict_stale_inputs`, and the verdict text names the stale inputs instead of giving advice.
 
-## API (73 endpoints)
+## API (68 endpoints)
 
-`nuri/api/routes/` — 73 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 21 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
+`nuri/api/routes/` — 68 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 21 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -352,7 +352,7 @@ data/
 
 ## Testing
 
-8,542 backend tests across 393 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+8,510 backend tests across 393 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 
@@ -430,4 +430,4 @@ Every recommendation must include explicit price levels: entry, stop-loss, targe
 {"mcpServers": {"nuri-read": {"command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
 ```
 
-Tools: `siege_status` · `buy_candidates` · `macro_facts` · `data_freshness`. The server reads `NURI_DB_PATH` when set, otherwise the newest production replica in `data/replicas/` (hourly, from `state_replicator.sh`), otherwise the default DB — on a development machine that default is not the ledger and can be weeks old (#1617). `data_freshness` reports the source kind, the replica file age and the latest VIX / certification / candidate-run timestamps, and flags the source as stale when the replica is older than 3 hours, when the latest VIX or certification date is more than 5 days old or the latest candidate run more than 3 days old (KST calendar; `premarket_brief` writes a candidate run every weekday, so it doubles as a heartbeat), or when the file cannot be read (an interrupted `rsync --partial` push can leave a truncated replica); it never returns a path, because the replica filename contains the mini's hostname. Every query runs with `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, enforced by the engine), and only the columns in the module's `ALLOWED` dict can appear in SQL. The `decisions` table is excluded entirely because it would reveal holdings, and candidates expose `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was removed from the committed config (#1306 codex P1) because arbitrary SQL can reach `portfolio` and `trades`; it remains a per-machine opt-in, not a repository default.
+Tools: `buy_candidates` · `macro_facts` · `data_freshness` (`siege_status` removed with the certifier, #1619; `macro_facts` reads its regime from `candidate_runs`). The server reads `NURI_DB_PATH` when set, otherwise the newest production replica in `data/replicas/` (hourly, from `state_replicator.sh`), otherwise the default DB — on a development machine that default is not the ledger and can be weeks old (#1617). `data_freshness` reports the source kind, the replica file age and the latest VIX / candidate-run dates, and flags the source as stale when the replica is older than 3 hours, when the latest VIX date is more than 5 days old or the latest candidate run more than 3 days old (KST calendar; `premarket_brief` writes a candidate run every weekday, so it doubles as a heartbeat), or when the file cannot be read (an interrupted `rsync --partial` push can leave a truncated replica); it never returns a path, because the replica filename contains the mini's hostname. Every query runs with `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, enforced by the engine), and only the columns in the module's `ALLOWED` dict can appear in SQL. The `decisions` table is excluded entirely because it would reveal holdings, and candidates expose `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was removed from the committed config (#1306 codex P1) because arbitrary SQL can reach `portfolio` and `trades`; it remains a per-machine opt-in, not a repository default.

@@ -1,4 +1,4 @@
-"""stdio MCP 서버 — Tier 1 read model 4종 노출 (#1306).
+"""stdio MCP 서버 — Tier 1 read model 3종 노출 (#1306; `siege_status` 는 #1619 로 제거).
 
 - **stdio 전용**: 네트워크 바인딩이 존재하지 않는다 — "외부 바인딩 부재" 수용 기준이
   설정이 아니라 구조로 성립한다. 클라이언트(Claude Code 등)가 `.mcp.json` 의
@@ -33,12 +33,6 @@ server = MCPServer(
 
 
 @server.tool()
-def siege_status(limit: int = 5) -> list[dict[str, Any]]:
-    """최근 SIEGE 3D 인증 판정 (certified/score/passed/failed/warnings/regime). 스칼라만."""
-    return readmodels.certification_status(limit=limit, db_path=source.resolve_source().path)
-
-
-@server.tool()
 def buy_candidates(run_date: str | None = None) -> dict[str, Any]:
     """최신(또는 지정일) buy candidate run — 카운트 요약 + emitted 티커·entry/stop/tp1/tp2."""
     return readmodels.latest_buy_candidates(run_date=run_date, db_path=source.resolve_source().path)
@@ -46,7 +40,7 @@ def buy_candidates(run_date: str | None = None) -> dict[str, Any]:
 
 @server.tool()
 def macro_facts() -> dict[str, Any]:
-    """VIX 최신값 + 최근 인증 시점의 regime (timestamp/caller 포함 — 신선도는 소비자 판단)."""
+    """VIX 최신값 + 최근 후보 run 의 regime (run_date 포함 — 신선도는 data_freshness 로 확인)."""
     return readmodels.macro_facts(db_path=source.resolve_source().path)
 
 

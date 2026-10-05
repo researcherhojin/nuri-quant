@@ -63,7 +63,7 @@ def fast_client(client, monkeypatch):
     """TestClient with slow actions helpers stubbed for shape-only endpoint checks."""
     import nuri.api.routes.actions as actions_mod
 
-    monkeypatch.setattr(actions_mod, "_get_siege_violations", lambda: [])
+    monkeypatch.setattr(actions_mod, "_get_rule_violations", lambda: [])
     monkeypatch.setattr(actions_mod, "_get_targets_status", lambda: {})
     monkeypatch.setattr(actions_mod, "_get_recent_scan_results", lambda: [])
     monkeypatch.setattr(actions_mod, "_get_improving_signals", lambda: set())
@@ -71,7 +71,7 @@ def fast_client(client, monkeypatch):
     monkeypatch.setattr(
         actions_mod,
         "_get_system_health",
-        lambda: {"siege": {}, "regime": {}, "macro": {}, "freshness": {}},
+        lambda: {"regime": {}, "macro": {}, "freshness": {}},
     )
     return client
 
@@ -86,7 +86,7 @@ class TestActionsEndpoint:
         resp = client.get("/api/actions")
         assert resp.status_code == 200
         data = resp.json()
-        # PR A (2026-04-21): 4-bucket shape — SIEGE 룰 위반은 portfolio bucket.
+        # PR A (2026-04-21): 4-bucket shape — prudential 룰 위반은 portfolio bucket.
         for key in ("urgent", "check", "hold", "portfolio"):
             assert key in data, f"{key} bucket missing from /api/actions response"
             assert isinstance(data[key], list)
@@ -373,14 +373,14 @@ class TestPRABucketRouting:
     사용자 -₩7M 손실 재발 차단 경로를 API 레벨에서 lock-in.
     """
 
-    def _invoke_build_actions(self, *, recommendations, siege_violations, portfolio_map, targets_status=None):
+    def _invoke_build_actions(self, *, recommendations, rule_violations, portfolio_map, targets_status=None):
         """_build_actions 를 mock 된 helper 로 실행."""
         from nuri.api.routes import actions as actions_mod
 
         # catalyst 항상 False → non-emergency SELL 이 자동 hold bucket 으로 강등 (A-4)
         with (
             patch.object(actions_mod, "_get_recommendations", return_value=recommendations),
-            patch.object(actions_mod, "_get_siege_violations", return_value=siege_violations),
+            patch.object(actions_mod, "_get_rule_violations", return_value=rule_violations),
             patch.object(actions_mod, "_get_targets_status", return_value=targets_status or {}),
             patch.object(actions_mod, "_get_portfolio_map", return_value=portfolio_map),
             patch.object(actions_mod, "_get_short_interest", return_value=None),
@@ -390,7 +390,7 @@ class TestPRABucketRouting:
             return actions_mod._build_actions()
 
     def test_concentration_violation_goes_to_portfolio_bucket(self):
-        """SIEGE position_limit 위반 ticker 는 portfolio bucket — urgent 아님."""
+        """position_limit 위반 ticker 는 portfolio bucket — urgent 아님."""
         result = self._invoke_build_actions(
             recommendations=[
                 {
@@ -404,10 +404,10 @@ class TestPRABucketRouting:
                     "portfolio_action": "REBALANCE",
                 }
             ],
-            siege_violations=[
+            rule_violations=[
                 {
                     "ticker": "BAC",
-                    "detail": "Certification: 종목 비중 한도 — 위반: BAC(19.8%>15%)",
+                    "detail": "종목 비중 19.8% > 한도 15%",
                     "condition_id": "position_limit",
                 }
             ],
@@ -446,7 +446,7 @@ class TestPRABucketRouting:
                     "portfolio_action": None,
                 }
             ],
-            siege_violations=[],
+            rule_violations=[],
             portfolio_map={
                 "CRASH": {
                     "current_price": 70.0,
@@ -481,10 +481,10 @@ class TestPRABucketRouting:
                     "portfolio_action": "REBALANCE",
                 }
             ],
-            siege_violations=[
+            rule_violations=[
                 {
                     "ticker": "HYBRID",
-                    "detail": "Certification: 종목 비중 한도 — 위반: HYBRID(22%>15%)",
+                    "detail": "종목 비중 22.0% > 한도 15%",
                     "condition_id": "position_limit",
                 }
             ],
@@ -509,70 +509,84 @@ class TestPRABucketRouting:
         """빈 portfolio 도 response 에 key 존재해야 함 (Frontend fallback 보장)."""
         result = self._invoke_build_actions(
             recommendations=[],
-            siege_violations=[],
+            rule_violations=[],
             portfolio_map={},
         )
         assert "portfolio" in result
         assert result["portfolio"] == []
 
 
-class TestGetSiegeViolationsEdge:
-    def test_position_limit_no_regex_match(self):
-        """position_limit detail에 ticker%(>)% 형식이 없으면 빈 ticker로 등록."""
-        from dataclasses import dataclass
+class TestGetRuleViolations:
+    """#1619 — violations 출처는 SIEGE 인증기가 아니라 `rebalance_advisor.detect_violations()`."""
 
-        @dataclass
-        class FakeCond:
-            id: str = "position_limit"
-            description: str = "종목 비중 한도"
-            passed: bool = False
-            detail: str = "데이터 없음"
-            severity: str = "error"
+    def _rows(self):
+        return [
+            {
+                "ticker": "TSLA",
+                "account": "core",
+                "violation_type": "position_limit_exceeded",
+                "action": "REDUCE",
+                "sell_shares": 3,
+                "sell_value_usd": 900.0,
+                "reason": "종목 비중 18.0% > 한도 15%",
+            },
+            {
+                "ticker": "TQQQ",
+                "violation_type": "leverage_etf",
+                "action": "SELL_ALL",
+                "sell_shares": 10,
+                "sell_value_usd": 500.0,
+                "reason": "레버리지 ETF 금지",
+            },
+            {
+                "ticker": "BAC",
+                "sector": "Financial",
+                "violation_type": "sector_limit_exceeded",
+                "action": "SELL_ALL",
+                "sell_shares": 5,
+                "sell_value_usd": 200.0,
+                "reason": "섹터(Financial) 비중 40.0% > 한도 35%",
+            },
+            {
+                "ticker": "DOWN",
+                "account": "core",
+                "violation_type": "stop_loss_exceeded",
+                "action": "SELL_ALL",
+                "sell_shares": 1,
+                "sell_value_usd": 10.0,
+                "reason": "손절선 -7% 이탈",
+            },
+        ]
 
-        @dataclass
-        class FakeCert:
-            conditions: list[FakeCond] | None = None
+    def test_prudential_rows_are_mapped_and_execution_fields_stripped(self):
+        """축 불변식: 이 버킷은 REBALANCE 만 — advisor 의 SELL_ALL/수량이 응답에 실리면 안 된다."""
+        with patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=self._rows()):
+            from nuri.api.routes.actions import _get_rule_violations
 
-            def __post_init__(self):
-                self.conditions = self.conditions or [FakeCond()]
+            result = _get_rule_violations()
+        assert [v["ticker"] for v in result] == ["TSLA", "TQQQ", "BAC"]
+        assert {v["condition_id"] for v in result} == {
+            "position_limit_exceeded",
+            "leverage_etf",
+            "sector_limit_exceeded",
+        }
+        assert result[0]["detail"] == "종목 비중 18.0% > 한도 15%"
+        for v in result:
+            assert set(v) == {"ticker", "detail", "condition_id"}
+            assert "SELL" not in str(v)
 
-        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
-            from nuri.api.routes.actions import _get_siege_violations
+    def test_stop_loss_rows_are_not_duplicated_here(self):
+        """손절은 urgent 경로가 보유 손익으로 직접 본다 — 여기서도 세면 같은 종목이 두 버킷에 선다."""
+        with patch("nuri.analysis.rebalance_advisor.detect_violations", return_value=self._rows()):
+            from nuri.api.routes.actions import _get_rule_violations
 
-            result = _get_siege_violations()
-            assert len(result) == 1
-            assert result[0]["ticker"] == ""
+            assert all(v["condition_id"] != "stop_loss_exceeded" for v in _get_rule_violations())
 
-    def test_non_position_limit_error(self):
-        """position_limit 이외의 error condition도 등록."""
-        from dataclasses import dataclass
+    def test_handles_advisor_exception(self):
+        with patch("nuri.analysis.rebalance_advisor.detect_violations", side_effect=Exception("DB")):
+            from nuri.api.routes.actions import _get_rule_violations
 
-        @dataclass
-        class FakeCond:
-            id: str = "leverage_ban"
-            description: str = "레버리지 ETF"
-            passed: bool = False
-            detail: str = "TQQQ 보유"
-            severity: str = "error"
-
-        @dataclass
-        class FakeCert:
-            conditions: list[FakeCond] | None = None
-
-            def __post_init__(self):
-                self.conditions = self.conditions or [FakeCond()]
-
-        with patch("nuri.trading.engine.certification.certify", return_value=FakeCert()):
-            from nuri.api.routes.actions import _get_siege_violations
-
-            result = _get_siege_violations()
-            assert len(result) == 1
-            assert "레버리지" in result[0]["detail"]
-
-
-# ═══════════════════════════════════════════════════
-# Unit tests — _compute_verdict
-# ═══════════════════════════════════════════════════
+            assert _get_rule_violations() == []
 
 
 class TestComputeVerdict:
@@ -611,37 +625,6 @@ class TestComputeVerdict:
     def test_positive_needs_high_score(self):
         _, level = self._verdict(["a", "b"], [], {"score": 30, "rsi": 50, "change_5d": 5})
         assert level != "positive"  # score 30 < 40 threshold
-
-
-# ═══════════════════════════════════════════════════
-# Unit tests — SIEGE violation regex parsing
-# ═══════════════════════════════════════════════════
-
-
-class TestSiegeViolationParsing:
-    def test_single_violation(self):
-        import re
-
-        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%)")
-        assert matches == ["TSLA"]
-
-    def test_multiple_violations(self):
-        import re
-
-        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "위반: TSLA(15.4%>15%), NBIS(16.0%>15%)")
-        assert matches == ["TSLA", "NBIS"]
-
-    def test_no_match(self):
-        import re
-
-        matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", "모든 종목 15% 이하")
-        assert matches == []
-
-    def test_handles_certify_exception(self):
-        with patch("nuri.trading.engine.certification.certify", side_effect=Exception("DB")):
-            from nuri.api.routes.actions import _get_siege_violations
-
-            assert _get_siege_violations() == []
 
 
 # ═══════════════════════════════════════════════════
@@ -751,21 +734,7 @@ class TestGetRecentScanResults:
 class TestGetSystemHealth:
     @patch("nuri.api.routes.actions.query", return_value=[])
     def test_returns_all_sections(self, _):
-        @dataclass
-        class FakeCert:
-            score: float = 54.0
-            certified: bool = False
-            passed: int = 6
-            failed: int = 1
-            warnings: int = 4
-            total_conditions: int = 11
-            conditions: list | None = None
-
-            def __post_init__(self):
-                self.conditions = self.conditions or []
-
         with (
-            patch("nuri.trading.engine.certification.certify", return_value=FakeCert()),
             patch(
                 "nuri.quant.regime.classifier.classify_regime",
                 return_value=SimpleNamespace(regime="recovery", trend="sideways", volatility="high", confidence=0.75),
@@ -782,7 +751,6 @@ class TestGetSystemHealth:
             from nuri.api.routes.actions import _get_system_health
 
             result = _get_system_health()
-            assert result["siege"]["score"] == 54
             assert result["regime"]["regime"] == "recovery"
             assert result["macro"]["score"] == 56
             assert result["freshness"]["fail_count"] == 1
@@ -790,7 +758,6 @@ class TestGetSystemHealth:
     @patch("nuri.api.routes.actions.query", return_value=[])
     def test_handles_all_exceptions(self, _):
         with (
-            patch("nuri.trading.engine.certification.certify", side_effect=Exception),
             patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception),
             patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception),
             patch("nuri.core.freshness.check_all_freshness", side_effect=Exception),
@@ -798,7 +765,7 @@ class TestGetSystemHealth:
             from nuri.api.routes.actions import _get_system_health
 
             result = _get_system_health()
-            assert result["siege"] == {"score": 0, "certified": False}
+            assert set(result) == {"regime", "macro", "freshness"}
 
     @patch("nuri.api.routes.actions.query", return_value=[])
     def test_classify_regime_returns_none_skips_regime_dict(self, _):
@@ -806,18 +773,6 @@ class TestGetSystemHealth:
         from types import SimpleNamespace
 
         with (
-            patch(
-                "nuri.trading.engine.certification.certify",
-                return_value=SimpleNamespace(
-                    score=80,
-                    certified=True,
-                    passed=10,
-                    failed=0,
-                    warnings=1,
-                    total_conditions=11,
-                    conditions=[],
-                ),
-            ),
             patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
             patch(
                 "nuri.quant.regime.macro_score.compute_macro_score",
@@ -838,7 +793,7 @@ class TestGetSystemHealth:
 
 
 class TestBuildActionsLogic:
-    def _run(self, recs, siege=None, targets=None, portfolio=None, short=None, catalyst=None, divergence=None):
+    def _run(self, recs, violations=None, targets=None, portfolio=None, short=None, catalyst=None, divergence=None):
         # A-4: `has_recent_catalyst` 를 default mock — CI fresh DB 는 news/macro_events
         # 테이블 migration 전 상태 가능성 (Lesson #7). 테스트별 override 는 `catalyst`
         # 인자 또는 with 스코프 내부에서 재패치.
@@ -848,7 +803,7 @@ class TestBuildActionsLogic:
         div_default = divergence if divergence is not None else (False, 0.0, None)
         with (
             patch("nuri.api.routes.actions._get_recommendations", return_value=recs),
-            patch("nuri.api.routes.actions._get_siege_violations", return_value=siege or []),
+            patch("nuri.api.routes.actions._get_rule_violations", return_value=violations or []),
             patch("nuri.api.routes.actions._get_targets_status", return_value=targets or {}),
             patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}),
             patch("nuri.api.routes.actions._get_short_interest", return_value=short),
@@ -904,21 +859,21 @@ class TestBuildActionsLogic:
         )
         assert all(not result[b] for b in ("urgent", "check", "hold")), result
 
-    def test_siege_violation_goes_to_portfolio_bucket(self):
-        """PR A (2026-04-21): SIEGE position_limit 위반은 "매도 강제" urgent 가
+    def test_rule_violation_goes_to_portfolio_bucket(self):
+        """PR A (2026-04-21): position_limit 위반은 "매도 강제" urgent 가
         아닌 "리밸런스 권고" portfolio bucket. 이전 동작 (urgent) → 사용자 -₩7M
         손실 재발 경로. Regression lock: 다시 urgent 로 돌아가면 이 테스트 fail.
 
         참고: 이 시나리오는 action=SELL + no stop-loss breach (+1.6%) → SELL check
         경로에서 catalyst 없음으로 hold 강등 후 portfolio 체크에서 재분류. 코드는
         `continue` 로 bucket 간 이동 — 마지막에 assign 된 priority 가 최종.
-        현 구조에서는 SELL + no-breach → hold bucket 이고, SIEGE 체크는 SELL
+        현 구조에서는 SELL + no-breach → hold bucket 이고, 룰 위반 체크는 SELL
         check 에서 continue 로 먼저 끝남.
-        → 따라서 SIEGE violation 단독 surfacing 은 action=HOLD 일 때만 성립."""
+        → 따라서 룰 위반 단독 surfacing 은 action=HOLD 일 때만 성립."""
         result = self._run(
             [{"ticker": "TSLA", "action": "HOLD", "confidence": 46, "agreement": 20}],
-            siege=[
-                {"ticker": "TSLA", "detail": "Certification: 한도 — TSLA(15.4%>15%)", "condition_id": "position_limit"}
+            violations=[
+                {"ticker": "TSLA", "detail": "종목 비중 15.4% > 한도 15%", "condition_id": "position_limit_exceeded"}
             ],
             portfolio={"TSLA": self._pf(349, 343, 1.6, 15.4)},
         )
@@ -1079,7 +1034,7 @@ class TestBuildActionsLogic:
                 "nuri.api.routes.actions._get_recommendations",
                 return_value=[{"ticker": "DUMP", "action": "SELL", "confidence": 85, "agreement": 70}],
             ),
-            patch("nuri.api.routes.actions._get_siege_violations", return_value=[]),
+            patch("nuri.api.routes.actions._get_rule_violations", return_value=[]),
             patch("nuri.api.routes.actions._get_targets_status", return_value={}),
             patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}),
             patch("nuri.api.routes.actions._get_short_interest", return_value=None),
@@ -1558,7 +1513,7 @@ class TestBuildActionsScoringDetail:
 
         with (
             patch("nuri.api.routes.actions._get_recommendations", return_value=recs),
-            patch("nuri.api.routes.actions._get_siege_violations", return_value=[]),
+            patch("nuri.api.routes.actions._get_rule_violations", return_value=[]),
             patch("nuri.api.routes.actions._get_targets_status", return_value={}),
             patch(
                 "nuri.api.routes.actions._get_portfolio_map",
