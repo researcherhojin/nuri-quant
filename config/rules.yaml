@@ -262,7 +262,7 @@ measurement_mode:
                                  # ⚠️ 이 값은 **US 판정 기준**이며 2026-07-08 사전등록으로 잠겼다.
                                  # 아래 map 을 늘리는 것과 달리 이 줄을 바꾸는 건 사전등록 개정이다.
   benchmark_by_asset_class:      # 기록용 벤치마크 — KR 상장 결정을 **기초자산**으로 고른다 (#833 → #1459).
-                                 # 분류는 siege_gates.asset_class_rules 하나. 상장 시장(.KS)으로 고르면 KRX 상장
+                                 # 분류는 최상위 asset_class_rules 하나. 상장 시장(.KS)으로 고르면 KRX 상장
                                  # US 지수·채권·원자재 ETF 가 KOSPI 로 재져 "alpha" 가 두 시장의 스프레드가 된다
                                  # (원장 실측: KOSPI 행 1,200 중 525 가 비-한국 기초자산, US 지수 ETF alpha −15%p).
                                  # 판정 기준이 아니라 측정 인프라 — KR 판정은 별도 사전등록 대상 (§3.11 벤치마크
@@ -303,30 +303,32 @@ measurement_mode:
 #
 # Cross-market 의도: KR 종목 보유자에게 SPY/VIX 도 영향 (상관 > 0.5).
 # secondary 지표는 "US spillover / KR spillover" 를 명시적으로 경고로 노출.
-siege_gates:
-  # 포트폴리오 holdings 를 asset_class 로 분류. 위에서부터 순서대로 matching —
-  # 더 구체적인 rule 우선. default 는 마지막.
-  asset_class_rules:
-    # "ETF/US*" 는 상장 시장과 무관하게 US 주식 기초자산 — KRX 상장 US 추종 ETF 포함 (#1459).
-    # 예전엔 USIndex·USTech 만 등재돼 USNasdaq·USAerospace 가 .KS 접미사 규칙으로 kr_equity 에
-    # 떨어졌다 (원장 실측 252 행). 접두사 하나로 두어 새 US 섹터가 같은 구멍에 빠지지 않게 한다.
-    - match: {sector_prefix: "ETF/US"}
-      asset_class: us_equity
-    - match: {sector_prefix: "ETF/Commodity"}
-      asset_class: commodity
-    - match: {sector_prefix: "ETF/Bond"}
-      asset_class: bond
-    - match: {sector_prefix: "ETF/KRIndex"}
-      asset_class: kr_index
-    - match: {ticker_suffix: ".KS"}
-      asset_class: kr_equity
-    - match: {ticker_suffix: ".KQ"}
-      asset_class: kr_equity
-    - match: {sector: "ETF"}
-      asset_class: us_equity
-    - match: {default: true}
-      asset_class: us_equity
+# 보유 종목을 asset_class 로 분류. 위에서부터 순서대로 matching — 더 구체적인 rule 우선,
+# default 는 마지막. 실행기는 `nuri/core/asset_class.py` 하나. 읽는 곳: 측정 모드 벤치마크
+# 분류(`measurement_mode.benchmark_by_asset_class` 의 키와 1:1), 전략 배분, 폐기 전까지의
+# SIEGE 인증기. #1619 PR 2 에서 `siege_gates` 밖으로 옮겼다 — 인증기와 함께 지우면 안 된다.
+asset_class_rules:
+  # "ETF/US*" 는 상장 시장과 무관하게 US 주식 기초자산 — KRX 상장 US 추종 ETF 포함 (#1459).
+  # 예전엔 USIndex·USTech 만 등재돼 USNasdaq·USAerospace 가 .KS 접미사 규칙으로 kr_equity 에
+  # 떨어졌다 (원장 실측 252 행). 접두사 하나로 두어 새 US 섹터가 같은 구멍에 빠지지 않게 한다.
+  - match: {sector_prefix: "ETF/US"}
+    asset_class: us_equity
+  - match: {sector_prefix: "ETF/Commodity"}
+    asset_class: commodity
+  - match: {sector_prefix: "ETF/Bond"}
+    asset_class: bond
+  - match: {sector_prefix: "ETF/KRIndex"}
+    asset_class: kr_index
+  - match: {ticker_suffix: ".KS"}
+    asset_class: kr_equity
+  - match: {ticker_suffix: ".KQ"}
+    asset_class: kr_equity
+  - match: {sector: "ETF"}
+    asset_class: us_equity
+  - match: {default: true}
+    asset_class: us_equity
 
+siege_gates:
   # Asset class 별 gate 정책. 현 PR: kr_equity + us_equity primary path.
   # commodity/bond/kr_index 는 external_applicable:false — 애널리스트 컨센서스/13F 가
   # 구조적으로 비적용인 자산군이라 external 게이트를 N/A(vacuous pass)로 처리.

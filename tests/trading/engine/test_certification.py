@@ -870,46 +870,6 @@ class TestAccountStrategyIntegration:
         assert "TSLA" in cond.detail
 
 
-class TestAssetClassification:
-    """#248 — _classify_asset_class: sector_prefix + ticker_suffix 우선순위."""
-
-    def test_sector_prefix_beats_suffix(self, db_path):
-        """KR ETF (448300.KS, sector=ETF/USIndex) 는 ticker 가 .KS 여도 us_equity."""
-        from nuri.core.rules import RULES
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        rules = RULES["siege_gates"]["asset_class_rules"]
-        assert _classify_asset_class("448300.KS", "ETF/USIndex", rules) == "us_equity"
-        assert _classify_asset_class("132030.KS", "ETF/Commodity", rules) == "commodity"
-        assert _classify_asset_class("447660.KS", "ETF/Bond", rules) == "bond"
-        assert _classify_asset_class("292160.KS", "ETF/KRIndex", rules) == "kr_index"
-        assert _classify_asset_class("381170.KS", "ETF/USTech", rules) == "us_equity"
-
-    def test_ks_suffix_without_sector_prefix(self, db_path):
-        """일반 KR 종목 (005930.KS, sector=Semiconductor) 는 kr_equity."""
-        from nuri.core.rules import RULES
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        rules = RULES["siege_gates"]["asset_class_rules"]
-        assert _classify_asset_class("005930.KS", "Semiconductor", rules) == "kr_equity"
-        assert _classify_asset_class("000660.KS", "Semiconductor", rules) == "kr_equity"
-
-    def test_kq_suffix(self, db_path):
-        from nuri.core.rules import RULES
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        rules = RULES["siege_gates"]["asset_class_rules"]
-        assert _classify_asset_class("068760.KQ", "Biotech", rules) == "kr_equity"
-
-    def test_us_default(self, db_path):
-        from nuri.core.rules import RULES
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        rules = RULES["siege_gates"]["asset_class_rules"]
-        assert _classify_asset_class("AAPL", "Technology", rules) == "us_equity"
-        assert _classify_asset_class("UNKNOWN", "", rules) == "us_equity"
-
-
 class TestAssetClassGates:
     """#248 — asset-class 그룹 별 gate 5/7/8 verification.
 

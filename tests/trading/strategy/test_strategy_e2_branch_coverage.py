@@ -246,7 +246,7 @@ class TestStrategicAllocationDriftEdges:
                 ("test", "AAPL", 10, 150.0, "Technology"),
             )
         # Remove asset_class_rules
-        fake_rules = {"siege_gates": {}}
+        fake_rules = {}
         monkeypatch.setattr(sa, "RULES", fake_rules)
         result = sa.compute_current_allocation(db_path=db_path)
         assert result == {}

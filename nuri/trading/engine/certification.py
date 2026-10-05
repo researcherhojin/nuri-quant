@@ -40,6 +40,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, Optional
 
+from nuri.core.asset_class import classify_asset_class
 from nuri.core.db import OperationalError, insert_certification, query
 from nuri.core.rules import (
     LEVERAGE_ETFS,
@@ -322,26 +323,6 @@ def _check_leverage_ban(db_path=None) -> CertCondition:
     return CertCondition("leverage_ban", "레버리지 ETF 비보유", False, f"보유 중: {', '.join(held)}", "error")
 
 
-def _classify_asset_class(ticker: str, sector: str, rules: list[dict]) -> str:
-    """Portfolio holding 을 asset_class 로 분류.
-
-    config/rules.yaml siege_gates.asset_class_rules 순서대로 matching — 더 구체적인
-    rule 이 위에 있어야 함. match key: sector_prefix / ticker_suffix / sector / default.
-    """
-    sector = sector or ""
-    for rule in rules:
-        m = rule.get("match", {})
-        if m.get("default"):
-            return rule["asset_class"]
-        if "sector_prefix" in m and sector.startswith(m["sector_prefix"]):
-            return rule["asset_class"]
-        if "ticker_suffix" in m and ticker.endswith(m["ticker_suffix"]):
-            return rule["asset_class"]
-        if "sector" in m and sector == m["sector"]:
-            return rule["asset_class"]
-    return "us_equity"  # safety net — YAML 에 default rule 없을 때
-
-
 def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
     """portfolio 를 asset_class 로 group. 빈 portfolio 면 {}.
 
@@ -351,8 +332,7 @@ def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
 
     Returns: {asset_class: [{ticker, sector}, ...]}
     """
-    gate_config = RULES.get("siege_gates", {})
-    rules = gate_config.get("asset_class_rules", [])
+    rules = RULES.get("asset_class_rules", [])
     if not rules:
         return {}
 
@@ -367,7 +347,7 @@ def _group_holdings_by_asset_class(db_path=None) -> dict[str, list[dict]]:
         if key in seen:
             continue
         seen.add(key)
-        cls = _classify_asset_class(ticker, sector, rules)
+        cls = classify_asset_class(ticker, sector, rules)
         groups.setdefault(cls, []).append({"ticker": ticker, "sector": row["sector"]})
     return groups
 
