@@ -44,24 +44,21 @@ REPLICA_STALE_HOURS = 3.0
 #: - VIX: 미국 거래일 종가. 주말에 미국 월요일 휴장이 겹치면 수요일 KST 에 금요일 날짜가
 #:   5일이 되고, 성금요일(목→화)도 5일이다. 4 였을 때는 평범한 주말 직후 화요일 새벽에
 #:   경계에 걸렸다 (Codex 리뷰, #1617).
-#: - 인증: `premarket_brief` 외에 대시보드 API(engine/targets/actions 라우트)도 `certify()`
-#:   를 불러 행을 쓴다. 주기가 트래픽에 달려 있어 VIX 와 같은 넉넉한 상한만 건다.
 #: - 후보 run: `premarket_brief`(평일 09:00 ET = 22~23시 KST)가 차단된 날에도 하루 1행을
 #:   쓰고(`run_date = today_kst()`), 미국 휴장일도 건너뛰지 않는 일일 heartbeat 다. 정상
 #:   최대 공백은 월요일 브리프 전에 금요일 run 을 보는 3일 — VIX 의 5일을 쓰면 브리프를
 #:   세 번 놓쳐도 fresh 로 나온다 (Codex 재리뷰 P2).
 #:
 #: `nuri/core/freshness.py`(대시보드 SLA)를 재사용하지 않는 이유: 그쪽 조회는 읽기 전용이 아니라
-#: 이 패키지의 `readonly=True` 계약을 깨고, `candidate_runs` 정책이 없으며, `certification`
+#: 이 패키지의 `readonly=True` 계약을 깨고, `candidate_runs` 정책이 없으며, 인증
 #: 48h 는 주말을 넘기지 못한다.
-DATA_STALE_DAYS = 5
+DATA_STALE_DAYS = 5  # VIX
 CANDIDATE_RUN_STALE_DAYS = 3
 
 #: 판정 대상 — (응답 키, SQL, 사람이 읽을 이름, 상한). 하나만 봐서는 안 된다: macro 는 매시간
 #: 수집돼 가장 늦게 멈추는 잡이라, VIX 만 보면 `premarket_brief` 가 멈춰도 fresh 로 나온다 (Codex P1).
 _LATEST = (
     ("vix_date", "SELECT MAX(date) AS v FROM macro WHERE indicator = 'vix'", "VIX", DATA_STALE_DAYS),
-    ("certification_at", "SELECT MAX(timestamp) AS v FROM certifications", "certification", DATA_STALE_DAYS),
     ("candidate_run_date", "SELECT MAX(run_date) AS v FROM candidate_runs", "candidate run", CANDIDATE_RUN_STALE_DAYS),
 )
 

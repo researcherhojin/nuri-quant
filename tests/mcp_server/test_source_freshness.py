@@ -2,7 +2,7 @@
 
 개발 머신에서 MCP 가 5주 전에 멈춘 로컬 DB 를 현재처럼 내던 결함의 잠금이다.
 - 출처 우선순위: NURI_DB_PATH > 최신 replica > 기본 DB
-- stale 판정은 출처 종류가 아니라 데이터(VIX · 인증 · 후보 run 날짜)와 replica 파일 나이로 한다
+- stale 판정은 출처 종류가 아니라 데이터(VIX · 후보 run 날짜)와 replica 파일 나이로 한다
 - 응답에 경로가 없다 — replica 파일명에 mini 호스트명이 들어간다
 
 시각은 전부 `now` 로 주입한다 — `date.today()` 를 쓰면 KST 달력 판정이 UTC CI 에서 하루씩 어긋난다.
@@ -30,16 +30,11 @@ def _ago(days: int) -> str:
     return (TODAY - timedelta(days=days)).isoformat()
 
 
-def _seed(path: Path, vix: str, cert: str | None = None, run: str | None = None, mtime: float = NOW) -> Path:
-    """세 산출물을 심는다. cert/run 을 안 주면 vix 와 같은 날짜."""
+def _seed(path: Path, vix: str, run: str | None = None, mtime: float = NOW) -> Path:
+    """두 산출물을 심는다. run 을 안 주면 vix 와 같은 날짜."""
     init_db(path)
     with get_db(path) as conn:
         conn.execute("INSERT INTO macro (indicator, date, value, source) VALUES ('vix', ?, 15.0, 'cboe')", (vix,))
-        conn.execute(
-            "INSERT INTO certifications (timestamp, certified, score, total_conditions, passed, failed, warnings,"
-            " conditions_json) VALUES (?, 0, 0.5, 1, 0, 1, 0, '[]')",
-            (f"{cert or vix}T22:00:00+09:00",),
-        )
         conn.execute("INSERT INTO candidate_runs (run_date) VALUES (?)", (run or vix,))
     os.utime(path, (mtime, mtime))
     return path
@@ -93,7 +88,6 @@ class TestFreshness:
         assert out["stale"] is False, out["stale_reasons"]
         assert out["latest"] == {
             "vix_date": TODAY.isoformat(),
-            "certification_at": f"{TODAY.isoformat()}T22:00:00+09:00",
             "candidate_run_date": TODAY.isoformat(),
         }
 
@@ -124,7 +118,6 @@ class TestFreshness:
         ("field", "label", "limit"),
         [
             ("vix", "VIX", source.DATA_STALE_DAYS),
-            ("cert", "certification", source.DATA_STALE_DAYS),
             ("run", "candidate run", source.CANDIDATE_RUN_STALE_DAYS),
         ],
     )
@@ -133,8 +126,8 @@ class TestFreshness:
         낡으므로 셋을 각각 판정해야 한다. 경계: 상한 일수는 정상, 하루 더는 stale."""
         fresh = TODAY.isoformat()
         for days, expect in ((limit, False), (limit + 1, True)):
-            dates = {"vix": fresh, "cert": fresh, "run": fresh, field: _ago(days)}
-            db = _seed(tmp_path / f"{field}_{days}.db", dates["vix"], dates["cert"], dates["run"])
+            dates = {"vix": fresh, "run": fresh, field: _ago(days)}
+            db = _seed(tmp_path / f"{field}_{days}.db", dates["vix"], dates["run"])
             out = source.freshness(source.Source(db, "replica"), now=NOW)
             assert out["stale"] is expect, (days, out["stale_reasons"])
             if expect:
@@ -143,7 +136,7 @@ class TestFreshness:
     def test_day_count_uses_the_kst_calendar(self, tmp_path, monkeypatch):
         """2026-10-06 01:00 KST = 10-05 16:00 UTC. 09-30 데이터는 KST 로 6일(stale), 머신 로컬
         시간대가 UTC 면 5일(정상)로 갈린다 — 시간대를 UTC 로 강제해 로컬 달력 회귀를 잡는다."""
-        db = _seed(tmp_path / "r.db", _ago(6), cert=_ago(1), run=_ago(1))  # VIX 만 판정을 가르게
+        db = _seed(tmp_path / "r.db", _ago(6), run=_ago(1))  # VIX 만 판정을 가르게
         now = datetime(2026, 10, 6, 1, 0, tzinfo=KST).timestamp()
         with monkeypatch.context() as m:
             m.setenv("TZ", "UTC")
@@ -171,7 +164,7 @@ class TestFreshness:
     def test_calendar_cases_pin_the_limits(self, tmp_path, vix, run, at, expect):
         """경계 테스트는 상수에서 값을 끌어와 상수를 바꿔도 통과한다 — 실제 달력 사례로 값을 잠근다."""
         now = at.replace(tzinfo=KST).timestamp()
-        db = _seed(tmp_path / "r.db", vix, cert=vix, run=run, mtime=now)
+        db = _seed(tmp_path / "r.db", vix, run=run, mtime=now)
         out = source.freshness(source.Source(db, "replica"), now=now)
         assert out["stale"] is expect, out["stale_reasons"]
 
@@ -179,7 +172,7 @@ class TestFreshness:
         init_db(tmp_path / "empty.db")
         out = source.freshness(source.Source(tmp_path / "empty.db", "replica"), now=time.time())
         assert out["stale"] is True
-        assert {"no VIX in the source", "no certification in the source"} <= set(out["stale_reasons"])
+        assert {"no VIX in the source", "no candidate run in the source"} <= set(out["stale_reasons"])
 
     def test_truncated_replica_is_reported_not_raised(self, tmp_path):
         """`rsync --partial` 이 끊기면 실제 파일명에 반쪽 파일이 남는다 — 예외로 서버 기동을 막지
@@ -219,5 +212,4 @@ class TestServerReadsTheResolvedSource:
 
         assert server.macro_facts()["vix"]["date"] == "2026-09-15"
         assert server.buy_candidates()["run"]["run_date"] == "2026-09-15"
-        assert [r["score"] for r in server.siege_status()] == [0.5]
         assert server.data_freshness()["source"] == "replica"

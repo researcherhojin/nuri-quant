@@ -21,7 +21,7 @@ class TestActionsReadPathAxisNative:
 
         with (
             patch.object(actions_mod, "_get_recommendations", return_value=recommendations),
-            patch.object(actions_mod, "_get_siege_violations", return_value=(siege or [])),
+            patch.object(actions_mod, "_get_rule_violations", return_value=(siege or [])),
             patch.object(actions_mod, "_get_targets_status", return_value={}),
             patch.object(actions_mod, "_get_portfolio_map", return_value=(portfolio or {})),
             patch.object(actions_mod, "_get_short_interest", return_value=None),

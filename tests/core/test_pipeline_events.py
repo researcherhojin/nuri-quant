@@ -271,13 +271,6 @@ class TestCheckFreshness:
         assert result["status"] == "PASS"
         assert result["key"] == "consensus"
 
-    def test_certification_freshness_fail(self, db_path):
-        """certification 이벤트 없음 → FAIL."""
-        result = check_freshness("certification", db_path)
-        assert result["status"] == "FAIL"
-
-
-class TestCheckAllFreshness:
     def test_returns_all_policies(self, db_path):
         """정책 하나당 결과 하나 — 개수는 `FRESHNESS_POLICIES` 에서 파생한다.
 

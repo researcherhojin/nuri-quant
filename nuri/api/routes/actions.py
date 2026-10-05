@@ -1,6 +1,6 @@
 """Action-First API — 오늘 뭐 해야 하는지 우선순위로 정리.
 
-🔴 즉시 실행: SIEGE 위반, 손절선 돌파, 강한 SELL 시그널
+🔴 즉시 실행: 손절선 돌파, 강한 SELL 시그널
 🟡 오늘 확인: 익절 도달, 트레일링 진입, 헤지 검토
 ✅ 유지: 정상 보유 종목
 🔍 기회 탐색: 비보유 이슈 종목 + 매수 판정
@@ -83,9 +83,9 @@ def get_actions():
 
 
 def _build_actions() -> dict:
-    """consensus + SIEGE + targets를 종합하여 🔴/🟡/✅/📊 분류.
+    """consensus + prudential 룰 위반 + targets를 종합하여 🔴/🟡/✅/📊 분류.
 
-    PR A (2026-04-21): `portfolio` bucket 추가. SIEGE position_limit/sector_limit
+    PR A (2026-04-21): `portfolio` bucket 추가. position_limit/sector_limit
     위반은 "매도 강제" (urgent) 가 아닌 "리밸런스 권고" (portfolio) 로 route.
     Stop-loss breach 같은 alpha-driven 긴급 신호만 urgent 에 남김.
     """
@@ -96,11 +96,11 @@ def _build_actions() -> dict:
 
     # ── 데이터 수집 ──
     recommendations = _get_recommendations()
-    siege_violations = _get_siege_violations()
+    rule_violations = _get_rule_violations()
     targets_status = _get_targets_status()
     portfolio_holdings = _get_portfolio_map()
 
-    violation_tickers = {v["ticker"] for v in siege_violations}
+    violation_tickers = {v["ticker"] for v in rule_violations}
 
     # 연금 계좌 종목 식별 (월간 리밸런싱 → daily action에서 제외)
     pension_tickers = {
@@ -241,11 +241,11 @@ def _build_actions() -> dict:
             check.append(item)
             continue
 
-        # ── 📊 포트폴리오 리밸런스 (SIEGE 룰 위반) ──
-        # PR A: SIEGE position_limit/sector_limit 는 "매도 강제" 가 아니라 "리밸런스
+        # ── 📊 포트폴리오 리밸런스 (prudential 룰 위반) ──
+        # PR A: position_limit/sector_limit 는 "매도 강제" 가 아니라 "리밸런스
         # 권고" — 사용자가 타이밍·수단 결정. 사용자 -₩7M 손실 재발 차단 경로.
         if ticker in violation_tickers:
-            violation = next(v for v in siege_violations if v["ticker"] == ticker)
+            violation = next(v for v in rule_violations if v["ticker"] == ticker)
             item["reasons"].append(f"리밸런스 권고 — {violation['detail']}")
             item["priority"] = "portfolio"
             portfolio.append(item)
@@ -537,40 +537,36 @@ def _get_recommendations() -> list[dict]:
     return results
 
 
-def _get_siege_violations() -> list[dict]:
-    """SIEGE 인증 위반 사항 조회."""
-    import re
+#: 대시보드 portfolio 버킷이 surface 하는 prudential 제약 (STRATEGY §6 처분표). 손절은 여기
+#: 없다 — urgent 경로가 보유 손익으로 직접 본다. 두 번 세면 같은 종목이 urgent 와 portfolio 에
+#: 동시에 선다.
+_PRUDENTIAL_VIOLATIONS = frozenset({"position_limit_exceeded", "sector_limit_exceeded", "leverage_etf"})
 
-    violations = []
+
+def _get_rule_violations() -> list[dict]:
+    """prudential 제약 위반 — `rebalance_advisor.detect_violations()` 의 구조화 출력.
+
+    SIEGE 인증기(#1619 폐기) 자리다. 의미가 바뀐다: 종목 비중은 (계좌, 종목) 의 계좌 내 비중을
+    그 계좌 전략 한도와 비교한다(regime 완화 없음). advisor 행이 싣는 집행 필드(`action` ·
+    `sell_shares` · `sell_value_usd`)는 여기서 **벗긴다** — 이 버킷은 `portfolio_action=REBALANCE`
+    만 낸다(축 불변식, `nuri/core/axis.py`). 반환 shape 는 이전과 같다: ticker / detail / condition_id.
+    """
+    violations: list[dict] = []
     try:
-        from nuri.trading.engine.certification import certify
+        from nuri.analysis.rebalance_advisor import detect_violations
 
-        # API path — persist 실패 swallow (E4-0a codex R1 P1).
-        cert = certify(caller="api:actions:violations", swallow_persist_errors=True)
-        for c in cert.conditions:
-            if not c.passed and c.severity == "error":
-                detail = c.detail or ""
-                if c.id == "position_limit":
-                    # "위반: TSLA(15.4%>15%)" or "위반: TSLA(15.4%>15%), NBIS(16%>15%)"
-                    matches = re.findall(r"(\S+?)\([\d.]+%>[\d.]+%\)", detail)
-                    for ticker in matches:
-                        violations.append(
-                            {
-                                "ticker": ticker,
-                                "detail": f"Certification: {c.description} — {detail}",
-                                "condition_id": c.id,
-                            }
-                        )
-                    if not matches:
-                        violations.append(
-                            {"ticker": "", "detail": f"Certification: {c.description} — {detail}", "condition_id": c.id}
-                        )
-                else:
-                    violations.append(
-                        {"ticker": "", "detail": f"Certification: {c.description} — {detail}", "condition_id": c.id}
-                    )
+        for v in detect_violations():
+            if v.get("violation_type") not in _PRUDENTIAL_VIOLATIONS:
+                continue
+            violations.append(
+                {
+                    "ticker": v.get("ticker") or "",
+                    "detail": v.get("reason") or v["violation_type"],
+                    "condition_id": v["violation_type"],
+                }
+            )
     except Exception as e:
-        logger.debug(f"SIEGE violations: {e}")
+        logger.debug(f"rule violations: {e}")
     return violations
 
 
@@ -936,25 +932,8 @@ def _get_macro_events() -> list[dict]:
 
 
 def _get_system_health() -> dict:
-    """시스템 건강 요약 — SIEGE / 레짐 / 매크로 / 데이터 신선도."""
-    health = {"siege": {}, "regime": {}, "macro": {}, "freshness": {}}
-
-    # SIEGE
-    try:
-        from nuri.trading.engine.certification import certify
-
-        # API path — persist 실패 swallow (E4-0a codex R1 P1).
-        cert = certify(caller="api:actions:health", swallow_persist_errors=True)
-        health["siege"] = {
-            "score": round(cert.score),
-            "certified": cert.certified,
-            "passed": cert.passed,
-            "failed": cert.failed,
-            "warnings": cert.warnings,
-            "total": cert.total_conditions,
-        }
-    except Exception:
-        health["siege"] = {"score": 0, "certified": False}
+    """시스템 건강 요약 — 레짐 / 매크로 / 데이터 신선도 (인증 항목은 #1619 로 제거)."""
+    health = {"regime": {}, "macro": {}, "freshness": {}}
 
     # 레짐
     try:

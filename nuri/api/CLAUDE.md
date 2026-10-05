@@ -2,7 +2,7 @@
 
 ## Scope
 
-The dashboard's read surface (73 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
+The dashboard's read surface (68 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
 
 Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "Server Components Pattern" before touching frontend call sites.
 
@@ -51,7 +51,7 @@ Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "
 - **SSE generators must emit a keepalive under 30 s.** Both streams (`stream.py` `/api/stream`, `agents.py` `/api/consensus/{ticker}/stream`) are reached through the Next `/api/*` rewrite, and that proxy aborts a socket after 30 s with no bytes (`proxy-request.js` — `proxyTimeout || 30000`, and `next.config.ts` sets none). `/api/stream`'s `INTERVAL` is exactly 30, and the consensus stream emits nothing at all while an agent's LLM call is in flight — both sat on or past the threshold. They now interleave `": keepalive\n\n"` SSE comments, which `EventSource` ignores, so no client change was needed. `X-Accel-Buffering: no` on the response is an nginx directive and does nothing for the Node proxy. **Test:** `tests/api/test_stream.py::TestSSEStream::test_no_silent_gap_exceeds_proxy_timeout` + `tests/api/test_agents.py::TestAgentsRoute::test_stream_consensus_keepalive_while_agents_are_slow`
 - **CORS `allow_methods` must track the route surface.** The frontend reaches the API same-origin through the Next rewrite, so preflight never fires in normal use — a missing method fails **only** on cross-origin calls, and never in tests that use `TestClient`. Adding a route with a new HTTP verb means updating `main.py`.
   **Test:** `tests/api/test_main.py::TestApiMain::test_cors_allows_every_mutating_method`
-- **Heavy endpoints run in-process**: `POST /api/pipeline/{step}/run` (backtest / regime / 10-agent consensus), `GET /api/certify`, `GET /api/backtest`.
+- **Heavy endpoints run in-process**: `POST /api/pipeline/{step}/run` (backtest / regime / 10-agent consensus), `GET /api/backtest`.
 
 ## Tests
 

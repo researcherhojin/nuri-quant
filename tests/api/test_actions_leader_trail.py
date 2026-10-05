@@ -13,7 +13,7 @@ def _invoke_build_actions(*, recommendations, siege_violations, portfolio_map, t
 
     with (
         patch.object(actions_mod, "_get_recommendations", return_value=recommendations),
-        patch.object(actions_mod, "_get_siege_violations", return_value=siege_violations),
+        patch.object(actions_mod, "_get_rule_violations", return_value=siege_violations),
         patch.object(actions_mod, "_get_targets_status", return_value=targets_status or {}),
         patch.object(actions_mod, "_get_portfolio_map", return_value=portfolio_map),
         patch.object(actions_mod, "_get_short_interest", return_value=None),
@@ -95,7 +95,7 @@ class TestAnUnmatchableKeyIsNeverBuilt:
 
         rows = [
             {"ticker": "AAAA", "account": "main", "stop_loss": 1.0},
-            {"ticker": "BBBB", "stop_loss": 2.0},          # account 키 자체가 없다
+            {"ticker": "BBBB", "stop_loss": 2.0},  # account 키 자체가 없다
             {"ticker": "CCCC", "account": None, "stop_loss": 3.0},
             {"ticker": "DDDD", "account": "", "stop_loss": 4.0},
         ]

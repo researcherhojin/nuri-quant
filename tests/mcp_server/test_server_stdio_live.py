@@ -22,7 +22,7 @@ from nuri.core.db import get_db, init_db
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_TOOLS = {"siege_status", "buy_candidates", "macro_facts", "data_freshness"}
+EXPECTED_TOOLS = {"buy_candidates", "macro_facts", "data_freshness"}
 
 
 @pytest.fixture()
@@ -35,11 +35,6 @@ def seeded_db(tmp_path):
     path = tmp_path / "live.db"
     init_db(path)
     with get_db(path) as conn:
-        conn.execute(
-            "INSERT INTO certifications (timestamp, certified, score, total_conditions,"
-            " passed, failed, warnings, regime, conditions_json, caller)"
-            " VALUES ('2026-08-29T09:00:00', 1, 0.9, 10, 9, 1, 0, 'bull_low_vol', '{}', 'premarket_brief')"
-        )
         conn.execute(
             "INSERT INTO candidate_runs (run_date, regime, vix, threshold,"
             " n_scored, n_qualified, n_emitted, n_skipped)"
@@ -96,14 +91,6 @@ async def test_stdio_live_tool_calls(seeded_db):
                 assert "HELD" not in cand_text and "보유" not in cand_text, (
                     "보유 신호가 프로토콜 경계를 넘었다 — readmodel 잠금과 서버 배선 사이 어딘가가 샌다"
                 )
-
-                siege = await session.call_tool("siege_status", {"limit": 3})
-                assert not siege.is_error
-                siege_text = "".join(c.text for c in siege.content if isinstance(c, TextContent))
-                parsed = json.loads(siege_text) if siege_text.strip().startswith("[") else None
-                assert "premarket_brief" in siege_text
-                if parsed is not None:
-                    assert "conditions_json" not in json.dumps(parsed)
 
                 # 출처는 env 로 지정했으므로 env_override — 경로는 응답에 없어야 한다 (#1617)
                 fresh = await session.call_tool("data_freshness", {})

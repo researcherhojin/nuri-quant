@@ -1,10 +1,6 @@
-"""가격 타겟 + 리밸런스 어드바이저 + SIEGE 인증 + Remediation API."""
+"""가격 타겟 + 리밸런스 어드바이저 API. (인증·remediation 라우트는 #1619 로 제거.)"""
 
-import threading
-
-from fastapi import APIRouter, Depends
-
-from nuri.api.limits import heavy_slot
+from fastapi import APIRouter
 
 router = APIRouter(tags=["targets"])
 
@@ -69,67 +65,3 @@ def get_rebalance_advisor():
     from nuri.analysis.rebalance_advisor import generate_advisor_report
 
     return generate_advisor_report()
-
-
-_certify_cache: dict = {"data": None, "ts": 0}
-# single-flight — TTL 만료 시 동시 요청이 전부 certify() 를 다시 도는 걸 막는다 (#1119)
-_certify_lock = threading.Lock()
-
-
-@router.get("/certify", dependencies=[Depends(heavy_slot)])
-def get_certification():
-    """SIEGE 인증 상태 (5분 캐시).
-
-    v2 (#248): 11 base gate check × per-asset-class expansion 으로 total_conditions 가변.
-    """
-    import time
-    from dataclasses import asdict
-
-    now = time.time()
-    if _certify_cache["data"] and now - _certify_cache["ts"] < 300:
-        return _certify_cache["data"]
-
-    from nuri.trading.engine.certification import certify
-
-    with _certify_lock:
-        # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다
-        now = time.time()
-        if _certify_cache["data"] and now - _certify_cache["ts"] < 300:
-            return _certify_cache["data"]
-
-        # API path — persist 실패가 HTTP 500 으로 전파되면 안 됨. swallow=True (E4-0a
-        # codex R1 P1). Engine/CLI/remediation 은 default loud 유지.
-        cert = certify(caller="api:targets", swallow_persist_errors=True)
-        result = {
-            "certified": cert.certified,
-            "score": cert.score,
-            "passed": cert.passed,
-            "failed": cert.failed,
-            "warnings": cert.warnings,
-            "total": cert.total_conditions,
-            "conditions": [asdict(c) for c in cert.conditions],
-            "timestamp": cert.timestamp,
-        }
-        _certify_cache["data"] = result
-        _certify_cache["ts"] = now
-        return result
-
-
-@router.get("/remediate", dependencies=[Depends(heavy_slot)])
-def get_remediation():
-    """SIEGE remediation 계획 — REJECTED gate → 매도 액션 매핑."""
-    from dataclasses import asdict
-
-    from nuri.trading.engine.remediation import generate_remediation
-
-    plan = generate_remediation()
-    return {
-        "certified": plan.certified,
-        "score": plan.score,
-        "failed_gates": plan.failed_gates,
-        "warning_gates": plan.warning_gates,
-        "actions": [asdict(a) for a in plan.actions],
-        "unresolvable": plan.unresolvable,
-        "post_remediation_score": plan.post_remediation_score,
-        "post_remediation_pass": plan.post_remediation_pass,
-    }

@@ -31,17 +31,6 @@ from nuri.core.db import query
 #: 리뷰된다. free-text 컬럼(reason/blocked_reason 제외 — 후자는 run 수준 규칙 문구)과
 #: 사용자 행동 컬럼(acted/acted_at/disposition)은 등재 금지가 원칙.
 ALLOWED: dict[str, tuple[str, ...]] = {
-    "certifications": (
-        "timestamp",
-        "certified",
-        "score",
-        "total_conditions",
-        "passed",
-        "failed",
-        "warnings",
-        "regime",
-        "caller",
-    ),
     "candidate_runs": (
         "run_date",
         "regime",
@@ -60,21 +49,6 @@ ALLOWED: dict[str, tuple[str, ...]] = {
 
 def _cols(table: str) -> str:
     return ", ".join(ALLOWED[table])
-
-
-def certification_status(limit: int = 5, db_path: Path | None = None) -> list[dict[str, Any]]:
-    """최근 SIEGE 3D 인증 판정 — 최상위 스칼라만.
-
-    `conditions_json` 은 집중도/비중 상세를 품을 수 있어 제외 — certify() 자체가
-    포트폴리오 스냅샷을 읽으므로 카운트 수준을 넘는 노출은 전부 Tier 2 다.
-    """
-    limit = max(1, min(int(limit), 50))
-    return query(
-        f"SELECT {_cols('certifications')} FROM certifications ORDER BY id DESC LIMIT ?",  # noqa: S608 — 컬럼은 ALLOWED 리터럴에서만 조립
-        (limit,),
-        db_path=db_path,
-        readonly=True,
-    )
 
 
 def latest_buy_candidates(run_date: str | None = None, db_path: Path | None = None) -> dict[str, Any]:
@@ -112,20 +86,19 @@ def latest_buy_candidates(run_date: str | None = None, db_path: Path | None = No
 
 
 def macro_facts(db_path: Path | None = None) -> dict[str, Any]:
-    """VIX 최신값 + 최근 인증 run 의 regime.
+    """VIX 최신값 + 최근 후보 run 의 regime.
 
-    regime 의 의미: **가장 최근 certify() 실행이 본 시장 맥락**이다 — certifications
-    는 브리프 외에 dashboard/health 경로도 쓰므로 "지금 이 순간의 분류" 가 아니라
-    "마지막 인증 시점의 분류" 다. 그래서 timestamp·caller 를 함께 반환해 소비자가
-    신선도를 스스로 판단하게 한다 (codex plan 리뷰 5). 어휘는 #1293 가드로 canonical.
+    regime 의 의미: **가장 최근 `premarket_brief` 후보 run 이 본 시장 맥락**이다 — `candidate_runs`
+    는 차단된 날에도 하루 1행을 쓰므로 평일마다 갱신된다. 이전에는 `certifications.regime` 을
+    읽었는데, 인증기 폐기(#1619) 뒤에도 그 테이블을 읽으면 값이 조용히 얼어붙는다.
     """
     vix = query(
-        f"SELECT {_cols('macro')} FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",  # noqa: S608
+        f"SELECT {_cols('macro')} FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",  # noqa: S608 — 컬럼은 ALLOWED
         db_path=db_path,
         readonly=True,
     )
     regime = query(
-        "SELECT regime, timestamp, caller FROM certifications WHERE regime IS NOT NULL ORDER BY id DESC LIMIT 1",
+        "SELECT regime, run_date FROM candidate_runs WHERE regime IS NOT NULL ORDER BY run_date DESC LIMIT 1",
         db_path=db_path,
         readonly=True,
     )

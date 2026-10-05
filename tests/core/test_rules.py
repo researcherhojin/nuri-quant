@@ -349,15 +349,15 @@ class TestMeasurementMode:
 # ═══════════════════════════════════════════════════════
 
 
-class TestFallback:
-    def test_load_rules_fallback(self):
-        """rules.yaml 없을 때 폴백 값 반환."""
+class TestMissingRulesFile:
+    def test_load_rules_raises_when_file_is_missing(self):
+        """rules.yaml 이 없으면 하드코딩 폴백으로 조용히 돌지 않고 기동 시 예외 (#1619 —
+        이 폴백을 잡던 SIEGE `rules_loaded` 게이트의 자리)."""
         from nuri.core.rules import _RULES_PATH, _load_rules
 
         with patch.object(type(_RULES_PATH), "exists", return_value=False):
-            fallback = _load_rules()
-            assert fallback["position_limits"]["max_single_position"] == 0.15
-            assert fallback["stop_loss"]["per_stock"] == -20
+            with pytest.raises(FileNotFoundError, match="rules.yaml"):
+                _load_rules()
 
 
 # ═══════════════════════════════════════════════════════
