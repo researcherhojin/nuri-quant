@@ -2,12 +2,12 @@
 
 ## Code layout
 
-**Pipeline** (5 stages; crossing imports deferred-only and allowlist-frozen — see Cross-stage imports in `invariants.md`): `collect → analyze → consensus → certify → track`.
+**Pipeline** (5 stages; crossing imports deferred-only and allowlist-frozen — see Cross-stage imports in `invariants.md`): `collect → analyze → consensus → decide → track`.
 
 ⚠️ **화살표는 읽는 순서지 실행 순서가 아니다.** 스테이지를 이어 붙이는 주체가 없다.
 
 - `scheduler.py` 는 독립 cron job 을 등록할 뿐이다. 스테이지 job 은 `run_step(..., warn_only=True)` 로 감싸이지만 그건 lifecycle 이벤트 기록용이라, 의존성이 안 맞아도 **경고만 남기고 그대로 실행**한다(관측이 본 작업을 게이트하면 안 된다 — #894).
-- `certify` 는 **자기 cron job 이 아예 없다** — consensus job 이 in-memory 로 `record_decisions()` 에 넘길 뿐이다. 포트폴리오 전체 인증기(`certify()`)는 #1619 로 제거됐고, 스테이지 이름은 후속 PR 에서 `decide` 로 바꾼다(STRATEGY §6). `analyze` 는 `factors` job 하나뿐이다.
+- `decide`(#1619 전 `certify`) 는 **자기 cron job 이 아예 없다** — consensus job 이 in-memory 로 `record_decisions()` 에 넘길 뿐이다. 포트폴리오 전체 인증기는 #1619 로 제거됐다(STRATEGY §6). `analyze` 는 `factors` job 하나뿐이다.
 - cron 시각도 읽는 순서와 다르다 — outcome tracking 07:02 가 그걸 소비하는 consensus 07:05 **앞**에 있다(전날 것을 읽는다).
 - 공개 서술은 `README.md` 스테이지 표.
 

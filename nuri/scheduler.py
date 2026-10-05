@@ -124,7 +124,7 @@ _STAGE_OF_JOB = {
     # analyze — `factors` 하나뿐. 이게 붙기 전까지 `pipeline_events.step` 에 analyze 가
     # **0건**이었다: 5스테이지 중 하나가 관측상 존재하지 않았다는 뜻이다 (#1071).
     "factors": "analyze",
-    # consensus — 하나뿐이며, 그 안에서 certify(record_decisions)까지 in-memory 로 이어진다
+    # consensus — 하나뿐이며, 그 안에서 decide(record_decisions)까지 in-memory 로 이어진다
     "consensus": "consensus",
     # track — 반증 기준 점검은 사전등록된 기준을 사후에 채점하는 것이므로 track 이다
     # (판단을 만들지 않는다 — Surface 전용, #1092).

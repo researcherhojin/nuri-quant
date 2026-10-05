@@ -9,9 +9,9 @@ Codex loads this file (and any nested `AGENTS.md`, e.g. `frontend/AGENTS.md`). I
 
 ## Project
 
-Nuri-Quant — quant decision-support platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 stages): `collect → analyze → consensus → certify → track`.
+Nuri-Quant — quant decision-support platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 stages): `collect → analyze → consensus → decide → track`.
 
-The arrow is reading order, not execution order. Nothing chains the stages: `nuri/scheduler.py` registers independent cron jobs, and `run_step(..., warn_only=True)` records an unmet dependency as a warning and runs anyway (#894). `analyze` has a single job (`factors`); `certify` has none — the consensus job hands its result to `record_decisions()` in memory; the portfolio-wide certifier was retired (STRATEGY §6, #1619) and the stage is renamed `decide` in a follow-up PR. Outcome tracking (07:02) runs before consensus (07:05), which therefore reads the previous day's results.
+The arrow is reading order, not execution order. Nothing chains the stages: `nuri/scheduler.py` registers independent cron jobs, and `run_step(..., warn_only=True)` records an unmet dependency as a warning and runs anyway (#894). `analyze` has a single job (`factors`); `decide` (named `certify` until #1619) has none — the consensus job hands its result to `record_decisions()` in memory; the portfolio-wide certifier was retired (STRATEGY §6). Outcome tracking (07:02) runs before consensus (07:05), which therefore reads the previous day's results.
 
 ## Before editing a directory
 
@@ -39,7 +39,7 @@ Claude Code's edit-time hooks do not run in Codex. A rule marked **review** is e
 | 2 | **Forward `db_path`**: a function that accepts `db_path=` must pass it to every DB reader it calls. An unused parameter leaks that call to the default DB while signatures, type checks and tests stay green (21 such sites in #1050–#1052). | CI — `tests/core/test_db_path_forwarding.py` |
 | 3 | **Time**: use `kst_now()` / `today_kst()` from `nuri.core.timezone`; never `datetime.now()`. | review (no lint rule or test) |
 | 4 | **Config over code**: investment rules and thresholds live in `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml`. Hardcoding is rejected. | review |
-| 5 | **Cross-stage imports** — stages map to `collect`=`nuri/collectors`, `analyze`=`nuri/analysis`, `consensus`=`nuri/trading/agents`, `certify`=`nuri/trading/engine`, `track`=`nuri/trading/recommend` (`nuri/quant`, `nuri/core` are shared libraries). A crossing import must be deferred inside a function body and listed with a reason in the allowlist (#920). | CI — `tests/core/test_cross_stage_imports.py` |
+| 5 | **Cross-stage imports** — stages map to `collect`=`nuri/collectors`, `analyze`=`nuri/analysis`, `consensus`=`nuri/trading/agents`, `decide`=`nuri/trading/engine`, `track`=`nuri/trading/recommend` (`nuri/quant`, `nuri/core` are shared libraries). A crossing import must be deferred inside a function body and listed with a reason in the allowlist (#920). | CI — `tests/core/test_cross_stage_imports.py` |
 | 6 | **External LLM gateway**: `nuri/llm/openai_client.py` is the only external-LLM entry point; `import openai` elsewhere is forbidden (ZDR + audit log live there, STRATEGY §4.4.3). | review |
 | 7 | **Privacy**: never commit personal financial data (broker names, holdings, prices, account ids, ticker + signed %) or personal identifiers (account names, real-name hostnames, `/Users/<account>/`). Use placeholders (`Brokerage Alpha`, `user@macmini.local`, `/Users/USER/`). Never edit `.env` or `config/portfolio.yaml`. | pre-push hook + CI `Privacy Leak Scan` |
 | 8 | **Commits**: Conventional Commits with an **English** subject — `(feat\|fix\|docs\|style\|refactor\|test\|chore\|perf\|ci\|build\|revert)(scope)?: msg`. Korean comments in code, English identifiers. | pre-push warning |

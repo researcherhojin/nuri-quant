@@ -106,7 +106,7 @@ const STATUS_BORDER: Record<string, string> = {
 type IconComponent = typeof Search;
 
 // 키 2계보: DEFAULT_NODES 어휘(validate/classify/diagnose/recommend) + 라이브 API 어휘
-// (analyze/consensus/certify — README 스테이지 표). 구 이모지 맵은 후자가 없어 라이브
+// (analyze/consensus/decide — README 스테이지 표). 구 이모지 맵은 후자가 없어 라이브
 // 노드가 무아이콘이었다. 아이콘은 사이드바 아이덴티티와 일치 (Signals=BarChart3,
 // Agents=Users, Decision Engine=Cog).
 const STEP_ICONS: Record<string, IconComponent> = {
@@ -117,7 +117,7 @@ const STEP_ICONS: Record<string, IconComponent> = {
   recommend: ClipboardList,
   analyze: BarChart3,
   consensus: Users,
-  certify: Cog,
+  decide: Cog,
   track: MapPin,
 };
 

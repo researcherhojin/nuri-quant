@@ -65,7 +65,7 @@ flowchart LR
 | **Collect** | `nuri/collectors` | Collects prices, fundamentals, macroeconomic data and news |
 | **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; computes daily factor scores |
 | **Consensus** | `nuri/trading/agents` | Combines the weighted verdicts of 10 specialist agents per holding, subject to a risk veto |
-| **Certify** | `nuri/trading/engine` | Records each consensus decision with its market context and applies the hard-veto gates; the portfolio-wide certification verdict was retired (STRATEGY §6) |
+| **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and applies the hard-veto gates (formerly `certify`; the portfolio-wide certification verdict was retired, STRATEGY §6) |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
 The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.

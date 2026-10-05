@@ -32,7 +32,7 @@ body:
     attributes:
       label: Area
       options:
-        - Pipeline (collect/analyze/validate/classify/recommend/certify)
+        - Pipeline (collect/analyze/consensus/decide/track)
         - Agents (consensus/individual agents)
         - Trading (strategy/swing/execution)
         - API (FastAPI endpoints)

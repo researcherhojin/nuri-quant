@@ -401,7 +401,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
       ["collect", Search],
       ["analyze", BarChart3], // 사이드바 Signals
       ["consensus", Users], // 사이드바 Agents
-      ["certify", Cog], // 사이드바 Decision Engine
+      ["decide", Cog], // 사이드바 Decision Engine
       ["track", MapPin],
     ];
     for (const [step, Expected] of PARITY) {

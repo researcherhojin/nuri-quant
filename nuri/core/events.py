@@ -23,7 +23,6 @@ EVENT_TYPES = {
     "step_success",
     "gate_evaluated",
     "regime_changed",
-    "certification_result",
     "conflict_detected",
     "drift_detected",
     # Mechanical penalty 발동 감사 로그 (STRATEGY §2.6 Escalation Ladder — soft penalty rung).
@@ -56,7 +55,7 @@ EVENT_TYPES = {
 # 예전 6-step(collect/validate/classify/diagnose/recommend/track)은 2026-04-09 수동
 # 실행 때 두 행씩 남기고 이후 아무도 쓰지 않았다. 이름이 실제 시스템과 달라서
 # 스케줄러가 step 이벤트를 남길 수도, 대시보드가 진짜 상태를 보여줄 수도 없었다 (#921).
-PIPELINE_STEPS = ("collect", "analyze", "consensus", "certify", "track")
+PIPELINE_STEPS = ("collect", "analyze", "consensus", "decide", "track")  # `decide` 는 옛 `certify` (#1619; 그 이름의 행은 원장에 0건)
 
 # `step` 컬럼은 lifecycle 이벤트(step_*)와 임의 도메인 이벤트가 공유한다 —
 # 예: holdings_monitor 가 step="track" 으로 holdings_monitor_run 을 남긴다.
