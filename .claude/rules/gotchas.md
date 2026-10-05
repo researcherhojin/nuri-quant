@@ -17,6 +17,7 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → scoped 
 - `AGENTS.md` — cross-tool rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code
 
 Local-only (gitignored — internal infra / audit / map):
+
 - `docs/OPERATIONS.md` — operator runbook (2-machine deploy / scheduler / recovery)
 - `docs/SOURCE_OF_TRUTH.md` — file-ownership map
 - `docs/HARNESS_AUDIT.md` — audit snapshot (overwrite each audit, history in git log)

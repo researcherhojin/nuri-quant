@@ -36,6 +36,7 @@ Artifact: `data/reports/YYYY-MM-DD/e4_0b_siege_predictivity.md` (gitignored). �
 **Hybrid metrics**: Binary Δ (fired − not_fired mean fwd return + 95% bootstrap CI) primary + continuous severity OLS slope secondary.
 
 **Acceptance** (codex Q5 — CI upper bound):
+
 - `primary_keep`: 30d `CI_high < 0` AND 60d point < 0
 - `strong_keep`: 30d + 60d 모두 `CI_high < 0`
 

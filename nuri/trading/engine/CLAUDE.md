@@ -36,11 +36,12 @@ These are operational details unique to this directory; the canonical sources ab
 `all([]) is True` 로 `held` 를 받았다. 도달하지 않았던 건 롤업 쿼리가 INNER JOIN 이어서지
 방어가 있어서가 아니었고, LEFT JOIN 뮤테이션은 테스트를 전부 초록으로 통과했다. 채점·게이트에
 `all(...)` 을 쓸 땐 빈 입력을 **먼저** 걷어낼 것.
+
 ⚠️ **효력을 가진 적 없는 논지는 채점 대상이 아니다.** `draft` 와 `effective_date` 가 미래인
 논지가 verdict 를 받고 있었다 — 특히 9월 발효 논지가 5월부터 판정이 쌓여 **유효해지기도 전에
 `broken`** 이 됐다(Codex 리뷰 2026-08-18 재현). 근본 원인은 롤업이 아니라 `run_daily_checks`
 가 `effective_date` 를 안 본 것이라 두 곳을 같이 막는다.
-**Test:** `::TestOnlyInForceThesesAreScored` — 필터 2개를 각각 지우면 FAIL, 카나리아
+**Test:** `tests/trading/engine/test_thesis_verdict.py::TestOnlyInForceThesesAreScored` — 필터 2개를 각각 지우면 FAIL, 카나리아
 `test_the_same_thesis_is_scored_once_effective` 가 필터가 논지를 영영 묻지 않는지 확인한다.
 
 **Test:** `tests/trading/engine/test_thesis_verdict.py::TestInProgressStaysBlank::test_zero_criteria_is_not_a_vacuous_pass`
@@ -50,6 +51,7 @@ These are operational details unique to this directory; the canonical sources ab
 ## Execution Priority
 
 Mechanical ordering when emitting actions: `stop_loss → take_profit → trailing_stop_set → new_buy`.
+
 - Within `stop_loss`: sort by `loss%` descending (biggest loss first — bleeding stops first).
 - Within `take_profit`: sort by `excess%` descending (biggest winner first — lock in gains).
 - Rationale: declining momentum loses more per hour delayed; rising momentum is more forgiving.
@@ -86,8 +88,8 @@ fail 60h). 의도한 것이다 — 어휘 밖 라벨을 조용히 저장하는 �
 **Test:** `tests/trading/engine/test_certification_persist.py::TestSnapshotInvariant::test_free_text_regime_is_persisted_as_null`
 (+ `::test_every_canonical_regime_survives` 대조군 — 없으면 `return None` 구현도 통과한다).
 
-`certifications.regime` 은 아직 무가드다 — 행수가 12배이고 값이 `.get(regime, {})` 로 가서
-성격이 달라 **#1293** 으로 분리했다.
+`certifications.regime` 은 처음엔 무가드였다 — 행수가 12배이고 값이 `.get(regime, {})` 로 가서
+성격이 달라 **#1293** 으로 분리했고, 위 문단이 그 결과다.
 
 **Test:** `tests/trading/engine/test_regime_canonical_guard.py` — 어휘 밖 7종 거부 + canonical
 10종 전부 보존(대조군) + writer 대칭 AST 스윕 + known-gap 양방향.

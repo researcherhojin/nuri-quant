@@ -1,16 +1,21 @@
 # Architecture Reference
 
-Detailed reference for Nuri-Quant internals. This file is NOT auto-loaded — agents read it when working on cross-cutting concerns.
+Detailed reference for Nuri-Quant internals. This file is not auto-loaded; read it when working on cross-cutting concerns.
+
 ## Pipeline Phases (5-step)
-README shows the high-level flow. Per-phase orientation table — each row points at the canonical detail section below (or peer doc).
+
+The README shows the high-level flow. The table below gives one row per phase and points to the detail section below or to a peer document.
+
 | # | Phase | Inputs | Outputs | Key modules | Detail |
 |---|-------|--------|---------|-------------|--------|
 | 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
-| 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" + "Regime Classifier" below |
+| 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" and "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
-| 4 | **Certify** | DB snapshot of portfolio state (`analyze_portfolio()`) + `prices` · `macro` · current regime + `config/rules.yaml siege_gates`. Does not read `recommendations`; not called by the consensus job (see Runtime Topology) | `Certificate` → CERTIFIED / REJECTED, persisted as a `certifications` row + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
-| 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` + `agent_accuracy_snapshots` (feeds Learning Memory back to Phase 3 weights) | `nuri/trading/recommend/tracker.py` + `nuri/trading/engine/learning_memory.py` | "C→D→E Data Flow" below |
-The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a projection from the DB — not a pipeline phase. It is not strictly read-only: the routes that call `certify()` (`/api/certify`, `/api/actions` health and violations) persist a `certifications` row on every call. See the "API" and "Dashboard API" sections below.
+| 4 | **Certify** | DB snapshot of portfolio state (`analyze_portfolio()`) + `prices` · `macro` · current regime + `config/rules.yaml siege_gates`. Does not read `recommendations` and is not called by the consensus job (see Runtime Topology). | `Certificate` → CERTIFIED / REJECTED, persisted as a `certifications` row with per-condition detail in `conditions_json` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below and [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
+| 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` (read back by Learning Memory for Phase 3 weights) + weekly per-agent accuracy snapshots in `strategy_memory` | `nuri/trading/recommend/tracker.py` + `nuri/trading/agents/consensus/learning_memory.py` | "C→D→E Data Flow" below |
+
+The Serve layer (FastAPI `:8001`, Next.js `:3000`, Discord and Telegram) is a projection of the DB, not a pipeline phase. It is not strictly read-only: the routes that call `certify()` (`/api/certify` and the health and violations endpoints under `/api/actions`) write a `certifications` row on every call. See the "API" and "Dashboard API" sections below.
+
 ## Runtime Topology
 
 The phase table above is the data model. At runtime there is no orchestrator: `nuri/scheduler.py` registers independent APScheduler jobs, and each job reads its inputs from tables written by earlier jobs.
@@ -136,80 +141,122 @@ The risk veto reads `alpha_action` only, so an oversized position can lead to re
 - **Signals** (`config/signals.yaml`): 20 per-ticker, actionable signals used by the backtest detectors, plus 2 market-wide shadow signals (yield-curve inversion and HY-OAS widening) marked `actionable: false` and surfaced as warnings only.
 
 ## DB as the Sole Integration Point
-`nuri/core/db/` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
+
+`nuri/core/db/connection.py` is the only module that imports `sqlite3`. The DB file is `data/portfolio.db` (WAL mode; override with `NURI_DB_PATH`). All upsert functions accept an optional `db_path`, which tests set to a `tmp_path` file for isolation. Schema versioning uses the `schema_version` table and the `_MIGRATIONS` list.
+
 Key DB access patterns:
-- `get_db()` — context manager, auto-commits on success, auto-rollbacks on exception
-- `query(sql, params)` → list of `sqlite3.Row` (dict-like access)
-- `query_df(sql, params)` → pandas DataFrame
-- `upsert_*()` functions for each table (prices, portfolio, fundamentals, etc.)
-- `replace_portfolio_account(account, records)` — DELETE+INSERT in one tx for yaml→DB sync
+
+- `get_db()`: context manager; commits on success, rolls back on exception.
+- `query(sql, params)` → `list[dict]` (`readonly=True` blocks writes at the engine level).
+- `query_df(sql, params)` → pandas DataFrame.
+- `upsert_*()`: one function per table (prices, portfolio, fundamentals, etc.).
+- `replace_portfolio_account(account, records)`: DELETE + INSERT in one transaction for the YAML → DB sync.
+
 ## Signal System (22 signals: 20 actionable + 2 shadow, YAML-driven registry)
-`signal_backtest.py` uses a **detector registry** — Python detector functions separated from metadata (thresholds/classification/hold_days). Metadata externalized to `config/signals.yaml` (`nuri/core/signal_config.py` loads); the yaml holds 22 entries — the 20 actionable ones below plus 2 market-wide shadow signals (`actionable: false`, detectors in `nuri/quant/validation/market_signals.py`). 4 categories:
+
+`signal_backtest.py` uses a detector registry: Python detector functions are kept separate from their metadata (thresholds, classification, hold_days). The metadata lives in `config/signals.yaml` and is loaded by `nuri/core/signal_config.py`. The YAML holds 22 entries: the 20 actionable signals below plus 2 market-wide shadow signals (`actionable: false`, detectors in `nuri/quant/validation/market_signals.py`). The actionable signals fall into 4 categories:
+
 - **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
-- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery — `merge_macro_data()` required
-- **Data-dependent** (2): insider_cluster, short_squeeze — `merge_data_signals()` required
+- **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery (require `merge_macro_data()`)
+- **Data-dependent** (2): insider_cluster, short_squeeze (require `merge_data_signals()`)
 - **Chart pattern** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance
-`SIGNAL_DEFINITIONS` built by `_build_signal_definitions()` from YAML + detector registry. Threshold changes → YAML only (zero code changes).
-**Macro data quirk**: `us_3m_yield` (FRED) absent in yfinance fallback — `^IRX` (13-week T-Bill) stored as `us_2y_yield`. `merge_macro_data()` falls back: queries `us_2y_yield` when `us_3m_yield` is empty.
+
+`SIGNAL_DEFINITIONS` is built by `_build_signal_definitions()` from the YAML and the detector registry. Threshold changes require a YAML edit only.
+
+**Macro data quirk**: `us_3m_yield` (FRED) is absent in the yfinance fallback, where `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` therefore queries `us_2y_yield` when `us_3m_yield` is empty.
+
 ## C→D→E Data Flow
-Validation/regime/recommendation pipeline connected by data, not imports:
-1. **C-1** (`signal_backtest`) writes `signal_results.csv` + `signal_scorecard.csv` to `data/reports/YYYY-MM-DD/`
-2. **D-3** (`strategy_map.analyze_signal_by_regime()`) reads `signal_results.csv`, labels each trade with regime at entry
-3. **E-1** (`candidates`) reads regime-specific stats from D-3 to calibrate confidence scores
-4. **E-3** (`tracker`) saves E-1/E-2 outputs to `recommendations` table for 30/60/90-day tracking
+
+The validation, regime and recommendation steps are connected by data, not imports:
+
+1. **C-1** (`signal_backtest`) writes `signal_results.csv` and `signal_scorecard.csv` to `data/reports/YYYY-MM-DD/`.
+2. **D-3** (`strategy_map.analyze_signal_by_regime()`) reads `signal_results.csv` and labels each trade with the regime at entry.
+3. **E-1** (`candidates`) reads the regime-specific stats from D-3 to calibrate confidence scores.
+4. **E-3** (`tracker`) saves E-1/E-2 outputs to the `recommendations` table for 30/60/90-day tracking.
+
 Re-running C-1 updates the data that D-3 and E-1 use.
+
 ## Regime Classifier (6 base + 4 special)
-Base regimes: `{bull,bear,sideways}_{low,high}_vol` — SPY SMA50/200 position + VIX with adaptive hysteresis (5 days normal, 2 days if VIX>=25).
-Special regimes (priority order, override base `regime` field): euphoria, stagflation, recovery, sector_rotation. See `nuri/quant/regime/classifier.py`.
-`RegimeState.trend`/`.volatility` always reflect base classification. `details["special_regime"]` is `None` or the special name. `details["base_regime"]` always has the 6-regime name.
-`REGIME_ALLOCATION` includes all 10 regimes. `position.py` uses `REGIME_ALLOCATION` lookup (fallback to substring matching for unknown regimes).
+
+Base regimes are `{bull,bear,sideways}_{low,high}_vol`, derived from SPY's position relative to SMA50/200 and from VIX, with adaptive hysteresis (5 days normally, 2 days when VIX ≥ 25).
+
+Special regimes, in priority order, override the base `regime` field: euphoria, stagflation, recovery, sector_rotation. See `nuri/quant/regime/classifier.py`.
+
+`RegimeState.trend` and `.volatility` always reflect the base classification. `details["special_regime"]` is `None` or the special regime name, and `details["base_regime"]` always holds the base regime name.
+
+`REGIME_ALLOCATION` covers all 10 regimes. `position.py` looks the regime up in `REGIME_ALLOCATION`; an unregistered regime fails closed (entry is treated as misaligned).
+
 ## SIEGE Engine
-`nuri/trading/engine/` — Gated Execution + Conflict Detection + Learning Memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning memory drift, conflict penalties, and regime fit.
-Full certification architecture + 3-dimensional certification specification: **[`docs/CERTIFICATION_SPEC.md`](CERTIFICATION_SPEC.md)** (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
+
+`nuri/trading/engine/` provides gated execution, conflict detection and learning memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning-memory drift, conflict penalties and regime fit.
+
+The certification architecture and the 3-dimensional certification specification are in [`docs/CERTIFICATION_SPEC.md`](CERTIFICATION_SPEC.md) (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
+
 ## Pipeline Observability
-`nuri/core/events.py` — Append-only event journal. `emit_event()` records state transitions and always writes **valid JSON** to `payload` (#935). `get_pipeline_status()` returns 5-stage status. `get_timeline()` returns history with `causation_id` for chain tracing.
-`nuri/core/freshness.py` — Data freshness SLA. `check_freshness(key)` returns PASS/WARN/FAIL. Thresholds (`warn_hours`/`fail_hours` per source) live in `config/freshness.yaml` (#1181) — `_load_config()` injects them at import and the key set is cross-checked both ways against `FRESHNESS_POLICIES` (missing or extra config key → ValueError). Queries/labels stay in code. `VERDICT_GATE_KEYS` + `stale_verdict_inputs()` feed the dashboard verdict's stale gate — FAIL only; WARN passes because weekend/holiday age is normal.
-`nuri/core/pipeline.py` — Stage lifecycle events, not orchestration. `STEP_DEPENDENCIES` declares the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` checks it and records events, but does **not** enforce it in practice: its only caller is the scheduler, which passes `warn_only=True`, so an unmet dependency is recorded as `dependency_warning` and the job runs anyway (#894).
+
+`nuri/core/events.py` is an append-only event journal. `emit_event()` records state transitions and always writes valid JSON to `payload` (#935). `get_pipeline_status()` returns the 5-stage status, and `get_timeline()` returns the history with `causation_id` for chain tracing.
+
+`nuri/core/freshness.py` implements the data-freshness SLA. `check_freshness(key)` returns PASS, WARN or FAIL. The thresholds (`warn_hours` / `fail_hours` per source) live in `config/freshness.yaml` (#1181). `_load_config()` injects them at import and cross-checks the key set against `FRESHNESS_POLICIES` in both directions; a missing or extra key raises `ValueError`. Queries and labels stay in code. `VERDICT_GATE_KEYS` and `stale_verdict_inputs()` feed the stale gate of the dashboard verdict. Only FAIL blocks; WARN passes because weekend and holiday data age is normal.
+
+`nuri/core/pipeline.py` records stage lifecycle events; it does not orchestrate. `STEP_DEPENDENCIES` declares the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` checks it and records events but does not enforce it in practice: its only caller is the scheduler, which passes `warn_only=True`, so an unmet dependency is recorded as a dependency warning and the job runs anyway (#894).
+
 Pipeline control API (`nuri/api/routes/pipeline.py`):
-- `GET /api/pipeline/status` — 5-stage status + record counts
-- `POST /api/pipeline/{step}/run` — Execute step (synchronous; does not go through `run_step()`)
-- `GET /api/pipeline/timeline` — Event log
-- `GET /api/freshness` — Data freshness report
+
+- `GET /api/pipeline/status`: 5-stage status and record counts
+- `POST /api/pipeline/{step}/run`: runs a step synchronously (does not go through `run_step()`)
+- `GET /api/pipeline/timeline`: event log
+- `GET /api/freshness`: data freshness report
+
 Trade execution API (`nuri/api/routes/trades.py`):
-- `POST /api/trades` — Record trade execution
-- `GET /api/trades` — List trades (optional ticker filter)
-- `PUT /api/trades/{id}` — Update exit info
+
+- `POST /api/trades`: record a trade execution
+- `GET /api/trades`: list trades (optional ticker filter)
+- `PUT /api/trades/{id}`: update exit info
+
 ## Dashboard API (Projection-based, <5s)
-`/api/dashboard` reads pre-computed results from DB instead of running analysis inline. Consensus from `recommendations` table (populated by `make consensus`). Response includes `freshness` and `pipeline_status` for data age display. The one-line `verdict` is stale-gated (#1181): when any `verdict_gate` input (`config/freshness.yaml`) is FAIL-stale, the response carries `verdict_level: "stale"` + `verdict_stale_inputs` and the verdict text names the stale inputs instead of advising.
+
+`/api/dashboard` reads pre-computed results from the DB instead of running analysis inline. Consensus comes from the `recommendations` table (populated by `make consensus`). The response includes `freshness` and `pipeline_status` so the dashboard can show data age. The one-line `verdict` is stale-gated (#1181): when any `verdict_gate` input (`config/freshness.yaml`) is FAIL-stale, the response carries `verdict_level: "stale"` and `verdict_stale_inputs`, and the verdict text names the stale inputs instead of giving advice.
+
 ## API (73 endpoints)
-`nuri/api/routes/` — 73 REST endpoints on port **8001** (`@router.get/post/put/delete/patch` decorators counted across 21 route modules; excludes FastAPI's `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect`). Swagger at `http://localhost:8001/docs`. SSE at `/api/stream` (30s interval). Includes `/api/coverage` (#297) for Universe + Agent data coverage widget.
+
+`nuri/api/routes/` — 73 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 21 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
+
 ### Action-First Dashboard APIs (PR #264-#266)
+
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/🟦portfolio/✅hold). 연금/IRP 제외, 중복 제거. 각 항목에 `decision_id` + `as_of` (same-date `decisions` LEFT JOIN, #1182) — 프론트가 `/decisions/{id}` 증거 체인으로 링크 |
 | `/api/opportunities` | GET | 비보유 이슈 종목 탐색 — scan + WSB + events 기반 찬성/반대/판정 |
 | `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
+
 ## Scheduler
-`nuri/scheduler.py` — 59 cron jobs in `SCHEDULES` list (+ a 1-minute `heartbeat` interval job). All times KST. Lazy imports inside `_run_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors; a daily `stock_us_freshness` job (06:10/06:40 KST) keeps the SPY measurement benchmark + SIEGE freshness tickers current (§3.11).
+
+`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the SIEGE freshness tickers current (§3.11).
+
 ## Environment Variables
-Configured in `.env` (see `.env.example`):
-- `FRED_API_KEY` — FRED macro data (optional; yfinance fallback)
-- `DISCORD_WEBHOOK_URL` — daily report (optional; stdout fallback)
-- `DISCORD_TOKEN` — bot mode alerts (optional)
-- `FINNHUB_API_KEY` — US institutional flows (optional)
-- `OLLAMA_HOST` / `OLLAMA_MODEL` — LLM report (default: localhost:11434, qwen3.5)
-- `NURI_DB_PATH` — SQLite DB location override (optional; default: `data/portfolio.db`)
-- `DASHBOARD_PASSWORD` — Next.js auth (optional; unset = public)
-- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` — Telegram alerts (optional)
-- `ALPACA_API_KEY` / `ALPACA_SECRET_KEY` — Paper trading (optional; DryRun fallback)
-- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET` — KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
-- `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET` — KIS Open API paper (optional)
-- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ` — Toss Open API (optional; IP allowlist — dev machines get 403 and gracefully skip)
-- `NURI_ROLE` — `production` gates two things: §3.11 ledger-backed surfacing (the monthly alpha progress report only stages to `#brief` when set) and the off-box dead-man heartbeat push (`nuri/alerts/offbox_heartbeat.py`, #1191 option C — dev machines are a no-op). Adjudication runs off the Mac mini DB; the MBP is a read replica, so dev numbers must never reach the brief. Lives in `scripts/launchd/com.nuri-quant.scheduler.plist` `EnvironmentVariables`, **not** `.env` — `make deploy-mini` SCPs the MBP `.env` over the mini's, so an `.env`-resident value is wiped by the next deploy (same trap as `DEV2_HOST`).
-- `API_SECRET_KEY` — JWT signing key (**required in production**, optional in dev). Unset, `nuri/api/auth.py` mints a fresh `secrets.token_hex(32)` each boot, so every outstanding JWT dies on restart (dashboard re-login). Generate: `python3 -c "import secrets; print(secrets.token_hex(32))"`. `make deploy-mini` SCPs the local `.env` onto the Mac mini's, so the same value must exist in **both** `.env` files or a deploy reverts production to random-per-boot.
+
+Configured in `.env` (see `.env.example`) unless noted otherwise:
+
+- `FRED_API_KEY`: FRED macro data (optional; yfinance fallback)
+- `DISCORD_WEBHOOK_URL`: daily report (optional; stdout fallback)
+- `DISCORD_TOKEN`: bot-mode alerts (optional)
+- `FINNHUB_API_KEY`: US institutional flows (optional)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (optional; `OLLAMA_HOST` unset disables it and must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.5`)
+- `NURI_DB_PATH`: SQLite DB location override (optional; default `data/portfolio.db`)
+- `DASHBOARD_PASSWORD`: Next.js auth (optional; unset means public)
+- `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`: Telegram alerts (optional)
+- `ALPACA_API_KEY` / `ALPACA_SECRET_KEY`: paper trading (optional; DryRun fallback)
+- `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET`: KIS Open API live (optional; falls back to `config/kis/kis_devlp.yaml`, gitignored)
+- `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET`: KIS Open API paper (optional)
+- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ`: Toss Open API (optional; IP allowlist, so dev machines receive 403 and skip gracefully)
+- `NURI_ROLE`: the value `production` gates two things: §3.11 ledger-backed surfacing (the monthly alpha progress report is staged to `#brief` only when set) and the off-box dead-man heartbeat push (`nuri/alerts/offbox_heartbeat.py`, #1191 option C; a no-op on dev machines). Adjudication runs on the Mac mini DB; the MBP is a read replica, so dev numbers must not reach the brief. Set it in `scripts/launchd/com.nuri-quant.scheduler.plist` under `EnvironmentVariables`, not in `.env`: `make deploy-mini` copies the MBP `.env` over the mini's, so a value kept in `.env` is overwritten by the next deploy (the same applies to `DEV2_HOST`).
+- `API_SECRET_KEY`: JWT signing key (required in production, optional in dev). When unset, `nuri/api/auth.py` generates a new `secrets.token_hex(32)` at each start, so all outstanding JWTs become invalid on restart and dashboard users must log in again. Generate one with `python3 -c "import secrets; print(secrets.token_hex(32))"`. Because `make deploy-mini` copies the local `.env` onto the Mac mini, the same value must exist in both `.env` files; otherwise a deploy reverts production to a random per-start key.
+
 ## DB Schema (SQLite, WAL mode)
+
 61 tables total (65 migrations as of 2026-09-08). Key tables:
+
 | Table | Purpose |
 |-------|---------|
 | `prices` | OHLCV 5Y daily bars per ticker |
@@ -233,65 +280,98 @@ Configured in `.env` (see `.env.example`):
 | `schema_version` | Migration version tracking |
 | `pipeline_events` | Append-only event journal |
 | `trades` | Trade execution records |
+
 Additional: `agent_audit_ledger`, `agent_messages`, `agent_run_ledger`, `ark`, `ark_source_dates`, `audit_log`, `backtests`, `candidate_ledger`, `candidate_runs`, `causal_audits`, `certifications`, `challenger_attempts`, `collector_runs`, `discord_outbox`, `dr_replicas`, `drift_alerts`, `etf_flows`, `events`, `execution_blocks`, `external_analysis`, `external_llm_calls`, `factors`, `feature_flags`, `foundation_benchmarks`, `held_add_shadow`, `held_add_would_fire`, `hypotheses`, `incidents`, `institutional_flows`, `macro_events`, `maintenance_candidates`, `market_postmortem`, `news`, `regime_posteriors`, `regime_transitions`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `thesis_evidence`, `walkforward_runs`.
+
 ### Three decision-related tables — intentional, not duplicate
-The `recommendations` / `decisions` / `agent_decisions` triplet looks redundant at first glance. It is not — each serves a distinct purpose:
+
+The `recommendations`, `decisions` and `agent_decisions` tables look redundant but serve distinct purposes:
+
 | Table | Era | Role | Cardinality | Lifecycle |
 |---|---|---|---|---|
 | `recommendations` | E-3 (legacy, pre-#178) | User-facing emit + 30/60/90d outcome backfill. Source of truth for "what we told the user." | 1 row per (date, ticker) emit | `outcome_30d/60d/90d` filled by `tracker.py` |
 | `decisions` | #178 Decision Intelligence (2026) | Analytical record with rich features (regime, macro_score, event_score, scoring_detail, dissent, agent_verdicts) for backtest/learning. | 1 row per (date, ticker) decision computation | `outcome` enum + `pnl_7/30/60/90d` |
 | `agent_decisions` | #33 + #529 Phase 2 actor #8 | Production state machine with run_id traceability (`inputs_json` references regime_run / hypothesis / causal_audit IDs). Status lifecycle prevents race conditions and tracks block reasons. | N rows per (ticker, date) — one per state transition or revision | `status ∈ {pending, emitted, blocked, superseded}` with `decision_outcomes` closing the loop |
-**Why all three coexist**:
-- `recommendations` is the user-contract surface — never break this format.
-- `decisions` is the research-grade dataset; columns map 1:1 to features the Learning Memory layer studies.
+
+Why all three coexist:
+
+- `recommendations` is the user-facing contract; its format must not break.
+- `decisions` is the research dataset; its columns map 1:1 to the features the Learning Memory layer studies.
 - `agent_decisions` is the auditable production record; `decision_id` joins to `decision_outcomes` for the #529 closed-loop validation.
-Cross-validation between `decisions` and `agent_decisions` is intentional. Removing either would lose research expressiveness or production audit-ability.
+
+The overlap between `decisions` and `agent_decisions` is intentional. Removing either would lose research expressiveness or production auditability.
+
 ## DB Migrations
+
 Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db_migrations.py` (extracted from `db.py` in PR #553 P2 Stage 1):
+
 ```python
 _MIGRATIONS: list[tuple[int, str, str]] = [
     (1, "add column foo to prices", "ALTER TABLE prices ADD COLUMN foo TEXT;"),
 ]
 ```
-`init_db()` auto-applies unapplied migrations and tracks in `schema_version` table.
+
+`init_db()` applies any unapplied migrations and records them in the `schema_version` table.
+
 ## Config Files (`config/`)
-- `portfolio.yaml` — accounts + holdings (gitignored; shape ref: `portfolio.example.yaml`)
-- `stock_types.yaml` — Growth/value override per ticker. Controls stop-loss/take-profit thresholds.
-- `agents.yaml` — Agent thresholds + confidence normalization scales (incl. `smart_money.freshness` per-source max-age, #1187). Loaded via `nuri/core/agent_config.py`.
-- `alerts.yaml` — Alert thresholds, report timing
-- `freshness.yaml` — Data freshness SLA thresholds (`warn_hours`/`fail_hours` per source) + `verdict_gate` input list. Loaded via `nuri/core/freshness.py` `_load_config()`.
-- `rules.yaml` — Investment rules. Loaded via `nuri/core/rules.py`.
-- `signals.yaml` — Signal metadata (thresholds, categories, hold_days)
+
+- `portfolio.yaml`: accounts and holdings (gitignored; see `portfolio.example.yaml` for the shape)
+- `stock_types.yaml`: growth/value override per ticker; controls stop-loss and take-profit thresholds
+- `agents.yaml`: agent thresholds and confidence normalization scales (including `smart_money.freshness` per-source max age, #1187); loaded via `nuri/core/agent_config.py`
+- `alerts.yaml`: alert thresholds and report timing
+- `freshness.yaml`: data-freshness SLA thresholds (`warn_hours` / `fail_hours` per source) and the `verdict_gate` input list; loaded by `_load_config()` in `nuri/core/freshness.py`
+- `rules.yaml`: investment rules; loaded via `nuri/core/rules.py`
+- `signals.yaml`: signal metadata (thresholds, categories, hold_days)
+
 ## Scripts (`scripts/`)
-Category sub-directories since #557 — full per-script index: `scripts/README.md`.
-- `dev/setup.sh` — `.venv` via `uv`, installs deps
-- `db/migrate.py` — DB schema creation + migration runner (`db/backup.sh` — 30-day rolling DB backup)
-- `ops/import_portfolio.py` — Syncs `config/portfolio.yaml` → DB
-- `verify/verify.py` — Master verification orchestrator → `data/reports/YYYY-MM-DD/`
-- `verify/gate_check.py` — Pipeline gate verifier (exits 1 if BLOCKED)
-- `verify/check_privacy_leak.py` — Privacy scanner (broker names, monetary literals, ticker+PnL, personal-identifier shapes)
-- `verify/pre_push_check.sh` — Pre-push gate (drift + lint + tests + privacy + commits)
-- `deploy/deploy_remote.sh` — rsync dev → Mac Mini production
-- `deploy/sync_dev.sh` — dev↔dev state sync (gitignored files + ~/.claude Tier 3)
-- `deploy/autopull_receiver.sh` — Mac mini receiver (launchd 5min auto-pull)
-- `launchd/` — 9 plists (incl. `com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive #838) + install/uninstall scripts
+
+Scripts are grouped in category subdirectories since #557. The full per-script index is `scripts/README.md`.
+
+- `dev/setup.sh`: creates `.venv` via `uv` and installs dependencies
+- `db/migrate.py`: DB schema creation and migration runner (`db/backup.sh`: 30-day rolling DB backup)
+- `ops/import_portfolio.py`: syncs `config/portfolio.yaml` → DB
+- `verify/verify.py`: master verification orchestrator → `data/reports/YYYY-MM-DD/`
+- `verify/gate_check.py`: pipeline gate verifier (exits 1 if BLOCKED)
+- `verify/check_privacy_leak.py`: privacy scanner (broker names, monetary literals, ticker+PnL, personal-identifier shapes)
+- `verify/pre_push_check.sh`: pre-push gate (drift, lint, doc counts, tests, privacy, commit format)
+- `deploy/deploy_remote.sh`: rsync from dev to the Mac mini production host
+- `deploy/sync_dev.sh`: dev↔dev state sync (gitignored files + ~/.claude Tier 3)
+- `deploy/autopull_receiver.sh`: Mac mini receiver (launchd 5-minute auto-pull)
+- `launchd/`: 9 plists (including `com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive, #838) and install/uninstall scripts
+
 ## Data Directory
+
+```text
 data/
 ├── portfolio.db      # Main SQLite DB (WAL mode)
 ├── reports/          # Pipeline outputs: data/reports/YYYY-MM-DD/
 │   └── YYYY-MM-DD/   # signal_results.csv, signal_scorecard.csv, portfolio_action_plan.md, evidence/
 ├── backups/          # 30-day rolling DB backups
 └── exports/          # Ad-hoc exports
+```
+
 ## Testing
-8,521 backend tests across 391 files + 1,746 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 **프론트/E2E 테스트 수는 안 본다** — `vitest list` 가 생성형 테스트를 빼고 세서(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측). Uses `pytest-xdist` (CI shards run `-n 8 --dist worksteal` — the suite is wait-bound, 2x oversubscription on 4-core runners, #1414; local runs keep `-n auto`). Coverage: Codecov 1% relative regression gate. **Backend statement coverage: 99% (2026-08-14, `make ci-cov` on the `#1052` main run)** — 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full closure (0 uncovered of 22,560) held on 2026-05-06 and again on 2026-07-29 (#926) and has regressed since both times; treat 100% as a state to re-reach, not a standing property. `make ci-cov` (CI artifact combine of every coverage shard in the latest main run — the shard count follows the workflow matrix, #1413) is the ground truth — a local run measures a different statement set.
-**Slow marker**: 27 LLM/heavy tests marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
+
+8,521 backend tests across 391 files + 1,746 frontend vitest (146 files) + 89 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+
+Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
+
+Backend statement coverage was 99% on 2026-08-14 (`make ci-cov` on the `#1052` main run): 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full coverage (0 uncovered of 22,560) was reached on 2026-05-06 and again on 2026-07-29 (#926) and regressed both times, so 100% is a target to re-reach rather than a standing property. `make ci-cov` (which combines every coverage shard artifact of the latest main CI run; the shard count follows the workflow matrix, #1413) is the reference measurement, because a local run measures a different statement set.
+
+**Slow marker**: 27 LLM/heavy tests are marked `@pytest.mark.slow`. PR CI uses `-m "not slow"`. Use `make test-fast` locally (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14).
+
+```python
 @pytest.fixture
 def db_path(tmp_path):
     path = tmp_path / "test.db"
     init_db(path)
     return path
-Pass `db_path` to all DB functions. `conftest.py` (autouse) mocks `yfinance.download` → empty DataFrame and `yfinance.Ticker` → stub. All tests network-free.
+```
+
+Pass `db_path` to all DB functions. An autouse fixture in `tests/conftest.py` mocks `yfinance.download` (empty DataFrame) and `yfinance.Ticker` (stub), so all tests run without network access.
+
 ### Verifying Numeric Claims
+
 ```bash
 # Tests
 .venv/bin/python -m pytest tests/ --collect-only -q | tail -1   # backend
@@ -306,32 +386,48 @@ ls nuri/trading/agents/*.py | grep -vE 'base|__init__|consensus|config' | wc -l 
 grep -rhE "@router\.(get|post|put|delete|patch)" nuri/api/routes/ | wc -l
 make verify-doc-counts   # DB tables — live init_db count (DDL lives in nuri/core/db_migrations.py)
 find frontend/src/app -name "page.tsx" | wc -l
-If counts disagree with docs, **fix the doc** — precise numbers are load-bearing for trust.
+```
+
+If a count disagrees with this document, fix the document.
+
 ## CI/CD Pipeline (`main-ci-cd.yml`)
-On push/PR to `main`:
-1. **Lint** — `ruff check nuri/ tests/ scripts/`
-2. **Test** — pytest with xdist parallel (fast shard matrix + 2 slow push-only — count per `main-ci-cd.yml`). TA-Lib cached. Deps via `uv sync --frozen --extra dev` — the `local-llm` extra is deliberately excluded (#1406, sdist compile); a separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once, only when `pyproject.toml`/`uv.lock` change. Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414 — runner-disk I/O degradation inflated unrelated setups to 9–16s). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the last runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
-3. **Frontend** — `tsc --noEmit` + vitest with coverage
-4. **Privacy** — `check_privacy_leak.py` on all files
-5. **Security** — Trivy CRITICAL vulnerability scan
-6. **Spellcheck** — `make spellcheck-ci` inside `Quick Checks` (#1560; the pre-push hook was the only layer before, and one bypass left `main` unable to pass its own gate)
-7. **Lock boundaries** — `uv.lock Major Boundary` / `package-lock.json Major Boundary` refuse a major (or direct-dependency 0.x minor) bump without the `lock-bump-reviewed` label (#1364/#1367/#1551)
-PR-specific (`pr-discipline.yml`): merge conflict detection, conventional commit validation, 5MB file limit, auto PR summary.
 
-On PR close (`cache-cleanup.yml`): deletes that PR's `refs/pull/N/merge` action caches — 7 closed PRs were holding 6.1GB against the 10GB repo cache limit, LRU-evicting live main caches (2026-09-02 measurement; one-shot cleanup took the repo 15.4GB → 1.7GB).
+On push and pull request to `main`:
 
-Scheduled (`heartbeat-watch.yml`, #1191 option C): every 20 minutes (cron `7,27,47 * * * *` — off-peak minutes; `*/N` schedules get delayed or dropped under load, and this workflow's cron produced zero events for 7 hours after creation until the `on.schedule` block itself was changed) it reads the `refs/nuri/heartbeat-mini` ref (a custom, non-branch ref — it never appears in the branch list or the "recent pushes" banner) that the mini scheduler force-pushes every 10 minutes via the Git Database API, and posts to `#ops` via the `DISCORD_WEBHOOK_OPS` secret when the heartbeat is older than 45 minutes. Silence from the sender is the alarm — there is no path by which a dead mini reports itself.
+1. **Lint**: `ruff check nuri/ tests/ scripts/`
+2. **Test**: pytest with xdist in a fast-shard matrix, plus 2 slow shards that run on push only (shard counts are defined in `main-ci-cd.yml`). TA-Lib is cached. Dependencies are installed with `uv sync --frozen --extra dev`; the `local-llm` extra is excluded on purpose (#1406, sdist compile). A separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once, only when `pyproject.toml` or `uv.lock` changes. Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the latest runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
+3. **Frontend**: `tsc --noEmit` + vitest with coverage; Playwright E2E runs in the `Frontend E2E` job, which is not a required check
+4. **Privacy**: `check_privacy_leak.py` on all files
+5. **Security**: Trivy CRITICAL vulnerability scan
+6. **Quick Checks**: `make spellcheck-ci` and a 5MB file-size limit (#1560)
+7. **Lock boundaries**: `uv.lock Major Boundary` / `package-lock.json Major Boundary` reject a major (or direct-dependency 0.x minor) bump without the `lock-bump-reviewed` label (#1364/#1367/#1551)
+
+PR-specific (`pr-discipline.yml`): commit-count gate (at most 3 commits; escape label `scope-expand-approved`).
+
+On PR close (`cache-cleanup.yml`): deletes the GitHub Actions caches stored under that PR's `refs/pull/N/merge` ref so they do not crowd live `main` caches out of the 10GB repository cache limit.
+
+Scheduled (`heartbeat-watch.yml`, #1191 option C): every 20 minutes (cron `7,27,47 * * * *`; off-peak minutes are used because `*/N` schedules can be delayed or dropped under load) the workflow reads the `refs/nuri/heartbeat-mini` ref. This is a custom, non-branch ref, so it does not appear in the branch list. The mini scheduler updates it every 10 minutes by force-pushing an empty-tree commit with `git push --force`. When the heartbeat is older than 45 minutes, the workflow posts to `#ops` via the `DISCORD_WEBHOOK_OPS` secret. The alarm is triggered by the sender's silence, because a host that is down cannot report itself.
+
 ## Investment Rules
-All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution — no hardcoded thresholds).
+
+All investment rules (stop-loss, take-profit, account strategy profiles, VIX gate, execution priority, buy checklist) live in `config/rules.yaml` and are documented canonically in [`docs/STRATEGY.md` §3.4 / §3.5](STRATEGY.md). Source code executes the YAML via `nuri/core/rules.py` (§2.2 mechanical execution, no hardcoded thresholds).
+
 ## Currency Handling
-Multi-account portfolio mixes USD and KRW. Exchange rate fallback: DB `macro` table → yfinance `KRW=X` → `StaleExchangeRateError` (no hardcoded fallback). Warns if rate > 7 days old. `.KS` tickers always KRW.
+
+The multi-account portfolio mixes USD and KRW. Exchange-rate fallback order: DB `macro` table → yfinance `KRW=X` → `StaleExchangeRateError` (no hardcoded fallback). A warning is logged when the rate is more than 7 days old. `.KS` tickers are always KRW.
+
 ## Portfolio Action Plan Format
-Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, buy priority by multi-factor score.
-Every recommendation **must** include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target.
+
+Save to `data/reports/YYYY-MM-DD/portfolio_action_plan.md`. Required sections: market environment table (regime, VIX, F&G, macro), per-stock verdict with external data cross-reference, execution timeline, re-entry conditions, and buy priority by multi-factor score.
+
+Every recommendation must include explicit price levels: entry, stop-loss, target_1, target_2, trailing stop, TipRanks target.
+
 ## MCP Integration
-`.mcp.json` registers the Tier 1 read-model MCP server `nuri-read` (#1306) — `nuri/mcp/server.py`, stdio-only:
+
+`.mcp.json` registers the Tier 1 read-model MCP server `nuri-read` (#1306), implemented in `nuri/mcp/server.py` (stdio only):
+
 ```json
 {"mcpServers": {"nuri-read": {"command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
 ```
 
-Tools: `siege_status` · `buy_candidates` · `macro_facts`. Every query runs `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, engine-enforced) and only the columns in the module's `ALLOWED` dict can appear in SQL — `decisions` is excluded entirely (holdings oracle) and candidates surface `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was deliberately removed from the committed config (#1306 codex P1): arbitrary SQL reaches `portfolio`/`trades`, so it stays a per-machine opt-in, never a repo default.
+Tools: `siege_status` · `buy_candidates` · `macro_facts`. Every query runs with `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, enforced by the engine), and only the columns in the module's `ALLOWED` dict can appear in SQL. The `decisions` table is excluded entirely because it would reveal holdings, and candidates expose `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was removed from the committed config (#1306 codex P1) because arbitrary SQL can reach `portfolio` and `trades`; it remains a per-machine opt-in, not a repository default.

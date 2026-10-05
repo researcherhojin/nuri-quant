@@ -10,7 +10,7 @@ This directory exists for backtesting + paper-trading dry runs only. Live `submi
 
 | File | Purpose |
 |---|---|
-| `broker.py` | `BrokerAdapter` ABC + `Order` dataclass + `AlpacaAdapter` (paper-only via `ALPACA_BASE_URL=paper-api.alpaca.markets`). `--dry-run` is the only sanctioned execution mode. |
+| `broker.py` | `BaseBroker` ABC + `Order` dataclass + `DryRunBroker` + `AlpacaBroker` (paper-only via `ALPACA_BASE_URL=paper-api.alpaca.markets`). `--dry-run` is the only sanctioned execution mode. |
 
 ## Invariants
 
@@ -21,8 +21,9 @@ This directory exists for backtesting + paper-trading dry runs only. Live `submi
 ## When to expand this directory
 
 Adding a new broker (e.g., KIS Open API write-side, IBKR) requires:
+
 1. STRATEGY PR re-approving `auto_trading_deferred=False` for that broker scope.
-2. New adapter class inheriting `BrokerAdapter` with the same `submit_order` / `get_position` / `cancel_order` contract.
+2. New adapter class inheriting `BaseBroker` with the same `submit_order` / `get_positions` / `get_account_value` / `cancel_all` contract.
 3. Integration tests under `tests/trading/execution/` that exercise `--dry-run` only by default.
 
 KIS Open API **read-side** (account/position queries) belongs in `nuri/collectors/` — it's data collection, not execution.

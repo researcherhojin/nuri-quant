@@ -8,6 +8,7 @@ Cross-tool agent instructions for Nuri-Quant. Applies to AI coding agents that d
 **Claude Code reads `CLAUDE.md` (root + scoped) — start there.** This file is a minimal cross-tool fallback so non-Claude agents have the same operating rules without parsing `@import` / scoped-doc structure.
 
 For canonical detail:
+
 - Repo conventions, commands, load triggers → `CLAUDE.md`
 - Investment policy, design decisions → `docs/STRATEGY.md`
 - Architecture, DB schema, CI/CD → `docs/ARCHITECTURE.md`

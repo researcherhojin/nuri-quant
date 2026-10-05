@@ -22,7 +22,7 @@ Short-term (≤ 7 trading days) swing-trade scanner + rule engine. Distinct from
 | Max holding | `7` trading days (`SWING_MAX_HOLD_DAYS`) | `config/rules.yaml` |
 | Early exit | agent consensus SELL | rules.yaml + agents/consensus output |
 
-The user-level rule for swing is `-5% stop / +5% TP1 (sell 50%) / +10% TP2 (sell all)` (CLAUDE.md root "Investment Rules"). `rules.py` mirrors this — do not introduce a parallel ladder.
+The user-level rule for swing is `-5% stop / +5% TP1 (sell 50%) / +10% TP2 (sell all)` (`config/rules.yaml take_profit.swing`). `rules.py` mirrors this — do not introduce a parallel ladder.
 
 ## Invariants
 
@@ -31,7 +31,7 @@ The user-level rule for swing is `-5% stop / +5% TP1 (sell 50%) / +10% TP2 (sell
 - **Scan latency** (measured 2026-08-21, M5 Max, warm DB): us-core 85 → **0.17s**, kr-kospi200 203 → **0.21s**, extended 543 → **0.74s**. No threading needed. (The concurrency-asymmetry rule in `.claude/rules/gotchas.md` still governs the *collectors* that fill `prices`: yfinance 10-thread OK, **KRX/pykrx** sequential + `time.sleep(0.1)`.)
 - **Entry requires both gates**: scanner score AND agent consensus BUY. A high score alone never triggers an entry — the consensus pipeline (`nuri/trading/agents/`) is the second filter.
 - **Position storage**: swing positions go into the `swing_trades` table (`_MIGRATIONS` in `nuri/core/db_migrations.py`). Do not use the main `portfolio` table — swing has its own lifecycle.
-- **Korean ticker `.KS` suffix** (root CLAUDE.md "Gotchas"): `.KS` rows live in `prices` like any other ticker, so the scanner needs no special handling. The quirk still bites the **collectors** that fill it — `trailingPE` is missing for KR individuals, use `forward_pe` if screening by valuation.
+- **Korean ticker `.KS` suffix** (`.claude/rules/gotchas.md`): `.KS` rows live in `prices` like any other ticker, so the scanner needs no special handling. The quirk still bites the **collectors** that fill it — `trailingPE` is missing for KR individuals, use `forward_pe` if screening by valuation.
 
 ## Distinction from `recommend/buy_candidate_emitter.py`
 

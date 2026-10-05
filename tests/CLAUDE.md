@@ -60,6 +60,7 @@ All tests run **network-free**. Override per-test if needed, but never remove gl
 ## Slow Marker
 
 27 LLM/heavy tests marked `@pytest.mark.slow` (collected count — marker sites expand via class-level marks / parametrize). PR CI excludes via `-m "not slow"`.
+
 - `make test-fast` — excludes slow (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14)
 - `make test-slow` — slow only
 - `make test` — full suite (test-fast + slow 27)
@@ -80,6 +81,7 @@ codecov 는 이 파일을 `"lines":7,"hits":6,"misses":0,"partials":1` → **85.
 ## Gotchas
 
 ### conftest.py 안의 `test_*` 함수는 수집되지 않는다
+
 pytest 의 `python_files` 기본값이 `test_*.py` 라 `conftest.py` 는 **플러그인으로
 import 될 뿐 테스트 모듈이 아니다.** 그런데 파일을 인자로 명시하면
 (`pytest tests/conftest.py`) 수집돼서 통과한다 — 즉 **"돌려서 확인했다"가
@@ -133,8 +135,9 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
 오염원과 피해자를 다른 워커로 보내 초록이다. 격리 의심 시 `pytest tests/ --ignore=tests/quant -x`
 로 직렬 확인.
 
-**Test:** `tests/alerts/test_premarket_brief.py::TestFixtureLeavesNoMockBehind` — 4개가
+**Test:** `tests/alerts/test_premarket_brief.py::TestFixtureLeavesNoMockBehind` — 5개가
 구조와 동작을 나눠 잠근다. fixture 를 query mock 방식으로 되돌리면 **넷 다 FAIL**.
+
 - `test_known_leak_modules_still_hold_the_real_query` — 누출 이력 3종을 **이름으로** 확인.
   스윕만으로는 부족하다: 그 시점 로드된 모듈만 보므로 감시 대상이 아직 로드 전이면 조용히
   통과한다. 여기서는 직접 import 하므로 항상 검사된다.
@@ -145,22 +148,28 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
   두면 tracker 만 초록인 채 낡음 감시가 다시 죽는 회귀가 통과한다.
 
 ### runpy + mock
+
 `runpy.run_module()` re-executes module source, **invalidating all mocks**. Use `patch("source.module.function")` for source-level patching, not `patch("target.module.function")`.
 
 ### yfinance is imported inside functions
+
 Collectors do `import yfinance as yf` inside the method (openbb was removed in #1477). `patch("module.yf")` fails; stub the module instead:
+
 ```python
 monkeypatch.setitem(sys.modules, "yfinance", MagicMock(download=MagicMock(return_value=df)))
 ```
 
 ### vi.mock() hoisting (frontend tests)
+
 `vi.mock("recharts")` affects ALL dynamic imports in the same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**.
 
 ### Toss FX not covered by global yfinance mock
+
 conftest 전역 mock 은 **yfinance 만** 커버. `MacroCollector.collect()` 는 `_collect_toss_fx()` 로 실 HTTP 를 타므로 `collect()` 를 부르는 테스트는 `_collect_toss_fx` 를 명시 stub 해야 한다. toss 성공 시 usd_krw source='toss' 가 FRED 를 override 하는 건 **의도된 우선순위**라 'FRED 여야 함' assertion 이 네트워크 상태 따라 flaky 했음 (#829).
 **Test:** `tests/collectors/test_macro.py::TestMacroCollectorTossFX::test_collect_toss_overrides_fred_usd_krw_in_db` — toss-성공 시나리오를 mock 으로 결정론 고정 (DB 최종 상태까지 lock).
 
 ### Time-bomb seed dates (relative `now`-window queries)
+
 코드가 `date('now', '-N days')` 윈도우 + 최소 행 수 임계값으로 필터하면(예: `buy_candidate_emitter._get_price_signals`, 45일 윈도우 + `len(grp) < 6` skip), **고정 절대일로 seed한 fixture 는 wall-clock 이 지나며 윈도우 밖으로 밀려 silent 하게 누락**된다. 합성 가격/날짜 fixture 의 `end` 는 항상 `today_kst()` 로 앵커링 — 리터럴 날짜 금지. (#721: `end="2026-04-30"` → 39일 후 scored=0 회귀)
 **Test:** `tests/trading/recommend/test_buy_candidate_emitter.py::test_vix_caution_halves_allocation` (+`test_emit_above_threshold`, `test_allocation_split_by_score`) — 고정일로 되돌리면 즉시 FAIL.
 
@@ -201,6 +210,7 @@ conftest 전역 mock 은 **yfinance 만** 커버. `MacroCollector.collect()` 는
 `monkeypatch.setattr(sys.modules[__name__], "today_kst", …)`.
 
 ### 문서 fixer 를 실제 레포에서 돌리는 테스트
+
 `scripts/doc/sync_doc_counts.sh` 는 검사기가 아니라 **in-place fixer** 다. `tests/verify/` 의
 테스트가 이걸 `REPO_ROOT` env override 없이 실행하면 **백엔드 테스트를 돌릴 때마다 실제
 README / ARCHITECTURE / STRATEGY 가 조용히 재작성**된다. `cwd=` 로는 막을 수 없다 —
@@ -223,14 +233,17 @@ README / ARCHITECTURE / STRATEGY 가 조용히 재작성**된다. `cwd=` 로는 
 발화하지 않으므로 회귀 잠금이 아니다.
 
 ### Privacy 가드를 테스트하는 픽스처는 런타임 조립
+
 가드가 차단하는 패턴 자체를 **리터럴로** 적으면 파일을 저장하는 순간 PreToolUse 훅과 CI `privacy-scan` 이 그 테스트 파일을 차단한다 (2026-07-29 실측: `TS`+`LA` 를 리터럴로 쓴 Write 가 막혔다). `ticker = "TS" + "LA"` 처럼 조립해 리터럴이 파일에 남지 않게 할 것 — 스캐너는 정규식이라 이걸로 충분하다. 계정명·기기명·홈 경로(`personal_identifier`, #1567)도 같다: `"hong" + "@" + "mini.local"` 식으로 조립하고, 실제 값은 어떤 픽스처에도 적지 않는다 — `tests/test_no_personal_identifiers.py` 가 트리 전체를 그 값으로 훑는다.
 **Test:** `tests/test_hook_guard_execution.py::TestPrivacyGuard::test_blocks_ticker_pnl_across_newlines` — 리터럴로 되돌리면 커밋 자체가 CI 에서 막힌다.
 
 ### 워크플로 스텝은 실행하고, 스텁은 argv 를 단언한다
+
 `.github/workflows/*.yml` 안의 스텝(정책 JS · 셸)을 텍스트로 긁는 구조 테스트는 반복해서 뚫렸다 — if/else
 체인 **뒤에** 후처리 가드 한 줄을 붙이는 변이에 #1549 의 구조 테스트 7개가 전부 통과했다. 스텝 본문을 YAML
 에서 꺼내 실제로 돌리고(`node` 에 stub `core`, `bash -e` 에 `$GITHUB_OUTPUT`) 결과를 본다 —
 `tests/test_hook_guard_execution.py` 와 같은 방식이다. 실행 하네스에서 더 밟은 것(2026-09-28 실측):
+
 - **stub `core.setFailed` 를 삼키지 말 것** — 기록만 하고 진행하면 `setFailed("boom")` 을 넣어도 12/12 초록이다.
   호출을 기록하고 모든 케이스가 그 부재를 단언한다.
 - **외부 명령을 가짜로 바꾸면 argv 를 기록·단언할 것** — 가짜 `gh` 가 인자를 안 보면 라벨 분기만 잠기고
