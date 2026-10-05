@@ -222,7 +222,7 @@ class TestFetchQuote:
     def test_returns_quote_outside_market_hours_with_flag(self):
         from nuri.core import live_price as lp
 
-        yf = self._yf(last_price=775.74, previous_close=769.86, currency="USD", exchange="PCX")
+        yf = self._yf(last_price=775.74, regular_market_previous_close=769.86, currency="USD", exchange="PCX")
         with (
             patch.object(lp, "is_market_open_for", return_value=False),
             patch.dict("sys.modules", {"yfinance": yf}),
@@ -256,7 +256,7 @@ class TestFetchQuote:
     def test_missing_previous_close_leaves_change_none(self):
         from nuri.core import live_price as lp
 
-        yf = self._yf(last_price=10.0, previous_close=None, currency="USD", exchange="X")
+        yf = self._yf(last_price=10.0, regular_market_previous_close=None, currency="USD", exchange="X")
         with patch.object(lp, "is_market_open_for", return_value=True), patch.dict("sys.modules", {"yfinance": yf}):
             q = lp.fetch_quote("ABC")
         assert q["change_pct"] is None and q["previous_close"] is None and q["market_open"] is True
