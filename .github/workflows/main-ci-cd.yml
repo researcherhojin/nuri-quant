@@ -393,10 +393,20 @@ jobs:
   # 게이트는 "안 돌면 머지" 극성이라(그 워크플로가 실패하면 auto-merge 가 그대로 산다)
   # 세 번 데인 fail-open 형태다. required check 는 극성이 반대다 — **통과가 없으면
   # 머지가 없다**. 등록은 branch protection 변경이라 별도 수동 단계다.
+  # 라벨 조회 (#1592): `lock-bump-reviewed` 를 이벤트 페이로드에서 읽으면 라벨을 **나중에**
+  # 붙인 PR 이 영구 RED 다 — `gh run rerun` 은 원래 페이로드를 재생하고, 최신 브랜치에
+  # `@dependabot rebase` 는 push 를 안 한다. 남는 길은 `@dependabot recreate` 뿐인데 그
+  # force-push 가 auto-merge 를 해제한다(#1586 실측). pr-discipline 의 #1552 와 같은 결함이다.
+  # API 로 읽으면 라벨 후 `gh run rerun --failed` 로 끝난다. 조회 실패는 라벨 없음 = 차단
+  # (fail-closed), `gh | grep -q` 파이프 금지(pipefail 하 SIGPIPE) — 둘 다 #1552 와 동일.
+  # 조회는 dependabot 분기 뒤에만 돈다 — push 이벤트에는 PR 번호가 없다.
   lock-gate:
     name: uv.lock Major Boundary
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -408,7 +418,10 @@ jobs:
           # main 자체의 required check가 영구 red가 되므로 기본 브랜치를 대조 대상으로 쓴다.
           BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
-          REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
+          # 라벨은 페이로드가 아니라 API 로 **현재** 값을 읽는다 (#1592) — 아래 lock-gate 주석 참조
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           git show "origin/${BASE_REF}:uv.lock" > "${RUNNER_TEMP}/base.lock"
@@ -422,12 +435,18 @@ jobs:
             echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
             exit 0
           fi
-          if [ "$REVIEWED" = "true" ]; then
+          # 조회 실패는 라벨 없음으로 친다(fail-closed). 다만 "라벨 붙이고 rerun" 이 무한 반복되지
+          # 않도록 실패 자체는 드러낸다 — 403 이면 라벨이 있어도 계속 막힌다.
+          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')" || {
+            echo "::warning::라벨 조회 실패 — lock-bump-reviewed 를 확인하지 못해 차단으로 처리한다"
+            labels=""
+          }
+          if grep -qxF 'lock-bump-reviewed' <<< "$labels"; then
             echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
             exit 0
           fi
           echo "::error::dependabot PR 이 major 경계를 넘는다. 사람이 검토한 뒤 \
-          'lock-bump-reviewed' 라벨을 붙일 것 (#1364)"
+          'lock-bump-reviewed' 라벨을 붙이고 이 job 을 rerun 할 것 (#1364/#1592)"
           exit 1
 
   # ── package-lock.json major-boundary gate (#1367) ──
@@ -439,6 +458,9 @@ jobs:
     name: package-lock.json Major Boundary
     runs-on: ubuntu-latest
     timeout-minutes: 3
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
@@ -448,7 +470,10 @@ jobs:
           # PR은 base_ref, push는 repository 기본 브랜치 — 두 이벤트 모두 실제 lock을 비교한다.
           BASE_REF: ${{ github.base_ref || github.event.repository.default_branch }}
           IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
-          REVIEWED: ${{ contains(github.event.pull_request.labels.*.name, 'lock-bump-reviewed') }}
+          # 라벨은 페이로드가 아니라 API 로 **현재** 값을 읽는다 (#1592) — 아래 lock-gate 주석 참조
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           git show "origin/${BASE_REF}:frontend/package-lock.json" > "${RUNNER_TEMP}/base.json"
@@ -460,12 +485,18 @@ jobs:
             echo "::notice::major 경계를 넘지만 사람 PR 이다 — 의도된 채택이면 그대로 진행"
             exit 0
           fi
-          if [ "$REVIEWED" = "true" ]; then
+          # 조회 실패는 라벨 없음으로 친다(fail-closed). 다만 "라벨 붙이고 rerun" 이 무한 반복되지
+          # 않도록 실패 자체는 드러낸다 — 403 이면 라벨이 있어도 계속 막힌다.
+          labels="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.labels[].name')" || {
+            echo "::warning::라벨 조회 실패 — lock-bump-reviewed 를 확인하지 못해 차단으로 처리한다"
+            labels=""
+          }
+          if grep -qxF 'lock-bump-reviewed' <<< "$labels"; then
             echo "::notice::lock-bump-reviewed 라벨 — 사람이 검토했다"
             exit 0
           fi
           echo "::error::dependabot PR 이 major 경계를 넘는다. 사람이 검토한 뒤 \
-          'lock-bump-reviewed' 라벨을 붙일 것 (#1367)"
+          'lock-bump-reviewed' 라벨을 붙이고 이 job 을 rerun 할 것 (#1367/#1592)"
           exit 1
 
   # ── Shell script lint ──
