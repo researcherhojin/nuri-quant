@@ -121,7 +121,7 @@ def fetch_quote(ticker: str) -> dict | None:
         price = info.last_price  # 미상장 티커는 여기서 KeyError
         if price is None or price <= 0:
             return None
-        # `previous_close` 는 장외(prepost) 봉까지 섞은 값이라 공식 일간 변동과 어긋난다 (Codex 리뷰) —
+        # `previous_close` 는 장외 시간 봉까지 섞은 값이라 공식 일간 변동과 어긋난다 (Codex 리뷰) —
         # 정규장 종가 기준을 쓴다.
         prev = info.regular_market_previous_close
         change_pct = round((float(price) - prev) / prev * 100, 2) if prev else None
