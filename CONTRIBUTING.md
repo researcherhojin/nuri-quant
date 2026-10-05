@@ -57,7 +57,7 @@ Branch protection on `main` requires these 14 checks (authoritative list:
 | Security Scan | Trivy, CRITICAL findings only |
 | Doc Count Drift Check | same as local section 2c (the CI job has no `.venv`, so the Python-derived counts are checked only by the local hook) |
 | Quick Checks | no file over 5 MB; `make spellcheck-ci` |
-| Universe Coverage Validation | `scripts/verify/validate_universe.py` — the configured universe is consistent and its coverage is reported |
+| Universe Coverage Validation | inline sanity check of `config/universe.yaml` (it parses and its ticker lists are present; CI has no DB or network for the full coverage report) |
 | Local-LLM Build Gate | `llama-cpp-python` still builds on Linux when a dependency PR touches it; non-dependency PRs pass immediately |
 | uv.lock Major Boundary / package-lock.json Major Boundary | a lock file does not cross a major version (or a 0.x boundary for direct dependencies) unnoticed. Escape hatch: the `lock-bump-reviewed` label, read from the API, so adding it later and re-running the failed job is enough |
 
