@@ -762,7 +762,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 **근거** (3개 모두 독립적으로 성립):
 
 1. **신호가 없다.** 운영 원장(Mac mini) 2026-09-01 ~ 10-05: 인증 50건, CERTIFIED 0건. 호출자는 `cli:premarket_brief` 25 · `api:actions:violations` 25 가 전부다. error 등급 실패는 `stop_loss` 50건 + `position_limit` 2건 — 보유 종목 하나가 손절선 아래면 포트폴리오 전체가 매일 REJECTED 다. 같은 사실을 Tier-1 손절 카드(`nuri/alerts/risk_signals.py`, 계좌별 `get_stop_loss_for_account`)가 종목 단위로 이미 알린다.
-2. **아무것도 분기하지 않는다.** 판정을 읽는 코드는 전부 표시 전용 — 브리프 상태색·필드, 대시보드 health 점수·violations, `/engine` 카드, MCP `siege_status`, `/api/targets/certify` · `/api/targets/remediate`(remediation 계획은 실패 게이트별 `SELL_ALL`/`REDUCE` 와 수량을 내지만 프런트엔드 소비자가 없다 — 축 불변식이 막으려는 바로 그 SELL 표면이라 함께 지운다). `config/rules.yaml amplifier.portfolio.requires_certify_pass` 는 reader 가 0 이라 죽은 설정이며 정리 PR 에서 지운다. 제거는 Escalation Ladder 의 Surface 단 철거라 **매매 행동 변화 0** 이다.
+2. **아무것도 분기하지 않는다.** 판정을 읽는 코드는 전부 표시 전용 — 브리프 상태색·필드, 대시보드 health 점수·violations, `/engine` 카드, MCP `siege_status`, `/api/certify`(대시보드 홈이 footer 품질 줄에 쓴다) · `/api/remediate`(remediation 계획은 실패 게이트별 `SELL_ALL`/`REDUCE` 와 수량을 내지만 프런트엔드 소비자가 없다 — 축 불변식이 막으려는 바로 그 SELL 표면이라 함께 지운다). `config/rules.yaml amplifier.portfolio.requires_certify_pass` 는 reader 가 0 이라 죽은 설정이며 정리 PR 에서 지운다. 제거는 Escalation Ladder 의 Surface 단 철거라 **매매 행동 변화 0** 이다.
 3. **예측력이 없다.** §3.8 의 60개월 감사는 `CI_upper < 0` 미달로 닫혔고 `position_limit` 은 부호가 반대였다. 유효한 것은 prudential constraint 로서의 비중·섹터·레버리지 한도뿐이며, 그 집행은 인증서가 아니라 `rebalance_advisor` 가 이미 맡고 있다.
 
 Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHANGES — 집계 판정 폐기에 동의, 대체 보고서는 만들지 말 것, 프런트엔드를 백엔드보다 먼저 떼어 거짓 REJECTED 렌더를 막을 것, `siege_gates` 키 아래의 비-SIEGE 데이터는 이사시킬 것.
@@ -775,7 +775,7 @@ Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHA
 | `sector_limit` (error) | 대체 | `rebalance_advisor` `sector_limit_exceeded`. 의미 동일 — 둘 다 포트폴리오 전체 `weight_pct` 를 섹터별로 합산해 `max_sector_exposure` 와 비교한다. 표출은 REBALANCE 만. |
 | `stop_loss` (error) | 대체 | Tier-1 손절 카드(`risk_signals.py`) + `rebalance_advisor` `stop_loss_exceeded`(계좌별 전략). 기계적 `alpha_action=FLAT` 경로(`nuri/core/axis.py`)는 그대로. |
 | `leverage_ban` (error) | 대체 | `rebalance_advisor` `leverage_etf`. advisor 행은 `SELL_ALL` 과 수량을 싣고 있으므로 violations 표면은 **집행 필드를 벗겨** REBALANCE 로만 낸다 — urgent SELL 금지(축 불변식). |
-| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 로드 실패는 `nuri/core/rules.py` 가 기동 시 예외로 낸다. |
+| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 다만 `nuri/core/rules.py::_load_rules` 는 파일 부재 시 3-섹션 하드코딩 폴백으로 **조용히** 떨어진다 — 이 게이트가 잡던 것이 바로 그 폴백이다. 백엔드 PR 에서 폴백을 제거해 파일 부재를 기동 시 예외로 바꾼다. |
 | `data_fresh` (warning) | 대체 | `nuri/core/freshness.py` SLA(`config/freshness.yaml`, 대시보드 verdict stale gate). 신선도 추적 티커 목록은 `siege_gates.asset_classes.*.freshness_*` 에서 중립 키로 이사. |
 | `volatility_gate` (warning) | 폐기 | 대체 없음. VIX 사실은 브리프 indicators 와 MCP `macro_facts` 가 계속 낸다. |
 | `external_data` (warning) | 폐기 | 대체 없음. |
@@ -790,7 +790,7 @@ Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHA
 - **`siege_gates.asset_class_rules`** 는 SIEGE 가 아니라 측정 모드(§3.11)의 벤치마크 분류 정본이다(`forward_outcome_tracker` · `strategic_allocation`). `_classify_asset_class` 와 함께 중립 모듈·키로 이사한다. 지우면 사전등록된 알파 측정이 조용히 오염된다.
 - **Stage 4 경계는 유지, 이름은 바꾼다.** `nuri/trading/engine` 에 남는 `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` 는 §2.6 Hard veto / amplifier 와 결정 기록 장치이지 인증기가 아니다. 인증서 작성자가 사라진 뒤 `certify` 는 거짓 이름이므로 정리 PR 에서 `decide` 로 바꾸고 §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · 교차 import 테스트를 함께 옮긴다. `pipeline_events` 의 과거 행은 `certify` 그대로 둔다. `nuri/trading/strategy/position.py` 의 `certify_position()` 은 paper `positions` 테이블의 자체 게이트로 인증기와 무관하며 이름 변경 범위 밖이다.
 - **감사 도구는 리비전으로 고정한다.** `scripts/analysis/siege_predictivity_audit.py` 와 `/nuri-siege-audit` skill 의 마지막 리비전은 `d8a89ede`(main, 2026-10-06). §3.8 재실행이 필요하면 `git show d8a89ede:<path>` 로 꺼낸다.
-- **`nuri/core/freshness.py` 의 `certification` 정책(`config/freshness.yaml` warn 24h / fail 48h)은 백엔드 PR 에서 지운다.** `verdict_gate` 에는 없어 대시보드 판정은 무관하지만, `get_freshness_summary` 가 전 정책을 순회하고 `premarket_brief._status_color` 는 FAIL 이 하나라도 있으면 RED 를 낸다 — 쓰기가 멈추고 48시간 뒤부터 모든 브리프가 "Certification FAIL" 로 영구 RED 가 된다. 프런트엔드를 먼저 떼더라도 이 정책은 인증기 호출을 끊는 PR 과 **같은 PR** 에서 제거한다.
+- **`nuri/core/freshness.py` 의 `certification` 정책(`config/freshness.yaml` warn 24h / fail 48h)은 백엔드 PR 에서 지운다.** `verdict_gate` 에는 없어 대시보드 판정은 무관하지만, `get_freshness_summary` 가 전 정책을 순회하고 `premarket_brief._brief_color` 는 FAIL 이 하나라도 있으면 RED 를 낸다 — 쓰기가 멈추고 48시간 뒤부터 모든 브리프가 "Certification FAIL" 로 영구 RED 가 된다. 프런트엔드를 먼저 떼더라도 이 정책은 인증기 호출을 끊는 PR 과 **같은 PR** 에서 제거한다.
 - **MCP `macro_facts` 의 regime** 은 `certifications.regime` 이 아니라 `candidate_runs.regime`(일일, Tier-1 허용 컬럼)에서 읽도록 바꾼다 — 쓰기가 멈춘 테이블을 계속 읽으면 값이 조용히 얼어붙는다(#1617 과 같은 형태).
 
 **대체 게이트를 만들지 않는다.** 포트폴리오 단위 판정이 다시 필요해지면 SIEGE 의 모양을 본뜨지 말고 §3.6 선례대로 판정 기준을 사전등록하는 STRATEGY PR 에서 시작한다.
