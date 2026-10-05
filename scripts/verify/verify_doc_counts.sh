@@ -184,6 +184,8 @@ else
 fi
 if [ -n "$DBT" ]; then
     check_claim "db_tables"  "$DBT"  "README.md"                   'SQLite WAL · [0-9]+ tables' || true
+    # 스케줄러 다이어그램이 README 에서 ARCHITECTURE 로 옮겨갔다 (#1595) — 사이트도 따라간다.
+    check_claim "db_tables"  "$DBT"  "docs/ARCHITECTURE.md"        'SQLite WAL · [0-9]+ tables' || true
 else
     info "db_tables: skipped (no .venv/bin/python)"
 fi
