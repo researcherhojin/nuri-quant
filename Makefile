@@ -11,7 +11,7 @@ PYTHON = .venv/bin/python
         setup test test-fast test-slow ci-cov ci-cov-detail lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
-        validate regime recommend gate consensus certify remediate track-decisions \
+        validate regime recommend gate consensus track-decisions \
         scan scan-extended scan-kr swing swing-check strategy strategy-execute positions \
         backtest backtest-ls backtest-stress backtest-rules \
         optimize mean-reversion pairs \
@@ -36,7 +36,7 @@ help:
 	@echo "  Universe gen: make kr-names (KR 종목명 캐시), make cspell-tickers (cSpell 사전) — sync-apply 가 자동 체이닝"
 	@echo "  Analysis:     make analyze, make consensus, make scan, make backtest"
 	@echo "  Pipeline:     make full-scan, make quick-scan"
-	@echo "  Trading:      make targets, make rebalance, make recommend, make certify, make remediate"
+	@echo "  Trading:      make targets, make rebalance, make recommend"
 	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
 	@echo "  Reports:      make report, make report-llm, make evidence, make external"
 	@echo "  Server:       make api, make dashboard, make start"
@@ -288,7 +288,7 @@ verify:          ## pre-release — verify.py full, includes backtest (213s)
 # ═══════════════════════════════════════════════════════════════
 collect:
 	$(PYTHON) -m nuri.collectors.stock
-	$(PYTHON) -m nuri.collectors.stock --source freshness   # #453 — SIEGE freshness pass (SPY/TLT/GC=F)
+	$(PYTHON) -m nuri.collectors.stock --source freshness   # #453 — freshness_tickers pass (SPY/TLT/GC=F)
 	$(PYTHON) -m nuri.collectors.stock_kr
 	$(PYTHON) -m nuri.collectors.macro
 	$(PYTHON) -m nuri.collectors.technical
@@ -409,18 +409,6 @@ thesis-show:
 
 gate: ## Run trading gate engine (signal aggregation + 10-gate filter)
 	$(PYTHON) -m nuri.trading.engine.gate
-
-certify:
-	$(PYTHON) -m nuri.trading.engine.certification
-
-certify-history:
-	@$(PYTHON) scripts/analysis/siege_history.py --limit $(or $(N),10)
-
-certify-diff: ## SIEGE certification last 5 runs detail diff
-	@$(PYTHON) scripts/analysis/siege_history.py --limit 5 --detail
-
-remediate:
-	$(PYTHON) -m nuri.trading.engine.remediation
 
 strategic-rebalance: ## Strategic Asset Allocation drift advisor (STRATEGY §3.10). usage: make strategic-rebalance STRATEGY=core. rc=0 OK / rc=1 REBALANCE
 	$(PYTHON) -m nuri.trading.strategy.strategic_allocation --strategy $(or $(STRATEGY),core)
@@ -550,8 +538,6 @@ full-scan:
 	@echo "\n=== Phase F: 가격 타겟 + 리밸런스 ==="
 	$(PYTHON) -m nuri.trading.recommend.price_targets
 	$(PYTHON) -m nuri.analysis.rebalance_advisor
-	@echo "\n=== Phase F-2: SIEGE Certification ==="
-	$(PYTHON) -m nuri.trading.engine.certification
 	@echo "\n=== Phase G: 증거 시각화 ==="
 	$(PYTHON) -m nuri.analysis.evidence_charts
 	@echo "\n=== Phase H: 알림 발송 ==="

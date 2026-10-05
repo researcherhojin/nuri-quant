@@ -1,4 +1,5 @@
 """nuri.core.live_price — intraday live oracle + divergence detection (Phase 2 A-5)."""
+
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -13,6 +14,7 @@ def _kst(hour: int, minute: int = 0, weekday_offset: int = 0):
     base = kst.localize(datetime(2026, 4, 20, hour, minute, 0))
     # weekday_offset: 0=월, 5=토, 6=일
     from datetime import timedelta
+
     return base + timedelta(days=weekday_offset)
 
 
@@ -22,49 +24,59 @@ class TestMarketHours:
 
     def test_us_market_open_during_evening_kst(self):
         from nuri.core.live_price import is_market_open_us
+
         # 23:00 KST 월요일 → US 장중
         assert is_market_open_us(_kst(23, 0)) is True
 
     def test_us_market_open_early_morning_kst_when_prev_day_weekday(self):
         """화요일 05:00 KST = 월요일 US 장의 연장 → open."""
         from nuri.core.live_price import is_market_open_us
+
         assert is_market_open_us(_kst(5, 0, weekday_offset=1)) is True  # Tuesday
 
     def test_us_market_closed_monday_early_morning(self):
         """월요일 05:00 KST = 일요일 US time → closed.
         Codex Round 1 P2 regression lock: wrap-around 가 전날 요일 기반이어야 함."""
         from nuri.core.live_price import is_market_open_us
+
         assert is_market_open_us(_kst(5, 0)) is False  # Monday 05:00 KST
 
     def test_us_market_closed_midday_kst(self):
         """15:00 KST = US 전날 장 종료 이후 + 당일 장 시작 전 (10시간 공백)."""
         from nuri.core.live_price import is_market_open_us
+
         assert is_market_open_us(_kst(15, 0)) is False
 
     def test_us_market_closed_weekend(self):
         from nuri.core.live_price import is_market_open_us
+
         assert is_market_open_us(_kst(23, 0, weekday_offset=5)) is False  # Sat
 
     def test_kr_market_open(self):
         from nuri.core.live_price import is_market_open_kr
+
         assert is_market_open_kr(_kst(10, 0)) is True
 
     def test_kr_market_closed_evening(self):
         from nuri.core.live_price import is_market_open_kr
+
         assert is_market_open_kr(_kst(20, 0)) is False
 
     def test_kr_market_closed_weekend(self):
         from nuri.core.live_price import is_market_open_kr
+
         assert is_market_open_kr(_kst(10, 0, weekday_offset=6)) is False  # Sun
 
     def test_is_market_open_for_routes_kr_ticker(self):
         from nuri.core.live_price import is_market_open_for
+
         # KR 10:00 → KR ticker open, US ticker closed
         assert is_market_open_for("005930.KS", _kst(10, 0)) is True
         assert is_market_open_for("TSLA", _kst(10, 0)) is False
 
     def test_is_market_open_for_routes_us_ticker(self):
         from nuri.core.live_price import is_market_open_for
+
         # 23:00 KST → US open, KR closed
         assert is_market_open_for("TSLA", _kst(23, 0)) is True
         assert is_market_open_for("005930.KS", _kst(23, 0)) is False
@@ -79,8 +91,10 @@ class TestFetchLivePrice:
         mock_ticker = MagicMock()
         mock_ticker.fast_info.last_price = 407.5
 
-        with patch.object(lp, "is_market_open_for", return_value=True), \
-             patch.dict("sys.modules", {"yfinance": MagicMock(Ticker=MagicMock(return_value=mock_ticker))}):
+        with (
+            patch.object(lp, "is_market_open_for", return_value=True),
+            patch.dict("sys.modules", {"yfinance": MagicMock(Ticker=MagicMock(return_value=mock_ticker))}),
+        ):
             price = lp.fetch_live_price("TSLA")
 
         assert price == 407.5
@@ -98,8 +112,10 @@ class TestFetchLivePrice:
         mock_yf = MagicMock()
         mock_yf.Ticker.side_effect = RuntimeError("yfinance boom")
 
-        with patch.object(lp, "is_market_open_for", return_value=True), \
-             patch.dict("sys.modules", {"yfinance": mock_yf}):
+        with (
+            patch.object(lp, "is_market_open_for", return_value=True),
+            patch.dict("sys.modules", {"yfinance": mock_yf}),
+        ):
             assert lp.fetch_live_price("TSLA") is None
 
     def test_returns_none_on_zero_price(self):
@@ -109,8 +125,10 @@ class TestFetchLivePrice:
         mock_ticker = MagicMock()
         mock_ticker.fast_info.last_price = 0
 
-        with patch.object(lp, "is_market_open_for", return_value=True), \
-             patch.dict("sys.modules", {"yfinance": MagicMock(Ticker=MagicMock(return_value=mock_ticker))}):
+        with (
+            patch.object(lp, "is_market_open_for", return_value=True),
+            patch.dict("sys.modules", {"yfinance": MagicMock(Ticker=MagicMock(return_value=mock_ticker))}),
+        ):
             assert lp.fetch_live_price("TSLA") is None
 
 

@@ -89,8 +89,10 @@ def macro_facts(db_path: Path | None = None) -> dict[str, Any]:
     """VIX 최신값 + 최근 후보 run 의 regime.
 
     regime 의 의미: **가장 최근 `premarket_brief` 후보 run 이 본 시장 맥락**이다 — `candidate_runs`
-    는 차단된 날에도 하루 1행을 쓰므로 평일마다 갱신된다. 이전에는 `certifications.regime` 을
-    읽었는데, 인증기 폐기(#1619) 뒤에도 그 테이블을 읽으면 값이 조용히 얼어붙는다.
+    는 차단된 날에도 하루 1행을 쓰므로 평일마다 갱신된다. 차단된 날의 행은 `regime="unknown"`
+    (`UNKNOWN_REGIME`, 어휘 밖 값)일 수 있다 — 분류 결과가 아니라 "분류하지 못함" 이다. 이전에는
+    `certifications.regime` 을 읽었는데, 인증기 폐기(#1619) 뒤에도 그 테이블을 읽으면 값이 조용히
+    얼어붙는다.
     """
     vix = query(
         f"SELECT {_cols('macro')} FROM macro WHERE indicator = 'vix' ORDER BY date DESC LIMIT 1",  # noqa: S608 — 컬럼은 ALLOWED

@@ -50,8 +50,7 @@ REPLICA_STALE_HOURS = 3.0
 #:   세 번 놓쳐도 fresh 로 나온다 (Codex 재리뷰 P2).
 #:
 #: `nuri/core/freshness.py`(대시보드 SLA)를 재사용하지 않는 이유: 그쪽 조회는 읽기 전용이 아니라
-#: 이 패키지의 `readonly=True` 계약을 깨고, `candidate_runs` 정책이 없으며, 인증
-#: 48h 는 주말을 넘기지 못한다.
+#: 이 패키지의 `readonly=True` 계약을 깨고, `candidate_runs` 정책이 없다.
 DATA_STALE_DAYS = 5  # VIX
 CANDIDATE_RUN_STALE_DAYS = 3
 

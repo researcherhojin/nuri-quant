@@ -7,6 +7,7 @@
 - derive_alpha_action 은 writer (candidates/tracker) 가 legacy `action` 에서
   axis 를 채울 때 사용 — consensus.py save_to_recommendations 와 동일 mapping.
 """
+
 import pytest
 
 from nuri.core.axis import derive_alpha_action, is_alpha_flat_sell, is_alpha_long_buy
@@ -86,12 +87,15 @@ class TestIsAlphaLongBuy:
 class TestDeriveAlphaAction:
     """Writer mapping — consensus.py save_to_recommendations 와 동일해야 함."""
 
-    @pytest.mark.parametrize("action,expected", [
-        ("BUY", "LONG"),
-        ("SELL", "FLAT"),
-        ("HOLD", None),
-        (None, None),
-        ("UNKNOWN", None),
-    ])
+    @pytest.mark.parametrize(
+        "action,expected",
+        [
+            ("BUY", "LONG"),
+            ("SELL", "FLAT"),
+            ("HOLD", None),
+            (None, None),
+            ("UNKNOWN", None),
+        ],
+    )
     def test_derive_from_action(self, action, expected):
         assert derive_alpha_action(action) == expected

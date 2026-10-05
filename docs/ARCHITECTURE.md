@@ -11,10 +11,10 @@ The README shows the high-level flow. The table below gives one row per phase an
 | 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" and "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
-| 4 | **Certify** | DB snapshot of portfolio state (`analyze_portfolio()`) + `prices` · `macro` · current regime + `config/rules.yaml siege_gates` and `asset_class_rules`. Does not read `recommendations` and is not called by the consensus job (see Runtime Topology). | `Certificate` → CERTIFIED / REJECTED, persisted as a `certifications` row with per-condition detail in `conditions_json` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below and [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
+| 4 | **Certify** | The consensus result handed over in memory (`record_decisions()`), plus `prices` · `macro` · current regime for the decision context. The portfolio-wide certifier that used to read `config/rules.yaml siege_gates` was retired (#1619). | `decisions` + `decision_evidence` rows per consensus decision | `nuri/trading/engine/decisions.py` | "Decision Engine" below |
 | 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` (read back by Learning Memory for Phase 3 weights) + weekly per-agent accuracy snapshots in `strategy_memory` | `nuri/trading/recommend/tracker.py` + `nuri/trading/agents/consensus/learning_memory.py` | "C→D→E Data Flow" below |
 
-The Serve layer (FastAPI `:8001`, Next.js `:3000`, Discord and Telegram) is a projection of the DB, not a pipeline phase. It is not strictly read-only: the routes that call `certify()` (`/api/certify` and the health and violations endpoints under `/api/actions`) write a `certifications` row on every call. See the "API" and "Dashboard API" sections below.
+The Serve layer (FastAPI `:8001`, Next.js `:3000`, Discord and Telegram) is a projection of the DB, not a pipeline phase. It is read-only apart from explicit write routes (portfolio edits, pipeline runs, memory snapshots); the certification routes that used to write a `certifications` row on every call were removed with the certifier (#1619). See the "API" and "Dashboard API" sections below.
 
 ## Runtime Topology
 
@@ -34,7 +34,7 @@ flowchart TB
 
     DB[("SQLite WAL · 61 tables")]
     RD["record_decisions()<br/>inside the consensus job"]
-    CERT["certify() · no job<br/>runs inside its callers"]
+    CERT["record_decisions() · no job<br/>runs inside the consensus job"]
     OUT["Discord brief · dashboard"]
 
     CLOCK --> JOBS
@@ -68,7 +68,7 @@ The thick arrow marks the one in-memory hand-off: the consensus job passes its r
 | **Collect** | 29 jobs, from every 5 minutes during market hours to weekly | External APIs | `prices`, `fundamentals`, `macro`, `news` |
 | **Analyze** | 1 job: `factors` at `10 8 * * *` | `prices`, `fundamentals`, `macro` | `factors` |
 | **Consensus** | 1 job: `consensus` at `5 7 * * *` | `recommendations.outcome_30d` (for weights), collector tables | `recommendations` with `agent_verdicts` |
-| **Certify** | No dedicated job; runs inside its callers (see above) | Portfolio state snapshot | `certifications` |
+| **Certify** | No dedicated job; `record_decisions()` runs inside the consensus job (see above) | Consensus result, handed over in memory | `decisions`, `decision_evidence` |
 | **Track** | 5 jobs: `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy` | `recommendations`, `prices`, `decisions`, `theses`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{30,60,90}d`, `decision_outcomes`, `strategy_memory`, `thesis_criteria_checks`, `decisions` |
 
 The stage directories are `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend`. Imports that cross these boundaries are allowed only inside function bodies, never at module level, and each one must be listed in an allowlist with a stated reason. `tests/core/test_cross_stage_imports.py` enforces this in both directions.
@@ -186,11 +186,11 @@ Special regimes, in priority order, override the base `regime` field: euphoria, 
 
 `REGIME_ALLOCATION` covers all 10 regimes. `position.py` looks the regime up in `REGIME_ALLOCATION`; an unregistered regime fails closed (entry is treated as misaligned).
 
-## SIEGE Engine
+## Decision Engine
 
 `nuri/trading/engine/` provides gated execution, conflict detection and learning memory. Confidence scoring in `candidates.py` combines regime win rate, profit factor, learning-memory drift, conflict penalties and regime fit.
 
-The certification architecture and the 3-dimensional certification specification are in [`docs/CERTIFICATION_SPEC.md`](CERTIFICATION_SPEC.md) (canonical). Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md). Gate policy: [`docs/STRATEGY.md` §6](STRATEGY.md).
+The portfolio-wide certification layer was retired in 2026-10 ([`docs/STRATEGY.md` §6](STRATEGY.md), #1619); what remains in `nuri/trading/engine/` is the decision record (`decisions.py`), the hard-veto and amplifier gates (`gate.py`, `amplifier_gate.py`, STRATEGY §2.6), conflict detection, learning memory and the thesis verdict roll-up. Confidence scoring formula: [`docs/STRATEGY.md` §3.3](STRATEGY.md).
 
 ## Pipeline Observability
 
@@ -227,12 +227,12 @@ Trade execution API (`nuri/api/routes/trades.py`):
 |----------|--------|---------|
 | `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/🟦portfolio/✅hold). 연금/IRP 제외, 중복 제거. 각 항목에 `decision_id` + `as_of` (same-date `decisions` LEFT JOIN, #1182) — 프론트가 `/decisions/{id}` 증거 체인으로 링크 |
 | `/api/opportunities` | GET | 비보유 이슈 종목 탐색 — scan + WSB + events 기반 찬성/반대/판정 |
-| `/api/market-context` | GET | 시스템 건강 (SIEGE/regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
+| `/api/market-context` | GET | 시스템 건강 (regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 
 ## Scheduler
 
-`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the SIEGE freshness tickers current (§3.11).
+`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
 
 ## Environment Variables
 
@@ -352,7 +352,7 @@ data/
 
 ## Testing
 
-8,510 backend tests across 393 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+8,220 backend tests across 385 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 

@@ -32,7 +32,7 @@ stop_loss:
 # portfolio.yaml의 strategy 필드와 매칭. 기본값 = core.
 # ⚠️ 미배선 항목 (2026-08-02 감사): 아래에서 실제로 강제되는 건 `stop_loss` 와
 # `max_single_position` 뿐이다.
-#   · `max_sector_exposure` (계좌별) — 읽는 코드 없음. 섹터 검사는 certification ·
+#   · `max_sector_exposure` (계좌별) — 읽는 코드 없음. 섹터 검사는
 #     rebalance_advisor · execution_firewall 전부 전역 position_limits 값(35%)을 쓴다.
 #   · `trailing_stop_arm` — 읽는 코드 없음. 트레일링은 계좌 무관하게 진입 후 고점(HWM)
 #     대비 하락으로 동작하며 무장 임계가 없다 (price_targets.check_trailing_stop_signals).
@@ -269,7 +269,7 @@ measurement_mode:
                                  # 행). **US 상장 결정은 이 map 을 보지 않고** 위 benchmark(SPY) 로 고정 — 사전등록
                                  # 표본이라 기초자산이 무엇이든 바꾸면 사후 개정이다.
     us_equity: SPY               # 위 benchmark 와 항상 같아야 한다 (lock test). KRX 상장 US 추종 ETF 가 여기로 온다
-    kr_equity: KOSPI             # siege_gates.kr_equity.freshness_primary 와 동일 — 이미 매일 수집됨
+    kr_equity: KOSPI             # freshness_tickers.kr_equity.primary 와 동일 — 이미 매일 수집됨
     kr_index: KOSPI
     commodity: null              # 주식 지수가 안 맞는다 — 대체 지수를 고르지 않고 alpha 를 내지 않는다
     bond: null                   #   (tracker: 벤치마크 없음 = alpha NULL, 실현수익 판정은 그대로)
@@ -294,19 +294,9 @@ measurement_mode:
     long_term: 0
     pension: 0
 
-# ─── SIEGE Gate 정책 (v2: Asset Class 차원) ────────────────
-# 근거: docs/CERTIFICATION_SPEC.md §4. Issue #248.
-# Gate #5 (data_fresh), #7 (volatility / 구 vix_gate), #8 (external_data) 는
-# 포트폴리오를 asset_class 별로 group 한 뒤 각 group 에 해당 정책을 적용한다.
-# primary 실패는 현 severity 유지, secondary 는 warning only (cross-market
-# spillover 인지용). primary 를 error 로 올리려면 STRATEGY 개정 + 백테스트.
-#
-# Cross-market 의도: KR 종목 보유자에게 SPY/VIX 도 영향 (상관 > 0.5).
-# secondary 지표는 "US spillover / KR spillover" 를 명시적으로 경고로 노출.
 # 보유 종목을 asset_class 로 분류. 위에서부터 순서대로 matching — 더 구체적인 rule 우선,
 # default 는 마지막. 실행기는 `nuri/core/asset_class.py` 하나. 읽는 곳: 측정 모드 벤치마크
-# 분류(`measurement_mode.benchmark_by_asset_class` 의 키와 1:1), 전략 배분, 폐기 전까지의
-# SIEGE 인증기. #1619 PR 2 에서 `siege_gates` 밖으로 옮겼다 — 인증기와 함께 지우면 안 된다.
+# 분류(`measurement_mode.benchmark_by_asset_class` 의 키와 1:1)와 전략 배분.
 asset_class_rules:
   # "ETF/US*" 는 상장 시장과 무관하게 US 주식 기초자산 — KRX 상장 US 추종 ETF 포함 (#1459).
   # 예전엔 USIndex·USTech 만 등재돼 USNasdaq·USAerospace 가 .KS 접미사 규칙으로 kr_equity 에
@@ -328,101 +318,16 @@ asset_class_rules:
   - match: {default: true}
     asset_class: us_equity
 
-siege_gates:
-  # Asset class 별 gate 정책. 현 PR: kr_equity + us_equity primary path.
-  # commodity/bond/kr_index 는 external_applicable:false — 애널리스트 컨센서스/13F 가
-  # 구조적으로 비적용인 자산군이라 external 게이트를 N/A(vacuous pass)로 처리.
-  # (kr_equity 는 적용 유지 — 커버리지는 존재하나 KR external collector 미구현 → warning 정직)
-  asset_classes:
-    us_equity:
-      freshness_primary: SPY
-      freshness_secondary: []              # US leader — cross-ref 없음
-      freshness_max_hours: 72
-      volatility_primary: vix
-      volatility_primary_threshold: 30     # VIX > 30 → 매수 warning
-      volatility_secondary: []
-      external_min_records: 10
-      external_min_sources: 3
-    kr_equity:
-      freshness_primary: KOSPI
-      freshness_secondary: [SPY]           # US spillover (KR 은 follower)
-      freshness_max_hours: 72
-      volatility_primary: usd_krw_3d_change
-      volatility_primary_threshold: 3.0    # USD/KRW 3d 변동 > 3% → 매수 warning
-      volatility_secondary: [vix]          # US 변동성 전이
-      volatility_secondary_threshold: 30
-      external_min_records: 5              # KR 외부 소스 부족 — 완화
-      external_min_sources: 2
-    kr_index:
-      # KOSPI ETF 계열 (예: 292160.KS). 지수 ETF 는 국지 변동성 + US 교차.
-      freshness_primary: KOSPI
-      freshness_secondary: [SPY]
-      freshness_max_hours: 72
-      volatility_primary: kospi_3d_change
-      volatility_primary_threshold: 5.0
-      volatility_secondary: [usd_krw_3d_change]
-      volatility_secondary_threshold: 3.0
-      external_applicable: false           # 지수 ETF — 종목별 애널리스트 컨센서스 N/A
-    commodity:
-      freshness_primary: "GC=F"            # gold futures
-      freshness_secondary: []
-      freshness_max_hours: 72
-      volatility_primary: gold_3d_change
-      volatility_primary_threshold: 5.0
-      volatility_secondary: []
-      external_applicable: false           # 원자재 — 애널리스트 컨센서스/슈퍼투자자 13F N/A
-    bond:
-      freshness_primary: TLT
-      freshness_secondary: []
-      freshness_max_hours: 120             # 채권 데이터 주말/이벤트 갭 허용
-      # `yield_3d_change` 는 macro 에 `yield` 라는 지표가 없어 도입(#248) 이래 한 번도
-      # 평가되지 않았다. 포인터를 `us_10y_yield` 로 옮기는 것만으로는 부족했다 —
-      # `_3d_change` 는 **상대 %** 라 금리 레짐에 따라 임계값 의미가 변한다. 그래서
-      # 절대 변화(bp) 형태를 쓴다. 근거는 `_compute_3d_bp` docstring (#1020).
-      #
-      # 20bp: 프로덕션 실측 연도별 발화 1/32/22/12/6/1 회 (2021~2026, 전체 5.9%) —
-      # 형제 게이트 대역(equity_us 5.1% · commodity 2.3% · fx 1.1%)과 정합.
-      volatility_primary: us_10y_yield_3d_bp
-      volatility_primary_threshold: 20     # 10Y 3일 변동 > 20bp → 매수 warning
-      volatility_secondary: []
-      external_applicable: false           # 채권 ETF — 애널리스트 컨센서스 N/A
-
-  # E3-3c (PR TBD) — regime-adaptive position cap multipliers.
-  # STRATEGY §3.6 Stage 2 PASS verdict (#402, paired counterfactual N=254,
-  # 60d 95% CI [+0.0153, +0.1588]% → 60d mean ~+0.5%/year annualized) 가
-  # justify. Codex Round 1 권장 scope: per_position_max **only** —
-  # max_sector_exposure 는 portfolio simulator (E3-4) 후로 deferral
-  # (single-position model 로 검증 불가).
-  #
-  # Mechanics: _check_position_limits 가 현재 regime 조회 → multiplier 적용
-  # → effective_max = base_max × multiplier (account 별). 절대 cap 으로
-  # overflow 방지. Hard veto (VIX>30 신규 매수 차단) 는 별도 volatility_gate
-  # 에 그대로 — override 불가 (§2.6 Hard veto = policy-level).
-  #
-  # Neutral regime (sideways_*, sector_rotation, bear_low_vol) 는 미정의 =
-  # 1.0 default. classify_regime 실패 (data gap) → 1.0 fallback.
-  regime_overrides:
-    # Aggressive — Stage 2 paired counterfactual 에서 favorable forward outcome
-    bull_low_vol:
-      per_position_max_multiplier: 1.20
-    recovery:
-      per_position_max_multiplier: 1.20
-    # Conservative — high-vol, late-cycle, stagflation 에서 size-down
-    bear_high_vol:
-      per_position_max_multiplier: 0.80
-    bull_high_vol:
-      per_position_max_multiplier: 0.80
-    stagflation:
-      per_position_max_multiplier: 0.80
-    euphoria:
-      per_position_max_multiplier: 0.80
-    # Neutral regime 은 미정의 = 1.0 default (sideways_*, sector_rotation,
-    # bear_low_vol)
-
-  # Safety cap: multiplier × base_max 이 이 % 초과 시 cap 으로 clip.
-  # pension(40%) × 1.20 = 48% — under 50, OK. 만약 future strategy 가
-  # base_max 50%+ 가 되면 이 cap 도 함께 재검토.
-  regime_override_absolute_cap_pct: 50.0
+# 신선도 추적 티커 — `make collect` 의 `--source freshness` 패스(`collectors/stock.py`)와
+# `alerts/data_sanity.py` 가 읽는다. 예전 `siege_gates.asset_classes.*.freshness_primary/secondary`;
+# 게이트 임계값은 인증기와 함께 지웠고(#1619) 티커 목록만 남았다. KOSPI 는 macro 식별자라
+# stock.py 가 제외한다 (`_NON_YFINANCE_FRESHNESS_TICKERS`).
+freshness_tickers:
+  us_equity: { primary: SPY, secondary: [] }
+  kr_equity: { primary: KOSPI, secondary: [SPY] } # US spillover (KR 은 follower)
+  kr_index: { primary: KOSPI, secondary: [SPY] }
+  commodity: { primary: "GC=F", secondary: [] } # gold futures
+  bond: { primary: TLT, secondary: [] }
 
 # ─── Symmetric Amplifier (E3, STRATEGY §2.6 4번째 rung) ─────────
 # 근거: docs/plans/E3_symmetric_amplifier_design.md
@@ -491,7 +396,6 @@ symmetric_amplifier:
   # Q6: Portfolio amplifier (size boost). alpha LONG 필수 의존.
   portfolio:
     requires_alpha_long: true        # alpha_amplified 없이 portfolio fire 금지
-    requires_certify_pass: true      # SIEGE PASS 만
 
   # Q5: Hard veto + caution zone 우회 금지. VIX 25-30 에서는 amplifier 완전 비활성.
   caution_zone:

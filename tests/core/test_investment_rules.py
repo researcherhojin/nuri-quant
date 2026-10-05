@@ -1,4 +1,5 @@
 """투자 규칙 자동화 테스트 — 익절, 트레일링 스톱, 포트폴리오 MDD."""
+
 import pytest
 
 from nuri.core.db import get_db, init_db, query
@@ -60,11 +61,13 @@ class TestMigrations:
 class TestTakeProfitSignals:
     def test_no_holdings(self, db_path):
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         assert check_take_profit_signals(db_path=db_path) == []
 
     def test_target_1_hit(self, db_path):
         """진입가 $100, 현재가 $125 → 성장주 +25% → 1차 익절(+20%) 도달."""
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 125.0)
 
@@ -78,6 +81,7 @@ class TestTakeProfitSignals:
     def test_target_2_hit(self, db_path):
         """진입가 $100, 현재가 $145 → 성장주 +45% → 2차 익절(+40%) 도달."""
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 145.0)
 
@@ -89,6 +93,7 @@ class TestTakeProfitSignals:
     def test_no_signal_below_target(self, db_path):
         """진입가 $100, 현재가 $110 → +10% → 목표 미달."""
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 110.0)
 
@@ -98,6 +103,7 @@ class TestTakeProfitSignals:
     def test_target_2_takes_priority(self, db_path):
         """2차 익절 도달 시 target_2가 반환 (target_1이 아님)."""
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 150.0)  # +50% → target_2(+40%) 초과
 
@@ -107,6 +113,7 @@ class TestTakeProfitSignals:
     def test_multiple_tickers(self, db_path):
         """여러 종목 중 익절 도달한 것만 반환."""
         from nuri.trading.recommend.price_targets import check_take_profit_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_portfolio(db_path, "MSFT", 100.0)
         _insert_price(db_path, "AAPL", 125.0)  # +25% → target_1
@@ -126,11 +133,13 @@ class TestTakeProfitSignals:
 class TestTrailingStopSignals:
     def test_no_holdings(self, db_path):
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
+
         assert check_trailing_stop_signals(db_path=db_path) == []
 
     def test_triggered_when_drop_exceeds_threshold(self, db_path):
         """진입가 $100, 고점 $200, 현재 $160 → -20% → growth -15% 임계값 초과."""
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         # 고점 $200
         _insert_price(db_path, "AAPL", 160.0, high=200.0)
@@ -145,6 +154,7 @@ class TestTrailingStopSignals:
     def test_safe_when_within_threshold(self, db_path):
         """진입가 $100, 고점 $120, 현재 $110 → -8.3% → 임계값 -15% 이내."""
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 110.0, high=120.0)
 
@@ -154,6 +164,7 @@ class TestTrailingStopSignals:
     def test_hwm_uses_max_of_entry_and_high(self, db_path):
         """HWM은 진입가와 최고가 중 큰 값."""
         from nuri.trading.recommend.price_targets import check_trailing_stop_signals
+
         _insert_portfolio(db_path, "AAPL", 200.0)
         _insert_price(db_path, "AAPL", 160.0, high=150.0)  # 고점 < 진입가
 
@@ -171,6 +182,7 @@ class TestTrailingStopSignals:
 class TestPortfolioMDD:
     def test_no_violation_when_profitable(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 110.0)
 
@@ -180,6 +192,7 @@ class TestPortfolioMDD:
     def test_violation_at_minus_10(self, db_path):
         """PnL -15% → MDD 한도(-10%) 초과."""
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
+
         _insert_portfolio(db_path, "AAPL", 100.0, qty=10)
         _insert_price(db_path, "AAPL", 85.0)  # -15%
 
@@ -191,6 +204,7 @@ class TestPortfolioMDD:
     def test_no_violation_at_minus_5(self, db_path):
         """PnL -5% → MDD 한도(-10%) 이내."""
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
+
         _insert_portfolio(db_path, "AAPL", 100.0)
         _insert_price(db_path, "AAPL", 95.0)
 
@@ -199,6 +213,7 @@ class TestPortfolioMDD:
 
     def test_empty_portfolio(self, db_path):
         from nuri.trading.recommend.price_targets import check_portfolio_mdd
+
         assert check_portfolio_mdd(db_path=db_path) is None
 
 
@@ -211,26 +226,29 @@ class TestIntegration:
     def test_calculate_targets_uses_rules(self, db_path):
         """calculate_targets가 rules.yaml 값을 사용하는지 확인."""
         from nuri.trading.recommend.price_targets import calculate_targets
+
         _insert_price(db_path, "AAPL", 100.0)
 
         result = calculate_targets("AAPL", entry_price=100.0, stock_type="growth", db_path=db_path)
-        assert result["target_1"] == 120.0   # +20%
-        assert result["target_2"] == 140.0   # +40%
-        assert result["stop_loss"] == 93.0   # -7%
+        assert result["target_1"] == 120.0  # +20%
+        assert result["target_2"] == 140.0  # +40%
+        assert result["stop_loss"] == 93.0  # -7%
 
     def test_value_stock_targets(self, db_path):
         from nuri.trading.recommend.price_targets import calculate_targets
+
         _insert_price(db_path, "LLY", 100.0)
 
         result = calculate_targets("LLY", entry_price=100.0, stock_type="value", db_path=db_path)
-        assert result["target_1"] == 115.0   # +15%
-        assert result["target_2"] == 130.0   # +30%
-        assert result["stop_loss"] == 90.0   # -10%
+        assert result["target_1"] == 115.0  # +15%
+        assert result["target_2"] == 130.0  # +30%
+        assert result["stop_loss"] == 90.0  # -10%
 
     def test_swing_stock_targets(self, db_path):
         from nuri.trading.recommend.price_targets import calculate_targets
+
         _insert_price(db_path, "SWNG", 100.0)
 
         result = calculate_targets("SWNG", entry_price=100.0, stock_type="swing", db_path=db_path)
-        assert result["target_1"] == 105.0   # +5%
-        assert result["target_2"] == 110.0   # +10%
+        assert result["target_1"] == 105.0  # +5%
+        assert result["target_2"] == 110.0  # +10%

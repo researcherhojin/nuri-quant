@@ -9,7 +9,7 @@ Responsibilities:
 Layer B 설계 (Codex Round 5 + 2026-05-01 design consult):
 - 100% deterministic — sticky-HMM EM, ZERO LLM
 - 기존 nuri/quant/regime/classifier.py 의 hard-label hysteresis 와 *별개* track 으로
-  운영 (정보량 보존, hard label 은 SIEGE/UI 가 계속 사용)
+  운영 (정보량 보존, hard label 은 UI·결정 기록이 계속 사용)
 - WalkForward-Validator (#5) 와 같이 Brier/log-loss 으로 평가 가능
 - producer/consumer 분리: 우리는 *producer* (DB row 만 emit), Decision-Compiler (#8)
   가 향후 read-only consumer

@@ -74,15 +74,3 @@ class TestSqlite3SoleImporter:
 
         assert OperationalError is sqlite3.OperationalError
         assert DatabaseError is sqlite3.DatabaseError
-
-    def test_certification_catches_db_errors_without_importing_sqlite3(self):
-        """#904 후속 회귀 — certification 이 예외를 여전히 좁게 잡는다.
-
-        `import sqlite3` 만 지우고 `except Exception` 으로 넓히면 이 테스트가 FAIL 한다.
-        """
-        from nuri.core.db import OperationalError
-        from nuri.trading.engine import certification
-
-        src = (REPO_ROOT / "nuri/trading/engine/certification.py").read_text(encoding="utf-8")
-        assert "except OperationalError" in src, "좁은 DB 예외 처리가 사라졌다"
-        assert certification.OperationalError is OperationalError

@@ -12,7 +12,7 @@ Strategy-level decision modules. Each file is a self-contained strategy that con
 | `ls_backtest.py` | 5-year backtest of `longshort` strategy. Includes `--stress` for crisis-window analysis. | report under `data/reports/` |
 | `mean_reversion.py` | BB-band lower break + RSI < 30 entry, BB midline / 5-day exit. | `MeanRevSignal` list |
 | `pairs.py` | Correlation-pair Z-score divergence (ρ ≥ 0.7, Z > 2.0 → long underperformer / short outperformer). | pair signals |
-| `position.py` | SIEGE certification gate enforcement at position-entry time + P&L tracking. | `PositionCertification` dataclass |
+| `position.py` | Entry-time certification gate for paper positions (`certify_position`) + P&L tracking. | `PositionCertification` dataclass |
 | `monitor.py` | Regime transition detection + position-switch alert + daily P&L surface. | dict / Discord alert payload |
 | `strategic_allocation.py` | SAA long-term policy mix per account strategy (STRATEGY §3.10). | target weights from `config/rules.yaml strategic_allocation_targets` |
 
@@ -20,7 +20,7 @@ Strategy-level decision modules. Each file is a self-contained strategy that con
 
 - **REGIME_ALLOCATION lives in `longshort.py`**, not config. Reason: the table encodes a research result (O'Neil + Minervini + 6-site review on 2026-03-28), not a tunable threshold. Changes require a STRATEGY PR with backtest evidence (STRATEGY §6 promotion gate).
 - **Strategies do not write to `recommendations`**. They emit dataclass signals consumed by `nuri/trading/recommend/` modules, which decide what reaches the user.
-- **`position.py` SIEGE gate ≠ `nuri/trading/engine/` SIEGE certification**. This file's gate is a thin enforcement helper at the strategy layer (regime-aligned, agent-consensus, factor-rank, drawdown, sector-cap). The full 11–30+ condition certification lives in `engine/`. Do not duplicate logic — call into engine when full certification is needed.
+- **`position.py` gate ≠ the retired portfolio-wide SIEGE certification (#1619)**. This file's gate is a thin enforcement helper at the strategy layer (regime-aligned, agent-consensus, factor-rank, drawdown, sector-cap). The full 11–30+ condition certification lives in `engine/`. Do not duplicate logic — call into engine when full certification is needed.
 - **Mean-reversion + pairs are research-grade**, not production daily emitters. They run on demand; promotion to scheduler requires win-rate evidence per STRATEGY §6.
 
 ## Regime dependency
@@ -35,12 +35,12 @@ Several files lead with `# pyright: ...=false` directives. These suppress pandas
 
 1. New file: `nuri/trading/strategy/<name>.py` with dataclass output + `__main__` CLI for ad-hoc runs.
 2. Backtest: matching `<name>_backtest.py` showing Sharpe / max drawdown / regime-conditional win rate over ≥ 5 years.
-3. Promotion gate: SIEGE-style review per STRATEGY §6 + Codex `/codex review` before scheduler integration.
+3. Promotion gate: pre-registered criteria per STRATEGY §3.6 + Codex `/codex review` before scheduler integration.
 4. Tests under `tests/trading/strategy/`.
 
 ## References
 
 - Regime classifier: `nuri/quant/regime/classifier.py` (`ALL_REGIMES` = 6 base + 4 special, source of all regime keys)
-- SIEGE engine (full certification): `nuri/trading/engine/CLAUDE.md`
+- Decision engine (veto / amplifier gates, decision record): `nuri/trading/engine/CLAUDE.md`
 - O'Neil / Minervini investment rules: user-level CLAUDE.md "Investment Rules"
-- Strategy promotion criteria: `docs/STRATEGY.md §6`. safeslice replacement backlog: `docs/CERTIFICATION_SPEC.md` Phase 4 (drift_multiplier → Wilson CI + witness cliff)
+- Strategy promotion criteria: `docs/STRATEGY.md §3.6` (pre-registered verdicts).

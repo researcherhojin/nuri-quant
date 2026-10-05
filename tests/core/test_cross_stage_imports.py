@@ -49,18 +49,12 @@ ALLOWED: dict[tuple[str, str], str] = {
     ): "CLI 가 합의 직후 결정을 기록 — README 가 명시한 in-memory hand-off",
     ("nuri/trading/agents/consensus/presentation.py", "nuri.trading.recommend.price_targets"): "stdout 렌더링 전용",
     ("nuri/trading/agents/consensus/presentation.py", "nuri.collectors.external"): "stdout 렌더링 전용",
-    ("nuri/trading/engine/certification.py", "nuri.analysis.portfolio"): "게이트가 현재 포트폴리오 상태를 봐야 함",
-    ("nuri/trading/engine/certification.py", "nuri.collectors.external"): "외부 분석 요약을 증거로 첨부",
     ("nuri/trading/engine/conflicts.py", "nuri.trading.recommend.candidates"): (
         "detect_conflicts(candidates=None) 의 auto-fetch. candidates.py 와 상호 의존을 이루는 "
         "나머지 한쪽 — 제거하려면 프로덕션 호출 5곳과 이 파일의 CLI 를 함께 옮겨야 하고, "
         "그래도 CLI 가 다시 이 방향을 만든다. 실효 방어선은 위의 module-level 금지다."
     ),
     ("nuri/trading/engine/decisions.py", "nuri.trading.recommend.price_targets"): "결정 기록 시 가격 레벨 계산",
-    (
-        "nuri/trading/engine/remediation.py",
-        "nuri.analysis.rebalance_advisor",
-    ): "위반 해소 제안이 리밸런스 리포트를 재사용",
     ("nuri/trading/recommend/candidates.py", "nuri.trading.engine.memory"): "후보 점수에 drift 상태 반영",
     (
         "nuri/trading/recommend/candidates.py",

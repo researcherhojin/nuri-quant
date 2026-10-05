@@ -12,9 +12,7 @@ class TestLoadConfig:
     def test_loads_valid_yaml(self, tmp_path):
         """유효한 alerts YAML을 딕셔너리로 로드."""
         cfg_file = tmp_path / "alerts.yaml"
-        cfg_file.write_text(
-            yaml.dump({"alerts": {"price_swing_pct": 5.0}}), encoding="utf-8"
-        )
+        cfg_file.write_text(yaml.dump({"alerts": {"price_swing_pct": 5.0}}), encoding="utf-8")
 
         import nuri.core.alerts_config as mod
 
@@ -93,9 +91,7 @@ class TestAlertsConfig:
         if ALERTS_CONFIG:
             notifications = ALERTS_CONFIG.get("notifications", {})
             for key, val in notifications.items():
-                assert isinstance(val, bool), (
-                    f"notifications.{key} should be bool, got {type(val)}"
-                )
+                assert isinstance(val, bool), f"notifications.{key} should be bool, got {type(val)}"
 
     def test_reload_with_custom_yaml(self, tmp_path):
         """커스텀 YAML로 다시 로드."""
@@ -103,10 +99,12 @@ class TestAlertsConfig:
 
         cfg_file = tmp_path / "alerts.yaml"
         cfg_file.write_text(
-            yaml.dump({
-                "alerts": {"price_swing_pct": 10.0, "fear_greed_low": 15},
-                "channels": {"discord": False},
-            }),
+            yaml.dump(
+                {
+                    "alerts": {"price_swing_pct": 10.0, "fear_greed_low": 15},
+                    "channels": {"discord": False},
+                }
+            ),
             encoding="utf-8",
         )
         with patch.object(mod, "_CONFIG_PATH", cfg_file):

@@ -45,7 +45,6 @@ from .connection import (  # noqa: F401 — facade re-exports for back-compat
     init_db,
 )
 from .decisions import (  # noqa: F401, E402
-    insert_certification,
     upsert_decision,
     upsert_decision_evidence,
 )

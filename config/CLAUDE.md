@@ -6,7 +6,7 @@
 
 | File | Lines | Purpose | Loader |
 |------|-------|---------|--------|
-| `rules.yaml` | 624 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `siege_gates` incl. `regime_overrides` + per-class `external_applicable`) | `nuri/core/rules.py` |
+| `rules.yaml` | 528 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `freshness_tickers`) | `nuri/core/rules.py` |
 | `agents.yaml` | 241 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
 | `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | 214 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
@@ -79,7 +79,7 @@ rsi_oversold:
 
 ### `rules.yaml` — `asset_class_rules` ordering
 
-Matching is first-match-wins from top to bottom. `default: true` is the fallback and must stay last. When adding a new asset class, insert before `default` and make sure the per-class policy exists under `siege_gates.asset_classes:` and the benchmark under `measurement_mode.benchmark_by_asset_class` (`tests/core/test_rules.py` locks the key sets 1:1). The list sits at the top level, not under `siege_gates` — measurement mode and strategic allocation read it, and the certifier is being retired (#1619).
+Matching is first-match-wins from top to bottom. `default: true` is the fallback and must stay last. When adding a new asset class, insert before `default` and make sure the freshness tickers exist under `freshness_tickers:` and the benchmark under `measurement_mode.benchmark_by_asset_class` (`tests/core/test_rules.py` locks the key sets 1:1). The list sits at the top level, not under `siege_gates` — measurement mode and strategic allocation read it (#1619).
 
 ## Gitignored files
 

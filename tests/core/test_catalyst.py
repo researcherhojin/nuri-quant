@@ -1,4 +1,5 @@
 """nuri.core.catalyst — non-emergency SELL catalyst detection (Phase 2 A-4)."""
+
 import pytest
 
 from nuri.core.db import get_db, init_db
@@ -30,8 +31,7 @@ class TestHasRecentCatalyst:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO news (ticker, date, title, url, source, sentiment) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO news (ticker, date, title, url, source, sentiment) VALUES (?, ?, ?, ?, ?, ?)",
                 ("TSLA", "2026-04-15", "Tesla earnings beat", "https://x/1", "test", 0.4),
             )
 
@@ -46,8 +46,7 @@ class TestHasRecentCatalyst:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO news (ticker, date, title, url, source, sentiment) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO news (ticker, date, title, url, source, sentiment) VALUES (?, ?, ?, ?, ?, ?)",
                 ("TSLA", "2026-03-01", "Old news", "https://x/2", "test", 0.2),
             )
 
@@ -63,8 +62,7 @@ class TestHasRecentCatalyst:
                 "INSERT INTO macro_events (published_at, source, headline, url, "
                 "category, sentiment, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("2026-04-15", "test", "Fed rate decision", "https://m/1",
-                 "monetary_policy", -0.5, 0.8),
+                ("2026-04-15", "test", "Fed rate decision", "https://m/1", "monetary_policy", -0.5, 0.8),
             )
 
         ok, reason = has_recent_catalyst("TSLA", ref_date="2026-04-18", db_path=db_path)
@@ -80,8 +78,7 @@ class TestHasRecentCatalyst:
                 "INSERT INTO macro_events (published_at, source, headline, url, "
                 "category, sentiment, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("2026-04-15", "test", "Weak classify", "https://m/2",
-                 "monetary_policy", -0.5, 0.3),
+                ("2026-04-15", "test", "Weak classify", "https://m/2", "monetary_policy", -0.5, 0.3),
             )
 
         ok, _ = has_recent_catalyst("TSLA", ref_date="2026-04-18", db_path=db_path)
@@ -96,8 +93,7 @@ class TestHasRecentCatalyst:
                 "INSERT INTO macro_events (published_at, source, headline, url, "
                 "category, sentiment, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("2026-04-15", "test", "Neutral news", "https://m/3",
-                 "monetary_policy", 0.1, 0.9),
+                ("2026-04-15", "test", "Neutral news", "https://m/3", "monetary_policy", 0.1, 0.9),
             )
 
         ok, _ = has_recent_catalyst("TSLA", ref_date="2026-04-18", db_path=db_path)
@@ -112,8 +108,7 @@ class TestHasRecentCatalyst:
                 "INSERT INTO macro_events (published_at, source, headline, url, "
                 "category, sentiment, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("2026-04-05", "test", "Stale macro", "https://m/4",
-                 "monetary_policy", -0.6, 0.7),
+                ("2026-04-05", "test", "Stale macro", "https://m/4", "monetary_policy", -0.6, 0.7),
             )
 
         ok, _ = has_recent_catalyst("TSLA", ref_date="2026-04-18", db_path=db_path)
@@ -125,8 +120,7 @@ class TestHasRecentCatalyst:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO news (ticker, date, title, url, source, sentiment) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO news (ticker, date, title, url, source, sentiment) VALUES (?, ?, ?, ?, ?, ?)",
                 ("AAPL", "2026-04-15", "Apple news", "https://x/3", "test", 0.4),
             )
 
@@ -139,16 +133,14 @@ class TestHasRecentCatalyst:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO news (ticker, date, title, url, source, sentiment) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO news (ticker, date, title, url, source, sentiment) VALUES (?, ?, ?, ?, ?, ?)",
                 ("TSLA", "2026-04-15", "Tesla news", "https://x/4", "test", 0.3),
             )
             conn.execute(
                 "INSERT INTO macro_events (published_at, source, headline, url, "
                 "category, sentiment, confidence) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("2026-04-15", "test", "Fed news", "https://m/5",
-                 "monetary_policy", -0.5, 0.8),
+                ("2026-04-15", "test", "Fed news", "https://m/5", "monetary_policy", -0.5, 0.8),
             )
 
         ok, reason = has_recent_catalyst("TSLA", ref_date="2026-04-18", db_path=db_path)

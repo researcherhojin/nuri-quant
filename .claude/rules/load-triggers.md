@@ -5,7 +5,7 @@
 | `nuri/core/` (db, timezone, events, freshness) | `nuri/core/CLAUDE.md` |
 | `nuri/collectors/` (data sources) | `nuri/collectors/CLAUDE.md` + `docs/STRATEGY.md §4.4` (privacy / external LLM egress) |
 | `nuri/trading/agents/` (consensus / veto) | `nuri/trading/agents/CLAUDE.md` + `docs/STRATEGY.md §3.2-§3.3, §3.9` |
-| `nuri/trading/engine/` (SIEGE certification) | `nuri/trading/engine/CLAUDE.md` + `docs/CERTIFICATION_SPEC.md` + `docs/STRATEGY.md §6` |
+| `nuri/trading/engine/` (decision record, veto/amplifier gates, conflicts, memory, thesis verdict) | `nuri/trading/engine/CLAUDE.md` + `docs/STRATEGY.md §2.6, §3.7` — 인증기는 §6 에 따라 제거됨 (#1619) |
 | `nuri/trading/recommend/` (BUY/SELL emitters, price targets, tracker) | `nuri/trading/recommend/CLAUDE.md` + `docs/STRATEGY.md §7.1` (recommend-only, never execute) |
 | `nuri/trading/swing/` (≤7d swing scanner / rules) | `nuri/trading/swing/CLAUDE.md` + `config/rules.yaml` swing ladder |
 | `nuri/trading/strategy/` (longshort, mean-rev, pairs, position) | `nuri/trading/strategy/CLAUDE.md` — `REGIME_ALLOCATION` lives in `longshort.py` (not config); changes require STRATEGY PR + backtest |
@@ -23,5 +23,4 @@
 | `README.md`, `docs/*.md`, scoped `CLAUDE.md` 의 수치·구조 | `scripts/verify/verify_doc_counts.sh` 의 사이트 목록(문구·**사이트 수**까지 고정 — README 테이블 수는 2곳) + `tests/verify/test_readme_structure.py`(섹션 순서·ToC·mermaid 앵커/배치). 수치 문구는 그대로 두고 값만 `make verify-doc-counts` 로 확인. `scripts/doc/sync_doc_counts.sh` 는 in-place fixer — 테스트·스크립트에서 실 레포를 겨누지 말 것(`tests/CLAUDE.md` "문서 fixer") |
 | Investment-rule / strategy / regime decisions | `docs/STRATEGY.md` §2 (principles) + §3 (decisions) |
 | Harness debugging (mock fail / phantom fix / scope creep) | `/nuri-harness-debug` skill + `docs/STRATEGY.md §5` |
-| SIEGE predictivity audit / E4-0b methodology | `/nuri-siege-audit` skill + `docs/STRATEGY.md §3.8` |
 | Pipeline backlog / next work | `docs/TODO.md` (gitignored, local-only — forward-only Tier 2/3) |

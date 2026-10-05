@@ -18,7 +18,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 - 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 승률/수익비(PF) 검증
 - 10개 에이전트 독립 분석 후 가중 합의 (risk agent 거부권)
-- SIEGE v2 gate (asset-class per-expansion) 기계적 검증 — 1개 error-grade 실패 시 REJECTED
+- prudential 제약(비중·섹터·레버리지 한도)의 기계적 검증 — `rebalance_advisor` 가 위반을 REBALANCE 로 surface (포트폴리오 전체 CERTIFIED/REJECTED 판정은 §6 에 따라 2026-10 폐기)
 - 5개 Plotly 차트가 최종 증거를 시각화
 
 ## 2. 설계 원칙
@@ -48,7 +48,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 - 손절 -7%(성장)/-10%(가치), 익절 +20%/+40%, 트레일링 -15% — 예외 없음
 - VIX > 30 신규 매수 차단 — "이번엔 다르다" 불허
-- SIEGE gate 실패 → REJECTED, 수동 오버라이드 없음
+- 한도 위반은 `rebalance_advisor` 가 기계적으로 surface, 수동 오버라이드 없음 (옛 SIEGE gate 의 REJECTED 판정은 §6 폐기)
 - **execution_priority** (PR #200): 손절 → 익절 → 트레일링 설정 → 신규매수. 출혈 차단이 수익 확정보다 선행. 손절 내 손실률 큰 것부터, 익절 내 타겟 초과율 큰 것부터.
 - 규칙 변경은 YAML 수정 + 백테스트 검증. 코드에 예외 분기 금지.
 
@@ -60,7 +60,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 - **스테이지 매핑** (검증 가능성의 전제): `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `certify`=`nuri/trading/engine` · `track`=`nuri/trading/recommend`. `nuri/quant`·`nuri/core` 는 공용 라이브러리이지 스테이지가 아니다.
 - **원칙**: 새 모듈은 다른 스테이지 함수를 직접 호출하지 않는다. DB 테이블/CSV 로 전달.
 - **실제로 강제되는 것**: 교차 import 는 **함수 본문 안(deferred)에만** 허용 — module-level 금지 — 이고 사유와 함께 allowlist 에 등재해야 한다. 실측 **17건 / 15 pair / module-level 0**. `engine/conflicts.py` ↔ `recommend/candidates.py` 상호 의존은 deferral 덕분에만 로드되며, 하나라도 hoist 하면 import 가 깨진다.
-- **예외 2건**: 같은 스테이지 내부 import 허용. consensus→certify 핸드오프는 `scheduler.py` 가 객체를 **메모리로** 넘긴다 (DB 경유 아님). 받는 쪽은 `certify()` 가 아니라 `nuri/trading/engine/decisions.py` 의 `record_decisions()` 다.
+- **예외 2건**: 같은 스테이지 내부 import 허용. consensus→certify 핸드오프는 `scheduler.py` 가 객체를 **메모리로** 넘긴다 (DB 경유 아님). 받는 쪽은 `nuri/trading/engine/decisions.py` 의 `record_decisions()` 다(SIEGE 인증기는 #1619 로 제거).
 - **Test**: `tests/core/test_cross_stage_imports.py` — 신규 교차 의존과 사라진 allowlist 항목 **양방향** 모두 FAIL.
 
 ### 2.4 관찰 가능성 (Observability)
@@ -69,7 +69,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 - `pipeline_events` 테이블: append-only event journal. `causation_id` 로 이벤트 체인 추적.
 - Freshness SLA: 데이터 소스별 warn/fail 임계값. PASS 아니면 대시보드 경고.
-- SIEGE certification: 조건 pass/fail 매번 기록 (count 가변 — §6 per-asset-class expansion).
+- 결정 기록: 합의 결정마다 시장 맥락·증거를 `decisions` / `decision_evidence` 에 기록 (옛 SIEGE 인증 기록은 §6 폐기 — `certifications` 테이블은 역사 기록으로만 남는다).
 - **새 기능 기준**: "이 기능이 실패하면 어떻게 알 수 있는가" 를 먼저 답한다.
 
 ### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
@@ -227,7 +227,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 - Phase 1 shadow telemetry 영구 유지: amplifier `enabled: false` 무기한, gate evaluation 만 logging.
 - Verdict artifact: `data/reports/<YYYY-MM-DD>/e3_phase2_verdict.json` (gitignored).
 - Lock-tests: `tests/quant/exits/test_amplifier_paired_replay.py` (24 invariants), `tests/quant/exits/test_amplifier_stage0_audit.py` (13 invariants).
-**원래 framework intent**: §3.4 Kelly·Markowitz·Faber + §2.6 Symmetric amplifier 를 config + code 로 배선. `siege_gates.regime_overrides` 스키마 + `certification.py` 분기. **Hard veto (VIX>30, risk-of-ruin) override 금지**.
+**원래 framework intent**: §3.4 Kelly·Markowitz·Faber + §2.6 Symmetric amplifier 를 config + code 로 배선. `siege_gates.regime_overrides` 스키마 + `certification.py` 분기(둘 다 §6 폐기로 제거, 2026-10). **Hard veto (VIX>30, risk-of-ruin) override 금지**.
 **E3 acceptance (2026-04-19 codex Plan consult)**: 3-stage validation — **Stage 0 + Stage 2 모두 통과 시 ship** (Stage 1 진단 신호). 순서: Stage 0 → 1 (병행) → 2.
 - **Stage 0 — No-lookahead audit**: classifier historical 호출 시 future row 가 rolling stats 에 유입되지 않음 검증 (`compute_dynamic_thresholds()`, `_load_spy_series()`, special-regime detectors, `classify_regime_history()` intra-month flip 은닉 점검).
 - **Stage 1 — Classifier plausibility (diagnostic)**: N=24~36 date 샘플 → regime label → forward 30d return 분포 directional sanity. fail 해도 Stage 2 PASS 시 ship (codex Round 1 P1: raw sign predictivity 없어도 sizing rule 은 loss attenuation 가치).
@@ -262,7 +262,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **E4-0c (measurement consume 후 재-grading) 무효화** — consume 할 durable evidence 없음. §3.7 upside-gate hypothesis 는 §3.6 paired counterfactual (sizing-rule legitimacy, E3-3b PASS) 과 별도 경로로 검증 (user actual portfolio replay, `recommendations.outcome` 누적 후 real-history).
 
-**상세 methodology / gate eligibility matrix / 60-month gate-level table / deferred extensions / 재실행 명령**: `/nuri-siege-audit` skill (`.claude/skills/nuri-siege-audit/SKILL.md`, `disable-model-invocation: true` — 수동 invoke) 에 별도 관리. STRATEGY 본문은 canonical verdict 만.
+**상세 methodology / gate eligibility matrix / 60-month gate-level table / deferred extensions / 재실행 명령**: 삭제된 `/nuri-siege-audit` skill 과 `scripts/analysis/siege_predictivity_audit.py` 의 마지막 리비전 `d8a89ede` 에 있다 (`git show d8a89ede:.claude/skills/nuri-siege-audit/SKILL.md`, #1619). STRATEGY 본문은 canonical verdict 만.
 
 ### 3.9 Provisional vs canonical Learning Memory (#468)
 
@@ -402,7 +402,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,510 tests, 393 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,220 tests, 385 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,674 tests, 141 files |
 | E2E | 핵심 flow | 88 Playwright (10 spec) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -787,7 +787,7 @@ Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHA
 ### 남기는 것과 옮기는 것
 
 - **`certifications` 테이블은 남는다** — 마이그레이션은 forward-only. 쓰는 코드가 없어진 역사 기록이며, §2.6 의 score 시계열 경계 서술은 그 기록에 대한 설명으로 유지한다.
-- **`asset_class_rules`** 는 SIEGE 가 아니라 측정 모드(§3.11)의 벤치마크 분류 정본이다(`forward_outcome_tracker` · `strategic_allocation`). PR 2 에서 `siege_gates` 밖 최상위 키로, 분류기는 `nuri/core/asset_class.py` 로 옮겼다. 지우면 사전등록된 알파 측정이 조용히 오염된다. 신선도 추적 티커(`siege_gates.asset_classes.*.freshness_*`, 읽는 곳 `collectors/stock.py` · `alerts/data_sanity.py`)는 게이트 임계값과 같은 블록에 있어 정리 PR 에서 임계값을 지울 때 남는 키를 중립 이름으로 바꾼다.
+- **`asset_class_rules`** 는 SIEGE 가 아니라 측정 모드(§3.11)의 벤치마크 분류 정본이다(`forward_outcome_tracker` · `strategic_allocation`). PR 2 에서 `siege_gates` 밖 최상위 키로, 분류기는 `nuri/core/asset_class.py` 로 옮겼다. 지우면 사전등록된 알파 측정이 조용히 오염된다. 신선도 추적 티커는 정리 PR 에서 `freshness_tickers` 로 옮겼다(읽는 곳 `collectors/stock.py` · `alerts/data_sanity.py`).
 - **Stage 4 경계는 유지, 이름은 바꾼다.** `nuri/trading/engine` 에 남는 `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` 는 §2.6 Hard veto / amplifier 와 결정 기록 장치이지 인증기가 아니다. 인증서 작성자가 사라진 뒤 `certify` 는 거짓 이름이므로 정리 PR 에서 `decide` 로 바꾸고 §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · 교차 import 테스트를 함께 옮긴다. `pipeline_events` 의 과거 행은 `certify` 그대로 둔다. `nuri/trading/strategy/position.py` 의 `certify_position()` 은 paper `positions` 테이블의 자체 게이트로 인증기와 무관하며 이름 변경 범위 밖이다.
 - **감사 도구는 리비전으로 고정한다.** `scripts/analysis/siege_predictivity_audit.py` 와 `/nuri-siege-audit` skill 의 마지막 리비전은 `d8a89ede`(main, 2026-10-06). §3.8 재실행이 필요하면 `git show d8a89ede:<path>` 로 꺼낸다.
 - **`nuri/core/freshness.py` 의 `certification` 정책(`config/freshness.yaml` warn 24h / fail 48h)은 백엔드 PR 에서 지운다.** `verdict_gate` 에는 없어 대시보드 판정은 무관하지만, `get_freshness_summary` 가 전 정책을 순회하고 `premarket_brief._brief_color` 는 FAIL 이 하나라도 있으면 RED 를 낸다 — 쓰기가 멈추고 48시간 뒤부터 모든 브리프가 "Certification FAIL" 로 영구 RED 가 된다. 프런트엔드를 먼저 떼더라도 이 정책은 인증기 호출을 끊는 PR 과 **같은 PR** 에서 제거한다.

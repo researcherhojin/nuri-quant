@@ -103,8 +103,8 @@ class ARKCollector(BaseCollector):
         낡았다고 지목했다. 소스 감시가 우리 포트폴리오 구성에 의존하면 안 된다.
 
         전용 테이블인 이유는 `_MIGRATIONS` 55 에 적어 뒀다 — 요약하면 `external_analysis` 의
-        `ticker` 는 실제 종목 심볼 네임스페이스라, 펀드명을 거기 쓰면 SIEGE 의 external
-        evidence 카운트까지 새어 들어간다.
+        `ticker` 는 실제 종목 심볼 네임스페이스라, 펀드명을 거기 쓰면 외부 분석
+        조회(`get_external*`)에 펀드가 종목처럼 섞여 들어간다.
 
         `fund` PRIMARY KEY 라 얼어 있는 펀드를 매일 다시 써도 한 행이다 (upsert).
         """

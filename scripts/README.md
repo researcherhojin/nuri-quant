@@ -13,7 +13,7 @@ scripts/
 ├── deploy/              # deploy + sync + autopull receiver
 ├── db/                  # DB migration + maintenance + backup
 ├── ops/                 # operational + health + import + run
-├── analysis/            # one-off analysis (siege, comparison)
+├── analysis/            # one-off analysis (comparison)
 ├── dev/                 # dev tooling (setup, ci_local, codex review)
 ├── doc/                 # doc count sync + portfolio/universe validation
 ├── ci/                  # CI helpers (test duration merge)
@@ -89,8 +89,6 @@ scripts/
 |---|---|
 | `compare_buy_candidates.py` | candidate diff between snapshots |
 | `placeholder_vote_impact.py` | 자리표시자 verdict 를 가중 투표에서 뺐을 때의 판정 변화 (읽기 전용) |
-| `siege_history.py` | SIEGE certification history report |
-| `siege_predictivity_audit.py` | E4-0b predictivity audit |
 | `stage1_classifier_plausibility.py` | Stage 1 classifier plausibility check |
 
 ## dev/ — developer tooling
