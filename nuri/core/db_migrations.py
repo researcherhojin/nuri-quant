@@ -2114,4 +2114,15 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         CREATE INDEX IF NOT EXISTS idx_incidents_type ON incidents(incident_type, last_detected_at);
     """,
     ),
+    (
+        66,
+        "prices 의 close NULL 반쪽 행 제거 (#1630)",
+        # yfinance 는 미확정 세션을 가격 NaN + volume 만 채운 행으로 주고, #1480 이후 upsert_prices
+        # 는 그 행을 쓰지 않는다. 그 전에 들어간 행은 남아 있었다(dev DB: 2026-08-28 536 행,
+        # 운영 replica: 0 행). `SELECT close ... ORDER BY date DESC LIMIT n` 형태의 리더 46곳이
+        # NULL 을 가정하지 않아, 최신 행이 반쪽인 티커 하나가 레짐 분류기(_detect_sector_rotation)와
+        # 결정 추적기(track_decision_outcomes)를 TypeError 로 죽였다. 리더를 하나씩 고치는 대신
+        # 쓰기 쪽 불변식("close 는 NULL 이 아니다")을 기존 행에도 적용한다.
+        "DELETE FROM prices WHERE close IS NULL;",
+    ),
 ]

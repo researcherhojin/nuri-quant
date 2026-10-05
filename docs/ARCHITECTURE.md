@@ -255,7 +255,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 
 ## DB Schema (SQLite, WAL mode)
 
-61 tables total (65 migrations as of 2026-09-08). Key tables:
+61 tables total (66 migrations as of 2026-09-08). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -352,7 +352,7 @@ data/
 
 ## Testing
 
-8,230 backend tests across 387 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+8,231 backend tests across 387 files + 1,674 frontend vitest (141 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 
