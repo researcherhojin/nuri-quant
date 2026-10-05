@@ -6,11 +6,11 @@
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL%20v3-blue.svg)](LICENSE)
 
-**Quant platform that proves the evidence behind every investment decision.**
+**An auditable quant research platform that records and scores the evidence behind each investment decision.**
 
 </div>
 
-Every BUY / SELL recommendation moves through five stages — **collect → analyze → consensus → certify → track** — coupled through SQLite tables rather than chained by an orchestrator. Each decision records its market context and per-agent reasoning, then scores itself against the realized outcome at 30 / 60 / 90 days. Agent weights adjust from the 30-day hit rate, bounded to ±30% of their configured base.
+Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-based agents, and issues dated BUY / SELL / HOLD recommendations together with the evidence that produced them. Each recommendation is later scored against the realized outcome at 30, 60 and 90 days, and those results feed back into the agent weights. The platform recommends only; all orders are placed manually by the operator.
 
 ## Table of Contents
 
@@ -31,28 +31,29 @@ Every BUY / SELL recommendation moves through five stages — **collect → anal
 
 ## Security
 
-The repository is public and the platform reads a real portfolio. Two controls follow — one mechanical, one not, and the difference matters.
+The repository is public, while the running system operates on a real portfolio. Two controls keep the two apart.
 
-**Personal financial data cannot reach the repo — mechanically.** `scripts/verify/check_privacy_leak.py` runs as a pre-push hook and as the required `Privacy Leak Scan` CI job. It blocks Korean broker names and their romanized variants, monetary literals of 7 digits or more sitting near keys like `total_invested` or `cash_balance`, ticker-with-signed-percentage combinations, and — by shape only, never by value — personal identifiers such as `<account>@<host>.local`, `/Users/<account>/` and Korean-default macOS hostnames (#1567). `config/portfolio.yaml` is gitignored and never scanned; fixtures use placeholders (`Brokerage Alpha`, round-million values).
+| Control | Enforcement |
+|---------|-------------|
+| Personal financial data is never committed | `scripts/verify/check_privacy_leak.py` runs as a pre-push hook and as the required `Privacy Leak Scan` CI job. It blocks broker names, large monetary literals near sensitive keys, ticker and signed-percentage combinations, and personal identifiers such as hostnames and home paths (matched by shape, never by value). `config/portfolio.yaml` is gitignored. |
+| Portfolio data does not reach external models without approval | `nuri/llm/openai_client.py` is the only module permitted to call an external LLM. See [LLM Integration](#llm-integration). This rule is enforced in code review, not by an automated check. |
 
-**Portfolio data reaching an external model is blocked by convention, not by a hook.** `nuri/llm/openai_client.py` is the single external-LLM entry point, and everything enforced there is real: each call is logged to `external_llm_calls` (timestamp / model / tokens, never content), portfolio-bearing prompts require `OPENAI_ZDR_APPROVED=1`, and `NURI_DISABLE_EXTERNAL_LLM=1` raises before any request leaves the process. But nothing stops a new module from importing `openai` directly — unlike the `sqlite3` sole-importer rule, which an AST sweep in CI enforces, a stray `import openai` passes CI silently and is caught only in review.
-
-In production the API binds `127.0.0.1`, not `0.0.0.0`. The Next.js proxy is the only reachable surface and sits behind a password gate. Reporting, accepted risks, and the full control list: [`SECURITY.md`](SECURITY.md).
+In production the API binds to `127.0.0.1`; the password-protected Next.js proxy is the only reachable surface. Vulnerability reporting and the full list of controls are in [`SECURITY.md`](SECURITY.md).
 
 ## Background
 
-### What this system claims — and what it does not
+### Scope
 
-The point of the project is that a recommendation is auditable, not that it is right. Two constraints follow, and both are enforced rather than aspirational:
+Nuri-Quant is designed to make each recommendation traceable, not to claim that the recommendations are profitable. Two constraints define its scope.
 
-- **It recommends; it never trades.** A broker adapter with a working `submit_order` does exist (`nuri/trading/execution/broker.py`), and **no pipeline code path calls it.** Being exact, because this is a safety claim: the module's own `main()` always places a one-share test order when run by hand, and `--live` decides *which broker receives it* — without the flag a `DryRunBroker` that touches no network, with it `AlpacaBroker` against the paper endpoint. Nothing scheduled, and nothing in the decision path, reaches either. The pipeline terminates at a recommendation and an alert; the operator places every order by hand. Wiring execution back in requires a `docs/STRATEGY.md` amendment, not a code change alone (§7.1).
-- **No edge is claimed.** `GET /api/alpha` returns `edge_status: "NOT_MEASURABLE"` unconditionally, and it will keep doing so until a pre-registered test passes. The criteria were fixed on 2026-07-08 and cannot be amended before the evaluation date: **a minimum of 200 US BUY decisions, benchmark SPY, ticker-block permutation p below 0.05, evaluated 2027-06-30** (§3.11). Until then, capital following system recommendations is capped inside an experiment sleeve, and the tracking numbers on the dashboard are labeled tracking-completeness, not performance.
+- **Recommendation only.** The pipeline ends at a recommendation and an alert. A paper-trading broker adapter exists in `nuri/trading/execution/broker.py` for backtesting and manual testing, but no scheduled job or decision path calls it. Enabling automated execution requires an amendment to [`docs/STRATEGY.md`](docs/STRATEGY.md) (§7.1).
+- **No claimed edge.** `GET /api/alpha` reports `edge_status: "NOT_MEASURABLE"` until a pre-registered evaluation passes. The criteria were fixed on 2026-07-08: at least 200 US BUY decisions, benchmarked against SPY, with a ticker-block permutation p-value below 0.05, evaluated on 2027-06-30 (§3.11). Until then, capital that follows system recommendations is limited to a capped experiment sleeve, and dashboard tracking figures describe tracking completeness rather than performance.
 
-If you are looking for a backtested strategy with a published Sharpe ratio, this is not that. It is the measurement apparatus you would need before you could honestly publish one.
+The project does not publish a backtested strategy or a Sharpe ratio. It provides the measurement infrastructure required before such a claim could be made.
 
 ### How it works
 
-Start with what the system is for. The daily decision loop scores **the holdings you already own** and records why. A separate scan surfaces non-portfolio candidates (`/api/opportunities`, and the BUY candidates in the morning brief), so the two paths are worth keeping apart in your head. Neither places an order.
+The daily decision loop evaluates the holdings already in the portfolio and records the reasoning for each one. A separate scan surfaces candidates outside the portfolio (`/api/opportunities` and the BUY candidates in the morning brief). Neither path places orders.
 
 ```mermaid
 flowchart LR
@@ -74,11 +75,15 @@ flowchart LR
     class YOU human
 ```
 
-The loop at the bottom is the point of the project: a recommendation is not finished when it is made, only when reality has graded it.
+Agent weights are adjusted from each agent's 30-day hit rate and are bounded to ±30% of their configured base values.
 
-#### What actually runs it — no orchestrator
+### Architecture
 
-There is no pipeline runner. `nuri/scheduler.py` registers 59 independent APScheduler jobs — **59 cron jobs · in-process**, nothing chaining them — and each becomes runnable when its inputs happen to already be in the database. Stages reach each other through SQLite tables, with exactly one exception.
+The system is organized into five stages: **collect → analyze → consensus → certify → track**. The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from SQLite tables written by earlier jobs.
+
+- Scheduling: 59 cron jobs · in-process, none of which calls another
+- Storage: a single SQLite database in WAL mode
+- Hand-off: stages communicate through tables, with one exception described below
 
 ```mermaid
 flowchart TB
@@ -119,21 +124,23 @@ flowchart TB
     class JOBS zone
 ```
 
-The counts sum to the whole: 29 + 1 + 1 + 5 + 23 = 59. The **thick arrow is the single exception** to DB coupling — `nuri/scheduler.py` hands the consensus result to `record_decisions()` as a Python object, never through a table. That is why `decisions` sat frozen for three and a half months when automation replaced the CLI path and dropped that one call (#897).
+The thick arrow marks the one in-memory hand-off: the consensus job passes its result to `record_decisions()` as a Python object rather than through a table.
 
-**`certify` is the only stage with no job of its own, and the consensus job does not call it.** `certify()` reads a DB snapshot and is invoked by `premarket_brief`, by `engine/remediation`, by its own CLI, and by three API routes (`/api/certify`, `/api/actions` health and violations). Every such call persists a `certifications` row — including a dashboard health check, which is why the API is not read-only.
+`certify` has no job of its own. `certify()` reads a database snapshot and is called by `premarket_brief`, `engine/remediation`, its own CLI, and three API routes (`/api/certify` and the health and violations endpoints under `/api/actions`). Each call writes a `certifications` row, so these API routes are not read-only.
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
-| **Collect** | 29 jobs, `*/5` during market hours down to weekly | external APIs | `prices` · `fundamentals` · `macro` · `news` |
-| **Analyze** | 1 job — `factors`, `10 8 * * *` | `prices` · `fundamentals` · `macro` (fear & greed) | `factors` |
-| **Consensus** | 1 job — `consensus`, `5 7 * * *` | `recommendations.outcome_30d` (for weights) · collector tables | `recommendations` with `agent_verdicts` JSON |
-| **Certify** | **no job of its own** — runs inside its callers: `premarket_brief`, `engine/remediation`, its own CLI, and three API routes. **Not** the consensus job | a DB snapshot of portfolio state | `certifications` |
-| **Track** | 5 jobs — `decision_pnl` `0 7`, `recommendation_outcomes` `2 7`, `thesis_criteria` `20 8`, `alpha_tracking` `0 17`, `agent_accuracy` weekly | `recommendations` · `prices` · `decisions`; `thesis_criteria` also reads `theses` · `signals` · `factors` · `fundamentals` | `recommendations.outcome_{30,60,90}d` · `decision_outcomes` · `strategy_memory` · `thesis_criteria_checks`; `decision_pnl` writes back into `decisions` |
+| **Collect** | 29 jobs, from every 5 minutes during market hours to weekly | External APIs | `prices`, `fundamentals`, `macro`, `news` |
+| **Analyze** | 1 job: `factors` at `10 8 * * *` | `prices`, `fundamentals`, `macro` | `factors` |
+| **Consensus** | 1 job: `consensus` at `5 7 * * *` | `recommendations.outcome_30d` (for weights), collector tables | `recommendations` with `agent_verdicts` |
+| **Certify** | No dedicated job; runs inside its callers (see above) | Portfolio state snapshot | `certifications` |
+| **Track** | 5 jobs: `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy` | `recommendations`, `prices`, `decisions`, `theses`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{30,60,90}d`, `decision_outcomes`, `strategy_memory`, `thesis_criteria_checks`, `decisions` |
 
-#### The clock does not follow the reading order
+The stage directories are `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend`. Imports that cross these boundaries are allowed only inside function bodies, never at module level, and each one must be listed in an allowlist with a stated reason. `tests/core/test_cross_stage_imports.py` enforces this in both directions.
 
-`collect → analyze → consensus → certify → track` is the order the stages are *named*, not the order they *run*. Nothing chains them, so the clock is free to violate it — and does.
+### Daily schedule
+
+The stage names describe data dependencies, not execution order. Because nothing chains the jobs, the schedule runs them in a different order:
 
 ```mermaid
 flowchart LR
@@ -157,34 +164,16 @@ flowchart LR
     class RECS store
 ```
 
-Read the stage labels left to right: track, track, consensus, analyze, track, track, brief. The sharpest case is the three minutes between 07:02 and 07:05 — outcome tracking runs *before* the consensus job that consumes what it wrote, so consensus reads yesterday's closed windows, not today's. `premarket_brief` is the one job with a timezone override (`US/Eastern`), so its `0 9 * * 1-5` lands late in the Korean evening, after everything else.
+Outcome tracking at 07:02 runs before the consensus job at 07:05, so consensus reads the windows closed on the previous day. `premarket_brief` is scheduled in `US/Eastern`, which places it in the late evening in Korea. Because every job reads its inputs from the database, each stage can be re-run independently.
 
-Every stage is therefore re-runnable in isolation, which is the property the design is actually buying.
+### Decision axes
 
-#### Cross-stage isolation holds in one narrow sense
+Rules that respond to a broken investment thesis are kept separate from rules that respond to position sizing (`nuri/core/axis.py`).
 
-The stages map to `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend` — a mapping no document stated until #922 wrote it down, which is why the older, stronger claim ("DB tables / CSV only") was not merely false but unfalsifiable. An AST sweep finds 17 imports crossing those boundaries over 15 distinct (file, module) pairs. Every one is a deferred function-body import and none is module-level, which is the only sense in which the rule holds: there is no load-time coupling, but each is a live call path. `certify` and `track` are mutually dependent (`engine/conflicts.py` calls `recommend/candidates.screen_candidates`, which calls `engine/conflicts.detect_conflicts` back) and survive only because of the deferral. `tests/core/test_cross_stage_imports.py` fails on any module-level crossing import, on a crossing pair missing from the allowlist, and on an allowlist entry whose dependency has since been removed, so the list cannot go stale in either direction.
-
-#### What the numbers are made of
-
-The analytical vocabulary is small and fixed: 22 signals · 10 regimes · a 4-factor composite.
-
-The factor composite (`nuri/quant/factors/composite.py`) blends four terms — momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. The first three are per-ticker scorers; sentiment is a single market-wide Fear & Greed value applied to every ticker alike, so it moves the score's level rather than its ranking. It is computed and persisted daily by the `factors` job at 08:10; readers query the `factors` table rather than recomputing.
-
-That composite is one input among several to the BUY-candidate scorer (`config/buy_signals.yaml`), which also weighs 5-day momentum, RSI, and 30-day breakout. Two further channels — cross-sectional relative strength and dollar-volume surge — are wired into that same formula at **weight 0**: computed and surfaced as evidence, contributing nothing to the score, and staying that way until a walk-forward test justifies promoting them.
-
-`config/signals.yaml` holds 22 entries of two deliberately unmerged kinds. 20 are **per-ticker and actionable** — the backtest detector registry. The other 2 — yield-curve inversion and HY-OAS widening — are **market-wide shadow** signals: their metadata carries `actionable: false`, their detectors live in `nuri/quant/validation/market_signals.py`, and they surface as warnings only.
-
-Detail: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Certification spec: [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md).
-
-### Two decision axes, never conflated
-
-A rule that fires because a position is too large is not the same as a rule that fires because a thesis broke. Mixing them is what produces a panicked sale of a good position, so the distinction is structural (`nuri/core/axis.py`):
-
-| Axis | Values | Fires on |
-|---|---|---|
-| **alpha** | `LONG` / `SHORT` / `FLAT` | Thesis change. Stop-loss breach is the **only** mechanical path to `FLAT`. |
-| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` | Sizing. Concentration, sector cap, and experiment-sleeve breaches resolve here — never as an urgent SELL. |
+| Axis | Values | Triggered by |
+|------|--------|--------------|
+| **alpha** | `LONG` / `SHORT` / `FLAT` | A change in the thesis. A stop-loss breach is the only mechanical path to `FLAT`. |
+| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` | Sizing. Concentration, sector-cap and experiment-sleeve breaches are resolved here and never produce an urgent SELL. |
 
 ```mermaid
 flowchart LR
@@ -208,105 +197,122 @@ flowchart LR
     class C2 calm
 ```
 
-The veto reads `alpha_action` only, so a portfolio-shape violation can never become a sell instruction. That separation is not stylistic — collapsing the two axes is what turns "this position is too big" into "sell this position now".
+The risk veto reads `alpha_action` only, so an oversized position can lead to rebalancing advice but never to a sell instruction.
+
+### Signals and factors
+
+The analytical vocabulary consists of 22 signals · 10 regimes · a 4-factor composite.
+
+- **Factor composite** (`nuri/quant/factors/composite.py`): momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. Sentiment is the market-wide Fear & Greed value, so it shifts the score level rather than the ranking. The `factors` job computes and stores it daily at 08:10.
+- **BUY-candidate score** (`config/buy_signals.yaml`): combines the factor composite with 5-day momentum, RSI and 30-day breakout. Cross-sectional relative strength and dollar-volume surge are computed and shown as evidence but carry a weight of 0 until validated by a walk-forward test.
+- **Signals** (`config/signals.yaml`): 20 per-ticker, actionable signals used by the backtest detectors, plus 2 market-wide shadow signals (yield-curve inversion and HY-OAS widening) marked `actionable: false` and surfaced as warnings only.
+
+Further detail is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) and [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md).
 
 ## Install
 
+### Requirements
+
+- Python 3.12 and [uv](https://docs.astral.sh/uv/)
+- TA-Lib
+- Node.js 22
+
+On macOS:
+
 ```bash
-# Prerequisites: Python 3.12, uv, ta-lib, Node 22
 brew install uv ta-lib fnm && fnm install 22
-
-git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
-make setup                                              # backend deps + DB init + git hooks
-cd frontend && npm ci && cd ..                          # frontend
-cp .env.example .env                                    # API keys (all optional)
-cp config/portfolio.example.yaml config/portfolio.yaml  # your holdings (gitignored)
-
-make start          # API on :8001 + Dashboard on :3000
 ```
 
-Visit **`:3000`** for the Action-First dashboard or **`:8001/docs`** for OpenAPI.
+### Setup
 
-Every API key is optional. Collectors whose credentials are absent skip themselves and log the skip; the pipeline completes without them.
+```bash
+git clone https://github.com/researcherhojin/nuri-quant.git && cd nuri-quant
+make setup                                              # backend dependencies, database, git hooks
+cd frontend && npm ci && cd ..                          # frontend dependencies
+cp .env.example .env                                    # API keys (all optional)
+cp config/portfolio.example.yaml config/portfolio.yaml  # holdings (gitignored)
+
+make start                                              # API on :8001, dashboard on :3000
+```
+
+The dashboard is served at `http://localhost:3000` and the OpenAPI documentation at `http://localhost:8001/docs`.
+
+All API keys are optional. Collectors without credentials skip themselves and log the skip, and the pipeline completes without them.
 
 ## Usage
 
-### Daily commands
+### Commands
 
 ```bash
-make full-scan      # every stage in order, 9 labelled steps (A-H)
-make consensus      # 10-agent analysis + decision recording
-make certify        # Certification gates (Account × Asset Class)
-make scan           # Daily swing scan (us_core, 85 tickers)
-make scan-extended  # Weekly swing scan (us_core + S&P 500 extension, 543 tickers)
+make full-scan      # run every stage in order (9 steps, A–H)
+make consensus      # 10-agent analysis and decision recording
+make certify        # certification gates (account × asset class)
+make scan           # daily swing scan (us_core, 85 tickers)
+make scan-extended  # weekly swing scan (us_core + S&P 500 extension, 543 tickers)
 
-make test-fast      # backend, slow tests excluded
-make test           # full backend suite (adds 27 slow-marked tests)
-make ci-cov         # combine CI shard artifacts — ground-truth coverage
+make test-fast      # backend tests, excluding slow tests
+make test           # full backend suite, including 27 slow tests
+make ci-cov         # combine CI shard coverage artifacts
 
-make verify-quick   # pre-commit smoke gate
-make verify-all     # pre-push gate: tests + lint + frontend
-make help           # full target list with categories
+make verify-quick   # pre-commit checks
+make verify-all     # pre-push checks: tests, lint, frontend
+make help           # list all targets
 ```
 
 ### Dashboard
 
-The dashboard at `:3000/` answers **"what should I do today?"** — Action-First design that surfaces actionable intelligence ahead of raw data. Pension / IRP holdings are filtered out, since a monthly rebalance is not a daily decision.
+The dashboard home page (`:3000/`) is organized around the actions due today. Pension and IRP holdings are excluded because they are rebalanced monthly.
 
-| Section | Purpose |
-|---------|---------|
-| **Hero** | 4-stat ribbon — 총 자산 · 오늘 P&L · 누적 수익률 · 승률, with a provenance strip labeling the numbers as a **portfolio snapshot** (총 자산 = all accounts + cash; 오늘 · 누적 · 승률 = pension-excluded holdings, unrealized) as distinct from the adjudication ledger |
-| **System Health** | Certification score · Regime · Macro score · Data freshness |
-| **Action Items** | 🔴 즉시 실행 (stop-loss, Certification veto) · 🟡 오늘 확인 (take-profit, squeeze) · 🟦 리밸런스 · ✅ 유지 — each card links its **evidence chain** (`/decisions/{id}`, dated `as_of`) when a same-date decision record exists |
-| **Macro Events** | Deduplicated high-impact headlines with 한국어 categories |
-| **Composition** | Donut chart — 자산 / 섹터 / 계좌 tabs |
-| **Holdings table** | Sorted by `positionPct` desc · top 8 + expand |
-| **Opportunity Explorer** | Top 3 non-portfolio tickers · pros / cons / verdict |
+| Section | Contents |
+|---------|----------|
+| **Hero** | Total assets, today's P&L, cumulative return and win rate, labeled as a portfolio snapshot (unrealized, pension excluded) to distinguish them from the decision ledger |
+| **System Health** | Certification score, market regime, macro score, data freshness |
+| **Action Items** | Grouped by urgency: immediate (stop-loss, certification veto), review today (take-profit, squeeze), rebalance, hold. Each card links to its evidence record (`/decisions/{id}`) when one exists for the same date |
+| **Macro Events** | Deduplicated high-impact headlines by category |
+| **Composition** | Allocation by asset, sector and account |
+| **Holdings** | Positions sorted by weight; top 8 with expansion |
+| **Opportunity Explorer** | Top 3 non-portfolio tickers with pros, cons and a verdict |
 
-The dashboard's one-line verdict is gated on data freshness: if any input it depends on (prices, VIX, Fear & Greed, market rates, monthly macro, consensus — the `verdict_gate` list in [`config/freshness.yaml`](config/freshness.yaml)) has gone FAIL-stale, the verdict declines to advise and names the stale inputs instead of rendering a judgment on old data.
+The daily summary verdict depends on data freshness. If any input listed under `verdict_gate` in [`config/freshness.yaml`](config/freshness.yaml) is stale, the dashboard lists the stale inputs instead of issuing a verdict.
 
-Korean tickers display as names (삼성전자) instead of codes (005930.KS). 18 routes total.
+The interface is in Korean, and Korean tickers are shown by name (for example, 삼성전자 rather than 005930.KS). The frontend has 18 routes.
 
 ## Investment Rules
 
-Rules live in [`config/rules.yaml`](config/rules.yaml) (loaded via `nuri/core/rules.py`) — code never hardcodes them. Sources: O'Neil (CAN SLIM), Minervini (SEPA), Shefrin & Statman (1985, 처분효과 / disposition effect).
+Investment rules are defined in [`config/rules.yaml`](config/rules.yaml) and loaded through `nuri/core/rules.py`; thresholds are not hardcoded. The rules draw on O'Neil (CAN SLIM), Minervini (SEPA), and Shefrin and Statman (1985) on the disposition effect.
 
 | Strategy | Stop-loss | Profile |
 |----------|-----------|---------|
-| `core` | -7% | Default — strict O'Neil discipline |
-| `active` | -10% | Cut losses early |
-| `swing` | -15% | Short-term rotations (≤ 7 trading days) |
+| `core` | -7% | Default, O'Neil discipline |
+| `active` | -10% | Early loss-cutting |
+| `swing` | -15% | Short-term positions (up to 7 trading days) |
 | `long_term` | -20% | Buy-and-hold ETFs |
 | `pension` | -30% | Long-horizon retirement allocations |
 
-Take-profit ladders sit on top: growth takes +20% / +40% then trails at -15%; value takes +15% / +30% then trails at -15%. Two hard gates apply regardless of strategy — VIX above 30 blocks new buys (25–30 halves the position), and Certification rejects any error-grade fail with no manual override. Full thresholds and rationale: [`docs/STRATEGY.md §3.4-§3.5, §6`](docs/STRATEGY.md).
+Take-profit ladders apply on top of these: growth positions take profit at +20% and +40% and then trail at -15%; value positions at +15% and +30%, also trailing at -15%. Two gates apply to every strategy: a VIX above 30 blocks new purchases (25–30 halves the position size), and certification rejects any error-grade failure without manual override. Thresholds and rationale are documented in [`docs/STRATEGY.md`](docs/STRATEGY.md) §3.4–§3.5 and §6.
 
-Rule changes follow an escalation ladder rather than landing at full strength: **surface** evidence → **soft penalty** (deterministic downgrade) → **hard veto** (action block on downside risk) → **symmetric amplifier**. Promotion between rungs requires a STRATEGY PR with backtest evidence, and a rung has been walked back before — a 50-day-MA leader exit was disabled in #800 after a 197-ticker walk-forward failed to reproduce the 17-ticker result it was built on.
+New rules are introduced in stages: **surface** evidence, then a **soft penalty** (a deterministic downgrade), then a **hard veto** (blocking an action on downside risk), and finally a **symmetric amplifier**. Each promotion requires a STRATEGY amendment with backtest evidence, and a rule may be demoted when later evidence does not support it.
 
 ## LLM Integration
 
-LLM integrations are **wired but inactive** unless you set the corresponding env var. The system runs without any LLM and falls back to regex / rule-based logic. Egress policy: [`docs/STRATEGY.md §4.4.3`](docs/STRATEGY.md).
+The system runs without any LLM; when none is configured it falls back to rule-based and regex logic. Each integration is activated by its environment variable. The egress policy is defined in [`docs/STRATEGY.md`](docs/STRATEGY.md) §4.4.3.
 
 | Provider | Purpose | Activation | Data tier |
 |----------|---------|------------|-----------|
-| **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` | Tier 0 (public). $3.51/yr at 100 headlines/day |
-| **OpenAI gpt-5.4-nano** | Daily LLM report | `OPENAI_API_KEY` + `OPENAI_ZDR_APPROVED=1` | Tier 2 (portfolio). $0.10/yr at 1 report/day |
-| **llama.cpp** (local) | Daily LLM report fallback | `LLAMA_MODEL_PATH` | Tier 2 — local only |
-| **Ollama** (local) | Daily LLM report fallback | `OLLAMA_HOST` | Tier 2 — local only |
+| **OpenAI gpt-5.4-nano** | RSS headline classification | `OPENAI_API_KEY` | Tier 0 (public). About $3.51/year at 100 headlines/day |
+| **OpenAI gpt-5.4-nano** | Daily LLM report | `OPENAI_API_KEY` + `OPENAI_ZDR_APPROVED=1` | Tier 2 (portfolio). About $0.10/year at 1 report/day |
+| **llama.cpp** (local) | Daily report fallback | `LLAMA_MODEL_PATH` | Tier 2, local only |
+| **Ollama** (local) | Daily report fallback | `OLLAMA_HOST` | Tier 2, local only |
 
-`llama-cpp-python` is an opt-in `local-llm` extra because its default PyPI
-artifact compiles llama.cpp from source. `make setup` and the Mac mini deployment
-paths include the extra; CI omits it because no GGUF model is loaded there.
+`nuri/llm/openai_client.py` is the only module permitted to import `openai`. It logs every external call to the `external_llm_calls` table (timestamp, model and token counts; never content), requires `OPENAI_ZDR_APPROVED=1` for prompts containing portfolio data, and raises before any request is sent when `NURI_DISABLE_EXTERNAL_LLM=1` is set.
 
-`nuri/llm/openai_client.py` is the only module permitted to import `openai`. Every external call is logged to the `external_llm_calls` table (timestamp / model / tokens — **never content**), portfolio-bearing prompts require the explicit ZDR flag, and `NURI_DISABLE_EXTERNAL_LLM=1` raises before any request leaves the process.
+`llama-cpp-python` is an optional `local-llm` extra because its default PyPI package builds llama.cpp from source. `make setup` and the production deployment include it; CI does not.
 
 ## Deployment
 
-The reference setup is two machines by role: a development host, and an always-on receiver that runs the scheduler. `make deploy-mini` syncs them in one command. The receiver is the sole writer; the development host treats its database as a read replica, so adjudication records have exactly one ledger of record.
+The reference deployment uses two machines: a development host and an always-on server that runs the scheduler. `make deploy-mini` synchronizes them. The server is the only writer; the development host uses a read-only copy of its database, so decision records have a single ledger of record.
 
-The receiver is also watched from outside its own hardware: it force-pushes a dead-man heartbeat ref (`refs/nuri/heartbeat-mini`, an empty-tree commit — no code, no branch) every 10 minutes, and a scheduled GitHub Actions workflow alerts the ops channel when that ref goes silent for 45 minutes. Silence is the alarm; a dead machine cannot be asked to report itself.
-
-Production binds the API to `127.0.0.1`. The dashboard proxy is the only public surface and sits behind a password gate.
+The server pushes a heartbeat ref (`refs/nuri/heartbeat-mini`, an empty-tree commit) every 10 minutes. A scheduled GitHub Actions workflow alerts the operations channel if the ref has not been updated for 45 minutes, so an outage is detected from outside the machine.
 
 ## Tech Stack
 
@@ -344,65 +350,76 @@ Production binds the API to `127.0.0.1`. The dashboard proxy is the only public 
 
 ## Project Stats
 
-Measured against `main` on 2026-08-29. Rows marked ✅ are re-checked on every PR by `make verify-doc-counts`, which fails CI when the number here drifts from the code. Unmarked rows are **not** gated — read them as a dated snapshot, not a guarantee.
+Rows marked ✅ are checked on every pull request by `make verify-doc-counts`, which fails CI if the value differs from the code. Other rows are point-in-time measurements (2026-08-29; coverage 2026-09-29).
 
-| Metric | Value | |
-|--------|-------|---|
+| Metric | Value | Verified |
+|--------|-------|:--------:|
 | **Backend tests** | 8,521 collected across 391 files | ✅ |
-| **Backend statement coverage** | 99% — 150 of 25,528 statements uncovered across 26 files, 123 partial branches of 7,888 (`make ci-cov` — combines the CI shards, so it is the same basis Codecov's `backend` flag reports; 2026-09-29) | |
-| **Frontend tests** | 1,746 across 146 vitest files — 99.87% statement coverage (2,433 of 2,436) | ✅ |
+| **Backend coverage** | 99% statements: 150 of 25,528 uncovered; 123 of 7,888 branches partial (`make ci-cov`, same basis as Codecov) | |
+| **Frontend tests** | 1,746 across 146 vitest files, 99.87% statement coverage | ✅ |
 | **E2E tests** | 89 across 10 Playwright specs | |
-| **Pipeline stages** | 5 as a data model; 1 of them (certify) has no scheduler job of its own | |
-| **Data collectors** | 27 collectors (BaseCollector pattern) — 22 are driven by collect-stage cron jobs, the rest run on demand | ✅ |
-| **Specialist agents** | 10 (consensus vote, weights sum to 1.0) | |
-| **Actor fleet** | 16 registered — 9 with a live caller, 7 dormant (implemented and tested, nothing calls them) + 3 infrastructure helpers | |
-| **Scheduler jobs** | 59 cron entries (APScheduler, in-process) — 29 collect · 1 analyze · 1 consensus · 5 track · 23 operate | ✅ |
-| **Strategy regimes** | 10 regimes (6 base + 4 special) | ✅ |
-| **Trading signals** | 22 — 20 per-ticker (actionable) + 2 market-wide (shadow) | |
-| **API endpoints** | 73 declared in `nuri/api/routes/` (76 counting the three declared on the app itself in `main.py`) | ✅ |
-| **Frontend routes** | 18 (Next.js on `:3000`) | |
-| **DB tables** | SQLite WAL · 61 tables (65 forward-only migrations) | ✅ |
-| **DB submodules** | 15 under `nuri/core/db/` — `connection.py` is the sole `sqlite3` importer, enforced by an AST sweep in CI | |
+| **Pipeline stages** | 5 (certify runs without a dedicated job) | |
+| **Data collectors** | 27 collectors (BaseCollector pattern); 22 run on schedule, the rest on demand | ✅ |
+| **Specialist agents** | 10, with consensus weights summing to 1.0 | |
+| **Actor fleet** | 16 registered: 9 active, 7 dormant, plus 3 infrastructure helpers | |
+| **Scheduler jobs** | 59 cron entries: 29 collect, 1 analyze, 1 consensus, 5 track, 23 operate | ✅ |
+| **Strategy regimes** | 10 (6 base + 4 special) | ✅ |
+| **Trading signals** | 22: 20 per-ticker (actionable) + 2 market-wide (shadow) | |
+| **API endpoints** | 73 declared in `nuri/api/routes/`, plus 3 in `main.py` | ✅ |
+| **Frontend routes** | 18 | |
+| **Database** | SQLite WAL · 61 tables, 65 forward-only migrations | ✅ |
+| **DB modules** | 15 under `nuri/core/db/`; `connection.py` is the only `sqlite3` importer, enforced in CI | |
 
 ## Documentation
 
-- [`docs/STRATEGY.md`](docs/STRATEGY.md) — project philosophy, architectural decisions, investment rules. Canonical when documents disagree.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — detailed code / DB layout, schema, env vars, CI/CD
-- [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) — certification spec. It specifies three dimensions; the third (execution market hours) is **spec only** — `execution_markets` appears nowhere in `config/rules.yaml` or in `nuri/`, so what runs today is Account × Asset Class
-- [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) — KIS (Korea Investment & Securities) Open API
-- [`docs/UX_REDESIGN_PLAN.md`](docs/UX_REDESIGN_PLAN.md) — Evidence Terminal UI overhaul: phases, responsive spec, gates
-- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — session-efficiency scripts, pre-push checklist
-- [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) — fresh-clone end-to-end verification (quarterly / onboarding)
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow, PR discipline
-- [`SECURITY.md`](SECURITY.md) — security policy, LLM egress rules
-- [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) — agent guides (Claude Code / Cursor / Copilot)
+| Document | Contents |
+|----------|----------|
+| [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, architectural decisions and investment rules. Authoritative when documents disagree. |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Code and database layout, schema, environment variables, CI/CD |
+| [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) | Certification specification. Of its three dimensions, account and asset class are implemented; execution market hours is specified only. |
+| [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) | Korea Investment & Securities Open API integration |
+| [`docs/UX_REDESIGN_PLAN.md`](docs/UX_REDESIGN_PLAN.md) | Dashboard redesign plan: phases, responsive specification, gates |
+| [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | Development scripts and pre-push checklist |
+| [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end verification from a fresh clone |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md) | Development workflow and pull request rules |
+| [`SECURITY.md`](SECURITY.md) | Security policy and LLM egress rules |
+| [`CLAUDE.md`](CLAUDE.md) / [`AGENTS.md`](AGENTS.md) | Guidelines for coding agents (Claude Code, Codex CLI, Cursor, Copilot) |
 
 ## Maintainers
 
-[@researcherhojin](https://github.com/researcherhojin) — sole maintainer. This is a personal investment platform; the contribution rules exist mainly because coding agents work in this repo and need mechanical guardrails.
+[@researcherhojin](https://github.com/researcherhojin). Nuri-Quant is maintained as a personal investment platform. The contribution rules are strict mainly because coding agents work in this repository and rely on automated guardrails.
 
 ## Acknowledgements
 
-| Source | Usage |
-|--------|-------|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Policy-driven gate certification (v2: asset-class expansion), safety lattice |
-| [OAE](https://github.com/nutshells3/orchestration-assurance-engine) | Claim trace, evidence lineage, audit pipeline |
-| [safeslice](https://github.com/nutshells3/safeslice) | Statistical reliability bounds, witness cliff detection |
+| Source | Used for |
+|--------|----------|
+| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Policy-driven gate certification, safety lattice |
+| [OAE](https://github.com/nutshells3/orchestration-assurance-engine) | Claim tracing, evidence lineage, audit pipeline |
+| [safeslice](https://github.com/nutshells3/safeslice) | Statistical reliability bounds |
 | [fwp](https://github.com/nutshells3/fwp) | Protocol seam pattern, governed job lifecycle |
-| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision Intelligence pattern |
-| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA (PASS/WARN/FAIL) |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Decision intelligence pattern |
+| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLAs (PASS / WARN / FAIL) |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | Multi-agent consensus pattern |
-| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Walk-forward null-safe gate · optimization · data |
+| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) · [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Walk-forward validation, portfolio optimization |
 
-Academic foundations: O'Neil _CAN SLIM_, Minervini _SEPA_, Shefrin & Statman 1985 (disposition effect), Markowitz, Damodaran, Bernstein.
+Academic references: O'Neil (_CAN SLIM_), Minervini (_SEPA_), Shefrin and Statman (1985), Markowitz, Damodaran, Bernstein.
 
 ## Contributing
 
-Open an issue before writing code so scope can be agreed first — read [`docs/STRATEGY.md`](docs/STRATEGY.md) before proposing any non-trivial change, since it is canonical when documents disagree. PRs are accepted.
+Please open an issue to agree on scope before submitting a pull request, and read [`docs/STRATEGY.md`](docs/STRATEGY.md) before proposing a non-trivial change.
 
-Fourteen checks are required to merge: `Backend Tests`, `Backend Lint`, `Frontend Tests`, `Frontend Lint`, `Frontend Build`, `Security Scan` (Trivy CRITICAL), `Shell Lint`, `Universe Coverage Validation`, `Doc Count Drift Check`, `Privacy Leak Scan`, `Local-LLM Build Gate`, `uv.lock Major Boundary`, `package-lock.json Major Boundary`, and `Quick Checks` (5 MB file limit + cspell spellcheck). A commit-count gate (≤ 3), Codecov and CodeQL also run, advisory unless separately enforced. The list in branch protection is canonical when this sentence lags. One issue per PR and English Conventional Commit subjects are conventions the review enforces, not jobs — see [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
+The following checks must pass before a pull request can be merged:
 
-Changing an investment rule, or promoting an escalation-ladder rung, additionally requires a `docs/STRATEGY.md` amendment with backtest evidence. A code change alone is not sufficient, and rungs have been walked back on evidence before.
+- `Backend Tests`, `Backend Lint`
+- `Frontend Tests`, `Frontend Lint`, `Frontend Build`
+- `Security Scan` (Trivy, CRITICAL), `Privacy Leak Scan`, `Shell Lint`
+- `Universe Coverage Validation`, `Doc Count Drift Check`, `Local-LLM Build Gate`
+- `uv.lock Major Boundary`, `package-lock.json Major Boundary`
+- `Quick Checks` (5 MB file limit and spellcheck)
+
+A commit-count check (at most 3 commits), Codecov and CodeQL also run but are advisory. Branch protection settings are authoritative if this list falls out of date. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow.
+
+Changes to investment rules, and promotions between rule stages, also require a `docs/STRATEGY.md` amendment supported by backtest evidence.
 
 ## License
 
