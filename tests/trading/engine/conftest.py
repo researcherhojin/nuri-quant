@@ -20,19 +20,8 @@ def db_path(tmp_path):
 
 
 @pytest.fixture()
-def db_path_monkeypatched(tmp_path, monkeypatch):
-    """DB with monkeypatched DB_PATH for modules that use the global."""
-    import nuri.core.db as db_mod
-
-    path = tmp_path / "test.db"
-    init_db(path)
-    monkeypatch.setattr(db_mod, "DB_PATH", path)
-    return path
-
-
-@pytest.fixture()
 def populated_db(db_path, monkeypatch):
-    """Gate/certification test data: portfolio + 300-day SPY + VIX."""
+    """Gate test data: portfolio + 300-day SPY + VIX."""
     import nuri.core.db as db_mod
 
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
@@ -71,73 +60,6 @@ def populated_db(db_path, monkeypatch):
     )
 
     return db_path
-
-
-@pytest.fixture()
-def populated_db_cert(tmp_path, monkeypatch):
-    """Certification-specific populated DB (from test_certification.py)."""
-    import nuri.core.db as db_mod
-
-    path = tmp_path / "test.db"
-    init_db(path)
-    monkeypatch.setattr(db_mod, "DB_PATH", path)
-
-    with get_db(path) as conn:
-        conn.execute(
-            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?, ?, ?, ?, ?, ?)",
-            ("test", "AAPL", 10, 150.0, "USD", "Technology"),
-        )
-        conn.execute(
-            "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency, sector) VALUES (?, ?, ?, ?, ?, ?)",
-            ("test", "MSFT", 5, 300.0, "USD", "Technology"),
-        )
-
-    today = datetime.now().strftime("%Y-%m-%d")
-    prices = pd.DataFrame(
-        [
-            {
-                "ticker": "SPY",
-                "date": today,
-                "open": 500,
-                "high": 510,
-                "low": 495,
-                "close": 505,
-                "volume": 50000000,
-                "adj_close": 505,
-            },
-            {
-                "ticker": "AAPL",
-                "date": today,
-                "open": 155,
-                "high": 158,
-                "low": 153,
-                "close": 156,
-                "volume": 10000000,
-                "adj_close": 156,
-            },
-            {
-                "ticker": "MSFT",
-                "date": today,
-                "open": 310,
-                "high": 315,
-                "low": 308,
-                "close": 312,
-                "volume": 5000000,
-                "adj_close": 312,
-            },
-        ]
-    )
-    upsert_prices(prices, path)
-
-    upsert_macro(
-        [
-            {"indicator": "vix", "date": today, "value": 18.0, "source": "test"},
-            {"indicator": "usd_krw", "date": today, "value": 1380.0, "source": "test"},
-        ],
-        path,
-    )
-
-    return path
 
 
 @pytest.fixture()
@@ -228,40 +150,4 @@ def _seed_macro_r23(db_path, indicator="vix", value=20.0, days=1):
             conn.execute(
                 "INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
                 (indicator, date_str, value, "test"),
-            )
-
-
-def _seed_kr_portfolio(db_path, holdings=None):
-    """KR 종목이 포함된 portfolio fixture (#248 asset-class gate 테스트용).
-
-    holdings 기본값: 삼성전자(005930.KS) + KR ETF 5종 (US/Tech/Commodity/Bond/KRIndex).
-    이 조합이 실제 사용자 포트폴리오와 동일 — asset_class_rules 전체 경로 검증.
-    """
-    defaults = [
-        ("005930.KS", "Semiconductor", 50.0),
-        ("000660.KS", "Semiconductor", 50.0),
-        ("448300.KS", "ETF/USIndex", 50.0),
-        ("132030.KS", "ETF/Commodity", 50.0),
-        ("447660.KS", "ETF/Bond", 50.0),
-        ("292160.KS", "ETF/KRIndex", 50.0),
-        ("AAPL", "Technology", 150.0),
-    ]
-    with get_db(db_path) as conn:
-        for ticker, sector, price in holdings or defaults:
-            conn.execute(
-                "INSERT OR REPLACE INTO portfolio (ticker, sector, avg_price, quantity, account) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (ticker, sector, price, 10, "test_account"),
-            )
-
-
-def _seed_usd_krw_series(db_path, values=None):
-    """usd_krw 4일치 시계열 삽입 — _compute_3d_change 작동 검증용."""
-    values = values or [1300.0, 1305.0, 1310.0, 1330.0]  # 4개 필요 (LIMIT 4)
-    with get_db(db_path) as conn:
-        for i, v in enumerate(values):
-            date_str = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-            conn.execute(
-                "INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
-                ("usd_krw", date_str, v, "test"),
             )

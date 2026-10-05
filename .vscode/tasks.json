@@ -63,12 +63,6 @@
       "command": "make quick-scan",
       "presentation": { "panel": "new" }
     },
-    {
-      "label": "make: certify (SIEGE)",
-      "type": "shell",
-      "command": "make certify",
-      "presentation": { "panel": "new" }
-    },
 
     // ─── Server ──────────────────────────────────────────
     {

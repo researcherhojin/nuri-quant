@@ -43,12 +43,6 @@ _REGIME_SITES = [
         "held_add_mode.modes.average_down.trigger.macro_veto_regimes",
         lambda c: _avg_down_trigger(c).get("macro_veto_regimes") or [],
     ),
-    # rules.yaml 쪽 — 현재는 canonical 이지만 잠겨 있지 않았다. 같은 결함이 재발할
-    # 자리이므로 함께 본다 (#1131 Codex P2).
-    (
-        "rules.yaml siege_gates.regime_overrides",
-        lambda c: ((c.get("_rules") or {}).get("siege_gates") or {}).get("regime_overrides") or {},
-    ),
 ]
 
 #: 값이 **비어 있어도 키는 존재해야 하는** 자리. 키를 통째로 지우면 소비 코드의
@@ -63,7 +57,6 @@ _REQUIRED_KEYS = [
 _SCORING_SITES = {
     "quality_bar.per_regime",
     "allocation.total_pct_by_regime",
-    "rules.yaml siege_gates.regime_overrides",
 }
 
 

@@ -1,11 +1,10 @@
 """보유 종목의 자산군 분류 — `config/rules.yaml asset_class_rules` 의 유일한 실행기.
 
 측정 모드(STRATEGY §3.11)의 벤치마크 분류(`nuri/agents/actors/forward_outcome_tracker.py`),
-전략 배분(`nuri/trading/strategy/strategic_allocation.py`), 그리고 폐기 전까지의 SIEGE
-인증기(`nuri/trading/engine/certification.py`)가 같은 함수를 쓴다. 사본을 두면 두 분류가
+전략 배분(`nuri/trading/strategy/strategic_allocation.py`)이 같은 함수를 쓴다. 사본을 두면 두 분류가
 갈라진다 — 분류가 어긋나면 결정 행의 벤치마크가 바뀌어 사전등록된 알파 측정이 오염된다.
 
-#1619 PR 2: `certification.py` 에서 옮겼다. 인증기는 폐기되지만 분류는 남는다.
+#1619 PR 2: 폐기된 SIEGE 인증기(`certification.py`)에서 옮겼다 — 인증기는 사라졌지만 분류는 남는다.
 `nuri/trading/recommend/holdings_monitor.py` 의 `_classify_asset_class` 는 통화 기반의 다른
 체계(`equity_us` / `equity_kr` / `crypto`)라 이 함수와 무관하다.
 """

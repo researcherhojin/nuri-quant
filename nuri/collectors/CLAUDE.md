@@ -169,8 +169,7 @@ ticker 가 비어 있는데, 둘 다 ticker 빈 값으로 자연히 걸러진다
 ⚠️ **`external_analysis` 에 얹지 않는다.** 거기 `ticker` 는 **실제 종목 심볼 네임스페이스**이고
 `ARKK`/`ARKF` 는 진짜 ETF 티커다. 펀드명을 그 컬럼에 쓰면 `get_external()` ·
 `/api/external/{ticker}` · `get_external_summary()` 가 이걸 해당 ETF 에 대한 외부 분석으로
-돌려주고, 무엇보다 `certification.py` 의 `_count_external_for_class()` 가 **SIEGE external
-evidence 로 센다** (그 ETF 를 보유하게 되는 순간). 메타데이터가 신호 자리로 새는 형태다.
+돌려준다 (폐기된 SIEGE external 게이트는 이걸 증거로 세기까지 했다, #1619). 메타데이터가 신호 자리로 새는 형태다.
 
 ⚠️ **정책 쿼리의 `COUNT(*) = 5` 는 장식이 아니다.** 그게 없으면 한 펀드의 행이 **아예 없을 때**
 `MIN` 이 남은 펀드들만 보고 초록을 준다 — 새 펀드를 추가했는데 수집이 한 번도 성공 못 한
@@ -239,7 +238,7 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 
 ## Freshness Sentinel Redundancy (#453/#454, post-#457)
 
-SIEGE freshness gate (`certification.py::_check_freshness_for_class`) reads **`prices` only**. `--source freshness` (#457) feeds SPY/TLT/GC=F into `prices` daily. Two known redundancies:
+`--source freshness` (#457) feeds the `config/rules.yaml freshness_tickers` (SPY/TLT/GC=F) into `prices` daily; `nuri/core/freshness.py` and `alerts/data_sanity.py` read **`prices` only** for them (the SIEGE freshness gate that originally motivated the pass was retired in #1619). Two known redundancies:
 
 - **`gold` lives in two tables**: `macro.indicator='gold'` (~5Y backfill, 304 rows as of 2026-07-08 — grows daily) AND `prices."GC=F"` (`period=5d` freshness pass, accumulates daily via upsert). Same yfinance source, separate writers (`macro.py` vs `stock.py --source freshness`, wired daily as `stock_us_freshness` in `scheduler.py` #860). No current historical consumer of `prices."GC=F"` beyond the gate, so single-source-of-truth not enforced — accept as debt.
 - **TLT shallow history**: `prices.TLT` comes only from the `period=5d` freshness pass. If a future backtest/analysis needs TLT 5Y, add TLT to `universe.yaml` (don't promote freshness gate to dual-source — drift risk per #454 codex consult 2026-04-28).

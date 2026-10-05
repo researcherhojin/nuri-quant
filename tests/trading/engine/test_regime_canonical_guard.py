@@ -134,19 +134,11 @@ CANONICAL_VOCAB_WRITERS: dict[str, dict] = {
         "column": "decisions.regime",
         "functions": ("_snapshot_market_context",),
     },
-    # #1293 — 여기가 셋 중 위험이 가장 컸다: 행수가 decisions 의 12배(4,525)이고, 값이
-    # `regime_overrides.get(regime, {})` 라는 **조용한 기본값** 경로로 간다.
-    "trading/engine/certification.py": {
-        "column": "certifications.regime",
-        "functions": ("_classify_regime_fresh",),
-    },
 }
 
 #: 같은 어휘를 쓰는데 **아직 가드가 없는** writer. 사유와 추적 이슈를 함께 적는다.
 #: 양방향 검사라 고치고 나면 stale 로 FAIL 해서 목록 정리를 강제한다.
-#: 같은 어휘를 쓰는데 **아직 가드가 없는** writer. 사유와 추적 이슈를 함께 적는다.
-#: 양방향 검사라 고치고 나면 stale 로 FAIL 해서 목록 정리를 강제한다.
-#: 현재 비어 있다 — #1293 이 마지막 항목(`certification.py`)을 닫았다.
+#: 현재 비어 있다 — #1293 이 마지막 항목을 닫았고, 그 writer(`certification.py`)는 #1619 로 삭제됐다.
 KNOWN_UNGUARDED: dict[str, str] = {}
 
 

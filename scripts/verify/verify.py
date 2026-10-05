@@ -376,7 +376,7 @@ def verify_regime(report_dir: Path, summary: list[str]) -> None:
 
 
 def verify_gate(report_dir: Path, summary: list[str]) -> None:
-    """SIEGE Gate: 파이프라인 준비 상태 검증."""
+    """Pipeline Gate: 파이프라인 준비 상태 검증."""
     logger.info("─── Pipeline Gate ───")
     from nuri.trading.engine.gate import check_all_gates, print_gate
 
@@ -445,7 +445,7 @@ def main() -> int:
     print(f"{'═' * 60}\n")
 
     steps = [
-        # SIEGE Gate: 데이터 준비 상태 확인
+        # Pipeline Gate: 데이터 준비 상태 확인
         ("파이프라인 게이트", verify_gate),
         # Phase A/B: 기본 분석
         ("포트폴리오", verify_portfolio),

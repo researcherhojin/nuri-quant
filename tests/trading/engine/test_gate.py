@@ -3,6 +3,7 @@
 Extracted from tests/test_trading_engine_all.py (refactor #157).
 Source: test_engine.py, test_coverage_round10.py, test_coverage_round23.py.
 """
+
 from nuri.core.db import get_db
 
 
@@ -11,12 +12,14 @@ class TestGate:
 
     def test_empty_db_all_fail(self, db_path):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate(db_path=db_path)
         assert result.passed < result.total
         assert result.ready is False
 
     def test_populated_db_passes_basics(self, populated_db):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate(phase="collect", db_path=populated_db)
         portfolio_cond = [c for c in result.conditions if c.id == "portfolio_exists"]
         assert len(portfolio_cond) == 1
@@ -24,17 +27,20 @@ class TestGate:
 
     def test_regime_gate_with_spy(self, populated_db):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate(phase="regime", db_path=populated_db)
         spy_cond = [c for c in result.conditions if c.id == "spy_data"]
         assert spy_cond[0].passed is True
 
     def test_gate_score_range(self, populated_db):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate(db_path=populated_db)
         assert 0.0 <= result.score <= 1.0
 
     def test_all_gates(self, populated_db):
         from nuri.trading.engine.gate import check_all_gates
+
         gates = check_all_gates(db_path=populated_db)
         assert "collect" in gates
         assert "regime" in gates
@@ -46,12 +52,14 @@ class TestGate_R10:
 
     def test_check_gate(self, rich_db):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate()
         assert hasattr(result, "phase")
         assert hasattr(result, "score")
 
     def test_check_gate_phase(self, rich_db):
         from nuri.trading.engine.gate import check_gate
+
         result = check_gate(phase="collect")
         assert hasattr(result, "phase")
         assert result.phase == "collect"

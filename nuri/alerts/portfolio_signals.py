@@ -121,8 +121,8 @@ def scan_sector_drift(db_path: Optional[Path] = None) -> list[dict[str, Any]]:
     (detect_violations 는 Unknown/빈 섹터를 이미 제외).
 
     **의도적 설계 — 섹터는 pension 포함 total 위험 (1b 집중도와 스코프 다름)**:
-    섹터 캡은 코드베이스 전체가 **global** 로 강제한다 — detect_violations 와
-    certification 모두 계좌별이 아니라 portfolio-wide 합에 flat `MAX_SECTOR_EXPOSURE`
+    섹터 캡은 코드베이스 전체가 **global** 로 강제한다 — detect_violations 는
+    계좌별이 아니라 portfolio-wide 합에 flat `MAX_SECTOR_EXPOSURE`
     (0.35) 를 적용(per-account 섹터 캡은 config 에 있으나 미구현·deferred). 따라서
     섹터 비중은 pension 을 포함한 **총 섹터 노출**이며 이는 룰 정의와 일치한다.
     1b 집중도가 pension 을 제외하는 건 그게 **per-account** 룰이라서고(pension 은
@@ -282,13 +282,12 @@ _REMEDY: dict[str, str] = {
     "macro_fear_greed": "Fear & Greed 수집 확인",
     # 잡 이름만 적고 시각은 적지 않는다 — cron 은 옮겨 다니고(4차 리뷰에서 실제로 옮겼다),
     # 낡은 시각은 운영자를 엉뚱한 로그 창으로 보낸다 (Codex 5차 P3).
-    "signals": "technical 잡 확인 — RSI/SMA 가 BUY 점수와 SIEGE 게이트에 들어간다",
+    "signals": "technical 잡 확인 — RSI/SMA 가 BUY 점수에 들어간다",
     "signals_kr": "technical_close_kr 잡과 KR 가격 수집(stock_kr_universe_daily) 확인",
     "consensus": "합의 잡(07:05) 실행 여부 확인",
     # decisions 는 합의 잡이 recommendations 를 쓴 **뒤** 이어서 기록한다. 배치가 모자라면
     # 그 사이에서 프로세스가 죽은 것이라 잡 로그가 아니라 프로세스 생사를 봐야 한다 (#1266).
     "decisions_context": "합의 잡 확인 — recommendations 는 찼는데 decisions 가 모자라면 잡이 중간에 죽은 것",
-    "certification": "SIEGE 인증 실행 여부 확인",
 }
 
 

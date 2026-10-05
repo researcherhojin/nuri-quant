@@ -4,6 +4,7 @@ Extracted from tests/test_trading_engine_all.py (refactor #157).
 Source: test_engine.py, test_coverage_round10.py, test_coverage_round16.py,
 test_coverage_round23.py.
 """
+
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -18,6 +19,7 @@ class TestMemory:
 
     def test_detect_drift_empty(self, db_path):
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift(db_path=db_path)
         assert drifts == []
 
@@ -49,16 +51,19 @@ class TestLearningMemory:
 
     def test_save_snapshot(self, rich_db):
         from nuri.trading.engine.memory import save_snapshot
+
         count = save_snapshot()
         assert isinstance(count, int)
 
     def test_detect_drift(self, rich_db):
         from nuri.trading.engine.memory import detect_drift
+
         drifts = detect_drift()
         assert isinstance(drifts, list)
 
     def test_print_memory_status(self, rich_db, capsys):
         from nuri.trading.engine.memory import detect_drift, print_memory_status
+
         drifts = detect_drift()
         print_memory_status(drifts)
         assert len(capsys.readouterr().out) >= 0
@@ -69,6 +74,7 @@ class TestMemoryComputeStats:
 
     def test_all_positive_returns(self):
         from nuri.trading.engine.memory import _compute_stats
+
         df = pd.DataFrame({"return_pct": [5.0, 10.0, 3.0]})
         stats = _compute_stats(df)
         assert stats["trades"] == 3
@@ -77,6 +83,7 @@ class TestMemoryComputeStats:
 
     def test_all_negative_returns(self):
         from nuri.trading.engine.memory import _compute_stats
+
         df = pd.DataFrame({"return_pct": [-5.0, -10.0, -3.0]})
         stats = _compute_stats(df)
         assert stats["win_rate"] == 0.0
@@ -84,6 +91,7 @@ class TestMemoryComputeStats:
 
     def test_mixed_returns(self):
         from nuri.trading.engine.memory import _compute_stats
+
         df = pd.DataFrame({"return_pct": [10.0, -5.0, 3.0, -2.0]})
         stats = _compute_stats(df)
         assert stats["trades"] == 4
@@ -96,11 +104,13 @@ class TestMemoryFindCsv:
 
     def test_nonexistent_dir(self, monkeypatch):
         from nuri.trading.engine import memory as mem_mod
+
         monkeypatch.setattr(mem_mod, "REPORT_DIR", MagicMock(exists=MagicMock(return_value=False)))
         assert mem_mod._find_latest_csv("signal_results.csv") is None
 
     def test_dir_exists_no_csv(self, tmp_path, monkeypatch):
         from nuri.trading.engine import memory as mem_mod
+
         report_dir = tmp_path / "reports"
         report_dir.mkdir()
         (report_dir / "2025-01-01").mkdir()
@@ -109,6 +119,7 @@ class TestMemoryFindCsv:
 
     def test_dir_exists_with_csv(self, tmp_path, monkeypatch):
         from nuri.trading.engine import memory as mem_mod
+
         report_dir = tmp_path / "reports"
         report_dir.mkdir()
         day_dir = report_dir / "2025-03-20"
@@ -126,12 +137,14 @@ class TestMemoryPrintStatus:
 
     def test_empty_drifts(self, capsys):
         from nuri.trading.engine.memory import print_memory_status
+
         print_memory_status([])
         out = capsys.readouterr().out
         assert "학습 메모리 없음" in out
 
     def test_with_drifts(self, capsys):
         from nuri.trading.engine.memory import PerformanceDrift, print_memory_status
+
         drifts = [
             PerformanceDrift("rsi_oversold", None, 0.60, 0.30, -50.0, "critical", "승률 급락"),
             PerformanceDrift("macd_golden", None, 0.55, 0.65, 18.2, "improving", "승률 개선"),
@@ -149,6 +162,7 @@ class TestMemorySaveSnapshotEmptyCsv:
 
     def test_empty_csv(self, rich_db, tmp_path, monkeypatch):
         from nuri.trading.engine import memory as mem_mod
+
         report_dir = tmp_path / "reports"
         report_dir.mkdir()
         day_dir = report_dir / "2026-01-01"
@@ -169,28 +183,44 @@ class TestMemoryDetectDriftMultipleStatuses:
         with get_db(rich_db) as conn:
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_critical", None, "all_time", 100, 0.60, 2.0, 3.5))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_critical", None, "all_time", 100, 0.60, 2.0, 3.5),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_critical", None, "recent_90d", 20, 0.30, 0.8, -1.0))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_critical", None, "recent_90d", 20, 0.30, 0.8, -1.0),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_degrading", None, "all_time", 100, 0.60, 2.0, 3.0))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_degrading", None, "all_time", 100, 0.60, 2.0, 3.0),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_degrading", None, "recent_90d", 20, 0.48, 1.2, 1.0))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_degrading", None, "recent_90d", 20, 0.48, 1.2, 1.0),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_improving", None, "all_time", 100, 0.50, 1.5, 2.0))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_improving", None, "all_time", 100, 0.50, 1.5, 2.0),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_improving", None, "recent_90d", 20, 0.60, 2.5, 4.0))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_improving", None, "recent_90d", 20, 0.60, 2.5, 4.0),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_stable", None, "all_time", 100, 0.55, 1.7, 2.5))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_stable", None, "all_time", 100, 0.55, 1.7, 2.5),
+            )
             conn.execute(
                 "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (today, "sig_stable", None, "recent_90d", 20, 0.53, 1.6, 2.3))
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (today, "sig_stable", None, "recent_90d", 20, 0.53, 1.6, 2.3),
+            )
 
         drifts = detect_drift(db_path=rich_db)
         statuses = {d.signal_id: d.status for d in drifts}
@@ -226,19 +256,20 @@ class TestMemory_R23:
         from nuri.trading.engine.memory import save_snapshot
 
         csv_path = tmp_path / "signal_results.csv"
-        trades_df = pd.DataFrame({
-            "signal_id": ["rsi_oversold"] * 5 + ["macd_golden"] * 3,
-            "entry_date": [
-                (datetime.now() - timedelta(days=d)).strftime("%Y-%m-%d")
-                for d in range(8)
-            ],
-            "return_pct": [3.0, -1.0, 5.0, 2.0, -2.0, 4.0, -1.0, 6.0],
-        })
+        trades_df = pd.DataFrame(
+            {
+                "signal_id": ["rsi_oversold"] * 5 + ["macd_golden"] * 3,
+                "entry_date": [(datetime.now() - timedelta(days=d)).strftime("%Y-%m-%d") for d in range(8)],
+                "return_pct": [3.0, -1.0, 5.0, 2.0, -2.0, 4.0, -1.0, 6.0],
+            }
+        )
         trades_df.to_csv(csv_path, index=False)
         monkeypatch.setattr("nuri.trading.engine.memory._find_latest_csv", lambda fn: csv_path)
 
-        monkeypatch.setattr("nuri.quant.regime.strategy_map.analyze_signal_by_regime",
-                            lambda **kw: (_ for _ in ()).throw(ImportError("no module")))
+        monkeypatch.setattr(
+            "nuri.quant.regime.strategy_map.analyze_signal_by_regime",
+            lambda **kw: (_ for _ in ()).throw(ImportError("no module")),
+        )
 
         n = save_snapshot(db_path=db_path)
         assert n > 0
@@ -247,24 +278,27 @@ class TestMemory_R23:
         from nuri.trading.engine.memory import save_snapshot
 
         csv_path = tmp_path / "signal_results.csv"
-        trades_df = pd.DataFrame({
-            "signal_id": ["rsi_oversold"] * 3,
-            "entry_date": ["2026-03-01", "2026-03-10", "2026-03-20"],
-            "return_pct": [3.0, -1.0, 5.0],
-        })
+        trades_df = pd.DataFrame(
+            {
+                "signal_id": ["rsi_oversold"] * 3,
+                "entry_date": ["2026-03-01", "2026-03-10", "2026-03-20"],
+                "return_pct": [3.0, -1.0, 5.0],
+            }
+        )
         trades_df.to_csv(csv_path, index=False)
         monkeypatch.setattr("nuri.trading.engine.memory._find_latest_csv", lambda fn: csv_path)
 
-        cross_df = pd.DataFrame({
-            "signal_id": ["rsi_oversold"],
-            "regime": ["bull_low_vol"],
-            "trades": [10],
-            "win_rate": [0.65],
-            "profit_factor": [2.1],
-            "avg_return": [3.5],
-        })
-        monkeypatch.setattr("nuri.quant.regime.strategy_map.analyze_signal_by_regime",
-                            lambda **kw: cross_df)
+        cross_df = pd.DataFrame(
+            {
+                "signal_id": ["rsi_oversold"],
+                "regime": ["bull_low_vol"],
+                "trades": [10],
+                "win_rate": [0.65],
+                "profit_factor": [2.1],
+                "avg_return": [3.5],
+            }
+        )
+        monkeypatch.setattr("nuri.quant.regime.strategy_map.analyze_signal_by_regime", lambda **kw: cross_df)
 
         n = save_snapshot(db_path=db_path)
         assert n > 0
@@ -319,10 +353,10 @@ class TestMemory_R23:
         from nuri.trading.engine.memory import PerformanceDrift, print_memory_status
 
         drifts = [
-            PerformanceDrift("rsi_oversold", None, 0.70, 0.35, -50.0, "critical",
-                             "승률 -50% 급락 (전체 70% → 최근 35%)"),
-            PerformanceDrift("macd_golden", None, 0.55, 0.60, 9.1, "stable",
-                             "승률 변화 +9.1% (안정)"),
+            PerformanceDrift(
+                "rsi_oversold", None, 0.70, 0.35, -50.0, "critical", "승률 -50% 급락 (전체 70% → 최근 35%)"
+            ),
+            PerformanceDrift("macd_golden", None, 0.55, 0.60, 9.1, "stable", "승률 변화 +9.1% (안정)"),
         ]
         print_memory_status(drifts)
         captured = capsys.readouterr()
@@ -352,6 +386,7 @@ class TestMemory_R23:
     def test_find_latest_csv_nonexistent(self):
         import nuri.trading.engine.memory as mem_mod
         from nuri.trading.engine.memory import _find_latest_csv
+
         original = mem_mod.REPORT_DIR
         mem_mod.REPORT_DIR = Path("/nonexistent/path")
         result = _find_latest_csv("signal_results.csv")

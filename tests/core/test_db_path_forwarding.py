@@ -40,11 +40,6 @@ NURI = REPO_ROOT / "nuri"
 # 줄 번호로 키를 잡지 않는다 — 무관한 편집에도 깨진다.
 ALLOWED: dict[tuple[str, str, str], str] = {
     (
-        "nuri/trading/engine/certification.py",
-        "_capture_snapshot",
-        "_compute_portfolio_hash",
-    ): "`rows=portfolio_raw` 를 이미 넘긴다 — rows 가 주어지면 DB 를 안 읽는다(codex R4).",
-    (
         "nuri/trading/engine/decisions.py",
         "main",
         "init_db",

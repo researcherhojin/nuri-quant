@@ -274,18 +274,16 @@ class TestStandardizeThreadSafety:
 
 
 class TestFreshnessSource:
-    """Issue #453 — `--source freshness` 가 SIEGE freshness gate 의존 ticker 를 추출."""
+    """Issue #453 — `--source freshness` 가 config `freshness_tickers` 를 추출."""
 
     def test_load_freshness_tickers_extracts_primary_and_secondary(self, monkeypatch):
         from nuri.collectors import stock as stock_mod
 
         fake_rules = {
-            "siege_gates": {
-                "asset_classes": {
-                    "us_equity": {"freshness_primary": "SPY", "freshness_secondary": []},
-                    "bond": {"freshness_primary": "TLT", "freshness_secondary": ["SPY"]},
-                    "commodity": {"freshness_primary": "GC=F", "freshness_secondary": []},
-                }
+            "freshness_tickers": {
+                "us_equity": {"primary": "SPY", "secondary": []},
+                "bond": {"primary": "TLT", "secondary": ["SPY"]},
+                "commodity": {"primary": "GC=F", "secondary": []},
             }
         }
         # rules.RULES 는 module-level frozen dict — monkeypatch 로 교체.
@@ -303,11 +301,9 @@ class TestFreshnessSource:
         from nuri.core import rules as rules_mod
 
         fake_rules = {
-            "siege_gates": {
-                "asset_classes": {
-                    "kr_equity": {"freshness_primary": "KOSPI", "freshness_secondary": ["SPY"]},
-                    "kr_index": {"freshness_primary": "KOSPI", "freshness_secondary": ["SPY"]},
-                }
+            "freshness_tickers": {
+                "kr_equity": {"primary": "KOSPI", "secondary": ["SPY"]},
+                "kr_index": {"primary": "KOSPI", "secondary": ["SPY"]},
             }
         }
         monkeypatch.setattr(rules_mod, "RULES", fake_rules)
@@ -317,7 +313,7 @@ class TestFreshnessSource:
         assert result == ["SPY"]
 
     def test_load_freshness_tickers_empty_config(self, monkeypatch):
-        """siege_gates 설정 부재 시 빈 리스트 — graceful."""
+        """freshness_tickers 설정 부재 시 빈 리스트 — graceful."""
         from nuri.collectors import stock as stock_mod
         from nuri.core import rules as rules_mod
 
@@ -325,7 +321,7 @@ class TestFreshnessSource:
         assert stock_mod._load_freshness_tickers() == []
 
     def test_collect_freshness_source_uses_helper_not_get_tickers(self, monkeypatch, tmp_path):
-        """source='freshness' 분기는 _get_tickers 를 호출하지 않음 — siege config 직접 추출."""
+        """source='freshness' 분기는 _get_tickers 를 호출하지 않음 — freshness_tickers 직접 추출."""
         from nuri.collectors import stock as stock_mod
         from nuri.collectors.stock import StockCollector
         from nuri.core import rules as rules_mod
@@ -335,11 +331,9 @@ class TestFreshnessSource:
         init_db(db)
 
         fake_rules = {
-            "siege_gates": {
-                "asset_classes": {
-                    "us_equity": {"freshness_primary": "SPY", "freshness_secondary": []},
-                    "bond": {"freshness_primary": "TLT", "freshness_secondary": []},
-                }
+            "freshness_tickers": {
+                "us_equity": {"primary": "SPY", "secondary": []},
+                "bond": {"primary": "TLT", "secondary": []},
             }
         }
         monkeypatch.setattr(rules_mod, "RULES", fake_rules)
@@ -381,11 +375,9 @@ class TestStockBranches:
         from nuri.collectors import stock as stock_mod
 
         fake_rules = {
-            "siege_gates": {
-                "asset_classes": {
-                    "us": {"freshness_primary": "SPY", "freshness_secondary": []},
-                    "kr": {"freshness_primary": "TLT"},  # secondary 없음 (None)
-                }
+            "freshness_tickers": {
+                "us": {"primary": "SPY", "secondary": []},
+                "kr": {"primary": "TLT"},  # secondary 없음 (None)
             }
         }
         monkeypatch.setattr("nuri.core.rules.RULES", fake_rules)

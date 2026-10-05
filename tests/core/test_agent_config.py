@@ -13,9 +13,7 @@ class TestLoadConfig:
     def test_loads_valid_yaml(self, tmp_path):
         """유효한 YAML을 딕셔너리로 로드."""
         cfg_file = tmp_path / "agents.yaml"
-        cfg_file.write_text(
-            yaml.dump({"technical": {"rsi_oversold": 30}}), encoding="utf-8"
-        )
+        cfg_file.write_text(yaml.dump({"technical": {"rsi_oversold": 30}}), encoding="utf-8")
 
         import nuri.core.agent_config as mod
 
@@ -75,9 +73,16 @@ class TestAgentConfig:
         # 실제 파일이 있으면 이 키들이 존재해야 함
         if AGENT_CONFIG:
             expected_agents = {
-                "technical", "fundamental", "macro", "risk",
-                "smart_money", "wallstreet", "korean_market",
-                "options", "crypto", "retail",
+                "technical",
+                "fundamental",
+                "macro",
+                "risk",
+                "smart_money",
+                "wallstreet",
+                "korean_market",
+                "options",
+                "crypto",
+                "retail",
             }
             for agent in expected_agents:
                 assert agent in AGENT_CONFIG, f"Missing agent config: {agent}"
@@ -93,9 +98,7 @@ class TestAgentConfig:
             for agent_name, scale in cn["scales"].items():
                 assert "raw_min" in scale, f"{agent_name} missing raw_min"
                 assert "raw_max" in scale, f"{agent_name} missing raw_max"
-                assert scale["raw_min"] < scale["raw_max"], (
-                    f"{agent_name}: raw_min >= raw_max"
-                )
+                assert scale["raw_min"] < scale["raw_max"], f"{agent_name}: raw_min >= raw_max"
 
     def test_reload_with_custom_yaml(self, tmp_path):
         """커스텀 YAML로 _load_config를 다시 호출하면 새 값 반환."""
@@ -103,10 +106,12 @@ class TestAgentConfig:
 
         cfg_file = tmp_path / "agents.yaml"
         cfg_file.write_text(
-            yaml.dump({
-                "consensus": {"risk_veto_threshold": 99},
-                "technical": {"rsi_oversold": 25},
-            }),
+            yaml.dump(
+                {
+                    "consensus": {"risk_veto_threshold": 99},
+                    "technical": {"rsi_oversold": 25},
+                }
+            ),
             encoding="utf-8",
         )
         with patch.object(mod, "_CONFIG_PATH", cfg_file):
@@ -121,9 +126,11 @@ class TestAgentConfig:
 
         cfg_file = tmp_path / "agents.yaml"
         cfg_file.write_text(
-            yaml.dump({
-                "technical": {"confidence": {"cap": 90, "hold": 40}},
-            }),
+            yaml.dump(
+                {
+                    "technical": {"confidence": {"cap": 90, "hold": 40}},
+                }
+            ),
             encoding="utf-8",
         )
         with patch.object(mod, "_CONFIG_PATH", cfg_file):

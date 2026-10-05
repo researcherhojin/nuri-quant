@@ -166,9 +166,8 @@ def analyze_portfolio(db_path=None) -> pd.DataFrame:
     """포트폴리오 전체 현황 분석.
 
     `db_path` 는 선택이다 — 기존 호출자 10곳은 인자 없이 부르고 기본 DB 를 쓴다.
-    받아야 하는 이유는 `certification._capture_snapshot()` 이다: 그쪽이 감사
-    스냅샷을 뜨면서 이 함수만 db_path 를 못 넘겨, 스냅샷이 절반은 지정 DB
-    절반은 기본 DB 에서 오는 상태였다 (#1050).
+    받아야 하는 이유: 격리 DB 로 부르는 호출자(옛 SIEGE 인증 스냅샷이 그 첫 사례, #1050)가
+    이 함수만 db_path 를 못 넘기면 결과의 절반은 지정 DB, 절반은 기본 DB 에서 온다.
     """
     # 보유 종목 조회
     holdings = query_df(

@@ -65,7 +65,7 @@ flowchart LR
 | **Collect** | `nuri/collectors` | Collects prices, fundamentals, macroeconomic data and news |
 | **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; computes daily factor scores |
 | **Consensus** | `nuri/trading/agents` | Combines the weighted verdicts of 10 specialist agents per holding, subject to a risk veto |
-| **Certify** | `nuri/trading/engine` | Checks the portfolio against policy gates (position and sector limits, stop-loss, data freshness, volatility) and returns `CERTIFIED` or `REJECTED` |
+| **Certify** | `nuri/trading/engine` | Records each consensus decision with its market context and applies the hard-veto gates; the portfolio-wide certification verdict was retired (STRATEGY §6) |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
 The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
@@ -109,7 +109,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,510 collected across 393 files |
+| Backend tests | 8,220 collected across 385 files |
 | Frontend test files | 141 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 59 cron entries |
@@ -122,7 +122,6 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 |----------|----------|
 | [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, decisions and investment rules (authoritative) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, database, configuration, CI/CD |
-| [`docs/CERTIFICATION_SPEC.md`](docs/CERTIFICATION_SPEC.md) | Certification gates |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
 | [`SECURITY.md`](SECURITY.md) | Security policy and LLM egress rules |

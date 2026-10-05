@@ -53,8 +53,13 @@ REGIME_COLUMN_VOCABULARY: dict[str, dict] = {
         "reason": "UNKNOWN_REGIME('unknown') 을 정당하게 저장 — 미상을 어휘 안 이름으로 "
         "표기하면 배분 조회 .get() 이 조용히 값을 주는 사고(#1131)가 재발한다 (#1293 본문)",
     },
-    "certifications.regime": {"vocab": "ALL_REGIMES", "enforcement": "guard"},
     "decisions.regime": {"vocab": "ALL_REGIMES", "enforcement": "guard"},
+    "certifications.regime": {
+        "vocab": "ALL_REGIMES",
+        "enforcement": "unwritten",
+        "reason": "SIEGE 인증기 폐기(#1619)로 writer 가 없다. 테이블은 forward-only 마이그레이션이라 남는 "
+        "역사 기록이며, 다시 쓰는 코드가 생기면 아래 writer 부재 검사가 FAIL 해 guard/structural 재분류를 강제한다",
+    },
     "macro_events.regime_hint": {
         "vocab": "ALL_REGIMES",
         "enforcement": "structural",
@@ -152,9 +157,13 @@ class TestEveryRegimeColumnIsClassified:
             vocab = entry["vocab"]
             assert vocab in ("ALL_REGIMES", "OUT_OF_VOCAB"), f"{col}: 미정의 vocab {vocab!r}"
             if vocab == "ALL_REGIMES":
-                assert entry.get("enforcement") in ("guard", "structural"), (
+                assert entry.get("enforcement") in ("guard", "structural", "unwritten"), (
                     f"{col}: ALL_REGIMES 인데 enforcement 가 없다 — 가드인지 구조인지 정할 것"
                 )
+                if entry.get("enforcement") == "unwritten":
+                    assert len(entry.get("reason", "")) > 40 and "#" in entry["reason"], (
+                        f"{col}: unwritten 사유/이슈 누락"
+                    )
             else:
                 reason = entry.get("reason", "")
                 assert len(reason) > 40, f"{col}: 사유가 너무 짧다 — 다음 사람이 판단할 수 없다"
@@ -258,3 +267,20 @@ class TestRegimeAllocationKeysAreExactlyAllRegimes:
             f"  배분에만 있음: {sorted(set(REGIME_ALLOCATION) - set(ALL_REGIMES))}\n"
             f"  어휘에만 있음: {sorted(set(ALL_REGIMES) - set(REGIME_ALLOCATION))}"
         )
+
+
+class TestUnwrittenColumnsHaveNoWriter:
+    """enforcement='unwritten' 은 "아무도 안 쓴다" 는 주장이다 — nuri/ 에 그 테이블로의 INSERT/UPDATE 가
+    생기면 FAIL 해서 guard/structural 로 재분류하게 한다 (#1619 — certifications 는 테이블만 남는다)."""
+
+    @pytest.mark.parametrize(
+        "col",
+        sorted(c for c, e in REGIME_COLUMN_VOCABULARY.items() if e.get("enforcement") == "unwritten"),
+    )
+    def test_no_insert_or_update_in_nuri(self, col):
+        import re
+
+        table = col.split(".")[0]
+        pat = re.compile(rf"\b(INSERT\s+INTO|UPDATE)\s+{table}\b", re.I)
+        hits = [str(p.relative_to(NURI)) for p in NURI.rglob("*.py") if pat.search(p.read_text(encoding="utf-8"))]
+        assert not hits, f"{col}: writer 가 생겼다 — unwritten 분류를 재검토할 것: {hits}"

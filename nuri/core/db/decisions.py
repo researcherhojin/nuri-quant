@@ -1,4 +1,4 @@
-"""Decision Intelligence (#178) writes — decisions / decision_evidence / certifications.
+"""Decision Intelligence (#178) writes — decisions / decision_evidence.
 
 Read paths (`get_decisions`, `get_decision_with_evidence`) stay at facade root.
 
@@ -55,36 +55,3 @@ def upsert_decision_evidence(decision_id: int, records: list[dict], db_path: Opt
                 rec,
             )
         return len(records)
-
-
-def insert_certification(data: dict, db_path: Optional[Path] = None) -> int:
-    """SIEGE Certificate 실행 기록 삽입 (E4-0a instrumentation).
-
-    각 certify() 호출 = 새 row. UNIQUE 제약 없음 — 동일 portfolio_hash 라도 시점이
-    다르면 별개로 기록되어야 엔진 predictivity 측정이 가능 (§3.7 E4 hypothesis).
-
-    Required keys: timestamp, certified, score, total_conditions, passed, failed,
-    warnings, conditions_json. Optional: regime, portfolio_hash, caller.
-
-    Returns: inserted row id (lastrowid).
-    """
-    required = {
-        "timestamp",
-        "certified",
-        "score",
-        "total_conditions",
-        "passed",
-        "failed",
-        "warnings",
-        "conditions_json",
-    }
-    missing = required - data.keys()
-    if missing:
-        raise ValueError(f"insert_certification: missing required keys {missing}")
-
-    with get_db(db_path) as conn:
-        cols = ", ".join(data.keys())
-        placeholders = ", ".join(f":{k}" for k in data.keys())
-        sql = f"INSERT INTO certifications ({cols}) VALUES ({placeholders})"
-        cursor = conn.execute(sql, data)
-        return cursor.lastrowid or 0

@@ -1073,7 +1073,7 @@ SCHEDULES = [
         "kwargs": {"days": 365, "source": "all"},
         "cron": "30 5 * * 0",
     },
-    # 측정 모드 벤치마크(SPY) + SIEGE freshness 티커 일일 수집 (#457 도구 배선 — #860 fix).
+    # 측정 모드 벤치마크(SPY) + `freshness_tickers` 일일 수집 (#457 도구 배선 — #860 fix).
     # stock_us_night/dawn 은 source="portfolio"(held) 만 → SPY/TLT/GC=F(universe-only,
     # 미보유 벤치마크)가 주간 backfill 에만 의존해 최대 1주 stale 이었음. §3.11 alpha 측정
     # (forward_outcome_tracker, 매일 17:00) + 레짐 분류가 매일 SPY 를 필요로 한다.

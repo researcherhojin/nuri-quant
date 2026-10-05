@@ -1,7 +1,6 @@
 """수집 데이터 타당성 점검 → #ops.
 
-SIEGE freshness 게이트는 **최신성만** 본다 — `certification._ticker_age_hours()` 가
-`MAX(date)` 하나만 읽고, 값이 말이 되는지는 아무도 묻지 않는다. 그래서 상류가
+신선도 검사(`nuri/core/freshness.py`)는 **최신성만** 본다 — `MAX(date)` 하나만 읽고, 값이 말이 되는지는 아무도 묻지 않는다. 그래서 상류가
 무엇을 주든 "22시간 전 ✅" 로 통과한다. 실제로 `prices.KOSPI` 는 최근 39일 중
 16일이 일간 5% 를 넘는데(중앙값 4.4%) 게이트는 그것에 대해 한 마디도 하지 않았다.
 (2026-08-02 실측. 수집기는 결백하다 — 저장값은 yfinance `^KS11` 과 완전히 일치한다.)
@@ -46,17 +45,17 @@ def _config() -> dict[str, Any]:
 def scoped_tickers() -> list[str]:
     """검사 대상 — 틀리면 인증·측정을 오도하는 시리즈만.
 
-    전체 `prices` 는 수천 시리즈지만, 그중 판단을 좌우하는 건 SIEGE freshness
-    primary/secondary 와 §3.11 측정 벤치마크뿐이다. 레포가 이미 그 티커들을
+    전체 `prices` 는 수천 시리즈지만, 그중 판단을 좌우하는 건 `freshness_tickers`
+    와 §3.11 측정 벤치마크뿐이다. 레포가 이미 그 티커들을
     나머지보다 높이 취급한다(`stock.py --source freshness` 가 같은 집합을 뽑는다).
     """
     from nuri.core.rules import RULES
 
     out: set[str] = set()
-    for policy in ((RULES.get("siege_gates") or {}).get("asset_classes") or {}).values():
-        if policy.get("freshness_primary"):
-            out.add(str(policy["freshness_primary"]))
-        for sec in policy.get("freshness_secondary") or []:
+    for policy in (RULES.get("freshness_tickers") or {}).values():
+        if policy.get("primary"):
+            out.add(str(policy["primary"]))
+        for sec in policy.get("secondary") or []:
             out.add(str(sec))
     mm = RULES.get("measurement_mode") or {}
     if mm.get("benchmark"):  # 판정 기준 (문자열, 사전등록 잠금)

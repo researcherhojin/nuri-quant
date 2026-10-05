@@ -23,7 +23,7 @@ const urgentItem = {
   stop_loss: 319.35,
   target_1: 412.07,
   target_2: 480.75,
-  reasons: ["Certification: 종목 비중 한도 — 위반: TSLA(15.4%>15%)"],
+  reasons: ["리밸런스 권고 — 종목 비중 15.4% > 한도 15%"],
   priority: "urgent",
 };
 
@@ -75,7 +75,7 @@ const portfolioItem = {
   stop_loss: 35.79,
   target_1: 46.2,
   target_2: 53.9,
-  reasons: ["리밸런스 권고 — SIEGE: 종목 비중 한도 — 위반: BAC(19.8%>15%)"],
+  reasons: ["리밸런스 권고 — 종목 비중 19.8% > 한도 15%"],
   priority: "portfolio",
 };
 
@@ -184,7 +184,7 @@ describe("ActionItems", () => {
   it("shows action reasons", () => {
     render(<ActionItems urgent={[urgentItem]} check={[]} hold={[]} />);
     const body = document.body.textContent;
-    expect(body).toContain("Certification");
+    expect(body).toContain("리밸런스 권고");
     expect(body).toContain("한도");
   });
 

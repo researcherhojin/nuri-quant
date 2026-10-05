@@ -141,8 +141,8 @@ class TestArkFreshnessPolicy:
 
         `ARKK`/`ARKF` 는 진짜 ETF 티커라, 펀드명을 거기 쓰면 `get_external()` ·
         `/api/external/{ticker}` · `get_external_summary()` 가 이걸 그 ETF 에 대한 외부
-        분석으로 돌려주고, certification 의 `_count_external_for_class()` 는 **SIEGE
-        external evidence 로 센다**. 메타데이터가 신호 자리로 새는 형태다.
+        분석으로 돌려준다 (폐기된 SIEGE external 게이트는 이걸 증거로 세기까지 했다, #1619).
+        메타데이터가 신호 자리로 새는 형태다.
         """
         from nuri.collectors.ark import ARKCollector
         from nuri.core.db import query

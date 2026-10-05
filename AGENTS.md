@@ -11,7 +11,7 @@ Codex loads this file (and any nested `AGENTS.md`, e.g. `frontend/AGENTS.md`). I
 
 Nuri-Quant — quant decision-support platform. Python 3.12, `uv`, SQLite (WAL), Next.js 16. Pipeline (5 stages): `collect → analyze → consensus → certify → track`.
 
-The arrow is reading order, not execution order. Nothing chains the stages: `nuri/scheduler.py` registers independent cron jobs, and `run_step(..., warn_only=True)` records an unmet dependency as a warning and runs anyway (#894). `analyze` has a single job (`factors`); `certify` has none — the consensus job hands its result to `record_decisions()` in memory and never calls `certify()`. Outcome tracking (07:02) runs before consensus (07:05), which therefore reads the previous day's results.
+The arrow is reading order, not execution order. Nothing chains the stages: `nuri/scheduler.py` registers independent cron jobs, and `run_step(..., warn_only=True)` records an unmet dependency as a warning and runs anyway (#894). `analyze` has a single job (`factors`); `certify` has none — the consensus job hands its result to `record_decisions()` in memory; the portfolio-wide certifier was retired (STRATEGY §6, #1619) and the stage is renamed `decide` in a follow-up PR. Outcome tracking (07:02) runs before consensus (07:05), which therefore reads the previous day's results.
 
 ## Before editing a directory
 
