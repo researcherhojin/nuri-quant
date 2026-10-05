@@ -8,9 +8,9 @@ README shows the high-level flow. Per-phase orientation table — each row point
 | 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" + "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
-| 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
+| 4 | **Certify** | DB snapshot of portfolio state (`analyze_portfolio()`) + `prices` · `macro` · current regime + `config/rules.yaml siege_gates`. Does not read `recommendations`; not called by the consensus job (see Runtime Topology) | `Certificate` → CERTIFIED / REJECTED, persisted as a `certifications` row + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
 | 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` + `agent_accuracy_snapshots` (feeds Learning Memory back to Phase 3 weights) | `nuri/trading/recommend/tracker.py` + `nuri/trading/engine/learning_memory.py` | "C→D→E Data Flow" below |
-The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a read-only projection from the DB — not a pipeline phase. See "API (72 endpoints)" and "Dashboard API" sections below.
+The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a projection from the DB — not a pipeline phase. It is not strictly read-only: the routes that call `certify()` (`/api/certify`, `/api/actions` health and violations) persist a `certifications` row on every call. See the "API" and "Dashboard API" sections below.
 ## Runtime Topology
 
 The phase table above is the data model. At runtime there is no orchestrator: `nuri/scheduler.py` registers independent APScheduler jobs, and each job reads its inputs from tables written by earlier jobs.
@@ -169,10 +169,10 @@ Full certification architecture + 3-dimensional certification specification: **[
 ## Pipeline Observability
 `nuri/core/events.py` — Append-only event journal. `emit_event()` records state transitions and always writes **valid JSON** to `payload` (#935). `get_pipeline_status()` returns 5-stage status. `get_timeline()` returns history with `causation_id` for chain tracing.
 `nuri/core/freshness.py` — Data freshness SLA. `check_freshness(key)` returns PASS/WARN/FAIL. Thresholds (`warn_hours`/`fail_hours` per source) live in `config/freshness.yaml` (#1181) — `_load_config()` injects them at import and the key set is cross-checked both ways against `FRESHNESS_POLICIES` (missing or extra config key → ValueError). Queries/labels stay in code. `VERDICT_GATE_KEYS` + `stale_verdict_inputs()` feed the dashboard verdict's stale gate — FAIL only; WARN passes because weekend/holiday age is normal.
-`nuri/core/pipeline.py` — Pipeline orchestration. `STEP_DEPENDENCIES` defines the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` enforces dependency completion + records events.
+`nuri/core/pipeline.py` — Stage lifecycle events, not orchestration. `STEP_DEPENDENCIES` declares the 5-stage DAG (`collect → analyze → consensus → certify → track`). `run_step()` checks it and records events, but does **not** enforce it in practice: its only caller is the scheduler, which passes `warn_only=True`, so an unmet dependency is recorded as `dependency_warning` and the job runs anyway (#894).
 Pipeline control API (`nuri/api/routes/pipeline.py`):
 - `GET /api/pipeline/status` — 5-stage status + record counts
-- `POST /api/pipeline/{step}/run` — Execute step (background)
+- `POST /api/pipeline/{step}/run` — Execute step (synchronous; does not go through `run_step()`)
 - `GET /api/pipeline/timeline` — Event log
 - `GET /api/freshness` — Data freshness report
 Trade execution API (`nuri/api/routes/trades.py`):
