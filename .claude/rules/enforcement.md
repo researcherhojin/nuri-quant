@@ -2,6 +2,8 @@
 
 Hook config: `.claude/settings.json`. CI workflows: `.github/workflows/main-ci-cd.yml`. Pre-push: `scripts/hooks/pre-push` (installed by `make setup-hooks`) → `scripts/verify/pre_push_check.sh --skip-tests` (6.6s, 2026-08-21 M5 Max — #1132 가 pytest collect ~2.5s 를 더함; 테스트는 CI shard 매트릭스가 미러하고 full 로컬 실행은 320.8s 라 훅에서는 뺀다 — 느린 훅은 우회당한 훅이다). 이 문장은 #1070 까지 **거짓**이었다: 게이트 스크립트는 있었지만 `scripts/hooks/` 에 `pre-push` 소스가 없어 `make setup-hooks` 가 정상 동작하면서 아무것도 설치하지 않았다. 훅은 첫머리에서 `unset GIT_DIR GIT_WORK_TREE` 한다 (#1314/#1318) — linked worktree 에서 git 이 주입하는 이 변수가 남으면 게이트가 push 하는 트리가 아니라 메인 체크아웃을 검사한다 (worktree 의 위반이 조용히 통과하고, 메인의 무관한 상태로 false-block 도 난다). **Test:** `tests/test_pre_push_hook.py` — 훅을 grep 하지 않고 임시 레포에서 **실행**해 exit code 를 본다(게이트 rc 0/1 양방향 + 게이트 부재 + 인터프리터 부재 + 오염 env 2종 + linked-worktree 실제 push).
 
+The hooks are symlinks from `.git/hooks/` into `scripts/hooks/` of **this** checkout, and `core.hooksPath` must not point elsewhere — after the repository moved directories both still pointed at the old path and no hook ran until `make setup-hooks` was re-run (2026-10-06). A push that passes locally but fails CI on a local gate is the symptom.
+
 **PreToolUse hook** blocks: `import sqlite3` outside `nuri/core/db/connection.py`, `git push --force` / `reset --hard` / `clean -f`, privacy inline writes — ticker+PnL and personal identifiers (#1557); gitignored and repo-outside paths are exempt since the invariant is about the public tree (`scripts/verify/check_privacy_leak.py --message --quiet`).
 
 > ⚠️ 훅 본문을 고칠 때는 `.claude/rules/hooks.md` 가 먼저다 (path-scoped: `.claude/settings.json` · `scripts/hooks/**` 편집 시 자동 로드) — `printf '%s'` 만 · POSIX sh 만. `echo` 한 단어로 훅 2개가 3.5개월 무력했던 기록과 mutation 실측이 거기 있다.
