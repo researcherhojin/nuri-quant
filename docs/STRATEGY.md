@@ -112,7 +112,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 **2차 적용: `regime/macro_score` (2026-08-11, #1026)** — 같은 조항을 9성분 매크로 점수에 적용했다. 결측 성분에 `50.0` 을 채워 가중합하던 것을 **성분 제외 + 비례 재정규화**로 바꾸고 `coverage`(측정된 가중치 합)를 함께 내보낸다. 실측 여파가 크다: `FRED_API_KEY` 미설정으로 FRED 전용 지표 **8개 전부 0행**이라 3성분(3M-10Y · 실업 · CPI)이 결측이고, 총점 **64.4 "Neutral" → 71.3 "Favorable"** 로 **해석 경계를 넘는다**. 지어낸 중립이 우호적 판독을 눌러 온 것이다. 코드는 이미 결측을 감지해 `warnings` 에 담고 있었으나 **읽는 소비처가 0개**였다 — 감지는 어디에도 닿지 않으면 없는 것과 같다. 얇은 표본이 확신 라벨을 달지 않도록 `macro.min_coverage`(기본 0.6) 미만이면 `interpretation="Insufficient"`.
 
-**SIEGE 게이트에도 같은 원칙이 적용된다 (2026-08-10, #1022)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 적용 범위는 게이트의 **판정 입력**(primary)이다 — 보조 spillover 지표(secondary)는 값이 없으면 condition 을 아예 만들지 않아 "정상" 이라 주장하지도 score 를 부풀리지도 않으므로 그대로 둔다. 없는 참고 지표마다 경고를 띄우는 건 §2.6 이 경계하는 performative 경고 쪽이다. 영구 미수집 secondary 는 런타임이 아니라 PR 시점 계약 테스트가 잡는다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리할 것. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다. 후속: `kr_index` 는 #1032(2026-08-11)에서 `prices` 경유 조회를 연결했고, `bond` 는 #1067(2026-08-18)에서 bp 단위 지표(`us_10y_yield_3d_bp`)로 재정의했다.
+**SIEGE 게이트에도 같은 원칙이 적용된다 (2026-08-10, #1022)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 적용 범위는 게이트의 **판정 입력**(primary)이다 — 보조 spillover 지표(secondary)는 값이 없으면 condition 을 아예 만들지 않아 "정상" 이라 주장하지도 score 를 부풀리지도 않으므로 그대로 둔다. 없는 참고 지표마다 경고를 띄우는 건 §2.6 이 경계하는 performative 경고 쪽이다. 영구 미수집 secondary 는 런타임이 아니라 PR 시점 계약 테스트가 잡는다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리할 것. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다. 후속: `kr_index` 는 #1032(2026-08-11)에서 `prices` 경유 조회를 연결했고, `bond` 는 #1067(2026-08-18)에서 bp 단위 지표(`us_10y_yield_3d_bp`)로 재정의했다. **2026-10-06 §6 폐기로 이 게이트와 score 시계열은 더 이상 생성되지 않는다** — 위 서술은 `certifications` 테이블에 남은 기록을 읽을 때의 주의사항으로만 유효하다 (#1619).
 
 이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정할 것.
 
@@ -244,6 +244,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **업데이트 2026-04-21 (PR A #429)**: "SIEGE REJECT → 매도 surface" 경로는 structural fix shipped. §2.6 Soft penalty 구현 — concentration/sector_limit 은 `portfolio_action=REBALANCE` 로 분리, alpha (SELL) 경로 차단. Live verify (production DB): BAC/TSLA concentration → `portfolio` bucket, urgent 0. **원 진단 (upside gate 부재) 은 여전히 open** — PR A 는 "downside-only 의 잘못된 increase-risk emit" 만 막음.
 
+**업데이트 2026-10-06 (#1619)**: SIEGE 인증 자체가 §6 에 따라 폐기됐다. 이 절의 가설(양방향 균형 · amplifier)은 인증서가 아니라 §2.6 ladder 와 §3.6 paired counterfactual 경로에 걸려 있으므로 그대로 open 이다 — 다만 "SIEGE 양방향 균형" 이라는 표현은 역사적이며, 구현 대상은 `nuri/trading/engine/amplifier_gate.py` 쪽이다.
+
 **업데이트 2026-04-22 (§3.8)**: "downside-block 방향" 은 structural truth 이나 "effectively downside-predictive 로 작동" premise 는 synthetic audit 에서 tentatively refuted (position_limit Δ wrong-sign 반복). Prudential constraint 로 유효, predictive gate 로는 미증명. upside-gate 논의 시 "기존 gate 가 intended 대로 작동" assumed 로 두지 말 것.
 
 **가설** (E3 에서 검증, §3.6 3-stage): §2.6 4번째 rung (amplifier) + §3.4 Kelly/Markowitz/Faber 근거 위에서 SIEGE 양방향 균형 (REJECT 외 favorable 측정) 도입이 baseline 대비 paired outcome 개선하는가. Amplifier 와 Hard veto 충돌 우선순위는 §2.6 운용 원칙 4 (post-veto sizing).
@@ -255,6 +257,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 **상태**: v1 #417 → v2 재설계 → 60-month production rerun 완료 (2026-04-22, Mac mini). 결과: acceptance `CI_upper < 0` 미달, `position_limit` Δ point estimate 반복 wrong-sign (fired > not_fired, 30/60/90d 전부). **variant ladder × momentum-based snapshot audit route 는 2026-04-22 data/design 에서 §3.7 downside-predictive framing 을 증명하지 못함 — closed**. §3.7 hypothesis 전체가 closed 된 것 아님 (real-portfolio replay, `recommendations.outcome` 누적, Symmetric amplifier 전용 측정은 열림).
 
 **Prudential vs predictive 축 분리 (필수 인용 규칙)**: `position_limit` / `sector_limit` / `leverage_ban` 는 **prudential portfolio constraints + user-preference defaults** 로 유효 — 감정 통제, §7 자동 매매 deferred, O'Neil/Minervini lineage. **그러나 synthetic audit 은 forward-downside-predictive gate 로 기능한다는 주장 미증명**. 혼동 금지 — rule 은 prudential 근거로만 인용, downside-predictive framing 은 §3.8 에서 tentatively refuted.
+
+**2026-10-06 (#1619)**: 인증기 폐기(§6). 본 절의 판정은 그대로 유효하다 — prudential 축은 `rebalance_advisor` 가 집행하고, predictive 축은 refuted 로 남는다. 감사 도구(`siege_predictivity_audit.py` · `/nuri-siege-audit`)는 정리 PR 에서 삭제되며 리비전 `d8a89ede` 로 고정한다.
 
 **E4-0c (measurement consume 후 재-grading) 무효화** — consume 할 durable evidence 없음. §3.7 upside-gate hypothesis 는 §3.6 paired counterfactual (sizing-rule legitimacy, E3-3b PASS) 과 별도 경로로 검증 (user actual portfolio replay, `recommendations.outcome` 누적 후 real-history).
 
@@ -553,7 +557,7 @@ Deferred (필요 시점에 추가):
 | **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
 | **MCP Servers** | 외부 도구 연결 | `.mcp.json` → `nuri-read` read-model (stdio · 전 쿼리 `readonly=True` 엔진 강제 · ALLOWED 컬럼만, #1306). raw SQLite 등록은 커밋 기본값에서 제거 — 임의 SQL 이 portfolio/trades 에 닿는다 (§4.4 Tier 2). |
 | **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
-| **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · SIEGE `gate_check.py` |
+| **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · `scripts/verify/gate_check.py`(Makefile 단계 게이트) |
 
 **엔트로피 GC**:
 
@@ -751,35 +755,45 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 
 **Gotcha-Test Pair**: N/A — behavioral pattern, 코드 fix 아님. `*(facts, no fix)*` 마킹.
 
-## 6. SIEGE Gate 명세 (v2)
+## 6. SIEGE Gate 명세 (v2) — 폐기 (2026-10-06, #1619)
 
-모든 추천은 아래 조건군을 통과해야 CERTIFIED. 1 개라도 **error** 실패 시 REJECTED. Warning 은 누적만.
+**결정**: 포트폴리오 전체를 CERTIFIED / REJECTED 로 판정하던 SIEGE 인증(`certify()` · `certifications` 적재 · remediation)을 **제거**한다. 약화해서 남기지 않는다 — 반쯤 남은 코드는 다음 세션에 "왜 있는지 모르는 코드" 가 된다(§5.3.1 의 교훈). 제거 작업은 #1619 가 5개 PR 로 추적한다.
 
-**v2 (PR #312, #248)**: 조건 개수 **가변**. `certify()` 가 asset class (us_equity / kr_equity / kr_index / commodity / bond) 별 5/7/8 조건을 per-class expansion 후 flatten. 고정 "11-gate" 명칭 deprecated.
+**근거** (3개 모두 독립적으로 성립):
 
-### Base 조건 (asset class 공통)
+1. **신호가 없다.** 운영 원장(Mac mini) 2026-09-01 ~ 10-05: 인증 50건, CERTIFIED 0건. 호출자는 `cli:premarket_brief` 25 · `api:actions:violations` 25 가 전부다. error 등급 실패는 `stop_loss` 50건 + `position_limit` 2건 — 보유 종목 하나가 손절선 아래면 포트폴리오 전체가 매일 REJECTED 다. 같은 사실을 Tier-1 손절 카드(`nuri/alerts/risk_signals.py`, 계좌별 `get_stop_loss_for_account`)가 종목 단위로 이미 알린다.
+2. **아무것도 분기하지 않는다.** 판정을 읽는 코드는 전부 표시 전용 — 브리프 상태색·필드, 대시보드 health 점수·violations, `/engine` 카드, MCP `siege_status`, `/api/certify`(대시보드 홈이 footer 품질 줄에 쓴다) · `/api/remediate`(remediation 계획은 실패 게이트별 `SELL_ALL`/`REDUCE` 와 수량을 내지만 프런트엔드 소비자가 없다 — 축 불변식이 막으려는 바로 그 SELL 표면이라 함께 지운다). `config/rules.yaml amplifier.portfolio.requires_certify_pass` 는 reader 가 0 이라 죽은 설정이며 정리 PR 에서 지운다. 제거는 Escalation Ladder 의 Surface 단 철거라 **매매 행동 변화 0** 이다.
+3. **예측력이 없다.** §3.8 의 60개월 감사는 `CI_upper < 0` 미달로 닫혔고 `position_limit` 은 부호가 반대였다. 유효한 것은 prudential constraint 로서의 비중·섹터·레버리지 한도뿐이며, 그 집행은 인증서가 아니라 `rebalance_advisor` 가 이미 맡고 있다.
 
-| # | 조건 | 등급 | 기준 |
-|---|------|------|------|
-| 1 | position_limit | error | `account_strategies.<s>.max_single_position` — core 15%, active 25%, swing 30%, long_term 25%, pension 40% |
-| 2 | sector_limit | error | `position_limits.max_sector_exposure` = 35% (전략 공통) |
-| 3 | stop_loss | error | `account_strategies.<s>.stop_loss` — core -7, active -10, swing -15, long_term -20, pension -30. `pnl_pct < account_sl` 위반 시 error. (`stock_types.yaml` growth/value 는 `stop_loss.per_stock/value` 에만 존재, SIEGE 미참조.) |
-| 6 | leverage_ban | error | `leverage.banned_etfs` (TSLL/TQQQ/SQQQ/UPRO/SPXU, `nuri/core/rules.py::LEVERAGE_ETFS`) 미보유 |
-| 9 | conflict_free | warning | BUY/SELL 충돌 없음 |
-| 10 | drift_safe | warning | 매수 후보 critical drift 없음 |
-| 11 | macro_event_alignment | warning | \|event_score\| ≥ 10 경고 |
+Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHANGES — 집계 판정 폐기에 동의, 대체 보고서는 만들지 말 것, 프런트엔드를 백엔드보다 먼저 떼어 거짓 REJECTED 렌더를 막을 것, `siege_gates` 키 아래의 비-SIEGE 데이터는 이사시킬 것.
 
-### Per-asset-class 조건 (v2 expansion)
+### 게이트별 처분
 
-`siege_gates.asset_classes.<class>` 정의. primary + secondary flatten.
+| 게이트 (등급) | 처분 | 대체 출처 · 의미론 |
+|---|---|---|
+| `position_limit` (error) | 대체 | `rebalance_advisor` `position_limit_exceeded`. **의미가 바뀐다**: SIEGE 는 종목의 전 계좌 합산 비중을 그 종목을 가진 계좌들 중 가장 관대한 한도 × regime multiplier 와 비교했다. advisor 는 (계좌, 종목) 의 계좌 내 비중을 그 계좌 전략 한도와 비교한다 — core 계좌 위반이 active 한도에 가려지지 않고, regime 완화가 없다. 표출은 `portfolio_action=REBALANCE` 만(축 불변식). |
+| `sector_limit` (error) | 대체 | `rebalance_advisor` `sector_limit_exceeded`. 의미 동일 — 둘 다 포트폴리오 전체 `weight_pct` 를 섹터별로 합산해 `max_sector_exposure` 와 비교한다. 표출은 REBALANCE 만. |
+| `stop_loss` (error) | 대체 | Tier-1 손절 카드(`risk_signals.py`) + `rebalance_advisor` `stop_loss_exceeded`(계좌별 전략). 기계적 `alpha_action=FLAT` 경로(`nuri/core/axis.py`)는 그대로. |
+| `leverage_ban` (error) | 대체 | `rebalance_advisor` `leverage_etf`. advisor 행은 `SELL_ALL` 과 수량을 싣고 있으므로 violations 표면은 **집행 필드를 벗겨** REBALANCE 로만 낸다 — urgent SELL 금지(축 불변식). |
+| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 다만 `nuri/core/rules.py::_load_rules` 는 파일 부재 시 3-섹션 하드코딩 폴백으로 **조용히** 떨어진다 — 이 게이트가 잡던 것이 바로 그 폴백이다. 백엔드 PR 에서 폴백을 제거해 파일 부재를 기동 시 예외로 바꾼다. |
+| `data_fresh` (warning) | 대체 | `nuri/core/freshness.py` SLA(`config/freshness.yaml`, 대시보드 verdict stale gate). 신선도 추적 티커 목록은 `siege_gates.asset_classes.*.freshness_*` 에서 중립 키로 이사. |
+| `volatility_gate` (warning) | 폐기 | 대체 없음. VIX 사실은 브리프 indicators 와 MCP `macro_facts` 가 계속 낸다. |
+| `external_data` (warning) | 폐기 | 대체 없음. |
+| `conflict_free` (warning) | 폐기 | 게이트만 폐기. `engine/conflicts.py` 는 `recommend/candidates.py` 가 계속 쓴다. |
+| `drift_safe` (warning) | 폐기 | 게이트만 폐기. |
+| `macro_event_alignment` (warning) | 폐기 | 대체 없음. |
+| `regime_overrides` (비중 한도 regime 배수) | 폐기 | 유일한 reader 가 `certification.py` 였다. `nuri/quant/exits/atr.py` 는 같은 **패턴**을 쓸 뿐 이 키를 읽지 않는다. |
 
-| # | 조건 | 등급 | 출처 |
-|---|---|---|---|
-| 5 | data_fresh | warning | `freshness_primary` + `freshness_secondary[]` + `freshness_max_hours` |
-| 7 | volatility_gate | warning | `volatility_primary` + threshold (+ secondary). us_equity VIX>30, kr_equity USD/KRW 3d>3% + VIX>30, kr_index KOSPI 3d>5% + USD/KRW>3% |
-| 8 | external_data | warning | `external_min_records` + `external_min_sources`. us≥10/3, kr≥5/2. **kr_index/commodity/bond = `external_applicable:false` → N/A vacuous pass** (애널리스트 컨센서스/13F 가 구조적으로 비적용인 자산군이라 영구 미충족 warning 대신 N/A 처리; kr_equity 는 적용 유지 — 커버리지 존재하나 KR external collector 미구현이라 warning 이 정직) |
+### 남기는 것과 옮기는 것
 
-**예시**: us_equity 3 + kr_equity 2 포트폴리오 flatten 결과 (2026-04-16 기준) = base 8 + data_fresh 3 + volatility 3 + external_data 2 = **총 16 conditions**. 다른 포트폴리오는 다른 수치. 상세 per-class rule: `config/rules.yaml siege_gates` + `docs/CERTIFICATION_SPEC.md`. 생성 로직: `nuri/trading/engine/certification.py` `_check_{freshness,volatility,external}_for_class()` → `certify()` flatten.
+- **`certifications` 테이블은 남는다** — 마이그레이션은 forward-only. 쓰는 코드가 없어진 역사 기록이며, §2.6 의 score 시계열 경계 서술은 그 기록에 대한 설명으로 유지한다.
+- **`siege_gates.asset_class_rules`** 는 SIEGE 가 아니라 측정 모드(§3.11)의 벤치마크 분류 정본이다(`forward_outcome_tracker` · `strategic_allocation`). `_classify_asset_class` 와 함께 중립 모듈·키로 이사한다. 지우면 사전등록된 알파 측정이 조용히 오염된다.
+- **Stage 4 경계는 유지, 이름은 바꾼다.** `nuri/trading/engine` 에 남는 `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` 는 §2.6 Hard veto / amplifier 와 결정 기록 장치이지 인증기가 아니다. 인증서 작성자가 사라진 뒤 `certify` 는 거짓 이름이므로 정리 PR 에서 `decide` 로 바꾸고 §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · 교차 import 테스트를 함께 옮긴다. `pipeline_events` 의 과거 행은 `certify` 그대로 둔다. `nuri/trading/strategy/position.py` 의 `certify_position()` 은 paper `positions` 테이블의 자체 게이트로 인증기와 무관하며 이름 변경 범위 밖이다.
+- **감사 도구는 리비전으로 고정한다.** `scripts/analysis/siege_predictivity_audit.py` 와 `/nuri-siege-audit` skill 의 마지막 리비전은 `d8a89ede`(main, 2026-10-06). §3.8 재실행이 필요하면 `git show d8a89ede:<path>` 로 꺼낸다.
+- **`nuri/core/freshness.py` 의 `certification` 정책(`config/freshness.yaml` warn 24h / fail 48h)은 백엔드 PR 에서 지운다.** `verdict_gate` 에는 없어 대시보드 판정은 무관하지만, `get_freshness_summary` 가 전 정책을 순회하고 `premarket_brief._brief_color` 는 FAIL 이 하나라도 있으면 RED 를 낸다 — 쓰기가 멈추고 48시간 뒤부터 모든 브리프가 "Certification FAIL" 로 영구 RED 가 된다. 프런트엔드를 먼저 떼더라도 이 정책은 인증기 호출을 끊는 PR 과 **같은 PR** 에서 제거한다.
+- **MCP `macro_facts` 의 regime** 은 `certifications.regime` 이 아니라 `candidate_runs.regime`(일일, Tier-1 허용 컬럼)에서 읽도록 바꾼다 — 쓰기가 멈춘 테이블을 계속 읽으면 값이 조용히 얼어붙는다(#1617 과 같은 형태).
+
+**대체 게이트를 만들지 않는다.** 포트폴리오 단위 판정이 다시 필요해지면 SIEGE 의 모양을 본뜨지 말고 §3.6 선례대로 판정 기준을 사전등록하는 STRATEGY PR 에서 시작한다.
 
 ## 7. 작업 정책
 

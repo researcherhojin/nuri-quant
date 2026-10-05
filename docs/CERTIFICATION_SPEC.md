@@ -1,5 +1,7 @@
 # Certification Spec (SIEGE v2) — 3-Dimensional Gated Execution
 
+> **폐기 (2026-10-06)** — 이 사양이 기술하는 인증은 `docs/STRATEGY.md §6` 에 따라 제거된다(#1619). 게이트별 처분과 대체 출처는 §6 표를 본다. 이 문서는 구현이 삭제되는 정리 PR 에서 함께 지워진다. 그때까지 아래 내용은 **역사적 기록**이며 새 작업의 근거로 인용하지 않는다.
+
 > 원본 SIEGE 생태계(nutshells3) 6개 레포 분석을 바탕으로 재설계한 인증 사양이다. 구현(`nuri/trading/engine/certification.py`)은 이 문서를 따른다.
 
 ## 1. v1 한계 → v2 해결
