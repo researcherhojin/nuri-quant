@@ -253,7 +253,7 @@ class TestMeasurementMode:
         assert mm["benchmark_by_asset_class"]["us_equity"] == mm["benchmark"] == DEFAULT_BENCHMARK_TICKER
 
     def test_benchmark_by_asset_class_covers_every_class_the_classifier_emits(self):
-        """`_classify_asset_class` 가 낼 수 있는 자산군 전부가 map 에 있어야 한다 — 딱 그만큼.
+        """`classify_asset_class` 가 낼 수 있는 자산군 전부가 map 에 있어야 한다 — 딱 그만큼.
 
         키가 빠지면 폴백이 US 벤치마크를 조용히 쓰고(원자재를 SPY 로 재는 #1459 의
         원형), 남는 키는 아무도 안 읽는 죽은 설정이 된다. 분류기의 safety net 이
@@ -261,7 +261,7 @@ class TestMeasurementMode:
         """
         from nuri.core.rules import RULES
 
-        emitted = {r["asset_class"] for r in RULES["siege_gates"]["asset_class_rules"]} | {"us_equity"}
+        emitted = {r["asset_class"] for r in RULES["asset_class_rules"]} | {"us_equity"}
         assert set(RULES["measurement_mode"]["benchmark_by_asset_class"]) == emitted
 
     def test_every_asset_class_benchmark_is_actually_collected(self):
@@ -306,10 +306,10 @@ class TestMeasurementMode:
         원장 실측(mini, 2026-09-08): KOSPI 로 잰 1,200 행 중 USNasdaq·USAerospace 252 행이
         `ETF/USIndex`·`ETF/USTech` 두 접두사에만 걸려 `.KS` 규칙으로 kr_equity 가 됐다.
         """
+        from nuri.core.asset_class import classify_asset_class
         from nuri.core.rules import RULES
-        from nuri.trading.engine.certification import _classify_asset_class
 
-        assert _classify_asset_class(ticker, sector, RULES["siege_gates"]["asset_class_rules"]) == expected
+        assert classify_asset_class(ticker, sector, RULES["asset_class_rules"]) == expected
 
     def test_primary_window_supported_by_tracker(self):
         """판정 창은 tracker 가 실제 측정하는 window 여야 함."""

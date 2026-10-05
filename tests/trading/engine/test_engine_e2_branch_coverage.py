@@ -24,19 +24,6 @@ def db_path(tmp_path):
 # ════════════════════════ certification.py ════════════════════════════
 
 
-class TestCertificationClassifyAssetClass:
-    def test_safety_net_no_default_rule(self):
-        """Line 326: rules without `default` match → fallback 'us_equity'."""
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        # Rules that won't match — no default rule
-        rules = [
-            {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
-        ]
-        # AAPL has no .KS suffix — no rule matches → safety net
-        assert _classify_asset_class("AAPL", "Technology", rules) == "us_equity"
-
-
 class TestCertificationCompute3dChange:
     def test_zero_past_value_returns_none(self, db_path):
         """Line 383: past value == 0 → ZeroDivisionError 회피, None 반환."""
@@ -95,11 +82,11 @@ class TestCertificationVolatilityGates:
 
         # Mock RULES so siege_gates has classes but no kr_equity policy
         fake_rules = {
+            "asset_class_rules": [
+                {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
+                {"match": {"default": True}, "asset_class": "us_equity"},
+            ],
             "siege_gates": {
-                "asset_class_rules": [
-                    {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
-                    {"match": {"default": True}, "asset_class": "us_equity"},
-                ],
                 "asset_classes": {
                     # kr_equity policy 없음 → skip
                     "us_equity": {"volatility_primary": "vix", "volatility_primary_threshold": 30},
@@ -146,11 +133,11 @@ class TestCertificationDataFreshness:
             )
 
         fake_rules = {
+            "asset_class_rules": [
+                {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
+                {"match": {"default": True}, "asset_class": "us_equity"},
+            ],
             "siege_gates": {
-                "asset_class_rules": [
-                    {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
-                    {"match": {"default": True}, "asset_class": "us_equity"},
-                ],
                 "asset_classes": {
                     "us_equity": {"freshness_primary": "SPY", "freshness_max_hours": 72},
                 },
@@ -212,11 +199,11 @@ class TestCertificationCheckExternalDataNoPolicy:
             )
 
         fake_rules = {
+            "asset_class_rules": [
+                {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
+                {"match": {"default": True}, "asset_class": "us_equity"},
+            ],
             "siege_gates": {
-                "asset_class_rules": [
-                    {"match": {"ticker_suffix": ".KS"}, "asset_class": "kr_equity"},
-                    {"match": {"default": True}, "asset_class": "us_equity"},
-                ],
                 "asset_classes": {
                     "us_equity": {"external_min_records": 10, "external_min_sources": 3},
                 },
@@ -441,18 +428,6 @@ class TestGateScorecardFound:
         cond = gate_mod._check_signal_scorecard(db_path=db_path)
         assert cond.passed is True
         assert cond.detail == "존재"
-
-
-class TestCertificationClassifyAssetClassSectorMatch:
-    def test_sector_exact_match(self):
-        """Line 325: `sector == m['sector']` exact match branch."""
-        from nuri.trading.engine.certification import _classify_asset_class
-
-        rules = [
-            {"match": {"sector": "Treasury"}, "asset_class": "bond"},
-            {"match": {"default": True}, "asset_class": "us_equity"},
-        ]
-        assert _classify_asset_class("TLT", "Treasury", rules) == "bond"
 
 
 class TestCertificationGroupHoldingsDup:

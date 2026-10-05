@@ -15,9 +15,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional
 
+from nuri.core.asset_class import classify_asset_class
 from nuri.core.db import query
 from nuri.core.rules import RULES
-from nuri.trading.engine.certification import _classify_asset_class
 
 # severity: |drift| >= emergency 면 즉시, >= threshold 면 정기 rebalance 권고.
 _DEFAULT_DRIFT_THRESHOLD_PCT = 5.0
@@ -39,7 +39,7 @@ def compute_current_allocation(db_path: Optional[Path] = None) -> dict[str, floa
     if not rows:
         return {}
 
-    rules_cfg = RULES.get("siege_gates", {}).get("asset_class_rules", [])
+    rules_cfg = RULES.get("asset_class_rules", [])
     if not rules_cfg:
         return {}
 
@@ -52,7 +52,7 @@ def compute_current_allocation(db_path: Optional[Path] = None) -> dict[str, floa
             continue  # 비숫자 row skip
         if value <= 0:
             continue
-        ac = _classify_asset_class(row["ticker"], row["sector"] or "", rules_cfg)
+        ac = classify_asset_class(row["ticker"], row["sector"] or "", rules_cfg)
         by_class[ac] = by_class.get(ac, 0.0) + value
         total_value += value
 

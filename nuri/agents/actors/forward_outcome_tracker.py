@@ -33,6 +33,7 @@ import logging
 from typing import Any, Optional
 
 from nuri.agents.base import REGISTRY, Actor, ActorResult, Layer, Outcome, RunContext
+from nuri.core.asset_class import classify_asset_class
 from nuri.core.db import (
     log_decision,
     log_decision_outcome,
@@ -68,7 +69,7 @@ def benchmark_for(ticker: str, sector: str = "") -> Optional[str]:
     S&P500 인데 KOSPI 를 빼면 바로 그 FX + 스타일 차이를 도입한다. #833 은 상장
     시장(.KS)으로 골랐고, 원장 실측(2026-09-08, mini) KOSPI 행 1,200 중 525 가
     비-한국 기초자산이었다 — US 지수 ETF 의 30d "alpha" 가 −15%p 로, 그 창의
-    KOSPI−S&P 스프레드였다. 그래서 상장 시장이 아니라 `siege_gates.asset_class_rules`
+    KOSPI−S&P 스프레드였다. 그래서 상장 시장이 아니라 `asset_class_rules`
     (분류 정본 하나)로 고른다.
 
     두 경계를 지킨다.
@@ -87,12 +88,9 @@ def benchmark_for(ticker: str, sector: str = "") -> Optional[str]:
     if not is_kr_ticker(ticker):
         return str(mm.get("benchmark") or DEFAULT_BENCHMARK_TICKER)
 
-    # 분류 정본은 certification 의 것 하나 — 사본을 두면 두 분류가 갈라진다. deferred:
-    # nuri/agents 는 스테이지가 아니지만 engine 모듈을 로드 시점에 끌어오지 않는다.
-    from nuri.trading.engine.certification import _classify_asset_class
-
-    rules = (RULES.get("siege_gates") or {}).get("asset_class_rules") or []
-    asset_class = _classify_asset_class(ticker, sector or "", rules)
+    # 분류 정본은 `nuri/core/asset_class.py` 하나 — 사본을 두면 두 분류가 갈라진다.
+    rules = RULES.get("asset_class_rules") or []
+    asset_class = classify_asset_class(ticker, sector or "", rules)
     by_class = mm.get("benchmark_by_asset_class") or {}
     if asset_class not in by_class:
         return DEFAULT_BENCHMARK_TICKER
