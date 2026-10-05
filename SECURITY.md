@@ -43,6 +43,7 @@ here so future audits can verify the rationale is still valid.
 | Package | CVE | Severity | Why we accept it | Re-check trigger |
 |---------|-----|----------|------------------|------------------|
 | `diskcache` 5.6.3 | [CVE-2025-69872](https://github.com/advisories/GHSA-w8v5-vhqr-4h9v) | MEDIUM | Transitive dependency of `llama-cpp-python` (optional `local-llm` extra). The vulnerable path is unsafe pickle deserialization from the cache directory. `llama-cpp-python` imports `diskcache` only for `LlamaDiskCache`, and nothing in `nuri/` or `scripts/` creates that cache, so no cache is read from disk. | Upstream `diskcache` fix released, `LlamaDiskCache` used anywhere in the project, or `llama-cpp-python` removed. |
+| `braces` 3.0.3 (npm) | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | HIGH | No patched release exists (`<= 3.0.3`). Transitive via `shadcn` → `fast-glob` → `micromatch`. The application imports only `shadcn/tailwind.css`; `braces` runs only in the shadcn CLI, whose glob patterns come from the repository, not from user input. The DoS needs attacker-controlled nested patterns. | A patched `braces` release, or `shadcn` / `fast-glob` dropping `micromatch`. |
 
 When adding a new accepted risk:
 
