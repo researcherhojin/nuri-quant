@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Behavioral guidelines for Claude Code on **Nuri-Quant (누리퀀트)** — open-source quant investment platform (Python 3.12 / `uv` / SQLite). Adapted from [Karpathy's CLAUDE.md](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md).
 
 Project-specific rules (invariants, 7-phase Flow, load triggers, mechanical enforcement, architecture, gotchas) live in `.claude/rules/` and load alongside this file. Canonical "why" behind decisions: `docs/STRATEGY.md` (load on demand).

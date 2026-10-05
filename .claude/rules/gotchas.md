@@ -6,6 +6,9 @@ Most gotchas live in scoped CLAUDE.md or in code lock-tests (Gotcha-Test Pair, s
 - **Korean stock tickers**: `.KS` suffix (e.g., `005930.KS`). yfinance returns most fundamentals but **`trailingPE` is missing for KR individuals** — use `forward_pe`. ETFs return empty `info`. Full quirks: `nuri/collectors/CLAUDE.md` "Korean Ticker `.KS` Suffix Convention".
 - **Concurrency asymmetry**: yfinance 10-thread OK; pykrx/KRX **must be sequential** + `time.sleep(0.1)`. New external APIs require concurrency measurement before integration.
 
+- **CI 의 `Doc Count Drift Check` 는 반쪽이다** *(facts, no fix)*: 그 job 에는 `.venv` 가 없어 `verify_doc_counts.sh` 의 Python 기반 수치(백엔드 테스트 수 · DB 테이블 수 · 레짐 수)가 빈 값으로 **건너뛰어진다.** 이 셋은 pre-push 훅(`pre_push_check.sh` 2c, 로컬 `.venv`)에서만 검사된다 — 훅을 우회한 push 는 CI 초록이어도 이 수치가 틀릴 수 있다.
+- **`make verify-all` Backend 단계의 환경 의존 실패** *(facts, no fix)*: dev DB 의 SPY 가 freshness 임계를 넘으면 레짐 분류가 차단돼 `classify_regime()` 이 `None` 을 돌려주고 `assert r is not None` 이 터진다(`Regime: FAIL`). 코드 회귀가 아니다 — `make collect` 로 데이터를 갱신한 뒤 다시 돌릴 것.
+
 For framework / test-mocking / data-source / pipeline-policy gotchas → scoped CLAUDE.md or `/nuri-harness-debug` skill.
 
 ## Reference
