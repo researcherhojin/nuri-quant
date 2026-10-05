@@ -136,7 +136,8 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
 로 직렬 확인.
 
 **Test:** `tests/alerts/test_premarket_brief.py::TestFixtureLeavesNoMockBehind` — 5개가
-구조와 동작을 나눠 잠근다. fixture 를 query mock 방식으로 되돌리면 **넷 다 FAIL**.
+구조와 동작을 나눠 잠근다. fixture 를 query mock 방식으로 되돌리면 그중 **4개가 FAIL** 한다
+(`test_known_leak_modules_still_hold_the_real_query` 만 이 변이에서 통과 — 2026-10-05 직렬 실측).
 
 - `test_known_leak_modules_still_hold_the_real_query` — 누출 이력 3종을 **이름으로** 확인.
   스윕만으로는 부족하다: 그 시점 로드된 모듈만 보므로 감시 대상이 아직 로드 전이면 조용히
