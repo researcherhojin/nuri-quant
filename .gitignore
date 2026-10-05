@@ -155,7 +155,9 @@ ENV/
 .ruff_cache/
 .mypy_cache/
 .cache/
-.uv-cache/         # uv source dist + build cache override (re-generated on first uv sync)
+# uv source-dist + build cache override (re-generated on first uv sync). 주석은 줄 끝에 두지
+# 않는다 — gitignore 는 줄 끝 주석이 없어서 2026-10-06 까지 이 줄은 아무것도 무시하지 않았다.
+.uv-cache/
 .tox/
 .coverage
 .coverage.*
@@ -287,18 +289,15 @@ NEXT_SESSION.md
 TRADE_PLAN.md
 TRADE_PLAN_*.md
 
-# Internal methodology (not for public repo)
-docs/SYSTEM.md
-.gstack/
-
-# Tool session state (codex consult, etc.)
-.context/
-coverage.json
-
 # Ad-hoc local analysis scratch — scripts here may read portfolio.yaml /
 # emit holdings-derived output (privacy risk, STRATEGY §4.4.1). Keep local;
 # promote validated tooling to a tracked, reviewed location before committing.
-scripts/analysis/
+# 디렉터리(`scripts/analysis/`)가 아니라 내용물을 막는다 — 제외된 디렉터리 안의 파일은 되살릴 수 없다(gitignore 규칙).
+scripts/analysis/*
+# 승격된(리뷰 거친) 분석 도구 — scripts/README.md 표와 같은 목록을 유지한다
+!scripts/analysis/compare_buy_candidates.py
+!scripts/analysis/placeholder_vote_impact.py
+!scripts/analysis/stage1_classifier_plausibility.py
 
 # KOSPI200 종목명 맵 — 로컬 생성 (privacy 스캐너가 증권사 회사명 차단). get_ticker_name 가 graceful fallback
 config/kr_ticker_names.json
