@@ -22,7 +22,7 @@ from nuri.core.db import get_db, init_db
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_TOOLS = {"siege_status", "buy_candidates", "macro_facts"}
+EXPECTED_TOOLS = {"siege_status", "buy_candidates", "macro_facts", "data_freshness"}
 
 
 @pytest.fixture()
@@ -104,3 +104,9 @@ async def test_stdio_live_tool_calls(seeded_db):
                 assert "premarket_brief" in siege_text
                 if parsed is not None:
                     assert "conditions_json" not in json.dumps(parsed)
+
+                # 출처는 env 로 지정했으므로 env_override — 경로는 응답에 없어야 한다 (#1617)
+                fresh = await session.call_tool("data_freshness", {})
+                assert not fresh.is_error
+                fresh_text = "".join(c.text for c in fresh.content if isinstance(c, TextContent))
+                assert '"env_override"' in fresh_text and str(seeded_db) not in fresh_text
