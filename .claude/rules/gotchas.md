@@ -15,7 +15,7 @@ For framework / test-mocking / data-source / pipeline-policy gotchas → scoped 
 
 - `docs/STRATEGY.md` — canonical policy (load on demand): 8 sections + §5.10 frontier alignment
 - `docs/ARCHITECTURE.md` — code/DB layout (env vars, CI/CD, schema)
-- `docs/CERTIFICATION_SPEC.md` — 3D certification spec (SIEGE v2)
+- `docs/CERTIFICATION_SPEC.md` — 3D certification spec (SIEGE v2) — **폐기** (STRATEGY §6, #1619; 정리 PR 에서 삭제)
 - `docs/KIS_INTEGRATION.md` — KIS Open API integration
 - `AGENTS.md` — cross-tool rules (Cursor / Copilot / Codex CLI), not auto-loaded by Claude Code
 
