@@ -155,6 +155,7 @@ update_claim live_e2e_specs      docs/ARCHITECTURE.md          'Playwright E2E \
 
 update_claim live_regimes        README.md                     '· [0-9]+ regimes'
 update_claim live_db_tables      README.md                     'SQLite WAL · [0-9]+ tables'
+update_claim live_db_tables      docs/ARCHITECTURE.md          'SQLite WAL · [0-9]+ tables'
 
 # grep/wc 기반 — verify 가 하드 게이트하는데 sync 에는 없어서, 이 셋이 drift 하면
 # 게이트가 빨간불인 채 고칠 방법이 없었다 (#916).

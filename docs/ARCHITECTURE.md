@@ -11,6 +11,130 @@ README shows the high-level flow. Per-phase orientation table — each row point
 | 4 | **Certify** | Phase 3 recommendations + `config/rules.yaml siege_gates` | `Certificate` → CERTIFIED / REJECTED + evidence trace via `pipeline_events` | `nuri/trading/engine/certification.py` | "SIEGE Engine" below + [CERTIFICATION_SPEC.md](CERTIFICATION_SPEC.md) |
 | 5 | **Track** | Phase 3 `recommendations.action` + actual prices after N days | `outcome_30d` / `outcome_60d` / `outcome_90d` + `agent_accuracy_snapshots` (feeds Learning Memory back to Phase 3 weights) | `nuri/trading/recommend/tracker.py` + `nuri/trading/engine/learning_memory.py` | "C→D→E Data Flow" below |
 The **Serve** layer (FastAPI `:8001` + Next.js `:3000` + Discord/Telegram) is a read-only projection from the DB — not a pipeline phase. See "API (72 endpoints)" and "Dashboard API" sections below.
+## Runtime Topology
+
+The phase table above is the data model. At runtime there is no orchestrator: `nuri/scheduler.py` registers independent APScheduler jobs, and each job reads its inputs from tables written by earlier jobs.
+
+```mermaid
+flowchart TB
+    CLOCK["APScheduler — 59 registered jobs<br/>no job calls another"]
+
+    subgraph JOBS["What those 59 jobs are"]
+        JC["collect · 29"]
+        JA["analyze · 1"]
+        JD["consensus · 1"]
+        JT["track · 5"]
+        JO["operate · 23<br/>briefs · dispatchers · watchdogs · backup"]
+    end
+
+    DB[("SQLite WAL · 61 tables")]
+    RD["record_decisions()<br/>inside the consensus job"]
+    CERT["certify() · no job<br/>runs inside its callers"]
+    OUT["Discord brief · dashboard"]
+
+    CLOCK --> JOBS
+    JC --> DB
+    JA --> DB
+    DB --> JD
+    JD ==> RD
+    RD --> DB
+    DB --> JT
+    JT --> DB
+    DB --> JO --> OUT
+    JO --> CERT
+    CERT --> DB
+
+    classDef step  stroke:#3b82f6,stroke-width:2px
+    classDef store stroke:#64748b,stroke-width:2px
+    classDef out   stroke:#14b8a6,stroke-width:2px
+    classDef zone  fill:none,stroke:#94a3b8,stroke-width:1px
+    class CLOCK,JC,JA,JD,JT,JO,RD,CERT step
+    class DB store
+    class OUT out
+    class JOBS zone
+```
+
+The thick arrow marks the one in-memory hand-off: the consensus job passes its result to `record_decisions()` as a Python object rather than through a table.
+
+`certify` has no job of its own. `certify()` reads a database snapshot and is called by `premarket_brief`, `engine/remediation`, its own CLI, and three API routes (`/api/certify` and the health and violations endpoints under `/api/actions`). Each call writes a `certifications` row, so these API routes are not read-only.
+
+| Stage | Scheduled as | Reads | Writes |
+|-------|--------------|-------|--------|
+| **Collect** | 29 jobs, from every 5 minutes during market hours to weekly | External APIs | `prices`, `fundamentals`, `macro`, `news` |
+| **Analyze** | 1 job: `factors` at `10 8 * * *` | `prices`, `fundamentals`, `macro` | `factors` |
+| **Consensus** | 1 job: `consensus` at `5 7 * * *` | `recommendations.outcome_30d` (for weights), collector tables | `recommendations` with `agent_verdicts` |
+| **Certify** | No dedicated job; runs inside its callers (see above) | Portfolio state snapshot | `certifications` |
+| **Track** | 5 jobs: `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy` | `recommendations`, `prices`, `decisions`, `theses`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{30,60,90}d`, `decision_outcomes`, `strategy_memory`, `thesis_criteria_checks`, `decisions` |
+
+The stage directories are `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend`. Imports that cross these boundaries are allowed only inside function bodies, never at module level, and each one must be listed in an allowlist with a stated reason. `tests/core/test_cross_stage_imports.py` enforces this in both directions.
+
+### Daily Schedule
+
+The stage names describe data dependencies, not execution order. Because nothing chains the jobs, the schedule runs them in a different order:
+
+```mermaid
+flowchart LR
+    T0["07:00<br/>decision_pnl<br/>track"]
+    T1["07:02<br/>recommendation_outcomes<br/>track"]
+    T2["07:05<br/>consensus<br/>consensus"]
+    T3["08:10<br/>factors<br/>analyze"]
+    T4["08:20<br/>thesis_criteria<br/>track"]
+    T5["17:00<br/>alpha_tracking<br/>track"]
+    T6["22:00–23:00 KST<br/>premarket_brief<br/>09:00 US/Eastern"]
+
+    RECS[("recommendations")]
+
+    T1 -->|closes| RECS
+    RECS -.->|reads| T2
+    T2 -->|writes| RECS
+
+    classDef step  stroke:#3b82f6,stroke-width:2px
+    classDef store stroke:#64748b,stroke-width:2px
+    class T0,T1,T2,T3,T4,T5,T6 step
+    class RECS store
+```
+
+Outcome tracking at 07:02 runs before the consensus job at 07:05, so consensus reads the windows closed on the previous day. `premarket_brief` is scheduled in `US/Eastern`, which places it in the late evening in Korea. Because every job reads its inputs from the database, each stage can be re-run independently.
+
+## Decision Axes
+
+Rules that respond to a broken investment thesis are kept separate from rules that respond to position sizing (`nuri/core/axis.py`).
+
+| Axis | Values | Triggered by |
+|------|--------|--------------|
+| **alpha** | `LONG` / `SHORT` / `FLAT` | A change in the thesis. A stop-loss breach is the only mechanical path to `FLAT`. |
+| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` | Sizing. Concentration, sector-cap and experiment-sleeve breaches are resolved here and never produce an urgent SELL. |
+
+```mermaid
+flowchart LR
+    TR1["Stop-loss level breached"]
+    TR2["Position · sector · sleeve<br/>over its cap"]
+    AL["alpha_action<br/>LONG · SHORT · FLAT<br/>Should this position exist?"]
+    PO["portfolio_action<br/>REBALANCE · TRIM · HEDGE<br/>Is the book the right shape?"]
+    C1["Risk veto may fire —<br/>operator sees a SELL to consider"]
+    C2["Rebalance advice —<br/>never an urgent SELL"]
+
+    TR1 --> AL
+    TR2 --> PO
+    AL -->|FLAT| C1
+    PO --> C2
+
+    classDef step  stroke:#3b82f6,stroke-width:2px
+    classDef stop  stroke:#dc2626,stroke-width:2px
+    classDef calm  stroke:#f59e0b,stroke-width:2px
+    class TR1,TR2,AL,PO step
+    class C1 stop
+    class C2 calm
+```
+
+The risk veto reads `alpha_action` only, so an oversized position can lead to rebalancing advice but never to a sell instruction.
+
+## Scoring Model
+
+- **Factor composite** (`nuri/quant/factors/composite.py`): momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. Sentiment is the market-wide Fear & Greed value, so it shifts the score level rather than the ranking. The `factors` job computes and stores it daily at 08:10.
+- **BUY-candidate score** (`config/buy_signals.yaml`): combines the factor composite with 5-day momentum, RSI and 30-day breakout. Cross-sectional relative strength and dollar-volume surge are computed and shown as evidence but carry a weight of 0 until validated by a walk-forward test.
+- **Signals** (`config/signals.yaml`): 20 per-ticker, actionable signals used by the backtest detectors, plus 2 market-wide shadow signals (yield-curve inversion and HY-OAS widening) marked `actionable: false` and surfaced as warnings only.
+
 ## DB as the Sole Integration Point
 `nuri/core/db/` is the **only** module that imports `sqlite3`. DB file: `data/portfolio.db` (WAL mode). All upsert functions accept optional `db_path` — tests inject `tmp_path` for isolation. Schema versioning via `schema_version` table + `_MIGRATIONS` list.
 Key DB access patterns:

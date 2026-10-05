@@ -123,9 +123,14 @@ class TestShortDescription:
 
 MERMAID = re.compile(r"```mermaid\n(.*?)```", re.S)
 
+# 아키텍처 상세 다이어그램 3개는 #1595 에서 ARCHITECTURE 로 옮겼다. 테마 규칙은 GitHub 이
+# 렌더하는 모든 마크다운에 똑같이 적용되므로 두 파일을 같이 본다.
+ARCHITECTURE = REPO_ROOT / "docs" / "ARCHITECTURE.md"
+DIAGRAM_FILES = (README, ARCHITECTURE)
+
 
 def _diagrams() -> list[str]:
-    return MERMAID.findall(README.read_text(encoding="utf-8"))
+    return [d for f in DIAGRAM_FILES for d in MERMAID.findall(f.read_text(encoding="utf-8"))]
 
 
 class TestMermaidRendersInBothThemes:
@@ -178,15 +183,20 @@ class TestMermaidRendersInBothThemes:
         각 다이어그램이 답하는 질문을 **이름으로** 고정한다. 개수만 세면 어느 것이
         사라졌는지 알 수 없고, 개수를 맞추려고 아무거나 넣어도 통과한다.
         """
-        text = README.read_text(encoding="utf-8")
-        for anchor in (
-            "Your holdings<br/>+ public market data",  # 무엇을 하는가
-            "no job calls another",  # 무엇이 그것을 돌리는가
-            "premarket_brief<br/>09:00 US/Eastern",  # 하루의 시계
-            "Should this position exist?",  # 두 축
-        ):
-            assert anchor in text, f"다이어그램이 사라졌거나 바뀌었다: {anchor!r}"
-        assert len(_diagrams()) == 4, f"다이어그램 수가 4가 아니다: {len(_diagrams())}"
+        # README 는 개요 하나만, 상세 셋은 ARCHITECTURE 에 (#1595).
+        placement = {
+            README: ("Your holdings<br/>+ public market data",),  # 무엇을 하는가
+            ARCHITECTURE: (
+                "no job calls another",  # 무엇이 그것을 돌리는가
+                "premarket_brief<br/>09:00 US/Eastern",  # 하루의 시계
+                "Should this position exist?",  # 두 축
+            ),
+        }
+        for path, anchors in placement.items():
+            diagrams = MERMAID.findall(path.read_text(encoding="utf-8"))
+            for anchor in anchors:
+                assert any(anchor in d for d in diagrams), f"{path.name}: 다이어그램이 사라졌거나 바뀌었다: {anchor!r}"
+            assert len(diagrams) == len(anchors), f"{path.name}: 다이어그램 수 {len(diagrams)} ≠ {len(anchors)}"
 
     def test_no_diagram_asserts_a_dependency_the_code_lacks(self):
         """의미 검사 — 구조만 보면 **틀린 화살표**가 통과한다 (codex 리뷰 P3).
@@ -194,7 +204,7 @@ class TestMermaidRendersInBothThemes:
         실제로 이 PR 초안이 `consensus ==> certify` 를 그렸는데, 합의 잡은 `certify()`
         를 부르지 않는다 (`record_decisions()` 를 부른다). 그 한 줄이 이 테스트의 이유다.
         """
-        text = README.read_text(encoding="utf-8")
+        text = ARCHITECTURE.read_text(encoding="utf-8")
         assert "JD ==> RD" in text, "합의 → record_decisions 인메모리 인계가 사라졌다"
         assert "JD ==> CERT" not in text, (
             "합의 잡이 certify() 를 부른다고 그렸다 — scheduler.py 는 record_decisions() 를 부른다"
