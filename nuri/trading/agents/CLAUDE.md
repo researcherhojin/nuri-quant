@@ -56,7 +56,7 @@ ARK 의 소스 프로브는 `ark` 테이블이 아니라 `ark_source_dates` 다 
 | 축 | 뜻 | 판정 | 성격 |
 |---|---|---|---|
 | `degraded` | 예외·타임아웃으로 **죽었다** | `consensus/__init__.py` 가 `degraded=True` | 인시던트 |
-| `abstained` | 정상 실행, **의견 없음** | 각 에이전트가 자리표시자 반환 지점에서 `abstained=True` (13 곳) | 상시 |
+| `abstained` | 정상 실행, **의견 없음** | 자리표시자 반환 지점 — 직접 `abstained=True`, 또는 `BaseAgent._no_data()` 가 조회 성공 · 빈 결과일 때 (조회 실패면 `degraded`). 지점 목록: `git grep -n 'abstained=True\|_no_data(' nuri/trading/agents` | 상시 |
 
 **섞지 않는 이유**: 실측 180 셀 중 기권이 **51 (28.3%)** 이다 — `crypto` 18, `smart_money` 14,
 `retail` 12, `wallstreet` 4, `fundamental` 2, `technical` 1. 이걸 `degraded_agents` 에 넣으면

@@ -48,4 +48,4 @@ PR merged + NEXT_SESSION.md 마지막 편집 < PR merge 시각 → **Reflect 필
 ## Reference
 
 - `docs/STRATEGY.md §5.8` — 7 Harness Principles (gate 근거)
-- `~/.claude/projects/<sanitized-cwd>/memory/feedback_dev_flow.md`
+- `.claude/rules/flow.md` — 7-phase gate 표 (always-on)
