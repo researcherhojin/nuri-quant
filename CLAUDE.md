@@ -8,6 +8,14 @@ Project-specific rules (invariants, 7-phase Flow, load triggers, mechanical enfo
 
 **Session start**: read `NEXT_SESSION.md` first if present (gitignored handoff).
 
+## Claude Code environment
+
+- **Hooks** (`.claude/settings.json`): PreToolUse blocks `import sqlite3` outside `nuri/core/db/connection.py`, `git push --force` / `reset --hard` / `clean -f`, and privacy-leaking writes; PostToolUse blocks `datetime.now()`. Details: `.claude/rules/enforcement.md`.
+- **`.env` is out of reach in a session**: the settings deny `Read`/`Edit` on `**/.env`, and the file carries the macOS `uchg` flag. Processes started from the session, including `!` commands and editors opened that way, inherit the restriction. Write the result to `.env.new` and have the user swap it in from a terminal app (`chflags nouchg .env && mv -f .env.new .env && chflags uchg .env`).
+- **Cross-model review**: the `nuri-codex-review` agent runs Codex for Flow phase 4. Codex reads `AGENTS.md`, not this file — when `.claude/rules/invariants.md` changes, update `AGENTS.md` in the same PR.
+- **Project skills and commands** use the `nuri-` prefix (`.claude/skills/`, `.claude/commands/`).
+- **Commit and PR titles are English**, even where recent `main` history is not.
+
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 ## 1. Think Before Coding
