@@ -126,7 +126,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | 2 | **Plan** | Think 산출물 | scope, touched files, acceptance, Escalation Ladder (§2.6) 레벨 | PR description 초안 / `/plan` 출력 | 스코프 팽창 없는가? 이슈 1 = PR 1? 커밋 ≤ 3? |
 | 3 | **Build** | Plan | 최소 구현. `config/*.yaml` 우선 (§2.2), 교차 스테이지 import 는 deferred + allowlist (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인? |
 | 4 | **Review** | feature diff | Codex `/codex review` + Claude self-review. P1 해결 필수 | Review log, GATE verdict | P1 전부 해결? disagreement 이유 명시? |
-| 5 | **Test** | reviewed 브랜치 | `make test-fast` + 사용자 워크플로 live 실행 (§5.9.1). UI 면 browser QA | green CI + manual QA 로그 | 사용자 명령 1 회 이상 직접 실행? |
+| 5 | **Test** | reviewed 브랜치 | `make test-fast` + 사용자 워크플로 live 실행 (§5.8 #3). UI 면 browser QA | green CI + manual QA 로그 | 사용자 명령 1 회 이상 직접 실행? |
 | 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --delete-branch`. 이슈 close. branch 정리. TODO.md Tier 1 업데이트 | MERGED PR, CLOSED 이슈, Tier 1 entry | Tier 1 추가? 브랜치 정리? |
 | 7 | **Reflect** | ship 결과 | 놀라웠던 점, 새 gotcha, 메모리 업데이트, NEXT_SESSION refresh | NEXT_SESSION 갱신 + fix-pattern gotcha 는 `**Test:**` cite (§5.3.1) | 다음 세션이 바로 뛸 수 있는가? |
 
@@ -431,7 +431,7 @@ PR 전 확인.
 | 시크릿 | `.env`, git 커밋 금지 |
 | 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 쿠키 (Edge Runtime 호환) |
 | CI | Trivy CRITICAL → 머지 차단 |
-| LLM | 사용자 portfolio·narrative·의사결정 외부 LLM 전송 금지 (Ollama local only). 공개 RSS 는 §4.4.3 화이트리스트 한정. |
+| LLM | 외부 LLM 전송은 §4.4.3 화이트리스트 한정: 공개 RSS(Tier 0) 허용, portfolio(Tier 2) 는 ZDR 승인(`OPENAI_ZDR_APPROVED=1`) 시에만, narrative·의사결정(Tier 1) 금지. 그 밖은 local LLM (Ollama / llama.cpp). |
 | **개인 금융 데이터** | commit·PR·issue·주석·fixture·CI 로그 절대 노출 금지. `config/portfolio.yaml` gitignored 지만 내용도 추적 대상 금지. broker/수량/평단/잔고/매매이력 모두 해당. |
 
 #### 4.4.1 개인 금융 데이터 enforcement (#138)

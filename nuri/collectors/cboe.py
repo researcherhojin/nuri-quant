@@ -35,8 +35,8 @@ class CBOECollector(BaseCollector):
         `[]` 로 돌려주면 보고할 게 없던 날과 DB 기록이 같아진다 — 둘 다
         `collector_runs.status='finished'` 가 박히고 `#ops` 알림도 안 뜬다.
 
-        ⚠️ 이 수집기에서 그 raise 는 **좀처럼 안 터진다.** 5차 `_collect_db_stale` 이
-        DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 4개가
+        ⚠️ 이 수집기에서 그 raise 는 **좀처럼 안 터진다.** 4차 `_collect_db_stale` 이
+        DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 3개가
         전부 죽어도 여기까지 안 온다. 즉 여기서 고치는 건 "총체적 장애가 성공으로
         기록되는" 축이고, **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은 그대로
         남아 있었는데**, #1242 가 `macro_market` 정책(금리 3종 + put/call 그룹 MIN)에
