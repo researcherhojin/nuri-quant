@@ -20,6 +20,7 @@
 | `.github/**`, `uv.lock`, `frontend/package-lock.json`, `pyproject.toml`, lock 게이트 스크립트 | `.claude/rules/ci-deps.md` (path-scoped, 자동 로드) — override 하한·dependabot semver·venv 캐시 gotcha |
 | `.claude/settings.json`, `scripts/hooks/**` | `.claude/rules/hooks.md` (path-scoped, 자동 로드) — `printf` 만·POSIX sh 만, mutation 실측 |
 | DB migrations / schema changes | `nuri/core/CLAUDE.md` + `_MIGRATIONS` list in `nuri/core/db_migrations.py` (forward-only, never edit existing migration) |
+| `README.md`, `docs/*.md`, scoped `CLAUDE.md` 의 수치·구조 | `scripts/verify/verify_doc_counts.sh` 의 사이트 목록(문구·**사이트 수**까지 고정 — README 테이블 수는 2곳) + `tests/verify/test_readme_structure.py`(섹션 순서·ToC·mermaid 앵커/배치). 수치 문구는 그대로 두고 값만 `make verify-doc-counts` 로 확인. `scripts/doc/sync_doc_counts.sh` 는 in-place fixer — 테스트·스크립트에서 실 레포를 겨누지 말 것(`tests/CLAUDE.md` "문서 fixer") |
 | Investment-rule / strategy / regime decisions | `docs/STRATEGY.md` §2 (principles) + §3 (decisions) |
 | Harness debugging (mock fail / phantom fix / scope creep) | `/nuri-harness-debug` skill + `docs/STRATEGY.md §5` |
 | SIEGE predictivity audit / E4-0b methodology | `/nuri-siege-audit` skill + `docs/STRATEGY.md §3.8` |
