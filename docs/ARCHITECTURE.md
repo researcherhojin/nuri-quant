@@ -255,7 +255,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 
 ## DB Schema (SQLite, WAL mode)
 
-61 tables total (66 migrations as of 2026-09-08). Key tables:
+61 tables total (66 migrations as of 2026-10-06). Key tables:
 
 | Table | Purpose |
 |-------|---------|
