@@ -40,7 +40,7 @@ description: >-
 - §5.14.1: user 가 "데이터 수집" 요청 → universe top 보고 자의적으로 종목 진입 권고 슬라이드 → user 가 "갑자기 추천한 이유" + "당황스럽지 않을까요" 정정
 - §5.14.2: KR universe blow-off threshold (60d return cap) 적용 후 보류 권고, US universe 동일 threshold 적용 안 하고 "진입 가치" 권고 → user 일관성 위반 지적. Filter 기준은 시장 무관 동일 적용 원칙
 
-**Enforcement layer**: 1차 = user memory (`feedback_data_recommendation_boundary.md`, `feedback_ranking_consistency.md`). 2차 = 본 skill (`§5.14.1` / `§5.14.2` 진단). 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
+**Enforcement layer**: 1차 = always-on 규칙 (`.claude/rules/invariants.md` "No ad-hoc buy/sell calls" · "Data ≠ recommendation"; cross-context 일관성은 `docs/STRATEGY.md` §5.14.2). 2차 = 본 skill (`§5.14.1` / `§5.14.2` 진단). 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
 
 ## Gotcha-Test Pair 프로토콜 (STRATEGY §5.3.1, PR #307)
 
