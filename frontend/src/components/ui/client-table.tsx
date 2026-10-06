@@ -13,6 +13,7 @@
 import { DataTable } from "./data-table";
 import { StatusBadge } from "./status-badge";
 import { formatMoney } from "@/lib/format";
+import { isNumber } from "@/lib/types";
 
 interface Props {
   variant: string;
@@ -26,11 +27,11 @@ const ticker = (v: string) => <span className="font-medium">{v}</span>;
 
 const pct = (v: number) => (
   <span className={v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-muted-foreground"}>
-    {v > 0 ? "+" : ""}{typeof v === "number" ? v.toFixed(1) : v}%
+    {v > 0 ? "+" : ""}{isNumber(v) ? v.toFixed(1) : v}%
   </span>
 );
 
-const num = (v: number) => typeof v === "number" ? v.toFixed(1) : String(v);
+const num = (v: number) => isNumber(v) ? v.toFixed(1) : String(v);
 
 const badge = (v: string) => <StatusBadge status={v} size="sm" />;
 

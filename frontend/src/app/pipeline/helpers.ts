@@ -6,18 +6,18 @@
  * 계열의 raw JSON 결함). 사람이 읽는 요약 한 줄로 바꾼다.
  */
 
-import type { JsonValue } from "@/lib/types";
+import { isBoolean, isNumber, isString, type JsonValue } from "@/lib/types";
 
 const MAX_KV = 3;
 
 function fmtValue(v: JsonValue): string {
   if (v === null || v === undefined) return "—";
 
-  if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  if (isNumber(v)) return Number.isInteger(v) ? String(v) : v.toFixed(2);
 
-  if (typeof v === "string") return v;
+  if (isString(v)) return v;
 
-  if (typeof v === "boolean") return v ? "true" : "false";
+  if (isBoolean(v)) return v ? "true" : "false";
 
   try {
     return JSON.stringify(v);

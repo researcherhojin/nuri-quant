@@ -1,3 +1,5 @@
+import { isPlainObject, isString } from "@/lib/types";
+
 // #1257: 판정 경로 파생 — "왜 이 판정·이 확신도인가" 를 재구성하는 순수 헬퍼.
 // 정본은 백엔드 scoring_detail(final_action_source, #1256 부터 persist)이고,
 // 그 이전 387행은 reasoning 프리픽스 파싱으로 fallback 한다.
@@ -26,7 +28,7 @@ export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum" |
 export function parseScoringDetail(raw: string | Record<string, unknown> | null): ScoringDetail | null {
   let obj: unknown = raw;
 
-  if (typeof raw === "string") {
+  if (isString(raw)) {
     try {
       obj = JSON.parse(raw);
     } catch {
@@ -34,7 +36,7 @@ export function parseScoringDetail(raw: string | Record<string, unknown> | null)
     }
   }
 
-  if (obj == null || typeof obj !== "object" || Array.isArray(obj)) return null;
+  if (!isPlainObject(obj)) return null;
 
   return obj as ScoringDetail;
 }
@@ -47,7 +49,7 @@ export function deriveActionSource(sd: ScoringDetail | null, reasoning: string |
 
   if (src === "risk_veto" || src === "divergence_penalty" || src === "weighted_sum") return src;
 
-  if (typeof src === "string" && src.length > 0) return "unknown";
+  if (isString(src) && src.length > 0) return "unknown";
 
   if (reasoning?.startsWith(VETO_REASONING_PREFIX)) return "risk_veto";
 

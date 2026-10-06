@@ -6,7 +6,7 @@
  * SELL: pnl<0 성공, 그외 neutral). 규칙이 바뀌면 여기 상수도 함께 바뀌어야 한다.
  */
 import { DECISIONS } from "@/lib/strings";
-import type { JsonValue } from "@/lib/types";
+import { isBoolean, isNumber, isPlainObject, isString, type JsonValue } from "@/lib/types";
 
 export const ADJUDICATION_DAYS = 90;
 
@@ -107,11 +107,11 @@ export function fmtKvNumber(v: number): string {
 export function fmtKvValue(v: JsonValue | undefined): string {
   if (v === null || v === undefined) return "—";
 
-  if (typeof v === "number") return Number.isFinite(v) ? fmtKvNumber(v) : "—";
+  if (isNumber(v)) return Number.isFinite(v) ? fmtKvNumber(v) : "—";
 
-  if (typeof v === "boolean") return v ? "true" : "false";
+  if (isBoolean(v)) return v ? "true" : "false";
 
-  if (typeof v === "string") return v;
+  if (isString(v)) return v;
 
   // 중첩 객체/배열 — 드문 케이스, 압축 JSON fallback
   try {
@@ -129,15 +129,11 @@ export function parseDetailFlags(detail: string | null): { degraded: boolean; ab
   if (!detail) return { degraded: false, abstained: false };
 
   try {
-    const parsed: unknown = JSON.parse(detail);
+    const parsed: JsonValue = JSON.parse(detail);
 
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { degraded: false, abstained: false };
-    }
+    if (!isPlainObject(parsed)) return { degraded: false, abstained: false };
 
-    const o = parsed as Record<string, unknown>;
-
-    return { degraded: o.degraded === true, abstained: o.abstained === true };
+    return { degraded: parsed.degraded === true, abstained: parsed.abstained === true };
   } catch {
     return { degraded: false, abstained: false };
   }
@@ -148,9 +144,9 @@ export function parseDetailKV(detail: string | null): Array<[string, string]> | 
   if (!detail) return null;
 
   try {
-    const parsed: unknown = JSON.parse(detail);
+    const parsed: JsonValue = JSON.parse(detail);
 
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    if (!isPlainObject(parsed)) return null;
 
     return Object.entries(parsed)
       .filter(([k]) => !PLACEHOLDER_KEYS.has(k))

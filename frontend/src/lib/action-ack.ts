@@ -10,6 +10,8 @@
  * try/catch (프라이빗 창·차단 환경에서 accessor 자체가 throw 할 수 있다).
  */
 
+import { isPlainObject, isString, type JsonValue } from "@/lib/types";
+
 export type AckMap = Record<string, string>;
 
 const STORAGE_KEY = "nuri.actions.ack.v1";
@@ -42,13 +44,13 @@ export function loadAckMap(): AckMap {
     const raw = window.localStorage.getItem(STORAGE_KEY);
 
     if (!raw) return {};
-    const parsed: unknown = JSON.parse(raw);
+    const parsed: JsonValue = JSON.parse(raw);
 
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    if (!isPlainObject(parsed)) return {};
     const map: AckMap = {};
 
     for (const [k, v] of Object.entries(parsed)) {
-      if (typeof v === "string") map[k] = v;
+      if (isString(v)) map[k] = v;
     }
 
     return map;

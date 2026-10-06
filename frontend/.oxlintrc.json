@@ -17,9 +17,9 @@
     "anti-slop/no-widen-then-assert": "error",
     "anti-slop/require-readable-spacing": "error",
     "anti-slop/no-unknown-parameters": "error",
+    "anti-slop/no-runtime-typeof": ["error", { "allowInTypeGuards": true }],
     "anti-slop/no-known-value-widening": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
-    "anti-slop/no-runtime-typeof": "off",
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/no-module-mocking": "off"
   },
@@ -29,7 +29,8 @@
       "rules": {
         "anti-slop/no-chained-type-assertions": "off",
         "anti-slop/no-unknown-returns": "off",
-        "anti-slop/no-unknown-parameters": "off"
+        "anti-slop/no-unknown-parameters": "off",
+        "anti-slop/no-runtime-typeof": "off"
       }
     }
   ]

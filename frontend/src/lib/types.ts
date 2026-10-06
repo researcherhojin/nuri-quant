@@ -4,6 +4,24 @@ import { z } from "zod";
 // JSON.parse 결과·이벤트 payload 같은 자유 형식 값. unknown 대신 이 타입으로 받는다 (anti-slop no-unknown-parameters).
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
+// 런타임 표현 판별은 이 가드들에만 둔다 (anti-slop no-runtime-typeof, allowInTypeGuards).
+export function isString(v: unknown): v is string {
+  return typeof v === "string";
+}
+
+export function isNumber(v: unknown): v is number {
+  return typeof v === "number";
+}
+
+export function isBoolean(v: unknown): v is boolean {
+  return typeof v === "boolean";
+}
+
+/** null·배열이 아닌 객체 — JSON 객체 리터럴 모양 */
+export function isPlainObject(v: unknown): v is { [key: string]: unknown } {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 // === Regime ===
 export const RegimeSchema = z.object({
   date: z.string(),
