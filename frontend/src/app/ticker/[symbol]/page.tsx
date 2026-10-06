@@ -139,7 +139,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
   // 인 행은 빈 셸을 만든다).
   const fundHasContent = !!fund && [fund.pe_ratio, fund.roe, fund.revenue_growth, fund.debt_to_equity, fund.profit_margin, fund.beta].some(Boolean);
 
-  const missingPanels = ([
+  const panelSlots: Array<string | null> = [
     ratings.length === 0 ? TD.PANEL_RATINGS : null,
     earningsFormatted.length === 0 ? TD.PANEL_EARNINGS : null,
     insiders.length === 0 ? TD.PANEL_INSIDERS : null,
@@ -147,7 +147,9 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
     supers.length === 0 ? TD.PANEL_SMART_MONEY : null,
     !targets || targets.error ? TD.PANEL_TARGETS : null,
     !external || external.count === 0 ? TD.PANEL_EXTERNAL : null,
-  ] as Array<string | null>).filter((x): x is string => x !== null);
+  ];
+
+  const missingPanels = panelSlots.filter((x): x is string => x !== null);
 
   return (
     <div className="space-y-5">

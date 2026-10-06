@@ -92,9 +92,7 @@ export type SparklinePeriod = (typeof SPARKLINE_PERIOD_OPTIONS)[number];
 export function parseSparklinePeriod(raw: string | undefined): SparklinePeriod {
   const n = parseInt(raw ?? "30", 10);
 
-  if (SPARKLINE_PERIOD_OPTIONS.includes(n as SparklinePeriod)) return n as SparklinePeriod;
-
-  return 30;
+  return SPARKLINE_PERIOD_OPTIONS.find((p) => p === n) ?? 30;
 }
 
 // Helper — "MM-DD" format

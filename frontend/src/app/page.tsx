@@ -6,7 +6,7 @@ import { Search } from "lucide-react";
 import { fetchAPI } from "@/lib/api";
 
 import { CoverageStatus } from "@/components/ui/coverage-status";
-import { buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
+import { buildEnrichedHoldings, type RawTarget, type RawAdvisorAction } from "@/components/ui/holding-row";
 import { HeroStats } from "@/components/ui/hero-stats";
 // #1210: recharts 도넛 폐지 → CompositionSection 전체가 server component.
 // lazy 래퍼(-lazy)가 사라졌으므로 직접 import (RSC 경계 문제 자체가 소멸).
@@ -110,6 +110,10 @@ interface AdvisorData {
   total_violations?: number;
 }
 
+interface TargetsData {
+  targets: RawTarget[];
+}
+
 interface ActionsData {
   urgent: ActionItem[];
   check: ActionItem[];
@@ -145,7 +149,7 @@ async function Dashboard({
     fetchAPI<PipelineStatusData>("/api/pipeline/status").catch((): PipelineStatusData => ({ steps: [] })),
     fetchAPI<PortfolioData>("/api/portfolio").catch(() => null),
     fetchAPI<AdvisorData>("/api/rebalance-advisor").catch(() => null),
-    fetchAPI<{ targets: RawTarget[] }>("/api/targets").catch(() => ({ targets: [] as RawTarget[] })),
+    fetchAPI<TargetsData>("/api/targets").catch((): TargetsData => ({ targets: [] })),
     fetchAPI<ActionsData>("/api/actions").catch((): ActionsData => ({ urgent: [], check: [], hold: [], portfolio: [] })),
     fetchAPI<OpportunitiesData>("/api/opportunities").catch((): OpportunitiesData => ({ opportunities: [] })),
     fetchAPI<MarketContextData>("/api/market-context").catch((): MarketContextData => ({ macro_events: [], system_health: {} })),
@@ -177,6 +181,7 @@ async function Dashboard({
           const price = h.latest_price || 0;
           const qty = h.quantity || 0;
 
+          // SAFETY: 원화 보유가 있는데 KRW_RATE 가 null 이면 위 분기가 이미 null 을 냈다 — 여기서 원화 종목이면 환율이 있다.
           return sum + (isKrwHolding(h) ? (price * qty) / (KRW_RATE as number) : price * qty);
         }, 0) ?? 0);
 
@@ -213,11 +218,11 @@ async function Dashboard({
   }));
 
   const builtHoldings = buildEnrichedHoldings(
-    labeledHoldings as Parameters<typeof buildEnrichedHoldings>[0],
-    d.actions as RawAction[],
+    labeledHoldings,
+    d.actions,
     targets?.targets ?? [],
-    (advisor?.actions ?? []) as RawAdvisorAction[],
-    (d.upcoming_events ?? []) as RawEvent[],
+    advisor?.actions ?? [],
+    d.upcoming_events ?? [],
     // #218: 2xl+ 초광폭 컬럼(비중 %)을 위해 총 자산 + 환율 전달.
     // totalValue 는 holdings (USD 환산) + cash 합계 — pie denominator 로 사용.
     { totalPortfolioUsd: totalValue, usdKrwRate: KRW_RATE },
@@ -273,7 +278,7 @@ async function Dashboard({
   // Upcoming events strip — retained as unique data (earnings calendar, not macro news)
   const stripEvents = (d.upcoming_events ?? [])
     .slice(0, 5)
-    .map((ev) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
+    .map((ev) => ({ date: ev.date, description: ev.description, ticker: ev.ticker }));
 
   // `items` 가 없으면 `details` (#1204 의 두 형태) — 레일이 PASS 를 거르므로 별도 게이트는 없다 (#1652)
   /* v8 ignore next */
