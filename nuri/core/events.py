@@ -35,6 +35,12 @@ EVENT_TYPES = {
     # would be the wrong failure mode — codex Round 2).
     "kis_analyst_opinion_run",
     "kis_analyst_opinion_truncation_risk",
+    # 대시보드 데이터 갱신 (#1658, `nuri/api/routes/pipeline_refresh.py`): run_step 의 스테이지 lifecycle 행과
+    # 별도로 어느 작업(job)·어느 요청(run_id)·어디서(origin) 돌았는지 남긴다 — macro 단독 갱신이 스케줄러의
+    # collect 성공과 같은 행으로 보이지 않도록 (Codex #1658 P2).
+    "refresh_job_started",
+    "refresh_job_completed",
+    "refresh_job_failed",
     # Holdings monitor — close post-entry technical-divergence gap exposed
     # by JKHY-class entry failures. `_run` is the parent batch event each
     # daily run emits (covered / alerted / skipped counts); `_technical_sell`
@@ -55,7 +61,13 @@ EVENT_TYPES = {
 # 예전 6-step(collect/validate/classify/diagnose/recommend/track)은 2026-04-09 수동
 # 실행 때 두 행씩 남기고 이후 아무도 쓰지 않았다. 이름이 실제 시스템과 달라서
 # 스케줄러가 step 이벤트를 남길 수도, 대시보드가 진짜 상태를 보여줄 수도 없었다 (#921).
-PIPELINE_STEPS = ("collect", "analyze", "consensus", "decide", "track")  # `decide` 는 옛 `certify` (#1619; 그 이름의 행은 원장에 0건)
+PIPELINE_STEPS = (
+    "collect",
+    "analyze",
+    "consensus",
+    "decide",
+    "track",
+)  # `decide` 는 옛 `certify` (#1619; 그 이름의 행은 원장에 0건)
 
 # `step` 컬럼은 lifecycle 이벤트(step_*)와 임의 도메인 이벤트가 공유한다 —
 # 예: holdings_monitor 가 step="track" 으로 holdings_monitor_run 을 남긴다.

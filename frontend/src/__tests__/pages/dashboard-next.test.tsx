@@ -5,9 +5,13 @@ import { DASHBOARD_NEXT } from "@/lib/strings";
 import { displayTime } from "@/app/dashboard-next/format";
 
 const fetchAPI = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/api", () => ({ fetchAPI }));
+
 vi.mock("next/navigation", () => ({ usePathname: () => "/dashboard-next" }));
+
 vi.mock("next/link", () => ({ default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a> }));
+
 const dashboard = {
   verdict: "입력 자료를 확인하세요", verdict_level: "stale",
   regime: { regime: "unknown", trend: "unknown", confidence: 0 },
@@ -15,12 +19,15 @@ const dashboard = {
   actual_allocation: null, target_allocation: { long: 50, short: 0, cash: 50 },
   fx_unavailable: "환율 미수집", alerts: [],
 };
+
 const item = {
   ticker: "DEMO", action: "REBALANCE", confidence: 70,
   reasons: ["집중도 규칙 검토"], decision_id: 42, as_of: "2026-01-01",
   position_pct: null, pnl_pct: null, alpha_action: "LONG", portfolio_action: "REBALANCE",
 };
+
 const responses: Record<string, unknown> = {};
+
 beforeEach(() => {
   fetchAPI.mockReset();
   vi.stubGlobal("fetch", vi.fn(async (path: string) => ({ ok: true, json: async () => path === "/api/scheduler/health" ? { status: "unknown" } : responses[path] })));
@@ -87,9 +94,12 @@ describe("decision desk", () => {
     expect(within(panel).getAllByText("100.0%").length).toBeGreaterThan(0);
     expect(fetchAPI).toHaveBeenCalledTimes(calls);
   });
-  it("keeps a healthy panel visible when other endpoints return errors", async () => {
+  it("keeps a healthy panel visible when other endpoints return errors, and says why in the server log", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
     fetchAPI.mockImplementation(async (path: string) => {
       if (path === "/api/dashboard") return dashboard;
+
       if (path === "/api/actions") return { error: "unavailable" };
       throw new Error("API unavailable");
     });
@@ -97,6 +107,11 @@ describe("decision desk", () => {
     expect(screen.getByText(/일부 정보를 불러오지 못했습니다/)).toHaveTextContent("5/6");
     expect(screen.getByText(dashboard.verdict)).toBeInTheDocument();
     expect(screen.getAllByText(DASHBOARD_NEXT.UNAVAILABLE).length).toBeGreaterThan(0);
+    // 패널이 왜 사라졌는지는 서버 로그에 남는다 — 스키마 드리프트와 전송 실패를 구분해서 (Codex #1658 P2)
+    const messages = warn.mock.calls.map(([message]) => String(message));
+
+    expect(messages).toEqual(expect.arrayContaining([expect.stringContaining("/api/actions unavailable (schema)"), expect.stringContaining("/api/portfolio unavailable (transport)")]));
+    warn.mockRestore();
   });
   it("labels price changes by period and never describes them as new decisions", async () => {
     responses["/api/opportunities"] = { opportunities: [{ ticker: "EXAMPLE", signal: null, score: null, verdict: "관망", verdict_level: "neutral", pros: [], cons: [], change_1d: 1.2, change_5d: null }] };

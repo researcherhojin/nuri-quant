@@ -10,7 +10,7 @@
 |---|---|
 | 시스템 의견 | 백엔드의 종합 의견과 지연 입력을 함께 표시한다. |
 | 시장 흐름 | 상승·하락·횡보와 변동성 분류. 설명 창에서 분류 신뢰도의 의미를 확인한다. |
-| 경제 여건 점수 | 금리·물가·고용·시장 심리 등 시스템 점수. 입력 부족 시 대체 점수를 숨긴다. |
+| 경제 여건 점수 | 금리·물가·고용·시장 심리 등 시스템 점수. 라벨은 백엔드 분류를 그대로 번역한 기존 대시보드와 같은 네 단계(양호·보통·부진·취약)와 **입력 부족**이며, 점수로 라벨을 다시 만들지 않는다. coverage 0 의 대체 점수는 숨긴다. |
 | 우선 점검 항목 | `/api/actions`의 우선 확인 건수와 검토·포트폴리오 규칙 건수. |
 | 보유 종목 점검 | 우선 확인·검토·포트폴리오 규칙·유지 탭. 선택한 종목의 기준일, 근거, 비중, 손익과 두 신호를 표시한다. |
 | 내 포트폴리오 | 종목별·업종별·계좌별 도넛과 전체 비중 목록. 평가 기준은 설명 창에서 확인한다. |
@@ -69,8 +69,9 @@
 `GET /api/pipeline/refresh`는 작업 목록과 최근 요청 상태를 반환한다.
 `POST /api/pipeline/refresh`는 `{"jobs":["prices","technical"]}`를 받아 HTTP 202로 접수한다.
 선택 순서와 관계없이 위 표 순서대로 중복을 제거해 실행한다.
-쓰기 인증과 감사 로그를 적용하며, 현재 프로세스에서 진행 중인 요청이 있으면 HTTP 409로 거절한다.
-실제 백그라운드 실행 구간은 `heavy_slot`으로 제한하고 `run_step()`으로 이벤트를 기록한다.
+쓰기 인증과 감사 로그(`REFRESH` / `pipeline_refresh`)를 적용하며, 현재 프로세스에서 진행 중인 요청이 있으면 HTTP 409로 거절한다.
+heavy slot 은 **접수 시점**에 비블로킹으로 잡는다 — 슬롯이 없으면 다른 무거운 라우트와 같은 HTTP 503 + `Retry-After: 5` 로 거절하고 (Codex #1658 P2: 202 뒤 "실패한 실행" 으로 둔갑하지 않는다), 백그라운드 실행이 끝나면 놓는다.
+`run_step()`이 스테이지 lifecycle 이벤트를 남기고, 그와 별도로 `refresh_job_started/completed/failed` 이벤트가 작업 ID·요청 ID·`origin: dashboard_refresh` 를 실어 스케줄러의 같은 스테이지 실행과 구분한다.
 작업 실패 시 남은 작업은 실행하지 않는다.
 
 갱신 창이 열려 있는 동안 5초 간격으로 상태를 조회한다.
@@ -112,7 +113,7 @@ Decide는 독립 예약 작업이 없으며 Consensus 내부에서 `record_decis
 | 위치 | 역할 |
 |---|---|
 | `frontend/src/app/dashboard-next/` | 서버 페이지, API 스키마, 점검·포트폴리오·갱신·파이프라인 컴포넌트, CSS |
-| `frontend/src/lib/strings.ts` · `frontend/src/components/ui/sidebar.tsx` | Preview 문구와 탐색 링크 |
+| `frontend/src/lib/strings.ts` · `frontend/src/components/ui/sidebar.tsx` | 화면의 **모든** 사용자 노출 문구(`DASHBOARD_NEXT`, 패널별 하위 객체), 기존 대시보드와 공용인 분류 라벨(`MACRO_INTERPRETATION` · `REGIME_LABEL`), 탐색 링크. 컴포넌트와 테스트는 리터럴 대신 여기서 읽는다 (#1252) |
 | `frontend/src/app/layout.tsx` | Preview 전용 폭 확장을 위한 컨테이너 표시 |
 | `nuri/api/routes/pipeline.py` | Decide 원장 산출물 조회 |
 | `nuri/api/routes/pipeline_refresh.py` · `nuri/api/main.py` | 갱신 작업 API와 라우터 등록 |
@@ -132,15 +133,17 @@ npx vitest run src/__tests__/pages/dashboard-next.test.tsx src/__tests__/pages/d
 npx playwright test e2e/dashboard-next-layout.spec.ts e2e/dashboard.spec.ts --reporter=line
 ```
 
-2026-10-06 로컬 실행 기록:
+2026-10-06 로컬 실행 기록 (디테일 패스 뒤, PR #1658 2번째 커밋 기준):
 
 | 검증 범위 | 결과 |
 |---|---|
-| 백엔드 API·코어 규칙·README 구조 검사 | 84 passed |
-| Preview Vitest 파일 | 20 passed |
-| Preview 해상도·기존 대시보드 Playwright | 11 passed |
+| `tests/api/test_pipeline_refresh.py` · `test_routes.py` · `test_pipeline.py` · `test_limits.py` · `tests/core/test_pipeline_events.py` · `test_pipeline_observability.py` | 163 passed |
+| Preview Vitest 3개 파일 | 22 passed |
+| 프런트 전체 `npx vitest run` | 143 files · 1,697 tests passed |
+| `npm run lint` (eslint + oxlint) · `tsc --noEmit` | 0 findings |
+| Preview 해상도 Playwright (6 viewports) | 6 passed |
 
-이 수치는 위 명령의 변경 범위 검사 결과이며 전체 저장소 테스트 통과나 커버리지 측정값이 아니다.
+이 수치는 위 명령의 실행 결과이며 커버리지 측정값이 아니다.
 
 E2E는 실제 로컬 API를 사용한다. 개인 보유값을 고정한 기대값이나 개인 정보가 담긴 스크린샷은 커밋하지 않는다.
 
@@ -151,8 +154,19 @@ E2E는 실제 로컬 API를 사용한다. 개인 보유값을 고정한 기대�
 - API 인증이 켜진 환경에서는 실행 권한이 필요하다. 프런트 갱신 요청에는 별도 Bearer 토큰 입력 기능이 없다.
 - 요약 API·서버 조회 캐시가 있어 작업 결과가 즉시 모든 카드에 반영되지는 않을 수 있다.
 - 신선도 작업 매핑은 일부 소스만 지원한다. 특히 `macro` 사전 선택은 `macro_vix`에 매핑되어 있으며 다른 매크로 소스는 자동 선택되지 않는다.
-- 변경 범위 테스트 통과와 프로덕션 전체 빌드 성공은 구분한다. 작업 중 전체 타입 검사에서는 기존 다른 페이지의 허용되지 않은 page export 오류가 확인되었다. 배포 전 전체 빌드를 다시 검증해야 한다.
-- 아직 기존 홈 화면을 대체하거나 배포·커밋·푸시한 작업이 아니다.
+- 변경 범위 테스트 통과와 프로덕션 전체 빌드 성공은 구분한다. 개발 서버가 떠 있는 동안 `tsc --noEmit` 이 내는 `.next/dev/types` 의 page export 오류는 개발 서버 산출물이 만드는 것이며(`.next` 를 치우면 사라진다), CI 의 `next build` 와 `Frontend Build` 검사가 실제 판정이다.
+- 기존 홈 화면 `/` 을 대체하지 않는다. 초안은 PR #1658 의 첫 커밋으로 그대로 들어갔고 디테일 패스가 뒤 커밋이다.
+
+## 디테일 패스 규칙 (#1658)
+
+초안 이후 손본 시각·코드 규칙. 이 화면을 고칠 때 같은 규칙을 지킨다.
+
+- **글자 크기는 사다리 토큰 6개뿐**: `--fs-xs` 10 · `--fs-label` 11 · `--fs-body` 13 · `--fs-title` 14 · `--fs-h3` 18 · `--fs-value` 26 (px). 전부 `--font-step`(1600px 부터 폭 160px 당 +0.32px, 최대 +2px — 1920 에서 +0.6, 2560 에서 +1.9)이 더해져 큰 화면에서 조금만 커진다. 초안은 1920 에서 +2.9px 였고 "큰 화면에서 글자가 크다" 는 피드백(2026-10-06)으로 줄였다. `calc(8px + …)` 같은 임의 값은 쓰지 않는다 — 초안의 8·9px 기반 보조 문구가 1440px 에서 9px 로 떨어졌던 것이 계기다. e2e 는 1920px 이상에서 범례 글자가 라벨 토큰 11px 아래로 떨어지지 않는지 본다.
+- **간격 토큰 3개**: `--space`(패널 사이, 12–24px) · `--pad`(패널 안쪽 좌우, 14–20px) · `--row`(목록 행 상하 8px, 대형 화면 11px). 표 행·소스 행·파이프라인 행이 같은 `--row` 를 쓴다.
+- **범례 스크롤**: 도넛 옆 범례는 차트 행 트랙을 `minmax(0, 1fr)` 로 고정해 그 높이 안에서만 스크롤한다. 초안은 범례가 아래 "전체 N개 구성" 문구를 덮었다.
+- **아이콘**: `↗`·`ⓘ` 문자 대신 lucide 아이콘(`ArrowUpRight`·`Info`)을 `aria-hidden` 으로 붙인다. 접근성 이름과 테스트의 버튼 이름은 문구만이다(`DetailDialog` 의 `icon` prop).
+- **근거 영역**: 선택 종목의 지표는 근거 아래에 자연스럽게 이어진다(초안은 패널 바닥에 붙여 큰 빈칸이 생겼다).
+- **백엔드**: `POST /api/pipeline/refresh` 의 접수는 감사 로그 `REFRESH` / `pipeline_refresh` 만 남긴다. `pipeline_events` 행은 백그라운드 실행이 남긴다 — 스테이지 lifecycle 은 `run_step`, 작업 단위 `refresh_job_started/completed/failed` 는 `_mark()`(`emit_event` 경유, 유일한 writer). heavy slot 은 접수 때 잡고 실행이 끝나면 놓되, 백그라운드가 `QUEUE_GRACE_SECONDS`(60초) 안에 시작하지 못한 queued 실행은 다음 조회·요청에서 `abandoned` 로 닫고 slot 을 돌려준다(응답 전송이 예외로 끝나면 Starlette 가 BackgroundTasks 를 돌리지 않는 경로). `tests/api/test_routes.py` 가 라우터 mount 를 스모크로 잠근다.
 
 ## 디자인 참고
 

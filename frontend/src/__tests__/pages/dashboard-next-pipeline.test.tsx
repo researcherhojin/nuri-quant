@@ -3,18 +3,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PipelineStatus } from "@/app/dashboard-next/pipeline-status";
 
 const initial = { steps: [{ step: "collect", label: "Collect", status: "done", last_updated: "2026-08-01 09:00:00" }] };
+
 const updated = { steps: [{ ...initial.steps[0], status: "running", last_updated: "2026-10-06 09:00:00" }] };
+
 let fail: boolean;
+
 const request = vi.fn();
+
 beforeEach(() => {
   vi.useFakeTimers();
   fail = false;
   request.mockReset().mockImplementation(async (path: string) => {
     if (fail) throw new Error("offline");
+
     return { ok: true, json: async () => path === "/api/scheduler/health" ? { status: "unknown" } : updated };
   });
   vi.stubGlobal("fetch", request);
 });
+
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe("pipeline status refresh", () => {
