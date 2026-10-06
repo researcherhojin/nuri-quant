@@ -27,10 +27,10 @@ npx vitest run -t "renders verdict"                    # single test by name
 Rules that are `off`, and why (turning one on is its own PR that fixes the sites first):
 
 - `no-module-mocking` — `vi.mock` is this test suite's seam (recharts, `next/link`, `@/lib/api`), 190 sites.
-- `no-chained-type-assertions` / `no-unknown-returns` / `no-unknown-parameters` / `no-runtime-typeof` in tests only — `as unknown as Json` fixtures and mock `fetch` bodies.
-- `no-known-value-widening` (71 source sites), `require-safety-comment-for-type-assertion` (36), `no-unsafe-dictionary-type` (23) — API JSON typed `Record<string, unknown>`; the fix is boundary parsing into named types, not a cast.
+- `no-chained-type-assertions` / `no-unknown-returns` / `no-unknown-parameters` / `no-runtime-typeof` / `no-unsafe-dictionary-type` in tests only — `as unknown as Json` fixtures and mock `fetch` bodies.
+- `no-known-value-widening` (71 source sites), `require-safety-comment-for-type-assertion` (33) — the fix is boundary parsing into named types, not a cast.
 
-Free-form JSON (parsed `detail`, event `payload`) is typed `JsonValue` from `src/lib/types.ts`; recharts callbacks take its own `TooltipValueType` and a `number` tick. `no-runtime-typeof` runs with `allowInTypeGuards`, so `typeof` is allowed only inside type-predicate functions — the `isString` / `isNumber` / `isBoolean` / `isPlainObject` guards there and `parseVerdicts`' item filter. The option checks where `typeof` sits, not that a boundary is parsed: an I/O boundary still gets a schema.
+Free-form JSON (parsed `detail`, event `payload`) is typed `JsonValue` from `src/lib/types.ts`; recharts callbacks take its own `TooltipValueType` and a `number` tick. `no-runtime-typeof` runs with `allowInTypeGuards`, so `typeof` is allowed only inside type-predicate functions — the `isString` / `isNumber` / `isBoolean` / `isPlainObject` guards there. The option checks where `typeof` sits, not that a boundary is parsed: an I/O boundary still gets a zod schema (`ScoringDetailSchema`, `AgentVerdictSchema` for the decision detail's JSON columns, with `.catch(undefined)` on optional fields so one bad field does not drop the record). A dictionary never has `unknown` values (`no-unsafe-dictionary-type`): use `JsonValue`, or a `type` alias instead of an index signature when a library (React Flow node data, recharts Treemap data) needs one.
 
 ## Overview Preview (`/dashboard-next`, #1658)
 

@@ -11,14 +11,12 @@ interface StrategyAction {
   action: string;
   ticker: string;
   reason?: string;
-  [key: string]: unknown;
 }
 
 interface StrategyPosition {
   ticker: string;
   direction: string;
   return_pct?: number;
-  [key: string]: unknown;
 }
 
 interface StressRow {
@@ -26,11 +24,10 @@ interface StressRow {
   spy_return: number;
   strategy_return: number;
   protected: boolean;
-  [key: string]: unknown;
 }
 
 interface StrategyStatus {
-  regime?: { regime?: string; confidence?: number; [key: string]: unknown };
+  regime?: { regime?: string; confidence?: number };
   allocation?: { long_pct?: number; short_pct?: number; cash_pct?: number };
   actions?: StrategyAction[];
   positions?: { positions?: StrategyPosition[] };

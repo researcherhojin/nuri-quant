@@ -29,7 +29,6 @@ export function VixBanner({ vix }: { vix: number | null }) {
 
 interface ConsensusRegime {
   vix?: number | null;
-  [key: string]: unknown;
 }
 
 export async function ConsensusSection() {

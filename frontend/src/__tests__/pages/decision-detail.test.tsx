@@ -214,6 +214,8 @@ describe("DecisionProvenance", () => {
         {},
         { agent_name: "risk", action: "HOLD" }, // confidence/reasoning 누락
         { agent_name: "macro", action: "BUY", confidence: 70, reasoning: "neutral" },
+        // 깨진 선택 필드는 그 필드만 버리고 항목은 살린다 (#1666 .catch)
+        { agent_name: "value", action: "SELL", confidence: "high", reasoning: 3 },
       ]),
       evidence: [],
     });
@@ -221,10 +223,11 @@ describe("DecisionProvenance", () => {
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
-    // null/{} 제거 → valid 2개만
-    expect(screen.getByText("에이전트 판정 (2)")).toBeInTheDocument();
+    // null/{} 제거 → valid 3개만
+    expect(screen.getByText("에이전트 판정 (3)")).toBeInTheDocument();
     expect(screen.getByText("risk")).toBeInTheDocument();
     expect(screen.getByText("macro")).toBeInTheDocument();
+    expect(screen.getByText("value")).toBeInTheDocument();
   });
 
   it("renders bull and bear cases side by side with sourced evidence", async () => {
@@ -765,6 +768,15 @@ describe("verdict-path helpers (#1257)", () => {
     expect(parseScoringDetail({ final_action_source: "weighted_sum" })).toEqual({
       final_action_source: "weighted_sum",
     });
+  });
+
+  it("parseScoringDetail: 깨진 필드 하나는 버리고 레코드는 살린다 (#1666)", async () => {
+    const { parseScoringDetail } = await import("@/app/decisions/verdict-path");
+    const sd = parseScoringDetail(JSON.stringify({ final_action_source: "risk_veto", panel_coverage: "0.8", degraded_agents: "x" }));
+
+    expect(sd?.final_action_source).toBe("risk_veto");
+    expect(sd?.panel_coverage).toBeUndefined();
+    expect(sd?.degraded_agents).toBeUndefined();
   });
 
   it("deriveActionSource: 미지의 소스는 unknown — 가중 합의로 둔갑 금지 (codex P2)", async () => {

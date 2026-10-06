@@ -14,7 +14,9 @@ interface AgentVerdict {
   agent_name: string;
   action: string;
   confidence: number;
-  [key: string]: unknown;
+  // 자리표시자 축 (#1436)
+  degraded?: boolean;
+  abstained?: boolean;
 }
 
 interface AnalystRating {
@@ -22,7 +24,6 @@ interface AnalystRating {
   date?: string;
   action?: string;
   target_price?: number;
-  [key: string]: unknown;
 }
 
 interface EarningsRow {
@@ -30,7 +31,6 @@ interface EarningsRow {
   eps_actual?: number;
   eps_estimate?: number;
   surprise_pct?: number;
-  [key: string]: unknown;
 }
 
 interface InsiderTrade {
@@ -38,13 +38,11 @@ interface InsiderTrade {
   transaction_type: string;
   value?: number;
   shares?: number;
-  [key: string]: unknown;
 }
 
 interface SuperInvestor {
   investor: string;
   portfolio_pct?: number;
-  [key: string]: unknown;
 }
 
 interface TickerData {
@@ -94,7 +92,6 @@ interface ExternalRow {
   source: string;
   data_type: string;
   value: string;
-  [key: string]: unknown;
 }
 
 interface ExternalData {

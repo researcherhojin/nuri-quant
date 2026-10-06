@@ -97,7 +97,6 @@ interface PortfolioHolding {
   latest_price?: number;
   currency?: string;
   sector?: string;
-  [key: string]: unknown;
 }
 
 interface PortfolioData {

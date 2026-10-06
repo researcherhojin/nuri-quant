@@ -42,7 +42,6 @@ interface CrossRow {
   regime: string;
   signal_id: string;
   profit_factor: number;
-  [key: string]: unknown;
 }
 
 async function CrossSection() {

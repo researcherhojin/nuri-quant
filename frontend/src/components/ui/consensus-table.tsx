@@ -8,6 +8,7 @@
 import { Fragment, useState } from "react";
 import { Ban, TriangleAlert, Vote } from "lucide-react";
 import { CONSENSUS as CONSENSUS_TABLE_LABELS } from "@/lib/strings";
+import type { JsonValue } from "@/lib/types";
 import { AgentTrace } from "./agent-trace";
 import { StatusBadge } from "./status-badge";
 
@@ -17,7 +18,7 @@ export interface AgentVerdict {
   action: string;
   confidence: number;
   reasoning: string;
-  data_points: Record<string, unknown>;
+  data_points: Record<string, JsonValue>;
   // 자리표시자 두 축 (#1436). optional 인 이유는 이 축이 persist 되기 **전에** 저장된
   // 과거 행 때문이다 — 그 행들은 축이 없으니 예전처럼 렌더된다(없던 정보를 지어내지 않는다).
   degraded?: boolean;

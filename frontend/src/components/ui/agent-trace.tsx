@@ -7,7 +7,7 @@
  * 최종 합의 결과가 하단에 나타난다.
  */
 import { CONSENSUS } from "@/lib/strings";
-import { isNumber } from "@/lib/types";
+import { isNumber, type JsonValue } from "@/lib/types";
 import { useTraceStream } from "@/lib/use-trace-stream";
 import { StatusBadge } from "./status-badge";
 
@@ -24,7 +24,7 @@ const AGENT_ORDER = [
   { key: "retail", label: "Ret" },
 ];
 
-function DataPills({ data }: { data: Record<string, unknown> }) {
+function DataPills({ data }: { data: Record<string, JsonValue> }) {
   const entries = Object.entries(data);
 
   if (!entries.length) return null;

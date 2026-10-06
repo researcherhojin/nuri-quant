@@ -8,7 +8,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { formatMoney } from "@/lib/format";
-import { isNumber, isString } from "@/lib/types";
+import { z } from "zod";
+import { isNumber, isString, type JsonValue } from "@/lib/types";
 import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailFlags, parseDetailKV, todayKst } from "@/app/decisions/helpers";
 import { deriveActionSource, parseScoringDetail, verdictSplit } from "@/app/decisions/verdict-path";
 import { DECISIONS } from "@/lib/strings";
@@ -24,13 +25,15 @@ interface Evidence {
   detail: string | null;
 }
 
-interface AgentVerdict {
-  agent_name: string;
-  action: string;
-  confidence: number;
-  reasoning?: string;
-  [key: string]: unknown;
-}
+// agent_name·action 이 문자열인 항목만 통과. 나머지 필드는 깨져도 항목을 버리지 않는다.
+const AgentVerdictSchema = z.object({
+  agent_name: z.string(),
+  action: z.string(),
+  confidence: z.number().optional().catch(undefined),
+  reasoning: z.string().optional().catch(undefined),
+});
+
+type AgentVerdict = z.infer<typeof AgentVerdictSchema>;
 
 interface ThesisEvidence {
   id: number;
@@ -111,7 +114,7 @@ interface DecisionDetail {
   vix: number | null;
   fear_greed: number | null;
   agreement_rate: number | null;
-  agent_verdicts: AgentVerdict[] | string | null;
+  agent_verdicts: JsonValue;
   entry_price: number | null;
   stop_loss: number | null;
   target_1: number | null;
@@ -123,7 +126,7 @@ interface DecisionDetail {
   outcome: string;
   reasoning: string | null;
   // #1256 부터 persist — 그 이전 행은 null (판정 소스는 reasoning 프리픽스 fallback)
-  scoring_detail: string | Record<string, unknown> | null;
+  scoring_detail: JsonValue;
   evidence: Evidence[];
   // 결정 시점(`date`)에 유효했던 논지 — point-in-time 조인이라 논지를 나중에 써도
   // 그 이전 결정들에 소급해 붙는다. 논지가 없으면 null.
@@ -131,27 +134,25 @@ interface DecisionDetail {
 }
 
 // agent_verdicts 는 JSON 문자열로 저장됨 — 안전 파싱 + per-item 검증.
-function parseVerdicts(raw: AgentVerdict[] | string | null): AgentVerdict[] {
-  let arr: unknown = raw;
+function parseVerdicts(raw: JsonValue): AgentVerdict[] {
+  let value = raw;
 
   if (isString(raw)) {
     try {
-      arr = JSON.parse(raw);
+      value = JSON.parse(raw);
     } catch {
       return [];
     }
   }
 
-  if (!Array.isArray(arr)) return [];
+  if (!Array.isArray(value)) return [];
 
-  // 불량 항목(null/[{}]/타입 불일치) 제거 — agent_name·action 문자열만 통과.
-  return arr.filter(
-    (v): v is AgentVerdict =>
-      v != null &&
-      typeof v === "object" &&
-      typeof (v as AgentVerdict).agent_name === "string" &&
-      typeof (v as AgentVerdict).action === "string",
-  );
+  // 불량 항목(null/[{}]/타입 불일치) 제거
+  return value.flatMap((item) => {
+    const parsed = AgentVerdictSchema.safeParse(item);
+
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 function pnlColor(v: number | null): "green" | "red" | "default" {

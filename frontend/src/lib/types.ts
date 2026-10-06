@@ -17,8 +17,8 @@ export function isBoolean(v: unknown): v is boolean {
   return typeof v === "boolean";
 }
 
-/** null·배열이 아닌 객체 — JSON 객체 리터럴 모양 */
-export function isPlainObject(v: unknown): v is { [key: string]: unknown } {
+/** null·배열이 아닌 JSON 객체 */
+export function isPlainObject(v: JsonValue | undefined): v is { [key: string]: JsonValue } {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
