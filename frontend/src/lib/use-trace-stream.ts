@@ -7,6 +7,7 @@
  * 유한 스트림: 10 verdicts → 1 consensus → done → 자동 종료.
  */
 import { useCallback, useRef, useState } from "react";
+import type { JsonValue } from "@/lib/types";
 
 interface AgentVerdict {
   agent_name: string;
@@ -14,7 +15,7 @@ interface AgentVerdict {
   action: string;
   confidence: number;
   reasoning: string;
-  data_points: Record<string, unknown>;
+  data_points: Record<string, JsonValue>;
   // 자리표시자 두 축 (#1436). optional — 이 축이 붙기 전 형태도 그대로 렌더된다.
   degraded?: boolean;
   abstained?: boolean;

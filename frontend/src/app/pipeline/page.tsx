@@ -74,7 +74,8 @@ interface GateResult {
   conditions: GateCondition[];
 }
 
-interface PipelineNodeData {
+// React Flow 노드 data 는 Record<string, unknown> 에 할당돼야 해서 interface 가 아니라 type 이다
+type PipelineNodeData = {
   label: string;
   sub: string;
   status: "ok" | "warning" | "error" | "running";
@@ -84,8 +85,8 @@ interface PipelineNodeData {
   onRun: (stepId: string) => void;
   isRunning: boolean;
   href?: string;
-  [key: string]: unknown;
-}
+  error?: string | null;
+};
 
 // === 상태 색상 매핑 ===
 const STATUS_COLORS: Record<string, string> = {

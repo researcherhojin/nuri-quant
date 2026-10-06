@@ -17,15 +17,14 @@ import {
   type HeatmapItem,
 } from "@/components/evidence/chart-data";
 
-export interface TreemapDatum {
-  // recharts TreemapDataType 이 string 인덱스 시그니처를 요구한다
-  [key: string]: unknown;
+// recharts TreemapDataType 이 string 인덱스 시그니처를 요구해서 interface 가 아니라 type 이다
+export type TreemapDatum = {
   name: string;
   size: number;
   pnl_pct: number;
   weight_pct: number;
   violation: HeatmapItem["violation"];
-}
+};
 
 /** API items → Treemap data (가치 0 이하는 1 로 클립 — 원본 동작) */
 export function buildTreemapData(data: HeatmapData): TreemapDatum[] {

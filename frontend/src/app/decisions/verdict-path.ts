@@ -1,20 +1,23 @@
-import { isPlainObject, isString } from "@/lib/types";
+import { z } from "zod";
+import { isString, type JsonValue } from "@/lib/types";
 
 // #1257: 판정 경로 파생 — "왜 이 판정·이 확신도인가" 를 재구성하는 순수 헬퍼.
 // 정본은 백엔드 scoring_detail(final_action_source, #1256 부터 persist)이고,
 // 그 이전 387행은 reasoning 프리픽스 파싱으로 fallback 한다.
 
-export interface ScoringDetail {
-  final_action_source?: "risk_veto" | "divergence_penalty" | "weighted_sum" | string;
-  degraded_agents?: string[];
+// 필드 하나가 깨져도 레코드 전체를 버리지 않는다 (.catch) — 객체면 통과시키던 이전 관용과 같다.
+export const ScoringDetailSchema = z.object({
+  final_action_source: z.string().optional().catch(undefined),
+  degraded_agents: z.array(z.string()).optional().catch(undefined),
   /** 정상 실행됐으나 의견을 내지 않은 에이전트 (#1436) — degraded 와 원인·가중치 취급이 다르다. */
-  abstained_agents?: string[];
-  panel_coverage?: number;
-  risk_veto_fired?: boolean;
-  penalty_applied?: boolean;
-  pre_penalty_action?: string;
-  [key: string]: unknown;
-}
+  abstained_agents: z.array(z.string()).optional().catch(undefined),
+  panel_coverage: z.number().optional().catch(undefined),
+  risk_veto_fired: z.boolean().optional().catch(undefined),
+  penalty_applied: z.boolean().optional().catch(undefined),
+  pre_penalty_action: z.string().optional().catch(undefined),
+});
+
+export type ScoringDetail = z.infer<typeof ScoringDetailSchema>;
 
 // 백엔드 scoring.py 가 veto 발동 시 reasoning 앞에 붙이는 고정 프리픽스 —
 // scoring_detail 이 없는 과거 행의 유일한 판정 소스 신호.
@@ -25,20 +28,20 @@ export const VETO_REASONING_PREFIX = "리스크 에이전트 거부권 발동";
 export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum" | "unknown";
 
 // scoring_detail 은 SELECT * 경유라 JSON 문자열로 도착한다 — 안전 파싱.
-export function parseScoringDetail(raw: string | Record<string, unknown> | null): ScoringDetail | null {
-  let obj: unknown = raw;
+export function parseScoringDetail(raw: JsonValue): ScoringDetail | null {
+  let value = raw;
 
   if (isString(raw)) {
     try {
-      obj = JSON.parse(raw);
+      value = JSON.parse(raw);
     } catch {
       return null;
     }
   }
 
-  if (!isPlainObject(obj)) return null;
+  const parsed = ScoringDetailSchema.safeParse(value);
 
-  return obj as ScoringDetail;
+  return parsed.success ? parsed.data : null;
 }
 
 // 판정 소스 파생. scoring_detail 우선, 과거 행(소스 필드 부재)은 reasoning 프리픽스
