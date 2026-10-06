@@ -107,19 +107,18 @@ test.describe("Action-First Dashboard", () => {
 
     // Opportunities should show tickers NOT in portfolio (e.g., INTC, SNOW, PLTR)
     const hasOpportunity = body!.includes(OPPORTUNITY.SUBTITLE) || body!.includes(OPPORTUNITY.TITLE) ||
-      body!.includes(OPPORTUNITY.POSITIVE) || body!.includes(OPPORTUNITY.NEUTRAL) ||
-      body!.includes(OPPORTUNITY.DANGER);
+      body!.includes(OPPORTUNITY.SYSTEM);
 
     expect(hasOpportunity).toBe(true);
   });
 
-  test("opportunity cards show pros and cons", async ({ page }) => {
+  test("opportunity rows show the system stance and scanner observations", async ({ page }) => {
     await page.goto("/", { timeout: 20000 });
     await page.waitForTimeout(5000);
     const body = await page.textContent("body");
-    // Pros/cons labels should appear if opportunities exist
-    const hasProsOrCons = body!.includes("찬성") || body!.includes("반대") || body!.includes("판정");
-    expect(hasProsOrCons).toBe(true);
+    // #1683: 판정 칸은 파이프라인 분류, 근거 칸은 스캐너 관측
+    const hasHeaders = body!.includes(OPPORTUNITY.SYSTEM) || body!.includes(OPPORTUNITY.OBSERVATIONS);
+    expect(hasHeaders).toBe(true);
   });
 
   test("action items link to ticker detail page", async ({ page }) => {

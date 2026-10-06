@@ -711,8 +711,8 @@ describe("page.tsx branch coverage", () => {
       "/api/portfolio": { count: 10, holdings: manyHoldings(10), cash: { total_cash_usd: 0 } },
       "/api/opportunities": {
         opportunities: [
-          { ticker: "NVDA", score: 9, reason: "momentum" },
-          { ticker: "AMD", score: 8, reason: "value" },
+          { ticker: "NVDA", score: 9, observations: [], system: { status: "below_threshold", score: 40, threshold: 70, reason: null } },
+          { ticker: "AMD", score: 8, observations: [], system: { status: "not_scored", score: null, threshold: 70, reason: "no_price" } },
         ],
       },
     });

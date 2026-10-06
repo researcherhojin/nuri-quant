@@ -3,11 +3,12 @@
 🔴 즉시 실행: 손절선 돌파, 강한 SELL 시그널
 🟡 오늘 확인: 익절 도달, 트레일링 진입, 헤지 검토
 ✅ 유지: 정상 보유 종목
-🔍 기회 탐색: 비보유 이슈 종목 + 매수 판정
+🔍 기회 탐색: 비보유 스캐너 후보 + 파이프라인(buy_candidate_emitter) 분류
 """
 
 import json
 import logging
+import math
 import threading
 import time
 from datetime import timedelta
@@ -313,7 +314,7 @@ def _build_actions() -> dict:
 
 @router.get("/opportunities")
 def get_opportunities():
-    """비보유 이슈 종목 탐색 — scan + WSB + macro events 기반 판정."""
+    """비보유 스캐너 후보 — 스캐너 관측 + 파이프라인 채점 결과(`system`)."""
     now = time.time()
     # 보유 종목을 제외하는 목록이라 포트폴리오 파생이다 — 새로 산 종목이 5분간
     # "기회" 로 계속 뜨면 안 된다 (#1279).
@@ -337,7 +338,12 @@ def get_opportunities():
 
 
 def _build_opportunities() -> list[dict]:
-    """스캔 결과 + 뉴스 이슈에서 비보유 종목을 찾고 찬성/반대/판정 생성."""
+    """스캐너 후보(비보유)마다 스캐너 관측과 **파이프라인의 분류**를 붙인다 (#1683).
+
+    판정은 이 레이어가 만들지 않는다 — `buy_candidate_emitter.evaluate_universe` 의 채점·게이트
+    결과를 그대로 옮긴다. 예전 `_compute_verdict` 는 API 안의 하드코딩 임계로 두 번째 결정 경로를
+    만들었고, 근거가 0–1개면 데이터가 있어도 "데이터 부족" 으로 떨어졌다.
+    """
     portfolio_tickers = set(_get_portfolio_map().keys())
 
     # 스캔 결과 (최근 저장된 것)
@@ -346,40 +352,14 @@ def _build_opportunities() -> list[dict]:
     # 시그널 드리프트 (현재 유효한 시그널)
     improving_signals = _get_improving_signals()
 
+    # 후보가 없으면 채점(~0.35 s)도 하지 않는다
+    evaluation = _get_pipeline_evaluation() if scan_results else None
+
     opportunities = []
     for s in scan_results:
         ticker = s["ticker"]
         if ticker in portfolio_tickers:
             continue
-
-        pros: list[str] = []
-        cons: list[str] = []
-
-        # 찬성 근거
-        if s.get("signal") == "breakout" and s.get("score", 0) >= 50:
-            pros.append(f"breakout 시그널 (Score {s['score']})")
-        if s.get("signal") == "momentum" and s.get("change_5d", 0) > 10:
-            pros.append(f"강한 모멘텀 5D +{s['change_5d']:.1f}%")
-        if s.get("rsi") and s["rsi"] < 35:
-            if "rsi_oversold" in improving_signals:
-                pros.append(f"RSI {s['rsi']:.0f} 과매도 (rsi_oversold 승률 상승 중)")
-            else:
-                pros.append(f"RSI {s['rsi']:.0f} 과매도")
-        if s.get("volume_ratio", 0) >= 2.0:
-            pros.append(f"거래량 {s['volume_ratio']:.1f}x 폭증")
-
-        # 반대 근거
-        if s.get("rsi") and s["rsi"] > 80:
-            cons.append(f"RSI {s['rsi']:.0f} 과매수")
-        if s.get("change_5d", 0) < -15:
-            cons.append(f"5D {s['change_5d']:+.1f}% 급락 — 하락 모멘텀")
-        if s.get("change_5d", 0) > 20:
-            cons.append(f"5D +{s['change_5d']:.1f}% 이미 급등 — 추격 매수 위험")
-        if s.get("signal") == "volume_spike" and s.get("change_5d", 0) < -10:
-            cons.append("급락 + volume_spike — 원인 확인 필요")
-
-        # 판정
-        verdict, verdict_level = _compute_verdict(pros, cons, s)
 
         opportunities.append(
             {
@@ -390,11 +370,10 @@ def _build_opportunities() -> list[dict]:
                 "volume_ratio": s.get("volume_ratio"),
                 "rsi": s.get("rsi"),
                 "signal": s.get("signal"),
+                # 스캐너 점수 — 정렬용. 파이프라인 점수는 `system.score` 다.
                 "score": s.get("score"),
-                "pros": pros,
-                "cons": cons,
-                "verdict": verdict,
-                "verdict_level": verdict_level,
+                "observations": _scanner_observations(s, improving_signals),
+                "system": _system_stance(ticker, evaluation),
             }
         )
 
@@ -403,29 +382,75 @@ def _build_opportunities() -> list[dict]:
     return opportunities[:10]
 
 
-def _compute_verdict(pros: list[str], cons: list[str], scan: dict) -> tuple[str, str]:
-    """찬성/반대 근거를 종합하여 판정."""
-    score = scan.get("score", 0)
-    rsi = scan.get("rsi", 50)
-    change_5d = scan.get("change_5d", 0)
+def _scanner_observations(s: dict, improving_signals: set[str]) -> list[str]:
+    """스캐너가 본 사실 — 판정이 아니다. 화면에는 "스캐너 관측" 으로만 나간다."""
+    obs: list[str] = []
+    if s.get("signal") == "breakout" and s.get("score", 0) >= 50:
+        obs.append(f"breakout 시그널 (Score {s['score']})")
+    if s.get("signal") == "momentum" and s.get("change_5d", 0) > 10:
+        obs.append(f"강한 모멘텀 5D +{s['change_5d']:.1f}%")
+    if s.get("rsi") and s["rsi"] < 35:
+        if "rsi_oversold" in improving_signals:
+            obs.append(f"RSI {s['rsi']:.0f} 과매도 (rsi_oversold 승률 상승 중)")
+        else:
+            obs.append(f"RSI {s['rsi']:.0f} 과매도")
+    if s.get("volume_ratio", 0) >= 2.0:
+        obs.append(f"거래량 {s['volume_ratio']:.1f}x 폭증")
+    if s.get("rsi") and s["rsi"] > 80:
+        obs.append(f"RSI {s['rsi']:.0f} 과매수")
+    if s.get("change_5d", 0) < -15:
+        obs.append(f"5D {s['change_5d']:+.1f}% 급락")
+    if s.get("change_5d", 0) > 20:
+        obs.append(f"5D +{s['change_5d']:.1f}% 급등")
+    if s.get("signal") == "volume_spike" and s.get("change_5d", 0) < -10:
+        obs.append("급락 + volume_spike — 원인 확인 필요")
+    return obs
 
-    # 🔴 매수 금지
-    if change_5d < -20 and rsi < 20:
-        return "매수 금지 — 극단적 하락, 원인 확인 전 진입 위험", "danger"
-    if not pros and cons:
-        return "매수 금지 — 근거 부족", "danger"
 
-    # 🟢 매수 고려
-    if len(pros) >= 2 and not cons and score >= 40:
-        return "매수 고려 — 다수 시그널 정렬", "positive"
+def _get_pipeline_evaluation():
+    """BUY emitter 의 읽기 전용 채점 결과. 실패하면 None — 화면은 "평가 실패" 로 정직하게 표시한다.
 
-    # 🟡 관망
-    if pros and cons:
-        return "관망 — 혼재 시그널, 조건부 진입 대기", "neutral"
-    if change_5d > 15:
-        return "관망 — 과매수 구간, 눌림목 대기", "neutral"
+    `nuri/api` 는 스테이지가 아니므로 교차 스테이지 allowlist 대상이 아니다. 그래도 import 는
+    핸들러 안에서 한다 (레이어 관례: 무거운 import 는 lazy).
+    """
+    try:
+        from nuri.trading.recommend.buy_candidate_emitter import evaluate_universe
 
-    return "데이터 부족 — 판단 불가", "muted"
+        return evaluate_universe()
+    except Exception:
+        logger.exception("opportunities: pipeline evaluation failed")
+        return None
+
+
+# 게이트 disposition → 화면용 제외 사유 코드. 문구는 프론트(strings.ts)가 정한다.
+_EXCLUDED = {"held", "cooldown", "leverage_etf"}
+
+
+def _system_stance(ticker: str, evaluation) -> dict:
+    """한 종목에 대한 파이프라인 분류 — 값은 전부 evaluation 에서 온다 (임계를 여기서 정하지 않는다).
+
+    status ∈ {qualified, below_threshold, excluded, blocked, not_scored}.
+    `reason` 은 excluded/not_scored 면 코드, blocked 면 emitter 의 차단 사유 문장이다.
+    """
+    stance: dict = {"status": "not_scored", "score": None, "threshold": None, "reason": None}
+    if evaluation is None:
+        stance["reason"] = "evaluation_failed"
+        return stance
+    stance["threshold"] = evaluation.threshold
+    if evaluation.blocked_reason:
+        stance.update(status="blocked", reason=evaluation.blocked_reason)
+        return stance
+    t = evaluation.tickers.get(ticker)
+    if t is None:
+        stance["reason"] = "no_factor"
+    elif t.disposition == "no_price":
+        stance["reason"] = "no_price"
+    elif t.disposition in _EXCLUDED:
+        stance.update(status="excluded", reason=t.disposition)
+    else:
+        # 내림 — 반올림하면 기준 미달 69.96 이 70.0 으로 나가 "기준 미달 70 / 70" 이 된다 (#1683 Codex P2)
+        stance.update(status=t.disposition, score=math.floor(t.score * 10) / 10)
+    return stance
 
 
 # ─── /api/market-context ───

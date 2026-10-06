@@ -10,7 +10,7 @@
  *   L54  `?? data.action`  middle arm       -> final_action nullish, action set
  *   L54  `?? "HOLD"`       final arm        -> both nullish
  *   L56  `agreement_rate ? .. : 0` -> `: 0` -> agreement_rate falsy (0)
- *   L68  `|| verdictStyles.muted`           -> unknown verdict_level
+ *   stanceTone fallback (system-stance.ts)   -> unknown system.status → muted, 미평가
  *   L80  `?? "—"`                           -> price null
  *   L89  `(change_5d ?? 0)` / `?? 0`        -> change_5d null
  *   L91  Vol badge JSX render arm           -> volume_ratio >= 1.5
@@ -45,10 +45,8 @@ const make = (over: Partial<Opportunity>): Opportunity => ({
     rsi: 50,
     signal: "BUY",
     score: 80,
-    pros: ["good thing"],
-    cons: ["bad thing"],
-    verdict: "괜찮은 후보",
-    verdict_level: "positive",
+    observations: ["good thing", "bad thing"],
+    system: { status: "qualified", score: 80, threshold: 70, reason: null },
     ...over,
 });
 
@@ -96,16 +94,28 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         expect(screen.getByText("$—")).toBeTruthy();
     });
 
-    it("unknown verdict_level -> `|| verdictStyles.muted` (line 68 right arm)", () => {
+    it("unknown system.status -> muted tone + 미평가 (no invented stance)", () => {
         render(
             <OpportunityExplorer
                 opportunities={[
-                    make({ ticker: "MUTEDX", verdict_level: "unknown-xyz" }),
+                    make({ ticker: "MUTEDX", system: { status: "unknown-xyz", score: null, threshold: null, reason: null } }),
                 ]}
             />,
         );
-        // muted 스타일 라벨 = OPPORTUNITY.MUTED ("데이터 부족")
-        expect(screen.getByText("데이터 부족")).toBeTruthy();
+        expect(screen.getByTestId("system-stance").textContent).toBe("미평가");
+    });
+
+    it("unknown reason code -> shown as given; missing score -> label without numbers", () => {
+        render(
+            <OpportunityExplorer
+                opportunities={[
+                    make({ ticker: "RAWX", system: { status: "excluded", score: null, threshold: 70, reason: "new_gate" } }),
+                    make({ ticker: "NOSC", system: { status: "qualified", score: null, threshold: 70, reason: null } }),
+                ]}
+            />,
+        );
+        const badges = screen.getAllByTestId("system-stance").map((b) => b.textContent);
+        expect(badges).toEqual(["제외 · new_gate", "후보 기준 통과"]);
     });
 
     it("volume_ratio >= 1.5 -> Vol badge renders (line 91 JSX arm)", () => {
