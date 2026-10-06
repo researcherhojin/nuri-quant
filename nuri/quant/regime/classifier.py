@@ -342,7 +342,10 @@ def _detect_sector_rotation(db_path=None, date: str | None = None) -> bool:
             (etf,),
             db_path=db_path,
         )
-        if len(etf_prices) < 21 or etf_prices[0]["date"] != spy_latest:
+        if len(etf_prices) < 21:
+            continue
+        if etf_prices[0]["date"] != spy_latest:
+            logger.debug("%s 창 끝 %s ≠ SPY %s → 섹터 순환 판정에서 제외", etf, etf_prices[0]["date"], spy_latest)
             continue
         etf_ret = (etf_prices[0]["close"] - etf_prices[-1]["close"]) / etf_prices[-1]["close"] * 100
         if etf_ret > 3:
