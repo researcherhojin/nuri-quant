@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { OpportunityExplorer } from "@/components/ui/opportunity-explorer";
 
 vi.mock("next/link", () => ({
@@ -106,6 +106,27 @@ describe("OpportunityExplorer", () => {
   it("renders verdict badge — neutral", () => {
     render(<OpportunityExplorer opportunities={[positiveOpp]} />);
     expect(screen.getByText("관망")).toBeTruthy();
+  });
+
+  // #1652: 행에는 첫 찬성·첫 반대만, 펼치면 전체 + 판정 문장
+  it("shows only the first pro/con in the row and the full lists in the quick-peek", () => {
+    render(<OpportunityExplorer opportunities={[dangerOpp]} />);
+    expect(screen.queryByTestId("opportunity-row-peek")).toBeNull();
+    expect(screen.getByText(/^5D -20.2% 급락/)).toBeTruthy();
+    expect(screen.queryByText(/원인 확인 필요/)).toBeNull();
+    expect(screen.getByText("+1")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /SNOW 상세 펼치기/ }));
+    const peek = screen.getByTestId("opportunity-row-peek");
+    expect(peek.textContent).toContain("급락 + volume_spike — 원인 확인 필요");
+    expect(peek.textContent).toContain("매수 금지 — 극단적 하락, 원인 확인 전 진입 위험");
+  });
+
+  it("renders column headers so 찬성/반대/판정 stay visible without expanding", () => {
+    render(<OpportunityExplorer opportunities={[mutedOpp]} />);
+    expect(screen.getByText("찬성")).toBeTruthy();
+    expect(screen.getByText("반대")).toBeTruthy();
+    expect(screen.getByText("판정")).toBeTruthy();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2); // 찬성·반대 없음
   });
 
   it("renders verdict badge — danger", () => {

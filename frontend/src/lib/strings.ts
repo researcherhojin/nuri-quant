@@ -563,6 +563,15 @@ export const OPPORTUNITY = {
   // (`PIPELINE.RUNNING_SUFFIX` 와 같은 관례).
   ALL_PREFIX: "전체",
   ALL_SUFFIX: "건 →",
+  // #1652: 카드 → 32px 행 + quick-peek. 열 머리글과 펼침 접근명.
+  COL_TICKER: "종목",
+  COL_PRICE: "가격",
+  COL_SIGNAL: "시그널",
+  COL_METRICS: "지표",
+  PEEK_EXPAND: "상세 펼치기",
+  PEEK_COLLAPSE: "상세 접기",
+  AGREEMENT_SUFFIX: "% 합의",
+  ANALYZING: "분석 중...",
 } as const;
 
 export const CONTEXT = {

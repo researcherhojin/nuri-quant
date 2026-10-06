@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { OPPORTUNITY } from "@/lib/strings";
 
 interface AgentVerdict {
@@ -39,9 +39,24 @@ const verdictStyles: Record<string, { bg: string; text: string; label: string }>
   muted: { bg: "bg-zinc-700/50", text: "text-zinc-500", label: OPPORTUNITY.MUTED },
 };
 
-function OpportunityCard({ opp }: { opp: Opportunity }) {
+function actionTagCls(action: string): string {
+  if (action === "BUY") return "bg-emerald-500/20 text-emerald-400";
+  if (action === "SELL") return "bg-red-500/20 text-red-400";
+  return "bg-zinc-700 text-zinc-400";
+}
+
+const TH = "px-2 py-1 text-[9px] font-medium text-zinc-600";
+
+/**
+ * #1652 U6: 카드(3장, 찬성/반대 2열 여백) → 액션 테이블과 같은 32px 행 + quick-peek.
+ * 행에는 첫 찬성·첫 반대만 보이고, 펼치면 전체 근거·판정 문장·10-Agent 결과가 나온다.
+ * 데이터 계약·문자열(OPPORTUNITY.*)·분석 fetch 동작은 카드 시절 그대로다.
+ */
+function OpportunityRow({ opp }: { opp: Opportunity }) {
+  const [expanded, setExpanded] = useState(false);
   const [analysis, setAnalysis] = useState<AgentVerdict | null>(null);
   const [loading, setLoading] = useState(false);
+  const peekId = useId();
 
   const runAnalysis = async () => {
     setLoading(true);
@@ -66,114 +81,123 @@ function OpportunityCard({ opp }: { opp: Opportunity }) {
   };
 
   const style = verdictStyles[opp.verdict_level] || verdictStyles.muted;
-  const change5dColor = (opp.change_5d ?? 0) >= 0 ? "text-emerald-400" : "text-red-400";
+  const change5d = opp.change_5d ?? 0;
+  const change5dColor = change5d >= 0 ? "text-emerald-400" : "text-red-400";
+  const rsiColor = opp.rsi == null ? "" : opp.rsi < 30 ? "text-emerald-400" : opp.rsi > 70 ? "text-red-400" : "text-zinc-500";
 
   return (
-    <div className="rounded-lg p-3 bg-zinc-900/40 border border-zinc-800/60">
-      {/* 헤더 */}
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <Link href={`/ticker/${opp.ticker}`} className="text-sm font-semibold text-zinc-100 hover:text-white transition-colors">
+    <Fragment>
+      <tr
+        className="border-b border-zinc-800/40 hover:bg-zinc-800/30 cursor-pointer transition-colors"
+        onClick={() => setExpanded(!expanded)}
+        data-testid="opportunity-row"
+      >
+        <td className="h-8 px-2 whitespace-nowrap">
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-controls={peekId}
+            aria-label={`${opp.ticker} ${expanded ? OPPORTUNITY.PEEK_COLLAPSE : OPPORTUNITY.PEEK_EXPAND}`}
+            onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            className="mr-1 align-middle inline-flex items-center justify-center size-4 -my-1 rounded-sm text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
+          >
+            <span aria-hidden="true" className={`text-[9px] leading-none transition-transform ${expanded ? "rotate-90" : ""}`}>&#9654;</span>
+          </button>
+          <Link
+            href={`/ticker/${opp.ticker}`}
+            className="text-xs font-semibold text-zinc-100 hover:text-white transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
             {opp.ticker}
           </Link>
-          <span className="text-xs text-zinc-400 tabular-nums">
-            ${opp.price?.toFixed(2) ?? "—"}
-          </span>
+        </td>
+        <td className="h-8 px-2 whitespace-nowrap text-xs text-zinc-300 tabular-nums">${opp.price?.toFixed(2) ?? "—"}</td>
+        <td className="h-8 px-2 whitespace-nowrap">
           {opp.signal && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">
-              {opp.signal}
-            </span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{opp.signal}</span>
           )}
-        </div>
-        <div className="flex items-center gap-3 text-[10px] tabular-nums">
-          <span className={change5dColor}>5D {(opp.change_5d ?? 0) >= 0 ? "+" : ""}{opp.change_5d?.toFixed(1) ?? 0}%</span>
-          {opp.volume_ratio != null && opp.volume_ratio >= 1.5 && (
-            <span className="text-amber-400">Vol {opp.volume_ratio.toFixed(1)}x</span>
-          )}
-          {opp.rsi != null && (
-            <span className={opp.rsi < 30 ? "text-emerald-400" : opp.rsi > 70 ? "text-red-400" : "text-zinc-500"}>
-              RSI {Math.round(opp.rsi)}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {/* 찬성 / 반대 */}
-      <div className="grid grid-cols-2 gap-2 text-[10px] mb-2">
-        <div>
-          {opp.pros.length > 0 && (
-            <>
-              <span className="text-emerald-500 font-semibold">{OPPORTUNITY.PROS}</span>
-              {opp.pros.map((p, i) => (
-                <p key={i} className="text-zinc-400 leading-tight mt-0.5">{p}</p>
-              ))}
-            </>
-          )}
-        </div>
-        <div>
-          {opp.cons.length > 0 && (
-            <>
-              <span className="text-red-500 font-semibold">{OPPORTUNITY.CONS}</span>
-              {opp.cons.map((c, i) => (
-                <p key={i} className="text-zinc-400 leading-tight mt-0.5">{c}</p>
-              ))}
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* 10-Agent 분석 결과 (인라인) */}
-      {analysis && (
-        <div className="flex items-center gap-2 py-1.5 px-2 rounded-sm bg-zinc-800/40 border border-zinc-800/30 text-[10px]">
-          <span className={`font-bold px-1.5 py-0.5 rounded-sm ${
-            analysis.action === "BUY" ? "bg-emerald-500/20 text-emerald-400" :
-            analysis.action === "SELL" ? "bg-red-500/20 text-red-400" :
-            "bg-zinc-700 text-zinc-400"
-          }`}>
-            {analysis.action}
-          </span>
-          <span className="text-zinc-400">{OPPORTUNITY.VERDICT} {analysis.confidence}</span>
-          <span className="text-zinc-600">|</span>
-          <span className="text-zinc-500">{analysis.agreement}% 합의</span>
-          {analysis.divergence_flag && (
-            <span
-              className="text-amber-400 font-medium cursor-help"
-              title={analysis.divergence_reason || "기술지표 반대"}
-              data-testid="divergence-badge"
-            >
-              ⚠ Tech
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* 판정 + 링크 */}
-      <div className="flex items-center justify-between pt-2 border-t border-zinc-800/40">
-        <div className="flex items-center gap-1.5">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${style.bg} ${style.text}`}>
+        </td>
+        <td className="h-8 px-2 whitespace-nowrap">
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${style.bg} ${style.text}`} title={opp.verdict}>
             {style.label}
           </span>
-          <span className="text-[10px] text-zinc-500 truncate max-w-50">{opp.verdict}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          {!analysis && (
+        </td>
+        <td className="h-8 px-2 max-w-0 w-[28%]">
+          <p className="text-[11px] text-zinc-400 truncate" title={opp.pros.join(" · ")}>
+            {opp.pros[0] ?? <span className="text-zinc-700">—</span>}
+            {opp.pros.length > 1 && <span className="text-zinc-600"> +{opp.pros.length - 1}</span>}
+          </p>
+        </td>
+        <td className="h-8 px-2 max-w-0 w-[28%]">
+          <p className="text-[11px] text-zinc-400 truncate" title={opp.cons.join(" · ")}>
+            {opp.cons[0] ?? <span className="text-zinc-700">—</span>}
+            {opp.cons.length > 1 && <span className="text-zinc-600"> +{opp.cons.length - 1}</span>}
+          </p>
+        </td>
+        <td className="h-8 px-2 whitespace-nowrap text-[11px] tabular-nums">
+          <span className={change5dColor}>5D {change5d >= 0 ? "+" : ""}{opp.change_5d?.toFixed(1) ?? 0}%</span>
+          {opp.volume_ratio != null && opp.volume_ratio >= 1.5 && (
+            <span className="ml-2 text-amber-400">Vol {opp.volume_ratio.toFixed(1)}x</span>
+          )}
+          {opp.rsi != null && <span className={`ml-2 ${rsiColor}`}>RSI {Math.round(opp.rsi)}</span>}
+        </td>
+        <td className="h-8 px-2 whitespace-nowrap text-right text-[10px]">
+          {analysis ? (
+            <span className="inline-flex items-center gap-1.5" data-testid="opportunity-analysis">
+              <span className={`font-bold px-1.5 py-0.5 rounded-sm ${actionTagCls(analysis.action)}`}>{analysis.action}</span>
+              <span className="text-zinc-400">{OPPORTUNITY.VERDICT} {analysis.confidence}</span>
+              <span className="text-zinc-500">{analysis.agreement}{OPPORTUNITY.AGREEMENT_SUFFIX}</span>
+              {analysis.divergence_flag && (
+                <span
+                  className="text-amber-400 font-medium cursor-help"
+                  title={analysis.divergence_reason || "기술지표 반대"}
+                  data-testid="divergence-badge"
+                >
+                  ⚠ Tech
+                </span>
+              )}
+            </span>
+          ) : (
             <button
-              onClick={runAnalysis}
+              onClick={(e) => { e.stopPropagation(); void runAnalysis(); }}
               disabled={loading}
-              className="text-[10px] text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+              className="text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
             >
-              {loading ? "분석 중..." : OPPORTUNITY.ANALYZE + " ▶"}
+              {loading ? OPPORTUNITY.ANALYZING : OPPORTUNITY.ANALYZE + " ▶"}
             </button>
           )}
           <Link
             href={`/ticker/${opp.ticker}`}
-            className="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="ml-3 inline-block p-1.5 -m-1.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+            onClick={(e) => e.stopPropagation()}
           >
             {OPPORTUNITY.CHART} →
           </Link>
-        </div>
-      </div>
-    </div>
+        </td>
+      </tr>
+      {expanded && (
+        <tr id={peekId} className="border-b border-zinc-800/40 bg-zinc-900/40" data-testid="opportunity-row-peek">
+          <td colSpan={8} className="px-3 py-2">
+            <p className="text-[11px] text-zinc-300 mb-1.5">
+              <span className={`font-bold mr-1.5 ${style.text}`}>{style.label}</span>
+              {opp.verdict}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
+              <div>
+                <span className="text-emerald-500 font-semibold">{OPPORTUNITY.PROS}</span>
+                {opp.pros.length === 0 && <span className="ml-2 text-zinc-600">—</span>}
+                {opp.pros.map((p, i) => <p key={i} className="text-zinc-400 leading-tight mt-0.5">{p}</p>)}
+              </div>
+              <div>
+                <span className="text-red-500 font-semibold">{OPPORTUNITY.CONS}</span>
+                {opp.cons.length === 0 && <span className="ml-2 text-zinc-600">—</span>}
+                {opp.cons.map((c, i) => <p key={i} className="text-zinc-400 leading-tight mt-0.5">{c}</p>)}
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </Fragment>
   );
 }
 
@@ -187,10 +211,24 @@ export function OpportunityExplorer({ opportunities }: OpportunityExplorerProps)
   }
 
   return (
-    <div className="space-y-2">
-      {opportunities.map((opp) => (
-        <OpportunityCard key={opp.ticker} opp={opp} />
-      ))}
+    <div className="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-900/30">
+      <table className="w-full text-left">
+        <thead>
+          <tr className="border-b border-zinc-800/40">
+            <th scope="col" className={TH}>{OPPORTUNITY.COL_TICKER}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.COL_PRICE}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.COL_SIGNAL}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.VERDICT}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.PROS}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.CONS}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.COL_METRICS}</th>
+            <th scope="col" className="px-2 py-1" />
+          </tr>
+        </thead>
+        <tbody>
+          {opportunities.map((opp) => <OpportunityRow key={opp.ticker} opp={opp} />)}
+        </tbody>
+      </table>
     </div>
   );
 }
