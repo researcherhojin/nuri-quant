@@ -3,7 +3,7 @@ import { lookup } from "@/lib/utils";
 
 /**
  * `/api/opportunities` 의 `system` — BUY 후보 emitter 가 그 종목을 어떻게 분류했는가 (#1683).
- * 서버 컴포넌트(dashboard-next)와 클라이언트 컴포넌트(OpportunityExplorer)가 같이 쓰므로
+ * 서버 컴포넌트(Overview)와 클라이언트 컴포넌트(OpportunityExplorer)가 같이 쓰므로
  * `"use client"` 모듈에 두지 않는다 (frontend/CLAUDE.md "RSC boundary").
  */
 export interface SystemStance {

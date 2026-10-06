@@ -20,7 +20,9 @@ const VIEWPORT_MATRIX = [
 
 // /pipeline 포함 — ReactFlow 캔버스가 전역 캡의 최대 리스크 페이지 (codex P2).
 // 상세 라우트는 데이터 의존이라 첫 decision id 를 API 에서 조회해 동적 추가 (#1216, PLAN §2.3).
-const ROUTES = ["/", "/decisions", "/scan", "/portfolio", "/engine", "/pipeline", "decision-detail"] as const;
+// `/`(Overview) 는 의도적으로 가용 폭 전체를 쓴다 — 1600px 캡 대상이 아니고, 가로 스크롤·폭 채움은
+// `overview-layout.spec.ts` 가 6개 해상도에서 검사한다 (#1698).
+const ROUTES = ["/decisions", "/scan", "/portfolio", "/engine", "/pipeline", "decision-detail"] as const;
 
 const CONTENT_CAP_PX = 1600;
 
@@ -92,7 +94,7 @@ for (const vp of VIEWPORT_MATRIX) {
 
         // 3. 스크린샷 아카이브 (수동 검토물 — assert 아님)
         await page.screenshot({
-          path: `test-results/responsive/${vp.name}${routeSpec === "/" ? "/home" : `/${routeSpec.replace(/^\//, "")}`}.png`,
+          path: `test-results/responsive/${vp.name}/${routeSpec.replace(/^\//, "")}.png`,
           fullPage: false,
         });
       });

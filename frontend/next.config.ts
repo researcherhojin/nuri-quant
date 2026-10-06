@@ -55,6 +55,10 @@ const nextConfig: NextConfig = {
   // Proxy /api/* to backend — client-side fetch uses relative URLs,
   // Next.js handles the forwarding. Eliminates CORS/CSP issues for
   // network access (Mac mini → MBP dev server).
+  // Overview 가 `/` 로 승격됐다 (#1698) — 예전 미리보기 주소의 북마크·`?bucket=` 링크를 잇는다
+  async redirects() {
+    return [{ source: "/dashboard-next", destination: "/", permanent: true }];
+  },
   async rewrites() {
     return [
       {

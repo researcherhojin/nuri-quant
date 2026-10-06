@@ -5,47 +5,7 @@
  * Not a full i18n solution (next-intl) — just constants extraction.
  */
 
-/* ── Dashboard Hero ─────────────────────────────────────────── */
-export const HERO = {
-  TOTAL_ASSET: "총 자산",
-  TODAY_PNL: "오늘 P&L",
-  CUMULATIVE_RETURN: "누적 수익률",
-  CUMULATIVE_SUB: "실현 미실현 합계",
-  WIN_RATE: "승률",
-  FLAT: "보합",
-  HOLDINGS_PREFIX: "보유",
-  CASH_PREFIX: "현금",
-  // #1185: 출처 분리 — 히어로 4지표는 전부 포트폴리오 스냅샷이지 판정 원장이 아니다 (§3.11).
-  // 출처는 보유 DB(portfolio 테이블)+최신 종가다 — yaml 은 sync 지연/실패 시 어긋난다 (Codex P2).
-  // 범위도 갈린다: 총 자산=전 계좌+현금, 오늘·누적·승률=연금 제외 보유분 (page.tsx 필터).
-  PROVENANCE_SNAPSHOT: "지표 출처: 포트폴리오 스냅샷 (보유 DB + 최신 종가, 미실현 포함)",
-  PROVENANCE_SCOPE: "총 자산=전 계좌+현금 · 오늘·누적·승률=연금 제외 보유분",
-  PROVENANCE_LEDGER_LINK: "시스템 판정 성과는 판정 원장",
-  WIN_RATE_SCOPE: "보유 미실현 기준 — 시스템 판정 성과 아님",
-} as const;
-
-/* ── Composition Section ────────────────────────────────────── */
-export const COMPOSITION = {
-  TAB_TICKER: "자산",
-  TAB_SECTOR: "섹터",
-  TAB_ACCOUNT: "계좌",
-  TOTAL_ASSET: "총 자산",
-  OTHER: "기타", // #1210: 스택 바 상위 5 밖 슬라이스 병합 라벨
-  EMPTY: "표시할 데이터가 없습니다.",
-  NO_DATA: "— 데이터 없음",
-  NO_LOSERS: "손실 없음",
-  CONCENTRATION: "집중도 (HHI)",
-} as const;
-
-/* ── Verdict / Trend / Market Context ───────────────────────── */
-export const VERDICT = {
-  AGGRESSIVE: "공격",
-  NEUTRAL: "관망",
-  CAUTIOUS: "주의",
-  DEFENSIVE: "방어",
-  STALE: "데이터 낡음", // 판단 입력 stale — verdict 보류 (#1180)
-} as const;
-
+/* ── Trend / Market Context ─────────────────────────────────── */
 export const TREND = {
   BULL: "상승",
   BEAR: "하락",
@@ -75,92 +35,6 @@ export const MACRO_LEVEL = {
   FRAGILE: "취약",
 } as const;
 
-/* ── Holding Row Statuses ───────────────────────────────────── */
-export const HOLDING_STATUS = {
-  STOP_LOSS: "손절",
-  VIOLATION: "⚠ 위반",
-  SELL: "매도",
-  TP2: "✓ 익절₂",
-  TP1: "✓ 익절₁",
-  BUY: "매수",
-  HOLD: "보유",
-  REACHED: "✓ 도달",
-} as const;
-
-/* ── Holding Row ARIA / Column Headers ──────────────────────── */
-export const HOLDING_LABEL = {
-  CURRENT_AVG: "현재가/평단가",
-  DAILY_DELTA: "일변",
-  STOP_LOSS: "손절가",
-  TARGET_1: "1차 익절가",
-  TARGET_2: "2차 익절가",
-  SECTOR: "섹터",
-  POSITION_PCT: "비중",
-  SUMMARY_ARIA: "보유 종목 요약",
-} as const;
-
-/* ── Column Headers (Holdings Table) ────────────────────────── */
-export const COL = {
-  ACCOUNT: "계좌",
-  TICKER: "종목",
-  CURRENT: "현재/",
-  AVG: "평단",
-  PNL: "손익",
-  DAILY: "일변",
-  STATUS: "상태",
-  STOP: "손절",
-  TP1: "1차익절",
-  TP2: "2차익절",
-  TREND: "추세",
-  SECTOR: "섹터",
-  WEIGHT: "비중",
-} as const;
-
-/* ── Dashboard Sections ─────────────────────────────────────── */
-export const SECTION = {
-  HOLDINGS: "보유 종목",
-  WINNERS: "수익",
-  LOSERS: "손실",
-  COLLAPSE: "접기",
-  VIEW_ALL: "전체",
-  VIEW_SUFFIX: "보기",
-  DETAIL: "상세",
-  PENSION: "연금",
-  PENSION_HIDDEN_SUFFIX: "건 숨김",
-  PENSION_MONTH_END_WAIT: "월말 대기",
-  PENSION_MONTH_END_BUY_WAIT: "월말 매수 대기",
-} as const;
-
-/* ── Dashboard Strips ───────────────────────────────────────── */
-export const STRIP = {
-  ALERTS_TITLE: "알림",
-  ALERTS_EMPTY: "위험 요소 없음",
-  ALERTS_PREFIX: "⚠ 주의",
-  EVENTS_TITLE: "이벤트",
-  EVENTS_EMPTY: "예정된 이벤트 없음",
-  EVENTS_PREFIX: "📅 다음 이벤트",
-  EVENTS_FALLBACK: "이벤트",
-  CANDIDATES_TITLE: "신규 후보",
-  CANDIDATES_EMPTY: "신규 매수 후보 없음",
-  CANDIDATES_PREFIX: "🎯 신규 후보",
-} as const;
-
-/* ── Market Context Labels ──────────────────────────────────── */
-export const MARKET = {
-  ALLOCATION: "배분",
-  SENTIMENT: "심리",
-  ACTUAL: "실제",
-  INVEST: "투자",
-  CASH: "현금",
-  TARGET: "권장",
-} as const;
-
-/* ── Dashboard Footer ───────────────────────────────────────── */
-export const FOOTER = {
-  RULE_VIOLATION: "규칙 위반",
-  COUNT_SUFFIX: "건",
-} as const;
-
 /* ── Signal Translations (alert → Korean) ───────────────────── */
 export const SIGNAL = {
   BB_BOUNCE: "볼린저밴드 반등",
@@ -185,22 +59,6 @@ export const SIGNAL = {
   STOP_SUFFIX: "손절",
   NEAR_SUFFIX: "근접",
   CONFLICT_SHORT: "충돌",
-} as const;
-
-/* ── Sparkline ──────────────────────────────────────────────── */
-export const SPARKLINE = {
-  TREND_30D: "30일 추세",
-  TREND_UP: "상승",
-  TREND_DOWN: "하락",
-  PERIOD_LABEL: "추세",
-  PERIOD_SUFFIX: "일",
-} as const;
-
-/* ── Collapsible Strip ──────────────────────────────────────── */
-export const COLLAPSIBLE = {
-  EXPAND_SUFFIX: "펼치기",
-  HIDE: "숨기기",
-  HIDE_SUFFIX: "숨기기",
 } as const;
 
 /* ── Consensus Page ─────────────────────────────────────────── */
@@ -632,8 +490,7 @@ export const NAV = {
   SIDEBAR_COLLAPSE: "\uC0AC\uC774\uB4DC\uBC14 \uC811\uAE30",
   // 라우트 라벨 (#1252). 소비자는 사이드바 하나뿐이지만, SSoT 밖에 있으면 e2e 가
   // 문자열을 직접 박게 되고 그게 #1118 의 3.5개월 무신호 회귀를 만든 경로다.
-  ROUTE_DASHBOARD: "Dashboard",
-  ROUTE_DASHBOARD_NEXT: "Overview Preview",
+  ROUTE_DASHBOARD: "Overview",
   ROUTE_DECISIONS: "Decisions",
   ROUTE_ENGINE: "Decision Engine",
   ROUTE_EVIDENCE: "Evidence",
@@ -651,7 +508,7 @@ export const NAV = {
 } as const;
 
 
-/* ── 백엔드 분류 → 한국어 라벨 (대시보드 · Overview Preview 공용) ──────────── */
+/* ── 백엔드 분류 → 한국어 라벨 (Overview · 다른 화면 공용) ──────────── */
 // macro_score.py 의 interpretation 그대로가 키다. 점수로 라벨을 다시 지어내지 않는다 (#1652 Codex r1-r3).
 export const MACRO_INTERPRETATION = {
   Favorable: MACRO_LEVEL.GOOD,
@@ -677,13 +534,11 @@ export const REGIME_LABEL = {
   sector_rotation: "섹터 순환",
 } satisfies Record<string, string>;
 
-/* ── Overview Preview (/dashboard-next, #1658) ──────────────────────────────── */
+/* ── Overview (/, #1658 · #1698) ───────────────────────────────────────────── */
 // 화면의 모든 사용자 노출 문구. 컴포넌트와 테스트는 여기서 읽는다 (#1252 — 리터럴은 e2e 무신호 회귀의 경로).
-export const DASHBOARD_NEXT = {
+export const OVERVIEW = {
   TITLE: "Overview",
   SUBTITLE: "시장과 포트폴리오의 현재 상태",
-  PREVIEW_TAG: "PREVIEW",
-  COMPARE: "기존 대시보드와 비교",
   REFRESH: "새로고침",
   INBOX: "보유 종목 점검",
   RADAR: "시장 탐색",
@@ -919,15 +774,6 @@ export const DASHBOARD_NEXT = {
     SNAPSHOT: "현재 스냅샷 · ",
     ALERTS: (n: string) => `시스템 알림 ${n}`,
     ALERTS_TITLE: "시스템 알림",
-    COMPARE_GUIDE: "화면 비교 안내",
-    COMPARE_TITLE: "기존 화면과 비교",
-    COMPARE_INTRO: "동일한 백엔드를 사용하는 별도 화면입니다. 조회 시점에 따라 값이 다를 수 있습니다.",
-    COMPARE_POINTS: [
-      "시장 요약·판단·자산 배분·수집 상태를 한 화면에서 확인합니다.",
-      "판단을 선택하면 근거와 보유 영향이 옆에 표시됩니다.",
-      "추가 근거와 전체 소스는 팝업 또는 상세 화면에서 확인합니다.",
-    ],
-    OPEN_LEGACY: "기존 화면을 새 탭에서 열기",
   },
   DIALOG: { CLOSE: "닫기", ESC: "ESC" },
   TIME_UNKNOWN: "기준 시각 미제공",

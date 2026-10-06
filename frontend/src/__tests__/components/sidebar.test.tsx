@@ -132,24 +132,24 @@ describe("Sidebar", () => {
     fireEvent.click(collapseBtn!);
 
     // Labels should be hidden
-    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    expect(screen.queryByText(NAV.ROUTE_DASHBOARD)).not.toBeInTheDocument();
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
   });
 
-  // Overview Preview 는 모바일에서 사이드바와 그 자리 확보용 spacer 를 모두 숨긴다 (#1658)
-  it("hides the sidebar and its spacer below md only on the preview route", () => {
-    mockPathname.mockReturnValue("/dashboard-next");
+  // Overview(`/`) 는 모바일에서 사이드바와 그 자리 확보용 spacer 를 모두 숨긴다 (#1658 · #1698)
+  it("hides the sidebar and its spacer below md only on the Overview route", () => {
+    mockPathname.mockReturnValue("/");
     const { container, unmount } = render(<Sidebar />);
 
     expect(container.querySelector("aside")!.className).toContain("hidden md:flex");
     expect(container.querySelector("aside")!.nextElementSibling!.className).toContain("hidden md:block");
     unmount();
 
-    mockPathname.mockReturnValue("/");
-    const { container: home } = render(<Sidebar />);
+    mockPathname.mockReturnValue("/decisions");
+    const { container: other } = render(<Sidebar />);
 
-    expect(home.querySelector("aside")!.className).not.toContain("hidden");
-    expect(home.querySelector("aside")!.nextElementSibling!.className).not.toContain("hidden");
+    expect(other.querySelector("aside")!.className).not.toContain("hidden");
+    expect(other.querySelector("aside")!.nextElementSibling!.className).not.toContain("hidden");
   });
 
   it("shows System Online indicator", () => {
