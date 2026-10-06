@@ -229,7 +229,7 @@ class TestMarkdownPersist:
                 ],
             },
             "opportunities": [
-                {"ticker": "AMD", "score": 57, "change_5d": 5, "rsi": 60, "signal": "momentum", "pros": [], "cons": []}
+                {"ticker": "AMD", "score": 57, "change_5d": 5, "rsi": 60, "signal": "momentum", "observations": []}
             ],
             "macro_events": [
                 {
@@ -429,9 +429,22 @@ class TestGenerateBrief:
                 "hold": [],
             },
             "opportunities": [
-                {"ticker": "AMD", "score": 57, "change_5d": 5, "rsi": 60, "verdict_level": "positive"},
-                {"ticker": "IONQ", "score": 63, "change_5d": 31, "rsi": 84, "verdict_level": "neutral"},
-                {"ticker": "XLE", "score": 35, "change_5d": -1, "rsi": 22, "verdict_level": "danger"},
+                {
+                    "ticker": "AMD",
+                    "score": 57,
+                    "change_5d": 5,
+                    "rsi": 60,
+                    "system": {"status": "qualified", "score": 78.4, "threshold": 70},
+                },
+                {
+                    "ticker": "EDGE",
+                    "score": 41,
+                    "change_5d": 1,
+                    "rsi": 50,
+                    "system": {"status": "below_threshold", "score": 69.9, "threshold": 70},
+                },
+                {"ticker": "IONQ", "score": 63, "change_5d": 31, "rsi": 84, "system": {"status": "excluded"}},
+                {"ticker": "XLE", "score": 35, "change_5d": -1, "rsi": 22, "system": {"status": "blocked"}},
             ],
             "macro_events": [
                 {
@@ -456,6 +469,11 @@ class TestGenerateBrief:
         assert any("Portfolio" in n for n in names)
         assert any("Check" in n for n in names)
         assert any("Opportunities" in n for n in names)
+        # #1683 Codex P2: 표식은 시스템 분류 — 같은 줄의 숫자도 시스템 점수/기준이고, 내림이라 69.9 는 70 이 아니다
+        ops = next(f["value"] for f in embed["fields"] if "Opportunities" in f["name"])
+        assert "🟢 AMD    시스템 78/70" in ops
+        assert "EDGE   시스템 69/70" in ops
+        assert "score 57" not in ops
         assert any("Macro Events" in n for n in names)
         assert any("Portfolio" in n for n in names)
 
@@ -503,7 +521,7 @@ class TestMainCLI:
 class TestMarkdownEdgeCases:
     """format_brief_markdown 의 conditional branch 커버 (349/360/373/375 miss)."""
 
-    def test_markdown_with_opportunities_pros_cons_rendered(self):
+    def test_markdown_with_opportunities_observations_rendered(self):
         from nuri.alerts.premarket_brief import format_brief_markdown
 
         ctx = {
@@ -514,14 +532,15 @@ class TestMarkdownEdgeCases:
                     "change_5d": 5,
                     "rsi": 60,
                     "signal": "momentum",
-                    "pros": ["pro1", "pro2"],
-                    "cons": ["con1"],
+                    "observations": ["obs1", "obs2"],
+                    "system": {"status": "below_threshold"},
                 },
             ],
         }
         md = format_brief_markdown(ctx)
-        assert "✓ pro1" in md
-        assert "✗ con1" in md
+        assert "· obs1" in md
+        assert "· obs2" in md
+        assert "system=below_threshold" in md
 
 
 class TestSchedulerRegistration:

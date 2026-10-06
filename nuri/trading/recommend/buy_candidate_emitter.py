@@ -439,25 +439,56 @@ def _thesis_label(ticker: str, db_path: Path | None = None) -> str | None:
         return None
 
 
-def emit_buy_candidates(
-    config_path: Path | None = None,
-    limit: int | None = None,
-    db_path: Path | None = None,
-) -> EmitResult:
-    """Main entry: emit BUY candidates for current snapshot.
+@dataclass
+class TickerEvaluation:
+    """한 종목에 대한 emitter 의 판정 — 채점했으면 점수, 게이트에 걸렸으면 그 이유 (#1683).
 
-    Returns EmitResult with candidates + skipped + meta.
+    disposition ∈ {qualified, below_threshold, held, cooldown, leverage_etf, no_price}.
+    `qualified` 는 **임계 통과**다 — emit 의 top-N 컷(`max_candidates`) 안에 들었다는 뜻이 아니다.
     """
+
+    ticker: str
+    disposition: str
+    score: float | None = None
+    sources: dict[str, float] = field(default_factory=dict)
+    # emit 의 `skipped` 사유 문자열 (held/cooldown/leverage_etf 만 — no_price 는 emit 이 조용히 건너뛴다)
+    skip_reason: str | None = None
+    # emit 이 entry·why-now 를 만드는 데 쓰는 원재료 (채점된 종목만)
+    price: dict[str, float] | None = None
+    rsi: float | None = None
+
+
+@dataclass
+class Evaluation:
+    """emitter 채점·게이트의 읽기 전용 결과 (#1683).
+
+    `emit_buy_candidates` 와 `/api/opportunities` 가 **같은 채점 경로**를 쓰도록 분리했다 —
+    API 가 자체 임계로 판정을 지어내던 두 번째 결정 경로(`_compute_verdict`)를 없애기 위해서다.
+
+    `blocked_reason` 은 **실행 단위 하드 게이트**(VIX · 차단 레짐 · 임계 999 · factors 부재)만 담는다.
+    "최고점이 임계 미달" 은 차단이 아니라 emit 의 결과 요약이므로 여기 오지 않는다.
+    차단된 실행에서는 채점 자체를 하지 않으므로 `tickers` 가 비어 있다.
+    """
+
+    regime: str
+    vix: float | None
+    timestamp_kst: str
+    threshold: float | None = None
+    blocked_reason: str | None = None
+    # factor 스냅샷 순서 그대로 (emit 의 skipped 순서·첫 채점 종목이 이 순서에 의존한다)
+    tickers: dict[str, TickerEvaluation] = field(default_factory=dict)
+
+
+def evaluate_universe(config_path: Path | None = None, db_path: Path | None = None) -> Evaluation:
+    """factor 스냅샷의 모든 종목을 채점·게이트한다. DB 에 아무것도 쓰지 않는다 (#1683)."""
     cfg = _load_config(config_path)
     weights = cfg.get("weights", {})
     quality = cfg.get("quality_bar", {})
     gates = cfg.get("gates", {})
-    risk = cfg.get("risk", {})
-    alloc = cfg.get("allocation", {})
     exclude_etfs = set(cfg.get("exclude_etfs", []))  # 레버리지/인버스 ETF — BUY 제외 (#761)
 
     regime, vix = _get_regime(db_path=db_path)
-    result = EmitResult(
+    ev = Evaluation(
         regime=regime,
         vix=vix,
         timestamp_kst=kst_now().strftime("%Y-%m-%d %H:%M:%S KST"),
@@ -465,8 +496,8 @@ def emit_buy_candidates(
 
     # Hard gate: VIX block — 임계는 rules.yaml(core.rules) canonical 사용 (#760). 차단은 strict >.
     if vix is not None and vix > VIX_BLOCK_ABOVE:
-        result.blocked_reason = f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} (신규 매수 차단)"
-        return result
+        ev.blocked_reason = f"VIX {vix:.1f} > {VIX_BLOCK_ABOVE} (신규 매수 차단)"
+        return ev
 
     # Hard gate: regime — 차단 집합은 config SSoT 다 (#1130).
     # 코드에 `{bear, crash, extreme_fear}` 로 하드코딩돼 있었는데 셋 다 `ALL_REGIMES`
@@ -477,16 +508,16 @@ def emit_buy_candidates(
     # 값 변경이어야지 코드 변경이어서는 안 되기 때문이다.
     blocking = set(gates.get("blocking_regimes") or [])
     if regime in blocking:
-        result.blocked_reason = f"regime={regime} (방어 모드, 신규 매수 차단)"
-        return result
+        ev.blocked_reason = f"regime={regime} (방어 모드, 신규 매수 차단)"
+        return ev
 
     # Quality threshold (regime-adjusted)
     threshold = quality.get("base_threshold", 70)
     threshold += quality.get("per_regime", {}).get(regime, 0)
-    result.threshold = threshold
+    ev.threshold = threshold
     if threshold >= 999:
-        result.blocked_reason = f"regime={regime} threshold={threshold} (사실상 차단)"
-        return result
+        ev.blocked_reason = f"regime={regime} threshold={threshold} (사실상 차단)"
+        return ev
 
     held = _get_held_tickers(db_path=db_path) if cfg.get("exclude_held", True) else set()
     # #517 Phase 2b — type-aware cooldown 우선. legacy gates.cooldown_days 는 fallback 용.
@@ -504,30 +535,77 @@ def emit_buy_candidates(
     leadership = leadership_snapshot(lead_cfg.get("lookback", 120), lead_cfg.get("surge_window", 20), db_path=db_path)
 
     if not factors:
-        result.blocked_reason = "factors 테이블 비어있음 (composite_score 데이터 부재)"
-        return result
+        ev.blocked_reason = "factors 테이블 비어있음 (composite_score 데이터 부재)"
+        return ev
 
     # Score every ticker that has factor + price data
-    scored: list[tuple[str, float, dict[str, float], dict[str, float], float | None]] = []
     for ticker, factor in factors.items():
         if ticker in held:
-            result.skipped[ticker] = "held (보유 중 — Phase 2 에서 add 모드 도입)"
+            ev.tickers[ticker] = TickerEvaluation(
+                ticker, "held", skip_reason="held (보유 중 — Phase 2 에서 add 모드 도입)"
+            )
             continue
         if ticker in cooldown:
-            result.skipped[ticker] = f"cooldown {gates.get('cooldown_days', 5)}d (최근 SELL/trim 신호)"
+            ev.tickers[ticker] = TickerEvaluation(
+                ticker,
+                "cooldown",
+                skip_reason=f"cooldown {gates.get('cooldown_days', 5)}d (최근 SELL/trim 신호)",
+            )
             continue
         if cfg.get("exclude_etf_leverage", True) and ticker in exclude_etfs:
-            result.skipped[ticker] = "leverage ETF (스윙 전용 — BUY 후보 제외)"
+            ev.tickers[ticker] = TickerEvaluation(
+                ticker, "leverage_etf", skip_reason="leverage ETF (스윙 전용 — BUY 후보 제외)"
+            )
             continue
         price = prices.get(ticker)
         if not price:
-            continue  # silent skip if no price — too many to surface
+            ev.tickers[ticker] = TickerEvaluation(ticker, "no_price")
+            continue
         rsi = rsi_map.get(ticker)
         lead = leadership.get(ticker)
         rs_rank = lead[0] if lead else None
         dollar_volume = lead[1] if lead else None
         score, sources = _score_ticker(ticker, factor, price, rsi, weights, rs_rank, dollar_volume)
-        scored.append((ticker, score, sources, price, rsi))
+        ev.tickers[ticker] = TickerEvaluation(
+            ticker,
+            "qualified" if score >= threshold else "below_threshold",
+            score=score,
+            sources=sources,
+            price=price,
+            rsi=rsi,
+        )
+    return ev
+
+
+def emit_buy_candidates(
+    config_path: Path | None = None,
+    limit: int | None = None,
+    db_path: Path | None = None,
+) -> EmitResult:
+    """Main entry: emit BUY candidates for current snapshot.
+
+    채점·게이트는 `evaluate_universe` 가 한다 — 이 함수는 그 결과에서 top-N 을 골라 배분한다.
+    Returns EmitResult with candidates + skipped + meta.
+    """
+    cfg = _load_config(config_path)
+    quality = cfg.get("quality_bar", {})
+    risk = cfg.get("risk", {})
+    alloc = cfg.get("allocation", {})
+
+    ev = evaluate_universe(config_path=config_path, db_path=db_path)
+    regime, vix = ev.regime, ev.vix
+    result = EmitResult(regime=regime, vix=vix, timestamp_kst=ev.timestamp_kst, threshold=ev.threshold)
+    if ev.blocked_reason:
+        result.blocked_reason = ev.blocked_reason
+        return result
+    threshold = ev.threshold
+
+    scored: list[tuple[str, float, dict[str, float], dict[str, float], float | None]] = []
+    for ticker, t in ev.tickers.items():
+        if t.skip_reason:
+            result.skipped[ticker] = t.skip_reason
+        elif t.score is not None and t.price is not None:
+            scored.append((ticker, t.score, t.sources, t.price, t.rsi))
 
     # Filter by quality bar, sort, top-N
     qualified = [s for s in scored if s[1] >= threshold]

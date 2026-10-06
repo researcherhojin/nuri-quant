@@ -43,11 +43,14 @@ export const actionsSchema = z.object({
   generated_at: z.string().optional(),
 });
 
+// #1683: `system` 은 BUY 후보 emitter 의 분류(점수·임계는 API 값), `observations` 는 스캐너 관측이다.
+const systemStance = z.object({ status: z.string(), score: number, threshold: number, reason: z.string().nullable() });
+
 export const opportunitiesSchema = z.object({
   opportunities: z.array(z.object({
     change_1d: number.optional(), change_5d: number.optional(),
     ticker: z.string(), signal: z.string().nullable(), score: number,
-    verdict: z.string(), verdict_level: z.string(), pros: z.array(z.string()), cons: z.array(z.string()),
+    system: systemStance, observations: z.array(z.string()),
   })),
   generated_at: z.string().optional(),
 });
