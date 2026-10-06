@@ -10,7 +10,9 @@ function skeleton(testid: string, heightClass: string) {
   const Skeleton = () => (
     <div className={`${heightClass} bg-card rounded-xl border border-border animate-pulse`} data-testid={testid} />
   );
+
   Skeleton.displayName = "EvidenceChartSkeleton";
+
   return Skeleton;
 }
 

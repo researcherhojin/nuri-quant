@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
 
 // Mock fetchAPI
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -98,8 +99,11 @@ describe("EnginePage", () => {
   it("renders gate section with conditions", async () => {
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/gate")) return Promise.resolve(mockGateData);
+
       if (path.includes("/api/conflicts")) return Promise.resolve({ conflicts: [], count: 0, high: 0 });
+
       if (path.includes("/api/memory")) return Promise.resolve({ drifts: [], critical: 0, degrading: 0 });
+
       return Promise.resolve({});
     });
 
@@ -131,6 +135,7 @@ describe("EnginePage", () => {
       phase, total: 1, passed: 0, score: 0, ready: false,
       conditions: [{ id: `${phase}-1`, phase, description: "d", passed: false, detail: "x" }],
     });
+
     mockFetchAPI.mockResolvedValue({ regime: blocked("regime"), mystery: blocked("mystery") });
     const mod = await import("@/app/engine/page");
     render(await mod.GateSection());
@@ -156,8 +161,11 @@ describe("EnginePage", () => {
   it("renders conflict details when conflicts exist", async () => {
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/gate")) return Promise.resolve({});
+
       if (path.includes("/api/conflicts")) return Promise.resolve(mockConflictData);
+
       if (path.includes("/api/memory")) return Promise.resolve({ drifts: [], critical: 0, degrading: 0 });
+
       return Promise.resolve({});
     });
 
@@ -235,6 +243,7 @@ describe("EnginePage", () => {
   it("conflicts fetch 실패(503 shed 포함) → 섹션만 강등 (#1119)", async () => {
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/conflicts")) return Promise.reject(new Error("API /api/conflicts: 503"));
+
       return Promise.resolve({});
     });
     const { ConflictsSection } = await import("@/app/engine/page");
@@ -251,6 +260,7 @@ describe("EnginePage", () => {
  */
 async function getInternalComponents() {
   const mod = await import("@/app/engine/page");
+
   return {
     GateSection: mod.GateSection,
     ConflictsSection: mod.ConflictsSection,

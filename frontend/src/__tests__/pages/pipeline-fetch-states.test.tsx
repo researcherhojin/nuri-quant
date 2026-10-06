@@ -33,6 +33,7 @@ vi.mock("@/lib/api", () => ({ API_BASE: "http://localhost:8001", fetchAPI: vi.fn
 const okSteps = [
   { step: "collect", label: "Collect", description: "", record_count: 10, last_updated: null, status: "done", started_at: null, error: null },
 ];
+
 const okGates = {
   collect: {
     phase: "collect", total: 1, passed: 1, score: 1.0, ready: true,
@@ -47,19 +48,26 @@ function makeFetch(opts: {
   gateMode?: "ok" | "reject" | "http500" | "empty";
 }): Mock {
   const { statusMode = "ok", timelineMode = "ok", gateMode = "ok" } = opts;
+
   const reply = (mode: string, body: unknown) => {
     if (mode === "reject") return Promise.reject(new Error("network down"));
+
     // ⚠️ HTTP 실패도 반드시 별도 축으로 잠근다 — `r.ok ? json : …` 는 reject 와 다른
     // 코드 경로다. reject 만 테스트하면 `r.ok` 분기를 되돌려도 초록이다.
     if (mode === "http500") return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   };
+
   return vi.fn().mockImplementation((url: string) => {
     if (url.includes("/api/pipeline/status")) return reply(statusMode, { steps: okSteps });
+
     if (url.includes("/api/pipeline/timeline")) {
       return reply(timelineMode === "empty" ? "ok" : timelineMode, { events: [] });
     }
+
     if (url.includes("/api/gate")) return reply(gateMode === "empty" ? "ok" : gateMode, gateMode === "empty" ? {} : okGates);
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
 }
@@ -153,21 +161,26 @@ describe("파이프라인 fetch 3-state (#1250)", () => {
     it("poll N+1 성공 뒤 도착한 poll N 실패가 화면을 에러로 뒤집지 않는다", async () => {
       // 10초 폴링이라 느린 요청이 다음 요청과 겹친다. 응답 순서는 보장되지 않는다.
       let rejectFirst: (e: Error) => void = () => {};
+
       let timelineCalls = 0;
       global.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/api/pipeline/timeline")) {
           timelineCalls += 1;
+
           if (timelineCalls === 1) {
             // 1번째: 아직 미결. 2번째가 성공한 **뒤에** 실패시킨다.
             return new Promise((_res, rej) => {
               rejectFirst = rej;
             });
           }
+
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
         }
+
         if (url.includes("/api/pipeline/status")) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: okSteps }) });
         }
+
         return Promise.resolve({ ok: true, json: () => Promise.resolve(okGates) });
       }) as unknown as typeof fetch;
 
@@ -198,13 +211,16 @@ describe("파이프라인 fetch 3-state (#1250)", () => {
       global.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/api/gate")) {
           gateCalls += 1;
+
           return gateCalls === 1
             ? Promise.reject(new Error("network down"))
             : Promise.resolve({ ok: true, json: () => Promise.resolve(okGates) });
         }
+
         if (url.includes("/api/pipeline/status")) {
           return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: okSteps }) });
         }
+
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
       }) as unknown as typeof fetch;
 

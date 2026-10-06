@@ -19,6 +19,7 @@ async function ScannerSection() {
       () => ({ entries: [] as SwingEntry[], approved: 0, rejected: 0 }),
     ),
   ]);
+
   const rows = mergeScanSwing(scanData.results, swingData.entries);
   const rejected = swingData.entries.filter((e) => !e.approved);
 

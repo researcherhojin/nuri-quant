@@ -38,7 +38,9 @@ export function flattenRoutes(groups: typeof NAV_GROUPS): PaletteRoute[] {
 /** 라벨/경로/그룹 부분 매칭 (대소문자 무시). 빈 쿼리는 전체. */
 export function filterRoutes(routes: PaletteRoute[], query: string): PaletteRoute[] {
   const q = query.trim().toLowerCase();
+
   if (!q) return routes;
+
   return routes.filter(
     (r) => r.label.toLowerCase().includes(q) || r.href.toLowerCase().includes(q) || r.group.toLowerCase().includes(q),
   );
@@ -48,7 +50,9 @@ export function filterRoutes(routes: PaletteRoute[], query: string): PaletteRout
 export function formatTickerPrice(ticker: string, price: number | null): string {
   if (price == null) return "";
   const isKr = ticker.endsWith(".KS") || ticker.endsWith(".KQ");
+
   if (isKr) return `₩${Math.round(price).toLocaleString()}`;
+
   return `$${price < 100 ? price.toFixed(2) : Math.round(price).toLocaleString()}`;
 }
 
@@ -67,6 +71,7 @@ export function CommandPalette() {
   const reqSeqRef = useRef(0);
 
   const routes = useMemo(() => filterRoutes(ALL_ROUTES, query), [query]);
+
   const items = useMemo<PaletteItem[]>(
     () => [
       ...routes.map((route) => ({ kind: "route" as const, route })),
@@ -103,6 +108,7 @@ export function CommandPalette() {
     function onKey(e: KeyboardEvent) {
       // IME 조합 중 키는 조합 조작이다 — Escape 조합 취소가 팔레트를 닫으면 안 된다 (codex R2)
       if (e.isComposing) return;
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setOpen((prev) => !prev);
@@ -110,7 +116,9 @@ export function CommandPalette() {
         close();
       }
     }
+
     window.addEventListener("keydown", onKey);
+
     return () => window.removeEventListener("keydown", onKey);
   }, [close, open]);
 
@@ -124,14 +132,19 @@ export function CommandPalette() {
   useEffect(() => {
     // 쿼리가 바뀌면(비우기·닫기 포함) 진행 중이던 요청은 그 시점부터 낡은 것
     const seq = ++reqSeqRef.current;
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
     if (!open || query.trim().length === 0) return;
     debounceRef.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
+
         if (seq !== reqSeqRef.current) return; // 낡은 응답 폐기
+
         if (res.ok) {
           const data = await res.json();
+
           if (seq !== reqSeqRef.current) return;
           setTickers((data.results ?? []).slice(0, 6));
         } else {
@@ -146,6 +159,7 @@ export function CommandPalette() {
   function onQueryChange(value: string) {
     setQuery(value);
     setSelected(0);
+
     if (value.trim().length === 0) setTickers([]);
   }
 
@@ -154,6 +168,7 @@ export function CommandPalette() {
   function onInputKeyDown(e: React.KeyboardEvent) {
     // 한글 IME 조합 중 Enter/화살표는 조합 확정이지 내비게이션이 아니다 (codex #1230 P2)
     if (e.nativeEvent.isComposing) return;
+
     if (e.key === "ArrowDown") {
       e.preventDefault();
       // items 0개일 때 -1 로 내려가면 이후 결과 도착 시 선택이 죽는다 (codex #1230 P1)
@@ -228,12 +243,14 @@ export function CommandPalette() {
               )}
               {items.map((item, idx) => {
                 const isSelected = idx === clamped;
+
                 const header =
                   idx === 0 && routes.length > 0
                     ? PALETTE.SECTION_ROUTES
                     : idx === firstTickerIdx && tickers.length > 0
                       ? PALETTE.SECTION_TICKERS
                       : null;
+
                 return (
                   <div key={item.kind === "route" ? item.route.href : `t-${item.result.ticker}`}>
                     {header && (

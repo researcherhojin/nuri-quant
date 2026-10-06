@@ -11,9 +11,11 @@ vi.mock("next/link", () => ({
 const notFoundMock = vi.fn(() => {
   throw new Error("NEXT_NOT_FOUND");
 });
+
 vi.mock("next/navigation", () => ({ notFound: () => notFoundMock() }));
 
 let mockFetchAPI: Mock;
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -193,12 +195,14 @@ describe("DecisionProvenance", () => {
 
   it("parseVerdicts handles null and non-array JSON gracefully", async () => {
     const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+
     for (const av of [null, "{}"]) {
       mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, agent_verdicts: av, evidence: [] });
       await act(async () => {
         render(await DecisionProvenance({ id: "531" }));
       });
     }
+
     expect(mockFetchAPI).toHaveBeenCalled();
   });
 

@@ -46,6 +46,7 @@ function todayLocalIso(): string {
   const y = t.getFullYear();
   const m = String(t.getMonth() + 1).padStart(2, "0");
   const d = String(t.getDate()).padStart(2, "0");
+
   return `${y}-${m}-${d}`;
 }
 
@@ -106,6 +107,7 @@ describe("Dashboard — data-dependent statement coverage", () => {
             ],
           });
         }
+
         if (path === "/api/portfolio") {
           return Promise.resolve({
             count: 1,
@@ -113,14 +115,18 @@ describe("Dashboard — data-dependent statement coverage", () => {
             cash: { total_cash_usd: 1500 },
           });
         }
+
         if (path === "/api/freshness") return Promise.resolve({ items: [], overall: "PASS" });
+
         // pipeline steps → footer `.map((s) => ...)` span runs (L596).
         if (path === "/api/pipeline/status") {
           return Promise.resolve({
             steps: [{ step: "collect", label: "Collect", status: "done", record_count: 25000, last_updated: "2026-01-01" }],
           });
         }
+
         if (path === "/api/rebalance-advisor") return Promise.resolve({ total_violations: 0, actions: [] });
+
         return Promise.resolve({});
       }),
     }));

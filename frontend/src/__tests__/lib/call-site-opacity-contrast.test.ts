@@ -30,60 +30,76 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const SRC = join(process.cwd(), "src");
+
 const CSS = readFileSync(join(SRC, "app/globals.css"), "utf8");
 
 /** `.dark` 블록의 토큰 값 — #1431 과 같은 정본(주석 복사본이 아니라 CSS 자체)을 읽는다. */
 function darkToken(name: string): string {
   const dark = CSS.slice(CSS.search(/\.dark(?![\w-])/));
   const m = dark.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`));
+
   if (!m) throw new Error(`.dark 에서 --${name} 을 찾지 못했다`);
+
   return m[1];
 }
 
 const srgb = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+
   return 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
 }
+
 function ratio(a: string, b: string): number {
   const [la, lb] = [luminance(a), luminance(b)];
+
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
+
 /** fg 를 alpha 로 bg 위에 합성 — 알파를 무시하면 실제보다 후하게 나온다 (#1431 codex R2). */
 function over(fg: string, alpha: number, bg: string): string {
   const px = (h: string, i: number) => parseInt(h.slice(i, i + 2), 16);
   const ch = (i: number) => Math.round(px(fg, i) * alpha + px(bg, i) * (1 - alpha));
+
   return "#" + [1, 3, 5].map((i) => ch(i).toString(16).padStart(2, "0")).join("");
 }
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
     const p = join(dir, e);
+
     if (statSync(p).isDirectory()) {
       if (e !== "__tests__") walk(p, out);
     } else if (/\.tsx?$/.test(e) && !/\.test\./.test(e)) {
       out.push(p);
     }
   }
+
   return out;
 }
 
 const FILES = walk(SRC);
+
 const TEXT_ALPHA = /\btext-(foreground|muted-foreground|card-foreground|popover-foreground|faint)\/(\d{1,3})\b/g;
 
 describe("호출부 불투명도 수식어 (#1433)", () => {
   it("텍스트 토큰에 붙은 알파가 AA 아래로 내려가지 않는다", () => {
     const card = darkToken("card");
     const offenders: string[] = [];
+
     for (const file of FILES) {
       const text = readFileSync(file, "utf8");
+
       for (const m of text.matchAll(TEXT_ALPHA)) {
         const eff = ratio(over(darkToken(m[1]), Number(m[2]) / 100, card), card);
+
         if (eff < 4.5) {
           offenders.push(`${file.slice(SRC.length + 1)}  ${m[0]}  ${eff.toFixed(2)}:1`);
         }
       }
     }
+
     expect(offenders, "카드 위 실효 대비가 AA 미만이다 — 알파 대신 토큰으로 계층을 표현할 것 (--faint)").toEqual([]);
     // 카나리아: 스캔이 파일을 못 찾으면 위 단언이 공허하다 (#910)
     expect(FILES.length).toBeGreaterThan(50);
@@ -107,10 +123,13 @@ describe("호출부 불투명도 수식어 (#1433)", () => {
     // 오탐한다. 실제로 첫 판이 그렇게 두 파일을 잘못 집었다. className 이 실제로 적용되는
     // popover 표면은 shadcn `PopoverContent` 와 `bg-popover` 를 직접 쓰는 요소뿐이다.
     const POPOVER_SURFACE = /<PopoverContent\b|\bbg-popover\b/;
+
     const offenders = FILES.filter((f) => {
       const t = readFileSync(f, "utf8");
+
       return /\btext-faint\b/.test(t) && POPOVER_SURFACE.test(t);
     });
+
     expect(offenders.map((f) => f.slice(SRC.length + 1)),
       "popover 표면 컴포넌트가 --faint 를 쓴다 — 거기선 4.35:1 로 AA 미달이다").toEqual([]);
   });

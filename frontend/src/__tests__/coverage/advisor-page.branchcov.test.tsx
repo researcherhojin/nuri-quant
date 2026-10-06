@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 
 // Server Component: fetchAPI from @/lib/api 를 모킹한다
 const fetchAPIMock = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));

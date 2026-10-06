@@ -40,9 +40,11 @@ function PortfolioContent() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [loadingSample, setLoadingSample] = useState(false);
+
   const [form, setForm] = useState({
     account: "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "",
   });
+
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -60,15 +62,18 @@ function PortfolioContent() {
   // 계좌별 그룹핑
   const grouped = useMemo(() => {
     const map: Record<string, Holding[]> = {};
+
     for (const h of holdings) {
       (map[h.account] ||= []).push(h);
     }
+
     return map;
   }, [holdings]);
 
   // ACCOUNTS는 기존 holdings에서 동적 추출. 없으면 fallback 사용.
   const ACCOUNTS = useMemo(() => {
     const fromHoldings = Array.from(new Set(holdings.map((h) => h.account))).filter(Boolean);
+
     return fromHoldings.length > 0 ? fromHoldings : FALLBACK_ACCOUNTS;
   }, [holdings]);
 
@@ -102,22 +107,35 @@ function PortfolioContent() {
     setFormError("");
     const qty = parseFloat(form.quantity);
     const avg = parseFloat(form.avg_price);
-    if (!qty || qty <= 0) { setFormError(PORTFOLIO.QTY_ERROR); return; }
-    if (!avg || avg <= 0) { setFormError(PORTFOLIO.PRICE_ERROR); return; }
-    if (!form.ticker.trim()) { setFormError(PORTFOLIO.TICKER_ERROR); return; }
+
+    if (!qty || qty <= 0) { setFormError(PORTFOLIO.QTY_ERROR);
+
+ return; }
+
+    if (!avg || avg <= 0) { setFormError(PORTFOLIO.PRICE_ERROR);
+
+ return; }
+
+    if (!form.ticker.trim()) { setFormError(PORTFOLIO.TICKER_ERROR);
+
+ return; }
 
     setSubmitting(true);
+
     const res = await fetch(`/api/portfolio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form, quantity: qty, avg_price: avg }),
     });
+
     if (!res.ok) {
       const data = await res.json();
       setFormError(data.detail || PORTFOLIO.ADD_FAILED);
       setSubmitting(false);
+
       return;
     }
+
     // ACCOUNTS[0] always truthy: fromHoldings is .filter(Boolean) and FALLBACK_ACCOUNTS[0]==="test", so the ||"" arm is unreachable
     /* v8 ignore next */
     setForm({ account: ACCOUNTS[0] || "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
@@ -152,22 +170,32 @@ function PortfolioContent() {
   async function saveEdit(account: string, ticker: string) {
     const qty = parseFloat(editValues.quantity);
     const avg = parseFloat(editValues.avg_price);
-    if (!qty || qty <= 0) { setEditError(PORTFOLIO.QTY_ERROR); return; }
-    if (!avg || avg <= 0) { setEditError(PORTFOLIO.PRICE_ERROR); return; }
+
+    if (!qty || qty <= 0) { setEditError(PORTFOLIO.QTY_ERROR);
+
+ return; }
+
+    if (!avg || avg <= 0) { setEditError(PORTFOLIO.PRICE_ERROR);
+
+ return; }
 
     setEditSaving(true);
     setEditError("");
+
     const res = await fetch(`/api/portfolio/${account}/${ticker}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ quantity: qty, avg_price: avg, sector: editValues.sector }),
     });
+
     if (!res.ok) {
       const data = await res.json();
       setEditError(data.detail || PORTFOLIO.EDIT_FAILED);
       setEditSaving(false);
+
       return;
     }
+
     setEditKey(null);
     setEditSaving(false);
     fetchHoldings();
@@ -176,6 +204,7 @@ function PortfolioContent() {
   // ─── CSV Import ───
   async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+
     if (!file) return;
     setImporting(true);
     setImportResult(null);
@@ -183,13 +212,16 @@ function PortfolioContent() {
     formData.append("file", file);
     const res = await fetch(`/api/portfolio/import`, { method: "POST", body: formData });
     const data = await res.json();
+
     if (res.ok) {
       setImportResult({ imported: data.imported, errors: data.errors || [] });
       fetchHoldings();
     } else {
       setImportResult({ imported: 0, errors: [data.detail || "Import failed"] });
     }
+
     setImporting(false);
+
     // fileRef is bound to a rendered <input>; in jsdom .current is never null when handleImport runs, so the false arm is unreachable
     /* v8 ignore next */
     if (fileRef.current) fileRef.current.value = "";
@@ -211,6 +243,7 @@ function PortfolioContent() {
       key: "quantity", label: "Qty", align: "right" as const,
       render: (v: number, row: Holding) => {
         const key = `${row.account}/${row.ticker}`;
+
         if (editKey === key) {
           return (
             <input type="number" step="any" min="0" className={editInputClass}
@@ -219,6 +252,7 @@ function PortfolioContent() {
               onClick={(e) => e.stopPropagation()} />
           );
         }
+
         return v?.toLocaleString();
       },
     },
@@ -226,6 +260,7 @@ function PortfolioContent() {
       key: "avg_price", label: "Avg Price", align: "right" as const,
       render: (v: number, row: Holding) => {
         const key = `${row.account}/${row.ticker}`;
+
         if (editKey === key) {
           return (
             <input type="number" step="any" min="0" className={editInputClass}
@@ -234,6 +269,7 @@ function PortfolioContent() {
               onClick={(e) => e.stopPropagation()} />
           );
         }
+
         return v?.toLocaleString();
       },
     },
@@ -247,6 +283,7 @@ function PortfolioContent() {
       render: (_: unknown, row: Holding) => {
         if (!row.latest_price || !row.avg_price) return "—";
         const pnl = ((row.latest_price - row.avg_price) / row.avg_price) * 100;
+
         return (
           <span className={pnl >= 0 ? "text-emerald-400" : "text-red-400"}>
             {pnl >= 0 ? "+" : ""}{pnl.toFixed(1)}%
@@ -258,6 +295,7 @@ function PortfolioContent() {
       key: "actions", label: "", align: "center" as const,
       render: (_: unknown, row: Holding) => {
         const key = `${row.account}/${row.ticker}`;
+
         if (editKey === key) {
           return (
             <span className="flex gap-1.5 justify-center" onClick={(e) => e.stopPropagation()}>
@@ -272,6 +310,7 @@ function PortfolioContent() {
             </span>
           );
         }
+
         return (
           <span className="flex gap-1.5 justify-center">
             <button onClick={(e) => { e.stopPropagation(); startEdit(row); }}
@@ -413,6 +452,7 @@ function PortfolioContent() {
           // Sort by total holdings value descending (largest account first)
           const aVal = a.reduce((s, h) => s + (h.quantity || 0) * ((h as { latest_price?: number }).latest_price || h.avg_price || 0), 0);
           const bVal = b.reduce((s, h) => s + (h.quantity || 0) * ((h as { latest_price?: number }).latest_price || h.avg_price || 0), 0);
+
           return bVal - aVal;
         }).map(([account, items]) => (
           <Card key={account} className="bg-card border-border">

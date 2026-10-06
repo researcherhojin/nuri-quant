@@ -29,13 +29,17 @@ const CATEGORY_SECTORS: Record<string, string[]> = {
 export function getMacroImpactedSectors(events: MacroEvent[]): Set<string> {
   const result = new Set<string>();
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
   for (const ev of events) {
     if ((ev.confidence ?? 0) < 0.6) continue;
     const ts = Date.parse(ev.published_at);
+
     if (!Number.isFinite(ts) || ts < cutoff) continue;
     const sectors = CATEGORY_SECTORS[ev.category] ?? [];
+
     for (const s of sectors) result.add(s.toLowerCase());
   }
+
   return result;
 }
 
@@ -43,8 +47,10 @@ export function getMacroImpactedSectors(events: MacroEvent[]): Set<string> {
 export function isMacroAware(sector: string | null | undefined, impacted: Set<string>): boolean {
   if (!sector || impacted.size === 0) return false;
   const low = sector.toLowerCase();
+
   for (const keyword of impacted) {
     if (low.includes(keyword)) return true;
   }
+
   return false;
 }

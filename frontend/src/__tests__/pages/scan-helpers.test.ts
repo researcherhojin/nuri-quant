@@ -9,6 +9,7 @@ const scanRow = (over: Partial<ScanResult> = {}): ScanResult => ({
   ticker: "AAA", price: 100, change_1d: 1.2, change_5d: -0.5,
   volume_ratio: 2.0, rsi: 55, signal: "momentum", score: 80, ...over,
 });
+
 const swingRow = (over: Partial<SwingEntry> = {}): SwingEntry => ({
   ticker: "AAA", price: 100, scan_signal: "momentum", scan_score: 80,
   agent_action: "BUY", agent_confidence: 70, approved: true, reason: "ok", ...over,
@@ -28,6 +29,7 @@ describe("mergeScanSwing", () => {
       [scanRow({ ticker: "AAA" }), scanRow({ ticker: "BBB", score: 60 })],
       [swingRow({ ticker: "BBB" }), swingRow({ ticker: "CCC", approved: false, reason: "veto" })],
     );
+
     expect(rows.map((r) => r.ticker)).toEqual(["AAA", "BBB", "CCC"]);
     const ccc = rows[2];
     expect(ccc.change_1d).toBeNull();

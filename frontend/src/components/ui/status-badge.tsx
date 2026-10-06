@@ -34,9 +34,11 @@ const STATUS_INTENT: Record<string, Intent> = {
 
 export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
   const intent = STATUS_INTENT[status] ?? "neutral";
+
   const style = STATUS_INTENT[status]
     ? INTENT_STYLES[intent]
     : "bg-muted/50 text-muted-foreground border-zinc-600/20";
+
   const sizeClass = size === "lg" ? "text-sm px-3 py-1" : size === "md" ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5";
 
   return (

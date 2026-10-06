@@ -55,9 +55,11 @@ export interface CellProps {
 
 export function TreemapCell(props: CellProps): ReactElement {
   const { x = 0, y = 0, width = 0, height = 0, name, pnl_pct, violation, depth } = props;
+
   // depth 0 = 루트 컨테이너 — 칠하지 않는다
   if (depth === 0) return <g />;
   const pnl = pnl_pct ?? 0;
+
   return (
     <g>
       <rect
@@ -90,6 +92,7 @@ export function valueTooltipFormatter(value: unknown): [string, string] {
 
 export function PortfolioTreemap({ data }: { data: HeatmapData }) {
   const rows = buildTreemapData(data);
+
   return (
     <div className="w-full min-w-0 h-80" data-testid="portfolio-treemap" role="img" aria-label={EVIDENCE.TITLE_HEATMAP}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>

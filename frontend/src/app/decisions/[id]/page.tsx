@@ -132,6 +132,7 @@ interface DecisionDetail {
 // agent_verdicts 는 JSON 문자열로 저장됨 — 안전 파싱 + per-item 검증.
 function parseVerdicts(raw: AgentVerdict[] | string | null): AgentVerdict[] {
   let arr: unknown = raw;
+
   if (typeof raw === "string") {
     try {
       arr = JSON.parse(raw);
@@ -139,7 +140,9 @@ function parseVerdicts(raw: AgentVerdict[] | string | null): AgentVerdict[] {
       return [];
     }
   }
+
   if (!Array.isArray(arr)) return [];
+
   // 불량 항목(null/[{}]/타입 불일치) 제거 — agent_name·action 문자열만 통과.
   return arr.filter(
     (v): v is AgentVerdict =>
@@ -152,6 +155,7 @@ function parseVerdicts(raw: AgentVerdict[] | string | null): AgentVerdict[] {
 
 function pnlColor(v: number | null): "green" | "red" | "default" {
   if (v === null) return "default";
+
   return v > 0 ? "green" : v < 0 ? "red" : "default";
 }
 
@@ -163,11 +167,13 @@ function fmtPnl(v: number | null): string {
 // === Provenance (exported for test coverage of async children — frontend RSC gotcha) ===
 export async function DecisionProvenance({ id }: { id: string }) {
   let d: DecisionDetail | null = null;
+
   try {
     d = await fetchAPI<DecisionDetail>(`/api/decisions/${id}`);
   } catch {
     notFound();
   }
+
   if (!d) notFound();
 
   const verdicts = parseVerdicts(d.agent_verdicts);
@@ -193,9 +199,11 @@ export async function DecisionProvenance({ id }: { id: string }) {
   // degraded 와 abstained 를 **둘 다** 빼므로, 여기서 degraded 만 걸러내면 아래 주석이
   // 선언한 동형성이 깨져 "유효 의견 10" 옆에 "패널 커버리지 70%" 가 나란히 찍힌다.
   const abstainedNames = new Set(sd?.abstained_agents ?? []);
+
   const liveVerdicts = verdicts.filter(
     (v) => !degradedNames.has(v.agent_name) && !abstainedNames.has(v.agent_name),
   );
+
   const degradedVerdicts = verdicts.filter((v) => degradedNames.has(v.agent_name));
   // degraded 와 별도 버킷이다 — 원인이 다르고(사고 vs 상시), 무엇보다 **가중치 취급이
   // 다르다**: degraded 는 확신도 0 이라 합의에 미반영이지만, 기권은 `smart_money`(37.5)
@@ -592,6 +600,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                       자리표시자를 근거로 세는 그 집계가 화면에서 되살아난다. */}
                   {(() => {
                     const flags = parseDetailFlags(e.detail);
+
                     if (flags.degraded || flags.abstained) {
                       return (
                         <span className="text-foreground/50 shrink-0" data-testid="evidence-placeholder">
@@ -601,6 +610,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                         </span>
                       );
                     }
+
                     return (
                       <>
                         {e.action && <StatusBadge status={e.action} />}
@@ -613,7 +623,9 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   {e.detail && (() => {
                     // #1216 raw JSON 폐지: detail 이 JSON 객체면 key-value, 아니면 기존 raw
                     const kv = parseDetailKV(e.detail);
+
                     if (!kv) return <span className="truncate text-foreground/70 font-mono text-[10px]">{e.detail}</span>;
+
                     return (
                       <span className="flex flex-wrap gap-x-3 gap-y-0.5 min-w-0" data-testid="evidence-kv">
                         {kv.map(([k, v]) => (
@@ -650,6 +662,7 @@ function Loading() {
 
 export default async function DecisionDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+
   return (
     <Suspense fallback={<Loading />}>
       <DecisionProvenance id={id} />

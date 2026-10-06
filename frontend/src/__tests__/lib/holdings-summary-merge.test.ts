@@ -16,6 +16,7 @@ describe("mergeAccountTotals (#1284)", () => {
       [{ account: "Brokerage Alpha", value: null }],
       [{ account: "Brokerage Alpha", total_usd: 500 }],
     );
+
     expect(merged).toEqual([{ account: "Brokerage Alpha", value: null }]);
   });
 
@@ -24,6 +25,7 @@ describe("mergeAccountTotals (#1284)", () => {
       [{ account: "Brokerage Alpha", value: 1000 }],
       [{ account: "Brokerage Alpha", total_usd: null }],
     );
+
     expect(merged[0].value).toBeNull();
   });
 
@@ -32,6 +34,7 @@ describe("mergeAccountTotals (#1284)", () => {
       [{ account: "Brokerage Alpha", value: 1000 }],
       [{ account: "Brokerage Alpha", total_usd: 500 }],
     );
+
     expect(merged).toEqual([{ account: "Brokerage Alpha", value: 1500 }]);
   });
 
@@ -40,6 +43,7 @@ describe("mergeAccountTotals (#1284)", () => {
       [{ account: "Brokerage Alpha", value: 1000 }],
       [{ account: "Brokerage Beta", total_usd: 500 }],
     );
+
     expect(merged).toEqual([
       { account: "Brokerage Alpha", value: 1000 },
       { account: "Brokerage Beta", value: 500 },

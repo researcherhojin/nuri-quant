@@ -16,6 +16,7 @@ type PipelineNode = {
     onRun?: (id: string) => void;
   };
 };
+
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ nodes, children }: { nodes?: PipelineNode[]; children?: ReactNode }) => (
     <div data-testid="react-flow">
@@ -67,15 +68,19 @@ describe("Pipeline — coverage branches", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: mockTimelineWithPayloads }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -102,11 +107,13 @@ describe("Pipeline — coverage branches", () => {
 
     // Click run on validate step
     const runBtn = screen.queryByTestId("run-validate");
+
     if (runBtn) {
       await act(async () => { fireEvent.click(runBtn); });
       // setTimeout(fetchStatus, 1000) + setTimeout(fetchTimeline, 1000)
       await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
     }
+
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });
 
@@ -118,12 +125,15 @@ describe("Pipeline — coverage branches", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ error: "already running" }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
@@ -132,14 +142,17 @@ describe("Pipeline — coverage branches", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
 
     const runBtn = screen.queryByTestId("run-validate");
+
     if (runBtn) {
       await act(async () => { fireEvent.click(runBtn); });
       await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     }
+
     // alert should be called with error message (F-002: 한국어 실패 프리픽스 + 원문)
     if (alertMock.mock.calls.length > 0) {
       expect(alertMock).toHaveBeenCalledWith(`${ERRORS.RUN_FAILED_PREFIX}already running`);
     }
+
     vi.unstubAllGlobals();
   });
 
@@ -148,9 +161,11 @@ describe("Pipeline — coverage branches", () => {
       if (opts?.method === "POST") {
         return Promise.reject(new Error("network"));
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
@@ -159,10 +174,12 @@ describe("Pipeline — coverage branches", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
 
     const runBtn = screen.queryByTestId("run-validate");
+
     if (runBtn) {
       await act(async () => { fireEvent.click(runBtn); });
       await act(async () => { await vi.advanceTimersByTimeAsync(500); });
     }
+
     // Should not crash
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });
@@ -192,12 +209,15 @@ describe("Pipeline — coverage branches", () => {
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: false, status: 500 });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: false, status: 500 });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: false, status: 500 });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 

@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
 const pageSrc = readFileSync(resolve(here, "../../app/page.tsx"), "utf8");
 
 describe("page.tsx RSC import boundary", () => {

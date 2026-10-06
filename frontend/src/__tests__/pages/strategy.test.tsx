@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
 
 // Mock fetchAPI
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -79,7 +80,9 @@ const mockBacktest = {
 function setupMocks(overrides: Record<string, unknown> = {}) {
   mockFetchAPI.mockImplementation((path: string) => {
     if (path.includes("/api/strategy/status")) return Promise.resolve(overrides.status ?? mockStrategyStatus);
+
     if (path.includes("/api/backtest")) return Promise.resolve(overrides.backtest ?? mockBacktest);
+
     return Promise.resolve({});
   });
 }

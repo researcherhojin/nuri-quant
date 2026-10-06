@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
 // Mock next/navigation — shared mock push for assertion
 const mockPush = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
   usePathname: () => "/explore",
@@ -18,6 +19,7 @@ vi.mock("@/lib/api", () => ({
 // Mock lucide-react
 vi.mock("lucide-react", () => {
   const Icon = (props: Record<string, unknown>) => <svg data-testid="icon" {...props} />;
+
   return { Search: Icon };
 });
 
@@ -236,9 +238,11 @@ describe("Explore page strings", () => {
 
   it("SIGNAL constants cover all signal IDs", async () => {
     const { SIGNAL } = await import("@/lib/strings");
+
     const ids = ["BB_BOUNCE", "MACD_BULLISH_TURN", "MACD_BEARISH_TURN", "MACD_GOLDEN", "MACD_DEAD",
       "RSI_OVERSOLD", "RSI_OVERBOUGHT", "SMA_GOLDEN", "SMA_DEAD", "VOLUME_SPIKE",
       "GAP_UP", "GAP_DOWN", "BB_SQUEEZE_BREAKOUT", "NEAR_52W_LOW_BOUNCE", "VOLUME_PROFILE_RESISTANCE"];
+
     for (const id of ids) {
       expect((SIGNAL as Record<string, unknown>)[id]).toBeTruthy();
     }

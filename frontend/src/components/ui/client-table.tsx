@@ -23,20 +23,28 @@ interface Props {
 
 // 공통 렌더러
 const ticker = (v: string) => <span className="font-medium">{v}</span>;
+
 const pct = (v: number) => (
   <span className={v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-muted-foreground"}>
     {v > 0 ? "+" : ""}{typeof v === "number" ? v.toFixed(1) : v}%
   </span>
 );
+
 const num = (v: number) => typeof v === "number" ? v.toFixed(1) : String(v);
+
 const badge = (v: string) => <StatusBadge status={v} size="sm" />;
+
 const badgeMd = (v: string) => <StatusBadge status={v} size="md" />;
+
 const dim = (v: any) => <span className="text-muted-foreground text-xs">{String(v ?? "—")}</span>;
+
 const money = (v: number) => <span className="text-emerald-400">${v?.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>;
+
 // 통화는 티커로 판정 (#1197) — 이전의 `v > 10000` 휴리스틱은 ₩8,145 종목을 $ 로,
 // $10,000 초과 미국 종목을 ₩ 로 표기했다. row 가 없는 호출은 USD 로 남는다.
 const price = (v: number, row?: { ticker?: string }) => {
   if (!v) return <span className="text-faint">—</span>;
+
   return <span>{formatMoney(v, { ticker: row?.ticker })}</span>;
 };
 
@@ -106,8 +114,11 @@ const VARIANTS: Record<string, any[]> = {
     { key: "analyst_target", label: "목표가", align: "right", render: (v: number, row: any) => v ? <span className="text-blue-400">{price(v, row)}</span> : dim("—") },
     { key: "take_profit_triggered", label: "시그널", align: "center", render: (_v: string | null, row: any) => {
       if (row.trailing_stop_triggered) return <span className="text-red-400 text-[10px] font-medium">TRAIL STOP</span>;
+
       if (_v === "target_2") return <span className="text-amber-400 text-[10px] font-medium">TP2 ({row.take_profit_sell_pct}%)</span>;
+
       if (_v === "target_1") return <span className="text-emerald-400 text-[10px] font-medium">TP1 ({row.take_profit_sell_pct}%)</span>;
+
       return dim("—");
     }},
   ],
@@ -116,6 +127,7 @@ const VARIANTS: Record<string, any[]> = {
       const color = v === 1 ? "bg-red-500/20 text-red-400 border-red-500/30"
                    : v === 2 ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                    : "bg-zinc-500/20 text-muted-foreground border-zinc-500/30";
+
       // design-review F-004: 무설명 숫자 칩 — 의미를 tooltip 으로
       return <span title={`매도 우선순위 ${v} (낮을수록 먼저)`} className={`inline-flex items-center justify-center size-5 rounded-full border text-[10px] font-medium ${color}`}>{v}</span>;
     }},
@@ -126,6 +138,7 @@ const VARIANTS: Record<string, any[]> = {
       const cls = v === "critical" ? "bg-red-500/20 text-red-400 border-red-500/30"
                 : v === "high" ? "bg-amber-500/20 text-amber-400 border-amber-500/30"
                 : "bg-zinc-500/20 text-muted-foreground border-zinc-500/30";
+
       return <span className={`inline-block px-1.5 py-0.5 rounded-sm border text-[10px] font-bold uppercase ${cls}`}>{v}</span>;
     }},
     { key: "action", label: "조치", align: "center", render: (v: string) => <span className={v === "SELL_ALL" ? "text-red-400 font-medium" : "text-amber-400"}>{v === "SELL_ALL" ? "전량 매도" : "일부 매도"}</span> },
@@ -139,15 +152,20 @@ const VARIANTS: Record<string, any[]> = {
 const ROW_CLASSNAMES: Record<string, (row: any) => string> = {
   targets: (row) => {
     if (row.trailing_stop_triggered) return "bg-red-500/8";
+
     if (row.take_profit_triggered === "target_2") return "bg-amber-500/8";
+
     if (row.take_profit_triggered === "target_1") return "bg-emerald-500/8";
+
     return "";
   },
 };
 
 export function ClientTable({ variant, data, compact, title }: Props) {
   const columns = VARIANTS[variant];
+
   if (!columns) return <p className="text-red-400 text-sm">Unknown variant: {variant}</p>;
+
   return (
     <>
       {title && <p className="text-xs text-muted-foreground mb-3">{title}</p>}

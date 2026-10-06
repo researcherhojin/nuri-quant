@@ -8,6 +8,7 @@ import { getMacroImpactedSectors, isMacroAware } from "@/lib/macro-impact";
 
 // fresh = cutoff (24h) 이내, stale = 그보다 과거.
 const freshIso = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
 const staleIso = () => new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
 const ev = (overrides: Partial<MacroEvent>): MacroEvent =>
@@ -58,6 +59,7 @@ describe("getMacroImpactedSectors", () => {
     const out = getMacroImpactedSectors([
       ev({ category: "totally_unknown_category" as MacroEvent["category"] }),
     ]);
+
     expect(out.size).toBe(0);
   });
 });

@@ -71,6 +71,7 @@ describe("auth-token", () => {
       const expected = createHmac("sha256", "nuri-dev-key")
         .update("nuri-auth-token:v1")
         .digest("hex");
+
       expect(token).toBe(expected);
     });
   });

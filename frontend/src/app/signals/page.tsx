@@ -13,6 +13,7 @@ interface Scorecard {
 
 function pf(v: number) {
   if (v >= 99) return "∞";
+
   return v.toFixed(1);
 }
 
@@ -22,6 +23,7 @@ function pfColor(v: number) {
 
 async function ScorecardSection() {
   const data = await fetchAPI<{ scorecard: Scorecard[]; date: string }>("/api/scorecard");
+
   // 원문 에러 문자열 노출 금지 (design-review F-002)
   if ("error" in data) return <p className="text-red-400 text-sm">{ERRORS.SCORECARD_FAILED}</p>;
   const sorted = [...data.scorecard].sort((a, b) => b.profit_factor - a.profit_factor);
@@ -45,6 +47,7 @@ interface CrossRow {
 
 async function CrossSection() {
   const data = await fetchAPI<{ data?: CrossRow[]; error?: string }>("/api/cross-analysis");
+
   if (data.error || !data.data) return null;
   const regimes = [...new Set(data.data.map((d) => d.regime))].sort();
 
@@ -55,6 +58,7 @@ async function CrossSection() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regimes.map((regime) => {
             const rows = data.data!.filter((d) => d.regime === regime).sort((a, b) => b.profit_factor - a.profit_factor);
+
             return (
               <div key={regime}>
                 <p className="text-[10px] text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">{regime}</p>

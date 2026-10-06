@@ -28,6 +28,7 @@ describe("Rate — 분모 없이는 렌더되지 않는다 (#1429)", () => {
     const { container } = render(
       <Rate label="Hit Rate" numerator={REAL.numerator} denominator={REAL.denominator} universe={REAL.universe} />,
     );
+
     const fill = container.querySelector<HTMLElement>("[role=presentation] > div");
     // 62/645 = 9.61% — 100% 로 그리면(분모를 denominator 로 잡으면) 이 단언이 깨진다
     expect(fill?.style.width).toBe(`${(62 / 645) * 100}%`);
@@ -132,6 +133,7 @@ describe("decisions 페이지 배선 — 실제 요약값으로 렌더한다 (#1
 
   async function renderPage() {
     const { DecisionsSection } = await import("@/app/decisions/page");
+
     return render(await DecisionsSection());
   }
 

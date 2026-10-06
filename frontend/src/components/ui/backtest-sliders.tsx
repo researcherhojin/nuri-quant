@@ -16,7 +16,9 @@ interface BacktestSlidersProps {
 }
 
 const LOOKBACKS = ["1Y", "3Y", "5Y"] as const;
+
 const SMA_PERIODS = [50, 100, 200] as const;
+
 const DEFAULT_PARAMS: BacktestParams = {
   smaPeriod: 50,
   lookback: "3Y",

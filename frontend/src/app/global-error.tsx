@@ -5,6 +5,7 @@
  */
 
 import { ERRORS } from "@/lib/strings";
+
 export default function GlobalError({
   error,
   reset,

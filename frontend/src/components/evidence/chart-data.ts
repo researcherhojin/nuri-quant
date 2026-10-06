@@ -96,8 +96,12 @@ export const DRIFT_COLORS: Record<string, string> = {
 /** 손익% → 히트맵 셀 색 (Plotly colorscale 의 5-구간 근사) */
 export function pnlColor(pnl: number): string {
   if (pnl <= -10) return "#d32f2f";
+
   if (pnl < -2) return "#ef5350";
+
   if (pnl <= 2) return "#616161";
+
   if (pnl <= 10) return "#66bb6a";
+
   return "#2e7d32";
 }

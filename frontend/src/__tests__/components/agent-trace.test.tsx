@@ -4,7 +4,9 @@ import type { TraceState } from "@/lib/use-trace-stream";
 
 // Mock useTraceStream
 const mockStart = vi.fn();
+
 const mockStop = vi.fn();
+
 let mockState: TraceState = {
   verdicts: [],
   consensus: null,

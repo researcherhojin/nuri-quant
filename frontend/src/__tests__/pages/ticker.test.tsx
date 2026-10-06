@@ -45,18 +45,25 @@ const mockTickerData = {
 };
 
 const mockPriceData = { prices: [{ date: "2026-03-01", open: 180, high: 186, low: 179, close: 185, volume: 1000000 }] };
+
 const mockTargets = { stock_type: "growth", stop_loss: 172.52, stop_loss_pct: -7, target_1: 222.6, target_1_pct: 20, target_2: 259.7, target_2_pct: 40, trailing_stop_pct: -15, analyst_target: 200, analyst_upside_pct: 8 };
+
 const mockExternal = { count: 1, data: [{ source: "TipRanks", data_type: "consensus", value: "Strong Buy" }] };
 
 import { fetchAPI } from "@/lib/api";
+
 const mockFetchAPI = fetchAPI as unknown as Mock;
 
 function setupMocks(overrides: Record<string, unknown> = {}) {
   mockFetchAPI.mockImplementation((url: string) => {
     if (url.includes("/prices")) return Promise.resolve(overrides.prices ?? mockPriceData);
+
     if (url.includes("/targets/")) return Promise.resolve(overrides.targets ?? mockTargets);
+
     if (url.includes("/external/")) return Promise.resolve(overrides.external ?? mockExternal);
+
     if (url.includes("/ticker/")) return Promise.resolve(overrides.ticker ?? mockTickerData);
+
     return Promise.resolve({});
   });
 }
@@ -70,6 +77,7 @@ describe("TickerPage API integration", () => {
 
   it("calls correct API endpoints for a ticker", async () => {
     setupMocks();
+
     // Simulate the 4 parallel fetches from TickerDetail
     const [data, priceData, targets, external] = await Promise.all([
       mockFetchAPI(`/api/ticker/AAPL`),
@@ -77,6 +85,7 @@ describe("TickerPage API integration", () => {
       mockFetchAPI(`/api/targets/AAPL`),
       mockFetchAPI(`/api/external/AAPL`),
     ]);
+
     expect(data.ticker).toBe("AAPL");
     expect(priceData.prices.length).toBe(1);
     expect(targets.stock_type).toBe("growth");
@@ -86,16 +95,21 @@ describe("TickerPage API integration", () => {
   it("handles targets/external errors gracefully", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/targets/")) return Promise.reject(new Error("not found"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("not found"));
+
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       return Promise.resolve({ ticker: "NEW", consensus: {}, analyst_ratings: [], earnings: [], insider_trades: [], superinvestors: [], fundamentals: null });
     });
+
     const [data, , targets, external] = await Promise.all([
       mockFetchAPI(`/api/ticker/NEW`),
       mockFetchAPI(`/api/ticker/NEW/prices?days=365`),
       mockFetchAPI(`/api/targets/NEW`).catch(() => null),
       mockFetchAPI(`/api/external/NEW`).catch(() => null),
     ]);
+
     expect(data.ticker).toBe("NEW");
     expect(targets).toBeNull();
     expect(external).toBeNull();

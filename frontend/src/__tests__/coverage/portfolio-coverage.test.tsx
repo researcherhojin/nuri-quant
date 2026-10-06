@@ -29,38 +29,45 @@ const mockHoldings = [
 ];
 
 type MockHolding = (typeof mockHoldings)[number];
+
 interface PortfolioOverrides {
   importResult?: { imported: number; errors: unknown[] };
   addFail?: boolean;
   editFail?: boolean;
   holdings?: MockHolding[];
 }
+
 function setupPortfolioMock(overrides: PortfolioOverrides = {}) {
   const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     if (typeof url === "string" && url.includes("/api/portfolio/sample") && opts?.method === "POST") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio/import") && opts?.method === "POST") {
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(overrides.importResult ?? { imported: 3, errors: [] }),
       });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "POST") {
       return Promise.resolve({
         ok: overrides.addFail ? false : true,
         json: () => Promise.resolve(overrides.addFail ? { detail: "duplicate" } : { ok: true }),
       });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "PUT") {
       return Promise.resolve({
         ok: overrides.editFail ? false : true,
         json: () => Promise.resolve(overrides.editFail ? { detail: "not found" } : { ok: true }),
       });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "DELETE") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio")) {
       return Promise.resolve({
         ok: true,
@@ -70,9 +77,12 @@ function setupPortfolioMock(overrides: PortfolioOverrides = {}) {
         }),
       });
     }
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
+
   global.fetch = fetchMock as unknown as typeof fetch;
+
   return fetchMock;
 }
 
@@ -98,6 +108,7 @@ describe("Portfolio — full interaction coverage", () => {
     await act(async () => { render(<Page />); });
     await act(async () => { await new Promise(r => setTimeout(r, 200)); });
     const sampleBtn = screen.queryByText(/Load Sample/i);
+
     if (sampleBtn) {
       await act(async () => { fireEvent.click(sampleBtn); });
       await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -112,6 +123,7 @@ describe("Portfolio — full interaction coverage", () => {
 
     // Toggle form
     const addBtn = screen.queryByText("Add Holding");
+
     if (addBtn) {
       await act(async () => { fireEvent.click(addBtn); });
 
@@ -119,6 +131,7 @@ describe("Portfolio — full interaction coverage", () => {
       const tickerInput = screen.queryByPlaceholderText(/Ticker/);
       const qtyInput = screen.queryByPlaceholderText(/Quantity/);
       const priceInput = screen.queryByPlaceholderText(/Avg Price/);
+
       if (tickerInput && qtyInput && priceInput) {
         fireEvent.change(tickerInput, { target: { value: "TSLA" } });
         fireEvent.change(qtyInput, { target: { value: "10" } });
@@ -126,6 +139,7 @@ describe("Portfolio — full interaction coverage", () => {
 
         // Submit
         const saveBtn = screen.queryByText("Save");
+
         if (saveBtn) {
           await act(async () => { fireEvent.click(saveBtn); });
           await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -141,15 +155,18 @@ describe("Portfolio — full interaction coverage", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 200)); });
 
     const addBtn = screen.queryByText("Add Holding");
+
     if (addBtn) {
       await act(async () => { fireEvent.click(addBtn); });
       const qtyInput = screen.queryByPlaceholderText(/Quantity/);
       const priceInput = screen.queryByPlaceholderText(/Avg Price/);
+
       if (qtyInput && priceInput) {
         fireEvent.change(qtyInput, { target: { value: "10" } });
         fireEvent.change(priceInput, { target: { value: "100" } });
         // Submit without ticker
         const saveBtn = screen.queryByText("Save");
+
         if (saveBtn) {
           await act(async () => { fireEvent.click(saveBtn); });
         }
@@ -164,16 +181,19 @@ describe("Portfolio — full interaction coverage", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 200)); });
 
     const addBtn = screen.queryByText("Add Holding");
+
     if (addBtn) {
       await act(async () => { fireEvent.click(addBtn); });
       const tickerInput = screen.queryByPlaceholderText(/Ticker/);
       const qtyInput = screen.queryByPlaceholderText(/Quantity/);
       const priceInput = screen.queryByPlaceholderText(/Avg Price/);
+
       if (tickerInput && qtyInput && priceInput) {
         fireEvent.change(tickerInput, { target: { value: "TSLA" } });
         fireEvent.change(qtyInput, { target: { value: "10" } });
         fireEvent.change(priceInput, { target: { value: "250" } });
         const saveBtn = screen.queryByText("Save");
+
         if (saveBtn) {
           await act(async () => { fireEvent.click(saveBtn); });
           await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -191,10 +211,12 @@ describe("Portfolio — full interaction coverage", () => {
 
     // Click delete button (🗑 icon)
     const deleteButtons = screen.queryAllByText("🗑");
+
     if (deleteButtons.length > 0) {
       await act(async () => { fireEvent.click(deleteButtons[0]); });
       await act(async () => { await new Promise(r => setTimeout(r, 200)); });
     }
+
     vi.unstubAllGlobals();
   });
 
@@ -206,6 +228,7 @@ describe("Portfolio — full interaction coverage", () => {
 
     // Find upload button and trigger file change
     const uploadBtn = screen.queryByText("Upload CSV");
+
     if (uploadBtn) {
       await act(async () => { fireEvent.click(uploadBtn); });
     }

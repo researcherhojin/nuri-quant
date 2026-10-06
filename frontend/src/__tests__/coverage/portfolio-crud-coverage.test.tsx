@@ -37,6 +37,7 @@ interface FetchOverrides {
   importErrors?: unknown[];
   editFail?: boolean;
 }
+
 function setupFetch(overrides: FetchOverrides = {}) {
   global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     if (typeof url === "string" && url.includes("/api/portfolio/import") && opts?.method === "POST") {
@@ -47,20 +48,24 @@ function setupFetch(overrides: FetchOverrides = {}) {
         ),
       });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "PUT") {
       return Promise.resolve({
         ok: !overrides.editFail,
         json: () => Promise.resolve(overrides.editFail ? { detail: "not found" } : { ok: true }),
       });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "DELETE") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
     }
+
     if (typeof url === "string" && url.includes("/api/portfolio") && (!opts || !opts.method || opts.method === "GET")) {
       return Promise.resolve({
         ok: true, json: () => Promise.resolve({ holdings: multiHoldings, count: multiHoldings.length }),
       });
     }
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   }) as unknown as typeof fetch;
 }
@@ -76,12 +81,15 @@ describe("Portfolio — edit/delete/import", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
     const editBtns = screen.queryAllByText("✏️");
+
     if (editBtns.length > 0) {
       await act(async () => { fireEvent.click(editBtns[0]); });
       await act(async () => { await new Promise(r => setTimeout(r, 100)); });
       const numInputs = document.querySelectorAll('input[type="number"]');
+
       if (numInputs.length > 0) fireEvent.change(numInputs[0], { target: { value: "20" } });
       const saveBtn = screen.queryByText("Save") || screen.queryByText("저장");
+
       if (saveBtn) {
         await act(async () => { fireEvent.click(saveBtn); });
         await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -97,9 +105,11 @@ describe("Portfolio — edit/delete/import", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
     const editBtns = screen.queryAllByText("✏️");
+
     if (editBtns.length > 0) {
       await act(async () => { fireEvent.click(editBtns[0]); });
       const cancelBtn = screen.queryByText("Cancel") || screen.queryByText("취소");
+
       if (cancelBtn) await act(async () => { fireEvent.click(cancelBtn); });
     }
   });
@@ -113,10 +123,12 @@ describe("Portfolio — edit/delete/import", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
     const delBtns = screen.queryAllByText("🗑");
+
     if (delBtns.length > 0) {
       await act(async () => { fireEvent.click(delBtns[0]); });
       await act(async () => { await new Promise(r => setTimeout(r, 200)); });
     }
+
     vi.unstubAllGlobals();
   });
 
@@ -128,6 +140,7 @@ describe("Portfolio — edit/delete/import", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+
     if (fileInput) {
       const file = new File(["ticker,qty\nTSLA,10"], "t.csv", { type: "text/csv" });
       await act(async () => { fireEvent.change(fileInput, { target: { files: [file] } }); });
@@ -143,6 +156,7 @@ describe("Portfolio — edit/delete/import", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 300)); });
 
     const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+
     if (fileInput) {
       const file = new File(["bad"], "t.csv", { type: "text/csv" });
       await act(async () => { fireEvent.change(fileInput, { target: { files: [file] } }); });

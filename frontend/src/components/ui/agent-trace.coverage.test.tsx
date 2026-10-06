@@ -4,7 +4,9 @@ import { AgentTrace } from "./agent-trace";
 
 // useTraceStream 훅을 모킹해 네트워크(SSE) 없이 컴포넌트 분기를 직접 구동한다.
 const mockStart = vi.fn();
+
 const mockStop = vi.fn();
+
 const traceState = {
   verdicts: [] as Array<Record<string, unknown>>,
   consensus: null as Record<string, unknown> | null,

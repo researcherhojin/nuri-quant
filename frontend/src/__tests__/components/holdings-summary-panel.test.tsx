@@ -90,6 +90,7 @@ describe("HoldingsSummaryPanel", () => {
     const { rerender } = render(
       <HoldingsSummaryPanel summary={baseSummary({ today: { totalUsd: 100, totalPct: 0.2, upCount: 1, downCount: 0 } })} />,
     );
+
     const today = screen.getByTestId("summary-today");
     expect(today.innerHTML).toMatch(/text-emerald-400/);
     // positive arrow (▲)

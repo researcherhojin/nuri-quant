@@ -67,6 +67,7 @@ describe("DecisionsPage", () => {
     const row = (extra: Record<string, unknown>) => ({
       ...mockDecisionsResponse.decisions[0], ...extra,
     });
+
     const resp = (decisions: unknown[]) => ({ ...mockDecisionsResponse, decisions, count: decisions.length });
 
     it("증거 행 없는 regime 에 표식을 붙인다", async () => {

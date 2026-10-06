@@ -58,10 +58,12 @@ export function Sparkline({
   const points = series
     .map((v, i) => {
       const x = (i / (series.length - 1)) * (width - strokeWidth * 2) + strokeWidth;
+
       const y =
         range === 0
           ? height / 2
           : height - strokeWidth - ((v - min) / range) * (height - strokeWidth * 2);
+
       return `${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -76,6 +78,7 @@ export function Sparkline({
   // Baseline reference (e.g. avg cost basis) — dashed horizontal line at the normalized position
   // Only drawn when the baseline falls within the [min, max] range of the visible series.
   let baselineY: number | null = null;
+
   if (baseline != null && range > 0 && baseline >= min && baseline <= max) {
     baselineY = height - strokeWidth - ((baseline - min) / range) * (height - strokeWidth * 2);
   }

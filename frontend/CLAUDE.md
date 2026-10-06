@@ -13,11 +13,22 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
+npm run lint           # eslint && oxlint (anti-slop rules — see "Anti-slop (oxlint)" below)
 npm run test           # vitest run (1665 tests, 140 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
 ```
+
+## Anti-slop (oxlint)
+
+`npm run lint` runs ESLint and then Oxlint with the vendored [anti-slop](https://github.com/dmmulroy/anti-slop) plugin (`tools/oxlint/anti-slop/`, provenance in its `UPSTREAM.md`; config `.oxlintrc.json`, #1655). It is the same `Frontend Lint` required check, so a finding blocks the PR. `npx oxlint --fix .` applies the blank-line rule; the rest are fixed by hand, not by casts or disable comments.
+
+Rules that are `off`, and why (turning one on is its own PR that fixes the sites first):
+
+- `no-module-mocking` — `vi.mock` is this test suite's seam (recharts, `next/link`, `@/lib/api`), 190 sites.
+- `no-chained-type-assertions` / `no-unknown-returns` in tests only — `as unknown as Json` fixtures.
+- `no-known-value-widening` (64 source sites), `require-safety-comment-for-type-assertion` (34), `no-runtime-typeof` (25), `no-unsafe-dictionary-type` (24), `no-unknown-parameters` (14) — recharts formatter callbacks typed `unknown` and API JSON typed `Record<string, unknown>`; the fix is boundary parsing into named types, not a cast.
 
 ## Server Components Pattern
 

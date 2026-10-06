@@ -175,6 +175,7 @@ function FilterBar({ outcome, action }: { outcome: OutcomeFilter | undefined; ac
 function PnlCell({ value }: { value: number | null }) {
   if (value === null) return <span className="text-muted-foreground">—</span>;
   const color = value > 0 ? "text-emerald-400" : value < 0 ? "text-red-400" : "text-muted-foreground";
+
   return <span className={`${color} font-mono text-xs tabular-nums`}>{value > 0 ? "+" : ""}{value.toFixed(1)}%</span>;
 }
 
@@ -182,6 +183,7 @@ function PnlCell({ value }: { value: number | null }) {
 function OutcomeCell({ date, outcome, today }: { date: string; outcome: string; today: string }) {
   const tag = OUTCOME_TAG[outcome] ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(date, outcome, today);
+
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
       <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm ${tag.cls}`}>{tag.label}</span>
@@ -305,6 +307,7 @@ export async function DecisionsSection({
   action?: ActionFilter | undefined;
 } = {}) {
   let data: DecisionResponse;
+
   try {
     // outcome 은 API 파라미터 (기존 지원), action 은 API 미지원이라 RSC 측 필터
     const qs = outcome ? `&outcome=${outcome}` : "";
@@ -342,6 +345,7 @@ export default async function DecisionsPage({
   const params = (searchParams ? await searchParams : undefined) ?? {};
   const outcome = parseOutcomeFilter(params.outcome);
   const action = parseActionFilter(params.action);
+
   return (
     <div className="space-y-4">
       <div>

@@ -27,11 +27,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join, relative } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
 const srcRoot = resolve(here, "../..");
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
+
     if (statSync(full).isDirectory()) {
       if (entry === "__tests__" || entry === "node_modules") continue;
       walk(full, out);
@@ -39,6 +41,7 @@ function walk(dir: string, out: string[] = []): string[] {
       out.push(full);
     }
   }
+
   return out;
 }
 

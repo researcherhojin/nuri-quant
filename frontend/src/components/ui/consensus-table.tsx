@@ -30,7 +30,9 @@ export interface AgentVerdict {
 // Literal union 으로 backend enum 잠금 (codex A-2c review LOW 2 — contract drift 방어).
 // export — 회귀 테스트가 같은 literal shape 로 fixture 를 생성할 수 있게.
 export type Action = "BUY" | "SELL" | "HOLD";
+
 export type ScoringSource = "consensus" | "candidate";
+
 export type FinalActionSource = "weighted_sum" | "risk_veto" | "divergence_penalty";
 
 export interface ScoringContribution {
@@ -87,23 +89,28 @@ const AGENT_ORDER = [
 
 function agentCell(verdict: AgentVerdict | undefined) {
   if (!verdict) return <span className="text-faint">--</span>;
+
   // 자리표시자에 확신도 숫자를 찍으면 의견처럼 읽힌다 (#1436). 백엔드는 이미 이것들을
   // 동의율·패널 커버리지에서 빼고 있어서, 여기서 `H0` 으로 보이면 **같은 화면이 자기
   // 자신과 모순**된다 — 커버리지 60% 옆에 10개 의견이 나란히 선다.
   if (verdict.degraded || verdict.abstained) {
     const label = verdict.degraded ? CONSENSUS_TABLE_LABELS.CELL_DEGRADED : CONSENSUS_TABLE_LABELS.CELL_ABSTAINED;
+
     return (
       <span className="text-faint font-mono text-[11px]" title={verdict.reasoning}>
         {label}
       </span>
     );
   }
+
   const icon = verdict.action === "BUY" ? "B" : verdict.action === "SELL" ? "S" : "H";
+
   const color = verdict.action === "BUY"
     ? "text-emerald-400"
     : verdict.action === "SELL"
     ? "text-red-400"
     : "text-muted-foreground";
+
   return (
     <span className={`${color} font-mono text-[11px]`}>
       {icon}{Math.round(verdict.confidence)}
@@ -143,6 +150,7 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
         <tbody>
           {data.map((row) => {
             const isExpanded = expanded === row.ticker;
+
             const agentMap = Object.fromEntries(
               row.verdicts.map((v) => [v.agent_name, v])
             );
@@ -211,20 +219,26 @@ export function ConsensusTable({ data, vix }: { data: ConsensusRow[]; vix?: numb
                           basis_action 과 반대쪽 agent 의 `%` 는 null 로 렌더 (basis 기여 아니므로 무의미). */}
                       {(() => {
                         const sd = row.scoring_detail;
+
                         const contribMap = Object.fromEntries(
                           (sd?.contributions ?? []).map((c) => [c.agent_name, c])
                         );
+
                         const basisDenom = sd?.action_scores[sd.basis_action] ?? 0;
+
                         return (
                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                             {AGENT_ORDER.map((a) => {
                               const v = agentMap[a.key];
+
                               if (!v) return null;
                               const contrib = contribMap[a.key];
+
                               // basis 방향에 기여한 에이전트만 % 계산 (의미 있는 causal share).
                               const pctOfBasis = contrib?.counted_for_basis_action && basisDenom > 0
                                 ? (contrib.weighted / basisDenom) * 100
                                 : null;
+
                               return (
                                 <div
                                   key={a.key}

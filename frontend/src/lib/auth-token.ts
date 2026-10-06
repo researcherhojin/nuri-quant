@@ -44,6 +44,7 @@ function getSecret(): string {
  */
 export async function hashToken(_password: string): Promise<string> {
   const secret = getSecret();
+
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -51,11 +52,13 @@ export async function hashToken(_password: string): Promise<string> {
     false,
     ["sign"],
   );
+
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
     encoder.encode("nuri-auth-token:v1"),
   );
+
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -68,10 +71,13 @@ export async function hashToken(_password: string): Promise<string> {
 export function timingSafeEqual(a: string, b: string): boolean {
   const ab = encoder.encode(a);
   const bb = encoder.encode(b);
+
   if (ab.length !== bb.length) return false;
   let result = 0;
+
   for (let i = 0; i < ab.length; i++) {
     result |= ab[i] ^ bb[i];
   }
+
   return result === 0;
 }

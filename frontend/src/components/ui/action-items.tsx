@@ -43,7 +43,9 @@ interface ActionItemsProps {
 
 // #1212 hydration 게이트용 안정 참조 (useSyncExternalStore 인자)
 const emptySubscribe = () => () => {};
+
 const getTrue = () => true;
+
 const getFalse = () => false;
 
 // U2b-2 (#1208): 카드 → 32px 밀집 테이블 행. 버킷(심각도) 구조는 유지 —
@@ -56,7 +58,9 @@ const bucketStyles = {
 
 function actionTagCls(action: string): string {
   if (action === "SELL") return "bg-red-500/20 text-red-400";
+
   if (action === "BUY") return "bg-emerald-500/20 text-emerald-400";
+
   return "bg-zinc-700 text-zinc-400";
 }
 
@@ -219,7 +223,9 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
 
 function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: ActionItem[]; kind: keyof typeof bucketStyles; title: string } & AckProps) {
   const style = bucketStyles[kind];
+
   if (items.length === 0) return null;
+
   return (
     <div>
       <h3 className={`text-xs font-semibold ${style.title} mb-1 flex items-center gap-1.5`}>
@@ -268,6 +274,7 @@ export function ActionItems({ urgent, check, hold, portfolio = [] }: ActionItems
   const loadedMap = useMemo(() => (hydrated ? loadAckMap() : null), [hydrated]);
   const [ackOverride, setAckOverride] = useState<AckMap | null>(null);
   const ackMap = ackOverride ?? loadedMap;
+
   const onAck = (item: ActionItem) => {
     // `?? {}` 는 구조적 도달 불가 (#1214): 확인 버튼은 isNew 일 때만 렌더되고
     // isNewItem 은 ackMap===null(hydration 전)이면 항상 false — 클릭 시점의

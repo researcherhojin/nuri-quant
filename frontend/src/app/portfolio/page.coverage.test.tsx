@@ -52,6 +52,7 @@ beforeEach(() => {
     if (typeof url === "string" && url.startsWith("/api/portfolio")) {
       return jsonResponse({ holdings: HOLDINGS });
     }
+
     return jsonResponse({});
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -151,9 +152,11 @@ describe("portfolio page — validation & early-return coverage", () => {
       if (opts?.method === "PUT") {
         return jsonResponse({ detail: "boom" }, false);
       }
+
       if (typeof url === "string" && url.startsWith("/api/portfolio")) {
         return jsonResponse({ holdings: HOLDINGS });
       }
+
       return jsonResponse({});
     });
 
@@ -185,6 +188,7 @@ describe("portfolio page — validation & early-return coverage", () => {
     const importCallsAfter = fetchMock.mock.calls.filter((c) =>
       typeof c[0] === "string" && c[0].includes("/api/portfolio/import"),
     ).length;
+
     expect(importCallsAfter).toBe(importCallsBefore); // import POST never fired
   });
 });

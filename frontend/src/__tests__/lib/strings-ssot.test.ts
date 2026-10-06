@@ -52,6 +52,7 @@ const read = (rel: string) => readFileSync(join(process.cwd(), rel), "utf8");
 describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
   it("이관 대상 파일에 주석 밖 한글 카피가 남아 있지 않다", () => {
     const offenders: string[] = [];
+
     for (const rel of MIGRATED) {
       stripComments(read(rel))
         .split("\n")
@@ -59,6 +60,7 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
           if (HANGUL.test(line)) offenders.push(`${rel}:${i + 1} ${line.trim().slice(0, 80)}`);
         });
     }
+
     expect(offenders, `SSoT 밖 한글 카피:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 
@@ -66,17 +68,20 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     // 한글 스윕이 **못 보는 축**이다. 사이드바 라우트 라벨이 전부 영문이라 이 검사가
     // 없으면 "이관 완료" 가 절반만 참인 채로 초록이 된다.
     const src = read("src/components/ui/sidebar.tsx");
+
     const labels = [
       NAV.ROUTE_DASHBOARD, NAV.ROUTE_DECISIONS, NAV.ROUTE_ENGINE, NAV.ROUTE_EVIDENCE,
       NAV.ROUTE_PORTFOLIO, NAV.ROUTE_REBALANCE, NAV.ROUTE_TARGETS, NAV.ROUTE_EXPLORE,
       NAV.ROUTE_SCANNER, NAV.ROUTE_SIGNALS, NAV.ROUTE_STRATEGY, NAV.ROUTE_AGENTS,
       NAV.ROUTE_PIPELINE, NAV.ROUTE_REPORT, NAV.SYSTEM_ONLINE,
     ];
+
     const offenders = labels.filter((v) => src.includes(`"${v}"`));
     expect(offenders, `사이드바에 리터럴로 남은 라벨: ${offenders.join(", ")}`).toHaveLength(0);
 
     // 주석을 걷고 본다 — 이 파일 주석이 라우트 이름을 언급하고 있어 그대로 보면 오탐이다.
     const pipe = stripComments(read("src/app/pipeline/page.tsx"));
+
     const nodeCopy = [
       PIPELINE.TITLE, // codex P3: 타이틀이 빠져 있어 하드코딩 복귀를 못 잡았다
       PIPELINE.NODE_COLLECT, PIPELINE.NODE_VALIDATE, PIPELINE.NODE_CLASSIFY,
@@ -84,6 +89,7 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
       PIPELINE.NODE_COLLECT_SUB, PIPELINE.NODE_VALIDATE_SUB, PIPELINE.NODE_CLASSIFY_SUB,
       PIPELINE.NODE_DIAGNOSE_SUB, PIPELINE.NODE_RECOMMEND_SUB, PIPELINE.NODE_TRACK_SUB,
     ];
+
     const pipeOffenders = nodeCopy.filter((v) => pipe.includes(`"${v}"`));
     expect(pipeOffenders, `pipeline 에 리터럴로 남은 노드 카피: ${pipeOffenders.join(", ")}`).toHaveLength(0);
   });
@@ -92,11 +98,15 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     // #1300: 헤딩과 내비가 **같은 개념**(이 페이지의 이름)이라 키를 공유한다. 한쪽만
     // 리터럴로 되돌리면 이름이 두 벌이 되고, 그 순간부터 조용히 갈라진다.
     const offenders: string[] = [];
+
     for (const [rel, key] of Object.entries(ROUTE_HEADING_PAGES)) {
       const src = read(rel);
+
       if (src.includes(`>${NAV[key]}</h1>`)) offenders.push(`${rel} (${NAV[key]})`);
+
       if (!src.includes(`NAV.${key}`)) offenders.push(`${rel}: NAV.${key} 참조 없음`);
     }
+
     expect(offenders, `헤딩이 SSoT 를 안 쓴다:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 

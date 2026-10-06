@@ -89,6 +89,7 @@ describe("환율 미수집 — 비중 미상 (#1284)", () => {
       reasons: [],
       position_pct: null as number | null,
     };
+
     render(<ActionItems urgent={[item as never]} check={[]} hold={[]} portfolio={[]} />);
     expect(screen.getByText("ZZZZ")).toBeTruthy();
     expect(document.body.textContent).not.toContain("null");
@@ -395,6 +396,7 @@ describe("NEW badge + ack (#1212)", () => {
   const asOfItem = { ...urgentItem, as_of: "2026-08-25", decision_id: 7 };
 
   let ackStore: Record<string, string> = {};
+
   const storageStub = {
     getItem: (k: string) => (k in ackStore ? ackStore[k] : null),
     setItem: (k: string, v: string) => { ackStore[k] = String(v); },
@@ -403,6 +405,7 @@ describe("NEW badge + ack (#1212)", () => {
     key: (i: number) => Object.keys(ackStore)[i] ?? null,
     get length() { return Object.keys(ackStore).length; },
   } as Storage;
+
   const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
   beforeEach(() => {
     ackStore = {};
@@ -461,6 +464,7 @@ describe("quick-peek lists every reason including the first (#1652)", () => {
       ticker: "RBL", action: "BUY", confidence: 70, pnl_pct: 1.2, position_pct: 3.4, priority: "portfolio",
       reasons: ["리밸런스 권고 — 계좌 비중 20.2% > 한도 25%", "두 번째 근거"],
     };
+
     render(<ActionItems urgent={[]} check={[]} hold={[]} portfolio={[item]} />);
     expect(screen.queryByTestId("action-row-reasons")).toBeNull();
     fireEvent.click(screen.getByTestId("action-row-toggle"));

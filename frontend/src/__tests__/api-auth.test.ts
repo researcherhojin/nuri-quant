@@ -36,6 +36,7 @@ vi.mock("next/server", () => {
             },
           },
         };
+
         return resp;
       },
     },
@@ -51,10 +52,12 @@ describe("POST /api/auth", () => {
   it("returns 401 when no DASHBOARD_PASSWORD set", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "test" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(401);
   });
@@ -62,10 +65,12 @@ describe("POST /api/auth", () => {
   it("returns 401 with wrong password", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "correct");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "wrong" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(401);
   });
@@ -73,10 +78,12 @@ describe("POST /api/auth", () => {
   it("returns ok and sets cookie with correct password", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "secret123" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual({ ok: true });
@@ -88,10 +95,12 @@ describe("POST /api/auth", () => {
   it("cookie value is SHA256 hash, not plaintext", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "mypass");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "mypass" }),
     });
+
     const resp = await POST(req);
     const cookie = (resp.cookies as unknown as MockCookies)._store["nuri-auth"];
     expect(cookie.value).not.toBe("mypass");

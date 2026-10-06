@@ -17,6 +17,7 @@ export interface BarSegment {
 }
 
 export const CHART_COLORS = ["#4C90F0", "#3FA6DA", "#43BF4D", "#F0B726", "#9179F2"] as const;
+
 /** Blueprint GRAY2 (#1435). 이전 `#404854` 는 구분선(`--background`)과 **2.00:1** 이라
  *  구분선이 이 조각 옆에서는 보이지 않았고, 카드 표면과도 1.75:1 이라 조각 자체가 잘 안
  *  보였다. GRAY1(#5F6B7C)로 올려봤지만 **카드 위 2.99** 로 0.01 차이 미달이라 기각했다 —
@@ -30,10 +31,13 @@ export const OTHER_COLOR = "#738091";
 export function toBarSegments(slices: BarSegment[], otherLabel: string): BarSegment[] {
   const individual = slices.filter((s) => !s.isOther);
   const top = individual.slice(0, CHART_COLORS.length);
+
   const restSum =
     individual.slice(CHART_COLORS.length).reduce((sum, s) => sum + s.value, 0) +
     slices.filter((s) => s.isOther).reduce((sum, s) => sum + s.value, 0);
+
   if (restSum > 0) return [...top, { label: otherLabel, value: restSum, color: OTHER_COLOR }];
+
   return top;
 }
 
@@ -42,6 +46,7 @@ export function CompositionBar({ segments }: { segments: BarSegment[] }) {
   // 접근성 (#1210 P2, codex R1): 세그먼트별 title 은 포인터 전용이라 스크린리더가
   // 못 읽는다 — img 의 accessible name 에 구성 전체를 열거하고 세그먼트는 장식 처리.
   const description = segments.map((s) => `${s.label} ${s.value.toFixed(1)}%`).join(", ");
+
   return (
     <div
       className="flex h-3.5 w-full rounded-sm overflow-hidden"

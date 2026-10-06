@@ -13,6 +13,7 @@ import PortfolioPage from "./page";
 
 // next/navigation mock — searchParams.get controllable per test
 const mockGet = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useSearchParams: () => ({ get: mockGet }),
 }));
@@ -29,8 +30,11 @@ vi.mock("@/lib/strings", () => ({
 }));
 
 const mockFetch = vi.fn();
+
 global.fetch = mockFetch as unknown as typeof fetch;
+
 const mockConfirm = vi.fn(() => true);
+
 global.confirm = mockConfirm as unknown as typeof confirm;
 
 function jsonRes(body: unknown, ok = true) {

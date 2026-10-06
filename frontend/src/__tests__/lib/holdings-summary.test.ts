@@ -53,6 +53,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(s.today.totalUsd).toBeCloseTo(0, 5);
       expect(s.today.totalPct).toBeCloseTo(0, 5);
       expect(s.today.upCount).toBe(1);
@@ -67,6 +68,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
+
       expect(s.today.upCount).toBe(1);
       expect(s.today.downCount).toBe(0);
       // Only B contributes: value $5000 × 2% = $100
@@ -81,6 +83,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
+
       expect(s.today.upCount).toBe(1);
       expect(s.today.downCount).toBe(1);
       expect(s.today.totalUsd).toBe(0);
@@ -103,6 +106,7 @@ describe("summarizeHoldings", () => {
           { account: "Active", value: 20_400 },
         ],
       });
+
       expect(s.byAccount.map((a) => a.account)).toEqual(["Main", "Active", "Toss"]);
       expect(s.byAccount[0].weight).toBeCloseTo(36.7, 5);
       expect(s.byAccount[1].weight).toBeCloseTo(20.4, 5);
@@ -118,6 +122,7 @@ describe("summarizeHoldings", () => {
           { account: "Main", value: 10_000 },
         ],
       });
+
       expect(s.byAccount.map((a) => a.account)).toEqual(["Main", "Active"]);
     });
 
@@ -130,6 +135,7 @@ describe("summarizeHoldings", () => {
           { account: "C", value: 10_000 },
         ],
       });
+
       const colors = s.byAccount.map((a) => a.color);
       expect(new Set(colors).size).toBe(3);
     });
@@ -139,6 +145,7 @@ describe("summarizeHoldings", () => {
         totalPortfolioUsd: 0,
         accountValues: [{ account: "Main", value: 10_000 }],
       });
+
       expect(s.byAccount[0].weight).toBe(0);
       expect(s.byAccount[0].valueUsd).toBe(10_000);
     });
@@ -157,6 +164,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(s.sectors.map((x) => x.name)).toEqual(["Semi", "BigTech"]);
       // Semi = (20+10) / 45 × 100 = 66.66…
       expect(s.sectors[0].weight).toBeCloseTo((30 / 45) * 100, 5);
@@ -180,6 +188,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(s.sectors).toHaveLength(5);
       const names = s.sectors.map((x) => x.name);
       expect(names.slice(0, 4)).toEqual(["Semi", "BigTech", "Finance", "Energy"]);
@@ -198,6 +207,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       const names = s.sectors.map((x) => x.name);
       expect(names).toContain("Semi");
       expect(names).toContain("Other");
@@ -213,6 +223,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       const colors = s.sectors.map((x) => x.color);
       expect(new Set(colors).size).toBe(4);
     });
@@ -232,6 +243,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(s.topMovers.winners.map((m) => m.ticker)).toEqual(["A", "B", "C"]);
       expect(s.topMovers.losers.map((m) => m.ticker)).toEqual(["G", "F", "E"]);
     });
@@ -245,6 +257,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
+
       expect(s.topMovers.winners).toHaveLength(1);
       expect(s.topMovers.winners[0].ticker).toBe("A");
       expect(s.topMovers.losers).toHaveLength(1);
@@ -263,6 +276,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
+
       expect(s.topMovers.winners.map((m) => m.ticker)).toEqual(["A", "B", "C"]);
       expect(s.topMovers.losers).toEqual([]);
     });
@@ -276,6 +290,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 10_000 },
       );
+
       expect(s.topMovers.winners.map((m) => m.ticker)).toEqual(["B"]);
       expect(s.topMovers.losers.map((m) => m.ticker)).toEqual(["C"]);
     });
@@ -291,6 +306,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(s.concentration.herfindahl).toBeCloseTo(0.5, 5);
       expect(s.concentration.topHolding?.ticker).toBe("A"); // first encountered with max weight
       expect(s.concentration.topHolding?.weight).toBe(50);
@@ -304,6 +320,7 @@ describe("summarizeHoldings", () => {
         ),
         { totalPortfolioUsd: 100_000 },
       );
+
       // 20 × 0.05² = 0.05
       expect(low.concentration.level).toBe("low");
 
@@ -313,6 +330,7 @@ describe("summarizeHoldings", () => {
         ),
         { totalPortfolioUsd: 100_000 },
       );
+
       // 8 × 0.125² = 0.125
       expect(med.concentration.level).toBe("medium");
 
@@ -323,6 +341,7 @@ describe("summarizeHoldings", () => {
         ],
         { totalPortfolioUsd: 100_000 },
       );
+
       expect(high.concentration.level).toBe("high");
     });
   });

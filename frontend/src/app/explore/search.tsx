@@ -26,22 +26,29 @@ export function ExploreSearch() {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
+
     document.addEventListener("mousedown", handleClick);
+
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   // Debounced search
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+
     if (query.trim().length === 0) {
       setResults([]);
       setOpen(false);
+
       return;
     }
+
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+
       try {
         const res = await fetch(`/api/tickers/search?q=${encodeURIComponent(query.trim())}`);
+
         if (res.ok) {
           const data = await res.json();
           setResults(data.results ?? []);
@@ -69,6 +76,7 @@ export function ExploreSearch() {
       setQuery("");
       router.push(`/ticker/${t}`);
     }
+
     if (e.key === "Escape") {
       setOpen(false);
     }
@@ -103,9 +111,11 @@ export function ExploreSearch() {
           ) : (
             results.map((r) => {
               const isKr = r.ticker.endsWith(".KS") || r.ticker.endsWith(".KQ");
+
               const priceStr = r.price != null
                 ? isKr ? `₩${Math.round(r.price).toLocaleString()}` : `$${r.price < 100 ? r.price.toFixed(2) : Math.round(r.price).toLocaleString()}`
                 : "";
+
               return (
                 <button
                   key={r.ticker}

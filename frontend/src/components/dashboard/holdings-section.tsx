@@ -27,6 +27,7 @@ export function HoldingsSection({
   sparklinePeriod, expanded, macroAwareSectors,
 }: HoldingsSectionProps) {
   if (holdings.length === 0) return null;
+
   return (
     <section className="flex flex-col items-start" data-testid="holdings-section">
       {/*

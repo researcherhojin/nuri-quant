@@ -94,6 +94,7 @@ describe("ConsensusTable — 자리표시자는 의견 셀이 아니다", () => 
         verdicts: withPlaceholders[0].verdicts.map(({ abstained: _a, degraded: _d, ...v }) => v),
       },
     ];
+
     render(<ConsensusTable data={legacy} />);
     const row = screen.getByText("TESTTICKER").closest("tr")!;
     expect(within(row).getByText("H50")).toBeInTheDocument();

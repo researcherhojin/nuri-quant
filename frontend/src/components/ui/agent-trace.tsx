@@ -25,7 +25,9 @@ const AGENT_ORDER = [
 
 function DataPills({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);
+
   if (!entries.length) return null;
+
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {entries.map(([k, v]) => (
@@ -66,6 +68,7 @@ export function AgentTrace({ ticker }: { ticker: string }) {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           {AGENT_ORDER.map((a) => {
             const v = verdictMap[a.key];
+
             return (
               <div
                 key={a.key}

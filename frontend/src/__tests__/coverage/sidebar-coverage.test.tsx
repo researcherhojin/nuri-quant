@@ -44,6 +44,7 @@ describe("Sidebar interactions", () => {
 
     // Find collapse button (« or »)
     const collapseBtn = screen.queryByText("«") || screen.queryByText("»");
+
     if (collapseBtn) {
       await act(async () => { fireEvent.click(collapseBtn); });
       // After collapse, Nuri-Quant text should be hidden

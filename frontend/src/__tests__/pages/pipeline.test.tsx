@@ -74,15 +74,19 @@ describe("PipelinePage", () => {
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockSteps }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: mockTimeline }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(mockGates) });
       }
+
       if (url.includes("/api/pipeline/") && url.includes("/run")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -152,12 +156,15 @@ describe("PipelinePage", () => {
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockSteps }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
@@ -228,6 +235,7 @@ describe("PipelinePage", () => {
     // Look for any Run button in the pipeline
     await waitFor(() => {
       const buttons = screen.queryAllByText(/Run|실행/);
+
       if (buttons.length > 0) {
         fireEvent.click(buttons[0]);
       }
@@ -250,6 +258,7 @@ describe("PipelinePage", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "started" }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({
           ok: true,
@@ -259,6 +268,7 @@ describe("PipelinePage", () => {
           }),
         });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({
           ok: true,
@@ -268,6 +278,7 @@ describe("PipelinePage", () => {
           }),
         });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
@@ -292,6 +303,7 @@ describe("PipelinePage", () => {
           json: () => Promise.resolve({ steps: errorSteps, pipeline_status: "blocked" }),
         });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 

@@ -31,12 +31,14 @@ describe("EquityCurveChart", () => {
 
   it("renders with data and period switch", async () => {
     const { EquityCurveChart } = await import("@/components/ui/equity-curve-chart");
+
     const data = Array.from({ length: 500 }, (_, i) => ({
       date: `2024-${String(Math.floor(i / 30) + 1).padStart(2, "0")}-${String((i % 30) + 1).padStart(2, "0")}`,
       strategy: i * 0.1,
       spy: i * 0.08,
       drawdown: -(i % 10) * 0.5,
     }));
+
     render(<EquityCurveChart data={data} />);
     expect(screen.getByText("Equity Curve")).toBeInTheDocument();
     expect(screen.getByText("Strategy")).toBeInTheDocument();

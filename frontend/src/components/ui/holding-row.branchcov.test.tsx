@@ -56,6 +56,7 @@ describe("buildEnrichedHoldings — advisor current_value fallback (line 164)", 
         currency: "USD",
       },
     ];
+
     const advisorActions: RawAdvisorAction[] = [
       {
         ticker: "TSLA",
@@ -117,6 +118,7 @@ describe("buildEnrichedHoldings — sparkline array passthrough (line 200)", () 
   it("passes through sparkline_30d array when present (Array.isArray true arm)", () => {
     // sparkline_30d 가 배열 → `Array.isArray(...) ? h.sparkline_30d : []` true arm.
     const series = [100, 101, 102, 103];
+
     const holdings: RawHolding[] = [
       {
         ticker: "GOOGL",
