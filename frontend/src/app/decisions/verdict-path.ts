@@ -23,7 +23,7 @@ export const VETO_REASONING_PREFIX = "리스크 에이전트 거부권 발동";
 export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum" | "unknown";
 
 // scoring_detail 은 SELECT * 경유라 JSON 문자열로 도착한다 — 안전 파싱.
-export function parseScoringDetail(raw: unknown): ScoringDetail | null {
+export function parseScoringDetail(raw: string | Record<string, unknown> | null): ScoringDetail | null {
   let obj: unknown = raw;
 
   if (typeof raw === "string") {

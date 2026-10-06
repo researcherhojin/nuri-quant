@@ -27,8 +27,10 @@ npx vitest run -t "renders verdict"                    # single test by name
 Rules that are `off`, and why (turning one on is its own PR that fixes the sites first):
 
 - `no-module-mocking` — `vi.mock` is this test suite's seam (recharts, `next/link`, `@/lib/api`), 190 sites.
-- `no-chained-type-assertions` / `no-unknown-returns` in tests only — `as unknown as Json` fixtures.
-- `no-known-value-widening` (64 source sites), `require-safety-comment-for-type-assertion` (34), `no-runtime-typeof` (25), `no-unsafe-dictionary-type` (24), `no-unknown-parameters` (14) — recharts formatter callbacks typed `unknown` and API JSON typed `Record<string, unknown>`; the fix is boundary parsing into named types, not a cast.
+- `no-chained-type-assertions` / `no-unknown-returns` / `no-unknown-parameters` in tests only — `as unknown as Json` fixtures and mock `fetch` bodies.
+- `no-known-value-widening` (71 source sites), `require-safety-comment-for-type-assertion` (37), `no-runtime-typeof` (25), `no-unsafe-dictionary-type` (23) — API JSON typed `Record<string, unknown>`; the fix is boundary parsing into named types, not a cast.
+
+Free-form JSON (parsed `detail`, event `payload`) is typed `JsonValue` from `src/lib/types.ts`; recharts callbacks take its own `TooltipValueType` and a `number` tick.
 
 ## Overview Preview (`/dashboard-next`, #1658)
 

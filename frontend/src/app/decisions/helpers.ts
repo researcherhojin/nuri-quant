@@ -6,6 +6,7 @@
  * SELL: pnl<0 성공, 그외 neutral). 규칙이 바뀌면 여기 상수도 함께 바뀌어야 한다.
  */
 import { DECISIONS } from "@/lib/strings";
+import type { JsonValue } from "@/lib/types";
 
 export const ADJUDICATION_DAYS = 90;
 
@@ -103,7 +104,7 @@ export function fmtKvNumber(v: number): string {
   return v.toFixed(2).replace(/\.?0+$/, "");
 }
 
-export function fmtKvValue(v: unknown): string {
+export function fmtKvValue(v: JsonValue | undefined): string {
   if (v === null || v === undefined) return "—";
 
   if (typeof v === "number") return Number.isFinite(v) ? fmtKvNumber(v) : "—";

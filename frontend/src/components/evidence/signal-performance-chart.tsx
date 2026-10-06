@@ -16,6 +16,7 @@ import {
   YAxis,
   Tooltip,
   ReferenceLine,
+  type TooltipValueType,
 } from "recharts";
 
 import { DRIFT_COLORS, type SignalPerformanceData } from "@/components/evidence/chart-data";
@@ -26,11 +27,11 @@ export function driftColor(status: string): string {
   return DRIFT_COLORS[status] ?? "var(--chart-1)";
 }
 
-export function winRateTick(v: unknown): string {
+export function winRateTick(v: number): string {
   return `${Math.round(Number(v) * 100)}%`;
 }
 
-export function signalTooltipFormatter(value: unknown, name: unknown): [string, string] {
+export function signalTooltipFormatter(value: TooltipValueType | undefined, name: string | number | undefined): [string, string] {
   const v = Number(value);
 
   if (name === "win_rate") return [`${(v * 100).toFixed(1)}%`, "승률"];

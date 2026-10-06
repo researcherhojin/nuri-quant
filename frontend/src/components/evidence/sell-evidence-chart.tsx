@@ -6,7 +6,7 @@
  */
 import { CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import { EVIDENCE } from "@/lib/strings";
-import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip } from "recharts";
+import { ResponsiveContainer, BarChart, Bar, Cell, XAxis, YAxis, Tooltip, type TooltipValueType } from "recharts";
 
 import { VIOLATION_COLORS, type SellEvidenceData, type SellViolation } from "@/components/evidence/chart-data";
 
@@ -22,14 +22,14 @@ export function buildSellRows(data: SellEvidenceData): SellRow[] {
   }));
 }
 
-export function severityTick(v: unknown): string {
+export function severityTick(v: number): string {
   return `${Number(v).toFixed(0)}%`;
 }
 
 /** 툴팁: 심각도% + 조치·회복 조건 */
 export function sellTooltipFormatter(
-  value: unknown,
-  _name: unknown,
+  value: TooltipValueType | undefined,
+  _name: string | number | undefined,
   entry?: { payload?: SellRow },
 ): [string, string] {
   const row = entry?.payload;

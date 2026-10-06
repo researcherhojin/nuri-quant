@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { ERRORS, PIPELINE as PL } from "@/lib/strings";
+import type { JsonValue } from "@/lib/types";
 import { summarizePayload } from "./helpers";
 
 // design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
@@ -53,7 +54,7 @@ interface TimelineEvent {
   timestamp: string;
   event_type: "start" | "success" | "error";
   step: string;
-  payload: Record<string, unknown>;
+  payload: Record<string, JsonValue>;
 }
 
 interface GateCondition {
