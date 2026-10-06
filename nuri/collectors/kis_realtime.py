@@ -28,15 +28,25 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from pandas.tseries.holiday import (
+    AbstractHolidayCalendar,
+    GoodFriday,
+    Holiday,
+    USFederalHolidayCalendar,
+    sunday_to_monday,
+)
 
 from nuri.collectors.base import BaseCollector
-from nuri.core.db import get_tickers, upsert_prices
-from nuri.core.timezone import today_kst
+from nuri.core.db import get_tickers, query, upsert_prices
+from nuri.core.timezone import kst_now, today_kst
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -350,6 +360,52 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
     }
 
 
+_NEW_YORK = ZoneInfo("America/New_York")
+_US_REGULAR_OPEN = dtime(9, 30)
+
+
+class _NYSEHolidayCalendar(AbstractHolidayCalendar):
+    """NYSE 휴장일 ≈ 연방 공휴일 − (Columbus Day, Veterans Day: 장은 연다) + Good Friday.
+
+    New Year's 는 연방 규칙(nearest_workday)과 달리 토요일이면 금요일에 쉬지 않는다 — 일요일만
+    월요일로 넘긴다. 특별 휴장(국장 등)은 모델에 없다 *(facts, no fix)*. `nuri/core/freshness.py`
+    의 `_us_federal_holidays` 는 발행 달력용 연방 공휴일이라 이 달력과 다른 것이 맞다.
+    """
+
+    rules = (
+        [Holiday("New Year's Day", month=1, day=1, observance=sunday_to_monday)]
+        + [
+            r
+            for r in USFederalHolidayCalendar.rules
+            if r.name not in ("New Year's Day", "Columbus Day", "Veterans Day")
+        ]
+        + [GoodFriday]
+    )
+
+
+def us_session_date(now: datetime | None = None) -> str:
+    """이 미국 시세가 속한 거래일 (YYYY-MM-DD, 뉴욕 달력).
+
+    KIS 해외 현재가 응답에는 날짜가 없다. 예전에는 `today_kst()` 를 찍었는데, 미국 장이 열려
+    있는 KST 아침은 뉴욕에선 아직 전날이라 같은 세션이 일일 수집기(yfinance, 미국 거래일)보다
+    하루 뒤 날짜로 저장됐다 — 최신 날짜로 종목을 정렬하는 리더에서 SPY 만 하루 앞서 보인다
+    (#1636). 뉴욕 시각으로 정규장 개장(09:30) 전이면 직전 세션의 종가이므로 전날, 이후면 당일.
+    주말과 NYSE 휴장일은 직전 영업일로 당긴다.
+    """
+    et = (now or kst_now()).astimezone(_NEW_YORK)
+    d = et.date()
+    if et.time() < _US_REGULAR_OPEN:
+        d -= timedelta(days=1)
+    # stubs 가 holidays() 원소를 느슨하게 잡는다 — freshness._us_federal_holidays 와 같은 방식으로 date 로 확정
+    closed = {
+        pd.Timestamp(ts).to_pydatetime().date()
+        for ts in _NYSEHolidayCalendar().holidays(start=d - timedelta(days=14), end=d)
+    }
+    while d.weekday() >= 5 or d in closed:
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
 def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | None:
     """미국 종목 현재가 조회 (HHDFS00000300).
 
@@ -377,7 +433,7 @@ def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | N
         if last and float(last) > 0:
             return {
                 "ticker": ticker,
-                "date": today_kst(),
+                "date": us_session_date(),
                 "open": float(data.get("open", 0) or 0),
                 "high": float(data.get("high", 0) or 0),
                 "low": float(data.get("low", 0) or 0),
@@ -480,10 +536,12 @@ class KISRealtimeCollector(BaseCollector):
                 if hist.empty:
                     continue
                 last = hist.iloc[-1]
+                # 봉의 실제 거래일 (거래소 시간대) — today_kst() 는 미국 종목에 하루 앞선 날짜를 찍었다 (#1636)
+                session = pd.Timestamp(hist.index[-1]).date().isoformat()
                 recovered.append(
                     {
                         "ticker": t,
-                        "date": today_kst(),
+                        "date": session,
                         "open": float(last.get("Open", 0) or 0),
                         "high": float(last.get("High", 0) or 0),
                         "low": float(last.get("Low", 0) or 0),
@@ -496,7 +554,37 @@ class KISRealtimeCollector(BaseCollector):
                 continue
         return recovered
 
+    @staticmethod
+    def _drop_incomplete_bars_that_would_replace(data: pd.DataFrame) -> pd.DataFrame:
+        """O/H/L 이 없는 행은 (ticker, date) 에 이미 봉이 있으면 쓰지 않는다 (#1636 P1).
+
+        KIS 해외 현재가(HHDFS00000300)는 last/tvol 만 주어 open/high/low 가 0.0 이다.
+        `upsert_prices` 는 INSERT OR REPLACE 라, 날짜를 바로잡은 뒤에는 이 행이 일일 수집기가
+        이미 써 둔 완전한 yfinance 봉을 통째로 덮어 ATR·저가 리더가 0 을 본다. 봉이 없을 때만
+        (장중 첫 관측) 들어가고, 있으면 그 봉이 정본이다.
+        """
+        if data.empty or not {"open", "high", "low"} <= set(data.columns):
+            return data
+        data = data.reset_index(drop=True)  # 라벨 조회가 유일 인덱스를 전제한다
+        incomplete = (data[["open", "high", "low"]].fillna(0) == 0).all(axis=1)
+        if not incomplete.any():
+            return data
+        keep = []
+        for idx, row in data.iterrows():
+            # 존재가 아니라 **완전성**을 본다 — 같은 날 이 수집기가 먼저 쓴 O/H/L 없는 행은 다음 관측이 갱신해야 한다
+            if incomplete[idx] and query(
+                "SELECT 1 FROM prices WHERE ticker = ? AND date = ? AND COALESCE(open, 0) != 0 LIMIT 1",
+                (row["ticker"], row["date"]),
+            ):
+                logger.info("%s %s: 완전한 봉이 이미 있어 O/H/L 없는 현재가는 쓰지 않음", row["ticker"], row["date"])
+                continue
+            keep.append(idx)
+        return data.loc[keep]
+
     def save(self, data: pd.DataFrame) -> int:
+        if data.empty:
+            return 0
+        data = self._drop_incomplete_bars_that_would_replace(data)
         if data.empty:
             return 0
         return upsert_prices(data)
