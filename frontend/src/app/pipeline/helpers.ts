@@ -6,9 +6,11 @@
  * 계열의 raw JSON 결함). 사람이 읽는 요약 한 줄로 바꾼다.
  */
 
+import type { JsonValue } from "@/lib/types";
+
 const MAX_KV = 3;
 
-function fmtValue(v: unknown): string {
+function fmtValue(v: JsonValue): string {
   if (v === null || v === undefined) return "—";
 
   if (typeof v === "number") return Number.isInteger(v) ? String(v) : v.toFixed(2);
@@ -24,7 +26,7 @@ function fmtValue(v: unknown): string {
   }
 }
 
-export function summarizePayload(payload: Record<string, unknown> | null | undefined): string {
+export function summarizePayload(payload: Record<string, JsonValue> | null | undefined): string {
   if (!payload || Object.keys(payload).length === 0) return "";
 
   // 우선순위 키 단독 표기 — 원 동작 정확 패리티 (codex R1 P2): stderr 만 80자

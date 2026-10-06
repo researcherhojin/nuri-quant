@@ -280,7 +280,7 @@ function PortfolioContent() {
     },
     {
       key: "pnl", label: "P&L", align: "right" as const,
-      render: (_: unknown, row: Holding) => {
+      render: (_: undefined, row: Holding) => {
         if (!row.latest_price || !row.avg_price) return "—";
         const pnl = ((row.latest_price - row.avg_price) / row.avg_price) * 100;
 
@@ -293,7 +293,7 @@ function PortfolioContent() {
     },
     {
       key: "actions", label: "", align: "center" as const,
-      render: (_: unknown, row: Holding) => {
+      render: (_: undefined, row: Holding) => {
         const key = `${row.account}/${row.ticker}`;
 
         if (editKey === key) {

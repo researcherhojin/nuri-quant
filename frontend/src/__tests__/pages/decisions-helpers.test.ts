@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 
+import type { JsonValue } from "@/lib/types";
+
 import {
   ADJUDICATION_DAYS,
   addDays,
@@ -119,7 +121,7 @@ describe("evidence key-value (#1216 raw JSON 폐지)", () => {
   });
 
   it("fmtKvValue falls back to String() when JSON.stringify throws (순환 참조)", () => {
-    const circular: Record<string, unknown> = {};
+    const circular: { [key: string]: JsonValue } = {};
     circular.self = circular;
     expect(fmtKvValue(circular)).toBe("[object Object]");
   });

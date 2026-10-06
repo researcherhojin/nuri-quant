@@ -45,7 +45,7 @@ export function buildRegimeRows(data: RegimeData) {
 }
 
 /** 가격축 눈금 — 정수 표기 */
-export function priceTick(v: unknown): string {
+export function priceTick(v: number): string {
   return Number(v).toFixed(0);
 }
 

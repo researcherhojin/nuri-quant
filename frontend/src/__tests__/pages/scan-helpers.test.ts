@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 
 import { mergeScanSwing, type ScanResult, type SwingEntry } from "@/app/scan/helpers";
 import { summarizePayload } from "@/app/pipeline/helpers";
+import type { JsonValue } from "@/lib/types";
 
 // #1219 U4b: scan/swing union 병합 + pipeline payload 요약 잠금.
 
@@ -86,7 +87,7 @@ describe("summarizePayload (#1219 raw JSON 폐지)", () => {
   });
 
   it("survives a circular payload value (JSON.stringify throw)", () => {
-    const circular: Record<string, unknown> = {};
+    const circular: { [key: string]: JsonValue } = {};
     circular.self = circular;
     expect(summarizePayload({ weird: circular })).toBe("weird [object Object]");
   });

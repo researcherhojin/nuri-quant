@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+// === JSON ===
+// JSON.parse 결과·이벤트 payload 같은 자유 형식 값. unknown 대신 이 타입으로 받는다 (anti-slop no-unknown-parameters).
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 // === Regime ===
 export const RegimeSchema = z.object({
   date: z.string(),

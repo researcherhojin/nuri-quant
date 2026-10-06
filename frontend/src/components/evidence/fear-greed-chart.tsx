@@ -14,6 +14,7 @@ import {
   YAxis,
   Tooltip,
   ReferenceArea,
+  type TooltipValueType,
 } from "recharts";
 
 import type { FearGreedData } from "@/components/evidence/chart-data";
@@ -32,7 +33,7 @@ export function zoneLabel(value: number): string {
   return zone.label;
 }
 
-export function fgTooltipFormatter(value: unknown): [string, string] {
+export function fgTooltipFormatter(value: TooltipValueType | undefined): [string, string] {
   return [Number(value).toFixed(0), "지수"];
 }
 

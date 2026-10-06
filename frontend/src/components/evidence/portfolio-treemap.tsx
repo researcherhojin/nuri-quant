@@ -8,7 +8,7 @@
 import { CHART_EMPTY_FILL, CHART_LABEL_STRONG, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import type { ReactElement } from "react";
 import { EVIDENCE } from "@/lib/strings";
-import { ResponsiveContainer, Treemap, Tooltip } from "recharts";
+import { ResponsiveContainer, Treemap, Tooltip, type TooltipValueType } from "recharts";
 
 import {
   pnlColor,
@@ -86,7 +86,7 @@ export function TreemapCell(props: CellProps): ReactElement {
   );
 }
 
-export function valueTooltipFormatter(value: unknown): [string, string] {
+export function valueTooltipFormatter(value: TooltipValueType | undefined): [string, string] {
   return [`$${Number(value).toLocaleString()}`, "가치"];
 }
 
