@@ -1,9 +1,13 @@
 """한국 종목코드 → 종목명 해석.
 
 .KS 티커(예: 132030.KS)는 사람이 알아볼 수 없으므로 종목명을 조회한다.
-1차: portfolio.metadata.note (사용자가 YAML에 입력한 이름)
+1차: portfolio.metadata.name (사용자가 YAML에 명시한 이름)
 2차: config/kr_ticker_names.json 로컬 맵 (KOSPI200 정적 — network-free)
-3차: pykrx get_market_ticker_name (1·2차 미스 시에만, 주식 only)
+2'차: portfolio.metadata.note 의 "<이름> — <메모>" 앞부분 (구분자가 있을 때만)
+3차: pykrx get_market_ticker_name (위가 모두 미스 시에만, 주식 only)
+
+note 를 구분자 없이 잘라 쓰지 않는다 (#1685). note 는 매수 근거 같은 자유 문장일 수 있고,
+#1681 부터 /portfolio 가 이 값을 종목의 주 표시로 쓴다 — 문장 조각을 회사 이름처럼 보이게 된다.
 US 티커(MSFT, TSLA 등)는 이미 식별 가능하므로 None 반환.
 
 ⚠️ 2차 로컬 맵이 핵심: /tickers/search 가 KR 이름 검색 시 수백 ticker 를
@@ -57,7 +61,7 @@ def is_kr_ticker(ticker: str) -> bool:
 
 @lru_cache(maxsize=500)
 def get_ticker_name_local(ticker: str) -> str | None:
-    """1·2차만 조회하는 **network-free** 변형 — 요청 경로 전용 (#1255).
+    """1·2·2'차(명시 이름 · 로컬 맵 · 구분자 있는 note)만 조회하는 **network-free** 변형 — 요청 경로 전용 (#1255).
 
     `/api/tickers/search` 는 결과가 8건 미만이면 KOSPI200 **203개 전 티커**에
     이 함수를 부른다. 3차 pykrx 가 붙어 있으면 그 요청 하나가 네트워크를 타고,
@@ -75,10 +79,8 @@ def get_ticker_name_local(ticker: str) -> str | None:
     if not ticker.endswith((".KS", ".KQ")):
         return None
 
-    # 1차: DB portfolio metadata에서 name/note 필드 조회.
-    # `name` 명시값 우선. `note` 는 보통 "<canonical> — <buy thesis>" 패턴이라
-    # 첫 dash 앞부분만 canonical name 으로 본다 (그렇지 않으면 brief 가
-    # 매수 narrative 전체를 ticker 자리에 표시해 가독성이 무너짐).
+    # 1차: DB portfolio metadata 의 `name` 명시값. `note` 는 아래 2'차에서만 쓴다.
+    note: str | None = None
     try:
         from nuri.core.db import query
 
@@ -92,16 +94,20 @@ def get_ticker_name_local(ticker: str) -> str | None:
             if name:
                 return str(name).strip()
             note = meta.get("note")
-            if note:
-                for sep in (" — ", " - ", "—"):
-                    if sep in note:
-                        return note.split(sep, 1)[0].strip()
-                return note[:24].strip()
     except Exception as e:
         logger.debug("DB name lookup failed for %s: %s", ticker, e)
 
-    # 2차: 로컬 KOSPI200 맵 (network-free — search 요청 경로 보호)
-    return _load_kr_name_map().get(ticker) or None
+    # 2차: 로컬 KOSPI200 맵 (network-free — search 요청 경로 보호). note 보다 앞이다 — 맵은 이름 소스다.
+    mapped = _load_kr_name_map().get(ticker)
+    if mapped:
+        return mapped
+
+    # 2'차: note 가 "<이름> — <메모>" 모양일 때만 앞부분. 구분자가 없으면 이름이 아닐 수 있어 쓰지 않는다 (#1685).
+    if note:
+        for sep in (" — ", " - ", "—"):
+            if sep in note:
+                return note.split(sep, 1)[0].strip() or None
+    return None
 
 
 @lru_cache(maxsize=500)
