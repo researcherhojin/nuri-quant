@@ -390,15 +390,26 @@ class TestMain:
 
 
 def test_module_main_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """`if __name__ == '__main__'` block — runpy로 entry-point 검증."""
+    """`if __name__ == '__main__'` block — runpy로 entry-point 검증.
+
+    runpy 는 모듈 소스를 다시 실행하므로 `nuri.llm.thesis_query.*` 속성 패치는 살아남지
+    않는다 — 그렇게 패치했던 이전 버전은 실제 `thesis_query()` 를 돌려 Codex 와 로컬
+    Qwen 을 호출하고 `data/thesis_query/` 에 파일을 남겼다(로컬 실행마다 40초, #1634).
+    재실행된 모듈도 `subprocess.run` 은 모듈 속성으로 부르므로 그쪽을 막는다.
+    """
     import runpy
 
-    out_file = tmp_path / "stub.md"
-    out_file.write_text("# stub", encoding="utf-8")
-    # source-level patch (runpy reloads module so target-level patches don't survive)
-    monkeypatch.setattr("nuri.llm.thesis_query.thesis_query", lambda **kw: out_file)
-    monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "AAA"])
+    calls: list[list[str]] = []
+
+    def _fake_run(cmd, **kw):
+        calls.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "AAA", "--out-dir", str(tmp_path)])
     # runpy 로 module 직접 실행 — sys.exit(main()) 호출 (return 0 → SystemExit(0))
     with pytest.raises(SystemExit) as exc:
         runpy.run_module("nuri.llm.thesis_query", run_name="__main__")
     assert exc.value.code == 0
+    assert len(calls) == 1 and calls[0][1].endswith("llm_consult.py"), "LLM consult 는 stub 을 거쳐야 한다"
+    assert "--out-dir" in calls[0] and calls[0][calls[0].index("--out-dir") + 1] == str(tmp_path)
