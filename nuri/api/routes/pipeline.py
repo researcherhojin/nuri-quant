@@ -8,6 +8,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from nuri.api.limits import heavy_slot
+from nuri.core.db import DatabaseError, query
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
@@ -115,7 +116,26 @@ def get_pipeline_status():
                 "error": payload.get("error") if isinstance(payload, dict) else None,
             }
         )
+    # decide 는 독립 cron 이 없으므로 lifecycle 과 실제 원장 산출물을 구분한다.
+    for step in steps:
+        if step["step"] == "decide":
+            step["execution_mode"] = "inline_with_consensus"
+            step["artifact"] = _decision_artifact()
     return {"steps": steps, "freshness": get_freshness_summary()}
+
+
+def _decision_artifact():
+    """기록 존재는 판정의 최신성/품질이나 실행 성공을 뜻하지 않는다."""
+    try:
+        rows = query("SELECT date, COUNT(*) AS count FROM decisions GROUP BY date ORDER BY date DESC LIMIT 1")
+        return {
+            "status": "available" if rows else "empty",
+            "date": rows[0]["date"] if rows else None,
+            "count": rows[0]["count"] if rows else 0,
+        }
+    except DatabaseError:
+        logger.exception("decision artifact lookup failed")
+        return {"status": "unavailable", "date": None, "count": None}
 
 
 @router.get("/pipeline/timeline")

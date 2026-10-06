@@ -31,6 +31,7 @@ export const NAV_GROUPS = [
     label: NAV.TODAY,
     items: [
       { href: "/", label: NAV.ROUTE_DASHBOARD, icon: LayoutDashboard },
+      { href: "/dashboard-next", label: NAV.ROUTE_DASHBOARD_NEXT, icon: Compass },
     ],
   },
   {
@@ -72,11 +73,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
 
+  const preview = pathname === "/dashboard-next";
   const w = collapsed ? "w-16" : "w-56";
 
   return (
     <>
-      <aside className={`fixed left-0 top-0 h-screen ${w} bg-sidebar border-r border-sidebar-border flex flex-col z-50 transition-all duration-200`}>
+      <aside className={`fixed left-0 top-0 h-screen ${w} bg-sidebar border-r border-sidebar-border ${preview ? "hidden md:flex" : "flex"} flex-col z-50 transition-all duration-200`}>
         {/* Logo + Collapse */}
         <div className="h-12 flex items-center justify-between px-4 border-b border-border">
           <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
@@ -164,7 +166,7 @@ export function Sidebar() {
       </aside>
 
       {/* Spacer for main content */}
-      <div className={`${w} shrink-0 transition-all duration-200`} />
+      <div className={`${w} ${preview ? "hidden md:block" : ""} shrink-0 transition-all duration-200`} />
     </>
   );
 }

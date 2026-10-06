@@ -614,6 +614,7 @@ export const NAV = {
   // 라우트 라벨 (#1252). 소비자는 사이드바 하나뿐이지만, SSoT 밖에 있으면 e2e 가
   // 문자열을 직접 박게 되고 그게 #1118 의 3.5개월 무신호 회귀를 만든 경로다.
   ROUTE_DASHBOARD: "Dashboard",
+  ROUTE_DASHBOARD_NEXT: "Overview Preview",
   ROUTE_DECISIONS: "Decisions",
   ROUTE_ENGINE: "Decision Engine",
   ROUTE_EVIDENCE: "Evidence",
@@ -628,4 +629,18 @@ export const NAV = {
   ROUTE_PIPELINE: "Pipeline",
   ROUTE_REPORT: "AI Report",
   SYSTEM_ONLINE: "System Online",
+} as const;
+
+
+export const DASHBOARD_NEXT = {
+  TITLE: "Overview",
+  COMPARE: "기존 대시보드와 비교",
+  REFRESH: "새로고침",
+  INBOX: "보유 종목 점검",
+  RADAR: "시장 탐색",
+  ALLOCATION: "내 포트폴리오",
+  PIPELINE: "파이프라인 상태",
+  UNAVAILABLE: "정보를 불러올 수 없습니다. 잠시 후 새로고침해 주세요.",
+  EMPTY: "현재 표시할 항목이 없습니다.",
+  LOADING: "시장 환경과 시스템 판단을 불러오는 중입니다…",
 } as const;
