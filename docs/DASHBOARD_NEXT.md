@@ -41,12 +41,17 @@
 ### `market_indices` (#1676)
 
 `/api/dashboard` 의 `market_indices` 는 항상 4개 항목을 이 순서로 낸다 — `sp500` · `nasdaq` · `kospi` · `kosdaq`.
-각 항목은 `{key, label, close, prev_close, change_pct, date}` 이다. `change_pct` 는 `(close / prev_close − 1) × 100` 을 소수 둘째 자리로 반올림한 값이다.
+각 항목은 `{key, label, close, prev_close, change_pct, date, source, symbol}` 이다(`source`·`symbol` 은 #1682). `change_pct` 는 `(close / prev_close − 1) × 100` 을 소수 둘째 자리로 반올림한 값이다.
 
 - **출처가 둘이다.** 미국 지수는 `macro` 테이블(`sp500` · `nasdaq_composite`)에서 읽는다. `MacroCollector` 가 매시 `^GSPC` · `^IXIC` 를 수집한다. 한국 지수는 `prices` 의 `KOSPI` · `KOSDAQ` 행이다(`StockKRCollector`).
 - **미국 지수는 `prices` 에 넣지 않는다.** `.KS` · `.KQ` 접미사가 없는 이름이라 `is_kr_ticker()` 필터를 통과한다. 그러면 US 종목 universe(decision_alpha 치환 후보 · walkforward 패널)에 거래 가능 종목처럼 섞인다(#710 의 KOSDAQ 과 같은 경로).
 - **결측은 null 이다.** 행이 없으면 4개 값이 모두 null 이다. 직전 관측이 없거나 0 이면 `change_pct` 만 null 이다. 조회가 실패해도 항목 shape 는 유지한다. 화면은 null 을 `—` 로 내고 0% 로 바꾸지 않는다.
 - **`close` 는 최근 저장값이다.** macro 는 매시, stock_kr 은 장중 5분마다 그날 봉을 덮어쓰므로 장중에는 확정 종가가 아닐 수 있다. 미국과 한국의 `date` 는 다를 수 있다.
+- **`source` 는 저장된 값이다.** `macro` 행은 그 행의 `source` 열을 그대로 낸다. `prices` 에는 source 열이 없어 수집기(`StockKRCollector._collect_indices`, yfinance)를 적는다. `symbol` 은 원천 심볼(`^GSPC` 등)이다.
+
+### `macro_inputs` (#1682)
+
+`/api/dashboard` 의 `macro_inputs` 는 경제 여건 점수(`compute_macro_score`)가 읽는 `macro` 지표 9종의 **최신 저장 행의 `date`·`source`** 다 — `MACRO_INPUTS` 순서로 `{key, date, source}`. 행이 없으면 `date`·`source` 가 null 이다. 이벤트 점수는 뉴스·경제 일정에서 따로 계산돼 목록에 없다. 점수 계산이 읽는 지표와 이 목록이 어긋나면 출처 표시가 거짓이 되므로 `tests/api/test_dashboard.py::TestMacroInputsProvenance::test_inputs_match_what_the_macro_score_reads` 가 양쪽을 대조한다.
 
 클라이언트 요청은 상대 `/api/*` 경로를 사용한다.
 파이프라인은 진입 시·60초 간격·수동 조회·화면 복귀 시 갱신하고 숨겨진 탭에서는 주기 조회를 건너뛴다.
@@ -175,7 +180,8 @@ E2E는 실제 로컬 API를 사용한다. 개인 보유값을 고정한 기대�
 
 - **글자 크기는 사다리 토큰 6개뿐**: `--fs-xs` 10 · `--fs-label` 11 · `--fs-body` 13 · `--fs-title` 14 · `--fs-h3` 18 · `--fs-value` 26 (px). 전부 `--font-step`(1600px 부터 폭 160px 당 +0.32px, 최대 +2px — 1920 에서 +0.6, 2560 에서 +1.9)이 더해져 큰 화면에서 조금만 커진다. 초안은 1920 에서 +2.9px 였고 "큰 화면에서 글자가 크다" 는 피드백(2026-10-06)으로 줄였다. `calc(8px + …)` 같은 임의 값은 쓰지 않는다 — 초안의 8·9px 기반 보조 문구가 1440px 에서 9px 로 떨어졌던 것이 계기다. e2e 는 1920px 이상에서 범례 글자가 라벨 토큰 11px 아래로 떨어지지 않는지 본다.
 - **간격 토큰 3개**: `--space`(패널 사이, 12–24px) · `--pad`(패널 안쪽 좌우, 14–20px) · `--row`(목록 행 상하 8px, 대형 화면 11px). 표 행·소스 행·파이프라인 행이 같은 `--row` 를 쓴다.
-- **시장 카드 (#1676)**: 지표 행의 2.4칸을 쓰고 1250px 이하에서는 3칸, 1050px 이하에서는 한 줄 전체를 쓰며 600px 이하에서는 지수가 2×2 로 배치된다. 지수 칸은 이름과 기준일(`MM-DD`) · 레벨(`--fs-h3`, 1400px 이하 `--fs-title`) · 변화율의 3줄이다 — 1280px 에서 칸이 약 85px 라 다섯 자리 레벨(27,599.79)이 18px 로는 잘리고, 기준일을 변화율 줄에 두면 옆 칸 숫자와 붙는다(2026-10-07 실측). 기준일 줄은 좁으면 말줄임된다(전체 날짜는 `<time datetime>`). 레짐은 그 아래 한 줄이다. 1440×900 에서 지표 행은 100px 이고, 줄 높이 1.2 로 묶어야 패딩 포함 약 96px 에 들어간다. 줄을 늘리려면 `grid-template-rows` 의 지표 행부터 키우고 레이아웃 e2e 를 다시 돌린다.
+- **시장 카드 (#1676)**: 지표 행의 2.4칸을 쓰고 1250px 이하에서는 3칸, 1050px 이하에서는 한 줄 전체를 쓰며 600px 이하에서는 지수가 2×2 로 배치된다. 지수 칸은 이름과 기준일(`MM-DD`) · 레벨(`--fs-h3`, 1400px 이하 `--fs-title`) · 변화율의 3줄이다 — 1280px 에서 칸이 약 85px 라 다섯 자리 레벨(27,599.79)이 18px 로는 잘리고, 기준일을 변화율 줄에 두면 옆 칸 숫자와 붙는다(2026-10-07 실측). 기준일 줄은 좁으면 말줄임된다(전체 날짜는 `<time datetime>`). 레짐은 그 아래 한 줄이다.
+- **지표 카드 (#1682)**: 네 카드 모두 하단 패널과 같은 "아이콘 + 이름" 머리글(`MetricHeading`)과 ⓘ 아이콘 모달을 쓴다 — 버튼에 "읽는 법" 문구는 보이지 않고 접근 가능한 이름으로만 남는다(`DetailDialog iconOnly`, 보유 종목 점검 패널도 같다). 모달은 설명 뒤에 **출처와 기준일** 표를 둔다(지수는 `market_indices.source`·`symbol`, 경제 점수와 VIX 는 `macro_inputs`, 우선 점검은 항목들의 가장 최근 판정 기준일 `as_of` — 목록 생성 시각은 조회마다 "지금" 이라 판정의 나이를 말해 주지 않아 안내 문장으로만 둔다). 출처가 대용치면 이름도 바뀐다: yfinance 의 2년물 자리는 `^IRX`(13주물)라 "미국 13주물 금리 (2년물 대용)" 로 표시한다(`MACRO_INPUT_PROXY_LABEL`). 카드 하단 줄은 왼쪽 부연, 오른쪽 출처 요약이고 좁으면 출처 요약이 먼저 말줄임된다 — 경제 점수는 "FRED 외 n곳" 처럼 첫 출처와 개수만 쓴다. 저장된 source 코드는 `DASHBOARD_NEXT.SOURCE_NAME` 으로 표시 이름을 붙이고 모르는 코드는 그대로 보인다(출처를 지어내지 않는다). 머리글 줄이 생겨 시장 카드가 5줄이라 지표 행은 `clamp(118px, 12dvh, 160px)`(높이 ≤850px 은 118px)이다 — 390~1920px 에서 카드 잘림·하단 줄 잘림 0 (2026-10-07 실측). 줄을 늘리려면 `grid-template-rows` 의 지표 행부터 키우고 레이아웃 e2e 를 다시 돌린다.
 - **범례 스크롤**: 도넛 옆 범례는 차트 행 트랙을 `minmax(0, 1fr)` 로 고정해 그 높이 안에서만 스크롤한다. 초안은 범례가 아래 "전체 N개 구성" 문구를 덮었다.
 - **아이콘**: `↗`·`ⓘ` 문자 대신 lucide 아이콘(`ArrowUpRight`·`Info`)을 `aria-hidden` 으로 붙인다. 접근성 이름과 테스트의 버튼 이름은 문구만이다(`DetailDialog` 의 `icon` prop).
 - **근거 영역**: 선택 종목의 지표는 근거 아래에 자연스럽게 이어진다(초안은 패널 바닥에 붙여 큰 빈칸이 생겼다).

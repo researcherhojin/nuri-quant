@@ -146,6 +146,8 @@ def _build_dashboard() -> dict:
         "regime": regime_data,
         # 공식 지수 레벨 (#1676) — 시장 카드의 머리글. regime 은 그 아래 시스템 분류로 남는다
         "market_indices": _get_market_indices(),
+        # 경제 여건 점수 입력 지표별 저장 출처·기준일 (#1682) — 화면이 숫자의 출처를 보여 준다
+        "macro_inputs": _get_macro_inputs(),
         "macro": macro_data,
         "allocation": allocation,  # target (regime 권장) — legacy 이름, backward compat
         "target_allocation": allocation,  # explicit 이름 — regime 권장 비율
@@ -173,17 +175,58 @@ def _build_dashboard() -> dict:
 # 접미사가 없어 `is_kr_ticker()` 필터를 통과하고, US 종목 universe(decision_alpha 치환 후보 ·
 # walkforward 패널)에 거래 가능 종목처럼 섞인다 — KOSDAQ 이 #710 에서 그렇게 새었다.
 # 한국 지수는 `StockKRCollector` 가 `prices` 에 `KOSPI`/`KOSDAQ` 로 넣는 행을 그대로 쓴다.
-MARKET_INDICES: tuple[tuple[str, str, str, str], ...] = (
-    ("sp500", "S&P 500", "macro", "sp500"),
-    ("nasdaq", "NASDAQ", "macro", "nasdaq_composite"),
-    ("kospi", "KOSPI", "prices", "KOSPI"),
-    ("kosdaq", "KOSDAQ", "prices", "KOSDAQ"),
+# 마지막 칸은 원천 심볼(출처 표시용, #1682). `macro` 행은 저장된 `source` 를 그대로 내고, `prices`
+# 에는 source 열이 없어 수집기(`StockKRCollector._collect_indices`, yfinance)를 적는다.
+MARKET_INDICES: tuple[tuple[str, str, str, str, str], ...] = (
+    ("sp500", "S&P 500", "macro", "sp500", "^GSPC"),
+    ("nasdaq", "NASDAQ", "macro", "nasdaq_composite", "^IXIC"),
+    ("kospi", "KOSPI", "prices", "KOSPI", "^KS11"),
+    ("kosdaq", "KOSDAQ", "prices", "KOSDAQ", "^KQ11"),
 )
 
 _INDEX_SQL = {
-    "macro": "SELECT date, value FROM macro WHERE indicator = ? AND value IS NOT NULL ORDER BY date DESC LIMIT 2",
-    "prices": "SELECT date, close AS value FROM prices WHERE ticker = ? AND close IS NOT NULL ORDER BY date DESC LIMIT 2",
+    "macro": "SELECT date, value, source FROM macro WHERE indicator = ? AND value IS NOT NULL ORDER BY date DESC LIMIT 2",
+    "prices": (
+        "SELECT date, close AS value, 'yfinance' AS source FROM prices "
+        "WHERE ticker = ? AND close IS NOT NULL ORDER BY date DESC LIMIT 2"
+    ),
 }
+
+# 경제 여건 점수(`macro_score.compute_macro_score`)가 읽는 `macro` 지표 (#1682). 이벤트 점수는
+# 뉴스·이벤트에서 따로 계산돼 여기 없다. 순서가 곧 화면 순서다.
+MACRO_INPUTS: tuple[str, ...] = (
+    "us_10y_yield",
+    "us_2y_yield",
+    "us_3m_yield",
+    "vix",
+    "put_call_ratio",
+    "fear_greed",
+    "unemployment",
+    "cpi_yoy",
+    "fed_funds_rate",
+)
+
+
+def _get_macro_inputs(db_path=None) -> list[dict]:
+    """지표별 최신 저장 행의 기준일과 출처 — 값을 지어내지 않는다. 없으면 date/source 가 null."""
+    from nuri.core.db import DatabaseError, query
+
+    out = []
+    for key in MACRO_INPUTS:
+        item = {"key": key, "date": None, "source": None}
+        try:
+            rows = query(
+                "SELECT date, source FROM macro WHERE indicator = ? AND value IS NOT NULL ORDER BY date DESC LIMIT 1",
+                (key,),
+                db_path=db_path,
+            )
+        except DatabaseError:
+            logger.exception("macro input %s 조회 실패", key)
+            rows = []
+        if rows:
+            item.update(date=rows[0]["date"], source=rows[0]["source"])
+        out.append(item)
+    return out
 
 
 def _get_market_indices(db_path=None) -> list[dict]:
@@ -197,8 +240,17 @@ def _get_market_indices(db_path=None) -> list[dict]:
     from nuri.core.db import DatabaseError, query
 
     out = []
-    for key, label, table, identifier in MARKET_INDICES:
-        item = {"key": key, "label": label, "close": None, "prev_close": None, "change_pct": None, "date": None}
+    for key, label, table, identifier, symbol in MARKET_INDICES:
+        item = {
+            "key": key,
+            "label": label,
+            "close": None,
+            "prev_close": None,
+            "change_pct": None,
+            "date": None,
+            "source": None,
+            "symbol": symbol,
+        }
         try:
             rows = query(_INDEX_SQL[table], (identifier,), db_path=db_path)
         except DatabaseError:
@@ -213,6 +265,7 @@ def _get_market_indices(db_path=None) -> list[dict]:
                 prev_close=prev,
                 change_pct=round((close / prev - 1) * 100, 2) if prev else None,
                 date=rows[0]["date"],
+                source=rows[0]["source"],
             )
         out.append(item)
     return out

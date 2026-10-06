@@ -42,7 +42,8 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [2560, 1440], [3440, 1
 
         return {
           pipeline: count('[class*="pipelineRow"]'),
-          table: count("tbody tr"),
+          // 후보 표만 센다 — 지표 카드 모달의 출처 표(#1682)도 닫힌 채 DOM 에 있어 그냥 "tbody tr" 이면 항상 참이 된다
+          table: count('[class*="candidates"] tbody tr'),
           ledger: count('[class*="evidenceLink"]'),
           queue: el.querySelectorAll('[class*="queue"] button').length,
           emptyBucket: /목록에 현재 표시할 항목이 없습니다/.test(el.textContent ?? ""),

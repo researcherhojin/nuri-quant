@@ -1633,6 +1633,8 @@ class TestMarketIndices:
             "prev_close": 1000.0,
             "change_pct": 1.0,
             "date": "2026-01-02",
+            "source": "yfinance",  # macro 행에 저장된 source 그대로 (#1682)
+            "symbol": "^GSPC",
         }
         assert by_key["nasdaq"]["change_pct"] == -2.5
         assert by_key["kospi"]["change_pct"] == 0.0
@@ -1705,12 +1707,12 @@ class TestMarketIndices:
         """
         from nuri.api.routes.dashboard import MARKET_INDICES
 
-        tables = {key: (table, ident) for key, _, table, ident in MARKET_INDICES}
+        tables = {key: (table, ident, symbol) for key, _, table, ident, symbol in MARKET_INDICES}
         assert tables == {
-            "sp500": ("macro", "sp500"),
-            "nasdaq": ("macro", "nasdaq_composite"),
-            "kospi": ("prices", "KOSPI"),
-            "kosdaq": ("prices", "KOSDAQ"),
+            "sp500": ("macro", "sp500", "^GSPC"),
+            "nasdaq": ("macro", "nasdaq_composite", "^IXIC"),
+            "kospi": ("prices", "KOSPI", "^KS11"),
+            "kosdaq": ("prices", "KOSDAQ", "^KQ11"),
         }
 
     def test_dashboard_response_carries_market_indices(self, db_path):
@@ -1719,3 +1721,39 @@ class TestMarketIndices:
         result = _build_dashboard()
 
         assert [i["key"] for i in result["market_indices"]] == ["sp500", "nasdaq", "kospi", "kosdaq"]
+
+
+class TestMacroInputsProvenance:
+    """#1682: 경제 여건 점수 입력 지표의 저장 출처·기준일 — 화면이 출처를 지어내지 않게 저장값을 그대로 낸다."""
+
+    def test_latest_row_source_and_date_per_input(self, db_path):
+        from nuri.api.routes.dashboard import MACRO_INPUTS, _get_macro_inputs
+
+        upsert_macro(
+            [
+                {"indicator": "vix", "date": "2026-01-01", "value": 15.0, "source": "FRED"},
+                {"indicator": "vix", "date": "2026-01-02", "value": 16.0, "source": "yfinance"},
+                {"indicator": "cpi_yoy", "date": "2025-11-01", "value": 2.9, "source": "FRED"},
+            ],
+            db_path=db_path,
+        )
+
+        by_key = {i["key"]: i for i in _get_macro_inputs(db_path=db_path)}
+
+        assert [i["key"] for i in _get_macro_inputs(db_path=db_path)] == list(MACRO_INPUTS)
+        assert by_key["vix"] == {"key": "vix", "date": "2026-01-02", "source": "yfinance"}
+        assert by_key["cpi_yoy"] == {"key": "cpi_yoy", "date": "2025-11-01", "source": "FRED"}
+        assert by_key["unemployment"] == {"key": "unemployment", "date": None, "source": None}
+
+    def test_inputs_match_what_the_macro_score_reads(self):
+        """잠금 — 점수 계산이 읽는 지표와 화면의 출처 목록이 어긋나면 출처 표시가 거짓말이 된다."""
+        import re
+        from pathlib import Path
+
+        from nuri.api.routes.dashboard import MACRO_INPUTS
+
+        src = Path("nuri/quant/regime/macro_score.py").read_text(encoding="utf-8")
+        read = set(re.findall(r'_get_latest_macro\("([a-z0-9_]+)"', src)) | set(
+            re.findall(r'_get_macro_trend\("([a-z0-9_]+)"', src)
+        )
+        assert read == set(MACRO_INPUTS)

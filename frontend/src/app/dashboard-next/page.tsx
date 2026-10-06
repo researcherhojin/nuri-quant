@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ArrowUpRight, ArrowLeftRight, RefreshCw, Activity, Globe2, Info, ListChecks, ShieldCheck, ChartNoAxesCombined, Layers3, ListFilter, Radar } from "lucide-react";
 import { DASHBOARD_NEXT as COPY, MACRO_INTERPRETATION, REGIME_LABEL } from "@/lib/strings";
 import { actionsSchema, dashboardSchema, displayNumber, displayTime, freshnessSchema, opportunitiesSchema, pipelineSchema, portfolioSchema, readPanel } from "./data";
-import { displayChange } from "./format";
+import { displayChange, displayShortTime } from "./format";
 import { Inbox, type Bucket } from "./inbox";
 import { PortfolioPanel } from "./portfolio-panel";
 import { RefreshDialog } from "./refresh-dialog";
@@ -27,6 +28,50 @@ function regimeName(key: string): string {
   return lookup(REGIME_LABEL, key) || key;
 }
 
+// 저장된 source 코드 → 표시 이름. 모르는 코드는 그대로 둔다 — 출처를 지어내지 않는다 (#1682)
+function sourceName(code: string | null | undefined): string {
+  return code ? lookup(COPY.SOURCE_NAME, code) ?? code : COPY.METRICS.SOURCE_UNKNOWN;
+}
+
+// 같은 지표라도 출처가 대용치면 이름이 달라진다 — yfinance 의 2년물 자리는 ^IRX(13주물)다 (#1682 Codex P2)
+function macroInputLabel(key: string, source: string | null): string {
+  return lookup(COPY.MACRO_INPUT_PROXY_LABEL, `${key}:${source ?? ""}`) ?? lookup(COPY.MACRO_INPUT_LABEL, key) ?? key;
+}
+
+interface SourceRow {
+  key: string;
+  item: string;
+  source: string;
+  date: string | null;
+}
+
+// 지표 카드 머리글 — 하단 패널과 같은 "아이콘 + 이름", 설명과 출처는 읽는 법 모달 (#1682)
+function MetricHeading({ icon, title, guideTitle, guide, sources, note }: {
+  icon: ReactNode;
+  title: string;
+  guideTitle: string;
+  guide: readonly string[];
+  sources: SourceRow[];
+  note?: string;
+}) {
+  return (
+    <div className={styles.metricHeading}>
+      <h2>{icon}{title}</h2>
+      <DetailDialog label={COPY.METRICS.GUIDE} icon={<Info size={14} />} title={guideTitle} iconOnly>
+        {guide.map((text) => <p key={text}>{text}</p>)}
+        <h3>{COPY.METRICS.SOURCE_HEADING}</h3>
+        <table className={styles.sourceTable}>
+          <thead><tr>{COPY.METRICS.SOURCE_COLUMNS.map((column) => <th key={column} scope="col">{column}</th>)}</tr></thead>
+          <tbody>{sources.map((row) => (
+            <tr key={row.key}><td>{row.item}</td><td>{row.source}</td><td>{row.date ?? "—"}</td></tr>
+          ))}</tbody>
+        </table>
+        {note && <p>{note}</p>}
+      </DetailDialog>
+    </div>
+  );
+}
+
 function direction(value: number | null | undefined) {
   return value == null ? "unknown" : value > 0 ? "up" : value < 0 ? "down" : "flat";
 }
@@ -49,6 +94,16 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
   const macroAvailable = dashboard && dashboard.macro.coverage !== 0 && dashboard.macro.interpretation !== "Unavailable";
   const regimeAvailable = dashboard && dashboard.regime.regime !== "unknown";
   const indices = dashboard?.market_indices ?? [];
+  const macroInputs = dashboard?.macro_inputs ?? [];
+  const vixInput = macroInputs.find((input) => input.key === "vix");
+
+  // 판정 기준일 — 목록 생성 시각(generated_at)은 조회할 때마다 "지금" 이라 판정의 나이를 말해 주지 않는다
+  const judgedAt = [...(actions?.urgent ?? []), ...(actions?.check ?? []), ...(actions?.portfolio ?? [])]
+    .flatMap((item) => (item.as_of ? [item.as_of.slice(0, 10)] : []))
+    .sort()
+    .at(-1) ?? null;
+
+  const macroSources = [...new Set(macroInputs.flatMap((input) => (input.source ? [sourceName(input.source)] : [])))];
   // 특수 레짐일 때만 기본 판정(추세 × 변동성)을 따로 보인다 — 기본 레짐이면 같은 말의 반복이다
   const baseKey = dashboard?.regime.volatility ? `${dashboard.regime.trend}_${dashboard.regime.volatility}_vol` : null;
   const baseRegime = regimeAvailable && baseKey && baseKey !== dashboard.regime.regime ? baseKey : null;
@@ -89,8 +144,16 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
       </section>
 
       <div className={styles.metrics} aria-label={COPY.METRICS.ARIA}>
-        {/* 머리글은 공식 지수, 레짐은 그 아래 시스템 분류 한 줄 — 배분을 정하므로 지우지 않는다 (#1676) */}
+        {/* 머리글은 공식 지수, 레짐은 아래 시스템 분류 한 줄 — 배분을 정하므로 지우지 않는다 (#1676).
+            네 카드 모두 아이콘 + 이름 머리글, 설명·출처는 읽는 법 모달, 우측 하단에 출처 요약 (#1682) */}
         <article className={styles.marketCard} aria-label={COPY.METRICS.INDICES}>
+          <MetricHeading
+            icon={<Globe2 size={14} />}
+            title={COPY.METRICS.INDICES}
+            guideTitle={COPY.METRICS.REGIME_GUIDE_TITLE}
+            guide={COPY.METRICS.REGIME_GUIDE}
+            sources={indices.map((index) => ({ key: index.key, item: index.label, source: `${sourceName(index.source)}${index.symbol ? ` ${index.symbol}` : ""}`, date: index.date }))}
+          />
           {indices.length ? (
             <ul className={styles.indices}>{indices.map((index) => (
               <li key={index.key}>
@@ -103,35 +166,59 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
               </li>
             ))}</ul>
           ) : <p className={styles.indexEmpty}>{COPY.METRICS.INDICES_UNAVAILABLE}</p>}
-          <div className={styles.regimeLine}>
-            <DetailDialog label={COPY.METRICS.REGIME} icon={<Info size={12} />} title={COPY.METRICS.REGIME_GUIDE_TITLE}>
-              {COPY.METRICS.REGIME_GUIDE.map((text) => <p key={text}>{text}</p>)}
-            </DetailDialog>
-            <b>{regimeAvailable ? regimeName(dashboard.regime.regime) : "—"}</b>
-            {/* confidence 는 기본 판정의 추세 검사 + VIX·밴드폭 변동성 교차 검사 중 통과 비율이다(값 없는 검사는 분모에서 빠짐) — 특수 분류 옆에 "신뢰도" 로 두면 그 분류의 확신처럼 읽힌다 */}
-            <small>{[baseRegime ? COPY.METRICS.REGIME_BASE(regimeName(baseRegime)) : null, COPY.METRICS.REGIME_AGREEMENT(displayNumber(regimeAvailable ? dashboard.regime.confidence : null, "%"))].filter(Boolean).join(" · ")}</small>
-            <Globe2 size={14} aria-hidden="true" />
+          <div className={styles.metricFoot}>
+            <span className={styles.regimeLine}>
+              {COPY.METRICS.REGIME}
+              <b>{regimeAvailable ? regimeName(dashboard.regime.regime) : "—"}</b>
+              {/* confidence 는 기본 판정의 추세 검사 + VIX·밴드폭 변동성 교차 검사 중 통과 비율이다(값 없는 검사는 분모에서 빠짐) — 특수 분류 옆에 "신뢰도" 로 두면 그 분류의 확신처럼 읽힌다 */}
+              <small>{[baseRegime ? COPY.METRICS.REGIME_BASE(regimeName(baseRegime)) : null, COPY.METRICS.REGIME_AGREEMENT(displayNumber(regimeAvailable ? dashboard.regime.confidence : null, "%"))].filter(Boolean).join(" · ")}</small>
+            </span>
+            <span className={styles.metricSource}>{[...new Set(indices.map((index) => sourceName(index.source)))].join(" · ")}</span>
           </div>
         </article>
         <article>
-          <div className={styles.metricLabel}>
-            <DetailDialog label={COPY.METRICS.MACRO} icon={<Info size={12} />} title={COPY.METRICS.MACRO_GUIDE_TITLE}>
-              {COPY.METRICS.MACRO_GUIDE.map((text) => <p key={text}>{text}</p>)}
-            </DetailDialog>
-            <ChartNoAxesCombined size={16} />
-          </div>
+          <MetricHeading
+            icon={<ChartNoAxesCombined size={14} />}
+            title={COPY.METRICS.MACRO}
+            guideTitle={COPY.METRICS.MACRO_GUIDE_TITLE}
+            guide={COPY.METRICS.MACRO_GUIDE}
+            sources={macroInputs.map((input) => ({ key: input.key, item: macroInputLabel(input.key, input.source), source: sourceName(input.source), date: input.date }))}
+            note={COPY.METRICS.SOURCE_EVENT_NOTE}
+          />
           <strong>{displayNumber(macroAvailable ? dashboard.macro.score : null)}<span>{COPY.METRICS.MACRO_DENOMINATOR}</span></strong>
-          <small>{macroAvailable ? lookup(MACRO_INTERPRETATION, dashboard.macro.interpretation) || dashboard.macro.interpretation : COPY.METRICS.MACRO_UNAVAILABLE}</small>
+          <div className={styles.metricFoot}>
+            <small>{macroAvailable ? lookup(MACRO_INTERPRETATION, dashboard.macro.interpretation) || dashboard.macro.interpretation : COPY.METRICS.MACRO_UNAVAILABLE}</small>
+            <span className={styles.metricSource}>{macroSources.length ? COPY.METRICS.SOURCE_MORE(macroSources[0], macroSources.length - 1) : COPY.METRICS.SOURCE_UNKNOWN}</span>
+          </div>
         </article>
         <article>
-          <div className={styles.metricLabel}><span>{COPY.METRICS.VIX}</span><Activity size={16} /></div>
+          <MetricHeading
+            icon={<Activity size={14} />}
+            title={COPY.METRICS.VIX}
+            guideTitle={COPY.METRICS.VIX_GUIDE_TITLE}
+            guide={COPY.METRICS.VIX_GUIDE}
+            sources={vixInput ? [{ key: "vix", item: "VIX", source: sourceName(vixInput.source), date: vixInput.date }] : []}
+          />
           <strong>{displayNumber(dashboard?.regime.vix)}</strong>
-          <small>{COPY.METRICS.VIX_SUB}</small>
+          <div className={styles.metricFoot}>
+            <small>{COPY.METRICS.VIX_SUB}</small>
+            <span className={styles.metricSource}>{vixInput ? `${sourceName(vixInput.source)} · ${vixInput.date?.slice(5) ?? "—"}` : COPY.METRICS.SOURCE_UNKNOWN}</span>
+          </div>
         </article>
         <article>
-          <div className={styles.metricLabel}><span>{COPY.METRICS.ACTIONS}</span><ListChecks size={16} /></div>
+          <MetricHeading
+            icon={<ListChecks size={14} />}
+            title={COPY.METRICS.ACTIONS}
+            guideTitle={COPY.METRICS.ACTIONS_GUIDE_TITLE}
+            guide={COPY.METRICS.ACTIONS_GUIDE}
+            sources={[{ key: "actions", item: COPY.METRICS.ACTIONS_JUDGED, source: COPY.METRICS.ACTIONS_SOURCE, date: judgedAt }]}
+            note={COPY.METRICS.SOURCE_LIST_GENERATED(displayShortTime(actions?.generated_at) ?? "—")}
+          />
           <strong>{count(actions?.urgent.length)}<span>{COPY.METRICS.ACTIONS_UNIT}</span></strong>
-          <small>{COPY.METRICS.ACTIONS_SUB(count(actions?.check.length), count(actions?.portfolio.length))}</small>
+          <div className={styles.metricFoot}>
+            <small>{COPY.METRICS.ACTIONS_SUB(count(actions?.check.length), count(actions?.portfolio.length))}</small>
+            <span className={styles.metricSource}>{COPY.METRICS.ACTIONS_JUDGED_SHORT(judgedAt?.slice(5) ?? "—")}</span>
+          </div>
         </article>
       </div>
 
@@ -140,7 +227,7 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
           <div className={styles.panelHeading}>
             <h2><ListFilter size={14} />{COPY.INBOX}</h2>
             <div className={styles.pipelineControls}>
-              <DetailDialog label={COPY.INBOX_PANEL.GUIDE} icon={<Info size={12} />} title={COPY.INBOX_PANEL.GUIDE_TITLE}>
+              <DetailDialog label={COPY.INBOX_PANEL.GUIDE} icon={<Info size={14} />} title={COPY.INBOX_PANEL.GUIDE_TITLE} iconOnly>
                 <p>{COPY.INBOX_PANEL.GUIDE_INTRO}</p>
                 <ul>{COPY.INBOX_PANEL.GUIDE_BUCKETS.map((text) => <li key={text}>{text}</li>)}</ul>
                 <p>{COPY.INBOX_PANEL.GUIDE_AXES}</p>

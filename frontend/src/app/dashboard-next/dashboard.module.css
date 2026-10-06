@@ -29,7 +29,8 @@
   --danger: #cd8695;
   color: var(--text);
   display: grid;
-  grid-template-rows: auto auto clamp(100px, 10dvh, 150px) minmax(330px, 1.5fr) minmax(225px, 1fr) auto;
+  /* 지표 행: 카드 머리글 줄이 생겨(#1682) 시장 카드가 5줄 — 118px 아래로는 잘린다 */
+  grid-template-rows: auto auto clamp(118px, 12dvh, 160px) minmax(330px, 1.5fr) minmax(225px, 1fr) auto;
   gap: var(--space);
   height: calc(100dvh - 92px);
   min-height: 700px;
@@ -70,8 +71,16 @@
 /* 시장 카드(#1676)가 지수 4개를 담느라 2.4칸을 쓴다 — 1280 폭에서도 칸당 ~85px 라 "27,477.31" 이 들어간다 */
 .metrics { display: grid; grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr)); gap: var(--space); }
 .metrics article { display: flex; flex-direction: column; justify-content: center; gap: 4px; box-shadow: inset 0 1px 0 #ffffff05; border: 1px solid var(--line); background: linear-gradient(135deg, #202b3b44, transparent 70%), var(--surface); border-radius: 8px; padding: 12px var(--pad); min-width: 0; }
-.metricLabel { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-label); color: var(--muted); }
-.metricLabel svg { color: #899db7; }
+.metricHeading { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; }
+.metricHeading h2 { display: inline-flex; align-items: center; gap: 7px; min-width: 0; white-space: nowrap; }
+.metricHeading h2 svg { flex: none; color: #93a8c4; stroke-width: 1.6; }
+/* 하단 줄: 왼쪽 부연, 오른쪽 출처 요약 (#1682) — 좁으면 출처가 먼저 말줄임된다 */
+.metricFoot { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--fs-label); line-height: 1.2; }
+.metricFoot > :first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metricSource { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--fs-xs); }
+.sourceTable { width: 100%; border-collapse: collapse; font-size: var(--fs-label); }
+.sourceTable th, .sourceTable td { text-align: left; padding: 5px 8px 5px 0; border-bottom: 1px solid var(--line); }
+.sourceTable th { color: var(--muted); font-weight: 500; }
 .metrics strong { display: block; font-size: var(--fs-value); letter-spacing: -.7px; font-weight: 500; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .metrics strong > span { color: var(--muted); font-size: var(--fs-label); font-weight: 400; letter-spacing: 0; }
 .metrics small { font-size: var(--fs-label); }
@@ -92,7 +101,6 @@
 .regimeLine { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--fs-label); line-height: 1.2; }
 .regimeLine b { color: var(--text); font-weight: 550; white-space: nowrap; }
 .metrics .regimeLine small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.regimeLine > svg { margin-left: auto; flex-shrink: 0; color: #899db7; }
 
 /* ── 패널 공통 ──────────────────────────────────────────────────── */
 .primaryGrid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: var(--space); min-height: 0; }
@@ -273,7 +281,7 @@
   .panelFooter { padding-top: 12px; padding-bottom: 12px; }
 }
 @media (min-width: 1051px) and (max-height: 850px) {
-  .dashboard { height: auto; min-height: calc(100dvh - 92px); grid-template-rows: auto auto 100px minmax(330px, 1fr) minmax(225px, auto) auto; }
+  .dashboard { height: auto; min-height: calc(100dvh - 92px); grid-template-rows: auto auto 118px minmax(330px, 1fr) minmax(225px, auto) auto; }
 }
 @media (max-width: 1250px) {
   .titleGroup p { display: none; }

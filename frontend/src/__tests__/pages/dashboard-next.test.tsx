@@ -170,6 +170,45 @@ describe("market and source panels", () => {
     expect(within(market).getByText("양호")).toBeInTheDocument();
     expect(within(market).queryByText(DASHBOARD_NEXT.METRICS.MACRO_UNAVAILABLE)).not.toBeInTheDocument();
   });
+  it("gives every metric card an icon + title heading and a guide dialog that lists stored sources (#1682)", async () => {
+    responses["/api/dashboard"] = {
+      ...dashboard,
+      market_indices: [{ key: "sp500", label: "S&P 500", close: 100, prev_close: 99, change_pct: 1, date: "2026-01-02", source: "yfinance", symbol: "^GSPC" }],
+      macro_inputs: [
+        { key: "vix", date: "2026-01-02", source: "FRED" },
+        { key: "cpi_yoy", date: "2025-11-01", source: "newfeed" },
+        { key: "unemployment", date: null, source: null },
+        { key: "us_2y_yield", date: "2026-01-02", source: "yfinance" },
+      ],
+    };
+    responses["/api/actions"] = { urgent: [{ ticker: "DEMO", action: "SELL", confidence: 1, reasons: [], as_of: "2026-01-03" }], check: [{ ticker: "DEMO2", action: "HOLD", confidence: 1, reasons: [], as_of: "2025-12-30" }], hold: [], portfolio: [], generated_at: "2026-01-09T09:00:00+09:00" };
+    await renderPage({});
+    const metrics = screen.getByLabelText(DASHBOARD_NEXT.METRICS.ARIA);
+    const titles = within(metrics).getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+
+    expect(titles).toEqual([DASHBOARD_NEXT.METRICS.INDICES, DASHBOARD_NEXT.METRICS.MACRO, DASHBOARD_NEXT.METRICS.VIX, DASHBOARD_NEXT.METRICS.ACTIONS]);
+    const guides = within(metrics).getAllByRole("button", { name: DASHBOARD_NEXT.METRICS.GUIDE });
+
+    expect(guides).toHaveLength(4);
+    // ⓘ 아이콘만 — 문구는 접근 가능한 이름으로만 남는다
+    guides.forEach((button) => expect(button).toHaveTextContent(/^$/));
+    // 우선 점검: 판정 기준일(가장 최근 as_of)이지 목록 생성 시각이 아니다
+    expect(within(metrics).getByText(DASHBOARD_NEXT.METRICS.ACTIONS_JUDGED_SHORT("01-03"))).toBeInTheDocument();
+    // 우측 하단 출처 요약 — 저장된 코드를 표시 이름으로
+    expect(within(metrics).getByText("FRED · 01-02")).toBeInTheDocument();
+    // 경제 여건 점수 모달: 지표별 출처·기준일, 모르는 코드는 그대로, 없으면 미제공
+    const macroDialog = screen.getByLabelText(DASHBOARD_NEXT.METRICS.MACRO_GUIDE_TITLE);
+    const rows = within(macroDialog).getAllByRole("row", { hidden: true }).map((row) => row.textContent);
+
+    expect(rows).toContain("VIXFRED2026-01-02");
+    expect(rows).toContain("CPI 상승률newfeed2025-11-01");
+    expect(rows).toContain(`실업률${DASHBOARD_NEXT.METRICS.SOURCE_UNKNOWN}—`);
+    // 출처가 대용치면 이름도 바뀐다 — yfinance 의 2년물 자리는 13주물(^IRX)
+    expect(rows).toContain("미국 13주물 금리 (2년물 대용)Yahoo Finance2026-01-02");
+    const marketDialog = screen.getByLabelText(DASHBOARD_NEXT.METRICS.REGIME_GUIDE_TITLE);
+
+    expect(within(marketDialog).getAllByRole("row", { hidden: true }).map((row) => row.textContent)).toContain("S&P 500Yahoo Finance ^GSPC2026-01-02");
+  });
   it("headlines the four official indices with level, signed change and bar date, and leaves missing values blank", async () => {
     const index = (key: string, label: string, close: number | null, change: number | null, date: string | null) => ({ key, label, close, prev_close: null, change_pct: change, date });
 
