@@ -170,6 +170,55 @@ describe("market and source panels", () => {
     expect(within(market).getByText("양호")).toBeInTheDocument();
     expect(within(market).queryByText(DASHBOARD_NEXT.METRICS.MACRO_UNAVAILABLE)).not.toBeInTheDocument();
   });
+  it("headlines the four official indices with level, signed change and bar date, and leaves missing values blank", async () => {
+    const index = (key: string, label: string, close: number | null, change: number | null, date: string | null) => ({ key, label, close, prev_close: null, change_pct: change, date });
+
+    responses["/api/dashboard"] = { ...dashboard, market_indices: [
+      index("sp500", "S&P 500", 1234.5, 0.5, "2026-01-02"),
+      index("nasdaq", "NASDAQ", 2345.678, -1.25, "2026-01-02"),
+      index("kospi", "KOSPI", 3456, null, "2026-01-05"),
+      index("kosdaq", "KOSDAQ", null, null, null),
+    ] };
+    await renderPage({});
+    const card = screen.getByRole("article", { name: DASHBOARD_NEXT.METRICS.INDICES });
+    const rows = within(card).getAllByRole("listitem");
+
+    expect(rows.map((row) => within(row).getByText(/^[A-Z&P ]+\d*$/).textContent)).toEqual(["S&P 500", "NASDAQ", "KOSPI", "KOSDAQ"]);
+    expect(within(rows[0]).getByText("1,234.50")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("+0.50%")).toHaveAttribute("data-direction", "up");
+    expect(within(rows[0]).getByText("01-02")).toHaveAttribute("datetime", "2026-01-02"); // 기준일은 이름 줄에 MM-DD, 전체 날짜는 datetime
+    expect(within(rows[1]).getByText("2,345.68")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("-1.25%")).toHaveAttribute("data-direction", "down");
+    // 직전 관측이 없으면 변화율은 비워 두고 0% 로 만들지 않는다
+    expect(within(rows[2]).getByText("—")).toHaveAttribute("data-direction", "unknown");
+    expect(within(rows[2]).queryByText("0.00%")).not.toBeInTheDocument();
+    expect(within(rows[3]).getAllByText("—")).toHaveLength(2);
+    expect(within(rows[3]).getByText(DASHBOARD_NEXT.METRICS.INDEX_DATE_UNKNOWN)).toBeInTheDocument();
+  });
+  it("says the index block is unavailable when the API sends none", async () => {
+    await renderPage({});
+    const card = screen.getByRole("article", { name: DASHBOARD_NEXT.METRICS.INDICES });
+
+    expect(within(card).getByText(DASHBOARD_NEXT.METRICS.INDICES_UNAVAILABLE)).toBeInTheDocument();
+    expect(within(card).queryByRole("listitem")).not.toBeInTheDocument();
+  });
+  it("labels a special regime and separates the base call from the check agreement it does not describe", async () => {
+    responses["/api/dashboard"] = { ...dashboard, regime: { regime: "sector_rotation", trend: "bull", volatility: "low", confidence: 100 } };
+    await renderPage({});
+    const card = screen.getByRole("article", { name: DASHBOARD_NEXT.METRICS.INDICES });
+
+    expect(within(card).getByText("섹터 순환")).toBeInTheDocument();
+    expect(within(card).queryByText("sector_rotation")).not.toBeInTheDocument();
+    expect(within(card).getByText(`${DASHBOARD_NEXT.METRICS.REGIME_BASE("상승 · 저변동")} · ${DASHBOARD_NEXT.METRICS.REGIME_AGREEMENT("100%")}`)).toBeInTheDocument();
+  });
+  it("does not repeat the base call when the regime is itself a base regime", async () => {
+    responses["/api/dashboard"] = { ...dashboard, regime: { regime: "bull_low_vol", trend: "bull", volatility: "low", confidence: 75 } };
+    await renderPage({});
+    const card = screen.getByRole("article", { name: DASHBOARD_NEXT.METRICS.INDICES });
+
+    expect(within(card).getByText(DASHBOARD_NEXT.METRICS.REGIME_AGREEMENT("75%"))).toBeInTheDocument();
+    expect(within(card).queryByText(new RegExp(DASHBOARD_NEXT.METRICS.REGIME_BASE("상승 · 저변동")))).not.toBeInTheDocument();
+  });
   it("falls back to raw regime and macro labels the string maps do not know", async () => {
     responses["/api/dashboard"] = { ...dashboard, regime: { regime: "crisis_mode", trend: "down", confidence: 40 }, macro: { score: 30, interpretation: "Unmapped", coverage: 0.5 } };
     await renderPage({});

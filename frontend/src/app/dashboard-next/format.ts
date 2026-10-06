@@ -1,7 +1,11 @@
 import { DASHBOARD_NEXT as COPY } from "@/lib/strings";
 
-export function displayNumber(value: number | null | undefined, suffix = ""): string {
-  return value == null || !Number.isFinite(value) ? "—" : `${value.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}${suffix}`;
+// `fixed` 를 주면 소수 자릿수를 고정한다 (지수 레벨·변화율은 소수 둘째 자리가 관례, #1676).
+export function displayNumber(value: number | null | undefined, suffix = "", fixed?: number): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  const digits = fixed == null ? { maximumFractionDigits: 1 } : { minimumFractionDigits: fixed, maximumFractionDigits: fixed };
+
+  return `${value.toLocaleString("ko-KR", digits)}${suffix}`;
 }
 
 export function displayTime(value: string | null | undefined): string {
@@ -30,6 +34,6 @@ export function displayShortTime(value: string | null | undefined): string | nul
   return `${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
 }
 
-export function displayChange(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "—" : `${value > 0 ? "+" : ""}${displayNumber(value, "%")}`;
+export function displayChange(value: number | null | undefined, fixed?: number): string {
+  return value == null || !Number.isFinite(value) ? "—" : `${value > 0 ? "+" : ""}${displayNumber(value, "%", fixed)}`;
 }
