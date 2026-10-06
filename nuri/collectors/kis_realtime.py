@@ -28,15 +28,19 @@ import logging
 import os
 import time
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import requests
 from dotenv import load_dotenv
+from pandas.tseries.holiday import AbstractHolidayCalendar, GoodFriday, USFederalHolidayCalendar
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_tickers, upsert_prices
-from nuri.core.timezone import today_kst
+from nuri.core.timezone import kst_now, today_kst
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -350,6 +354,39 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
     }
 
 
+_NEW_YORK = ZoneInfo("America/New_York")
+_US_REGULAR_OPEN = dtime(9, 30)
+
+
+class _NYSEHolidayCalendar(AbstractHolidayCalendar):
+    """NYSE 휴장일 ≈ 연방 공휴일 − (Columbus Day, Veterans Day: 장은 연다) + Good Friday."""
+
+    rules = [r for r in USFederalHolidayCalendar.rules if r.name not in ("Columbus Day", "Veterans Day")] + [GoodFriday]
+
+
+def us_session_date(now: datetime | None = None) -> str:
+    """이 미국 시세가 속한 거래일 (YYYY-MM-DD, 뉴욕 달력).
+
+    KIS 해외 현재가 응답에는 날짜가 없다. 예전에는 `today_kst()` 를 찍었는데, 미국 장이 열려
+    있는 KST 아침은 뉴욕에선 아직 전날이라 같은 세션이 일일 수집기(yfinance, 미국 거래일)보다
+    하루 뒤 날짜로 저장됐다 — 최신 날짜로 종목을 정렬하는 리더에서 SPY 만 하루 앞서 보인다
+    (#1636). 뉴욕 시각으로 정규장 개장(09:30) 전이면 직전 세션의 종가이므로 전날, 이후면 당일.
+    주말과 NYSE 휴장일은 직전 영업일로 당긴다.
+    """
+    et = (now or kst_now()).astimezone(_NEW_YORK)
+    d = et.date()
+    if et.time() < _US_REGULAR_OPEN:
+        d -= timedelta(days=1)
+    # stubs 가 holidays() 원소를 느슨하게 잡는다 — freshness._us_federal_holidays 와 같은 방식으로 date 로 확정
+    closed = {
+        pd.Timestamp(ts).to_pydatetime().date()
+        for ts in _NYSEHolidayCalendar().holidays(start=d - timedelta(days=14), end=d)
+    }
+    while d.weekday() >= 5 or d in closed:
+        d -= timedelta(days=1)
+    return d.isoformat()
+
+
 def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | None:
     """미국 종목 현재가 조회 (HHDFS00000300).
 
@@ -377,7 +414,7 @@ def inquire_price_us(creds: KISCredentials, token: str, ticker: str) -> dict | N
         if last and float(last) > 0:
             return {
                 "ticker": ticker,
-                "date": today_kst(),
+                "date": us_session_date(),
                 "open": float(data.get("open", 0) or 0),
                 "high": float(data.get("high", 0) or 0),
                 "low": float(data.get("low", 0) or 0),
