@@ -54,12 +54,14 @@ for (const { path, name } of PAGES) {
 
     page.on("response", (resp) => {
       const status = resp.status();
+
       if (status >= 400 && !resp.url().includes("favicon")) {
         failedRequests.push({ url: resp.url(), status });
       }
     });
 
     let loadOk = false;
+
     try {
       const resp = await page.goto(path, { waitUntil: "domcontentloaded", timeout: 15000 });
       loadOk = resp !== null && resp.status() < 400;
@@ -73,6 +75,7 @@ for (const { path, name } of PAGES) {
     const pageText = await page.evaluate(() => document.body.innerText).catch(() => "");
     // visible error 텍스트 감지 (일반적 UI 에러 표시)
     let visibleErrorText: string | null = null;
+
     const errorMarkers = [
       "Application error",
       "Internal Server Error",
@@ -81,6 +84,7 @@ for (const { path, name } of PAGES) {
       "ECONNREFUSED",
       "Failed to fetch",
     ];
+
     for (const m of errorMarkers) {
       if (pageText.includes(m)) {
         visibleErrorText = m;
@@ -113,23 +117,32 @@ test.afterAll(async () => {
   console.log(`  PASS: ${pass.length}/${reports.length}  (로드 OK + 콘솔 no-error + 네트워크 no-4xx/5xx + visible no-error)`);
   console.log(`  FAIL: ${fail.length}`);
   console.log();
+
   for (const r of fail) {
     console.log(`  ❌ ${r.name} (${r.path})`);
+
     if (!r.loadOk) console.log(`      loadOk: false`);
+
     if (r.visibleErrorText) console.log(`      visibleError: ${r.visibleErrorText}`);
+
     if (r.consoleErrors.length) {
       console.log(`      console errors (${r.consoleErrors.length}):`);
       r.consoleErrors.slice(0, 3).forEach((e) => console.log(`        - ${e.slice(0, 150)}`));
     }
+
     if (r.failedRequests.length) {
       console.log(`      failed network (${r.failedRequests.length}):`);
       r.failedRequests.slice(0, 5).forEach((req) => console.log(`        ${req.status} ${req.url}`));
     }
+
     console.log(`      page text preview: "${r.pageText}"`);
   }
+
   console.log();
+
   for (const r of pass) {
     console.log(`  ✅ ${r.name} (${r.path})`);
   }
+
   console.log("════════════════════════════════════════════════════════════\n");
 });

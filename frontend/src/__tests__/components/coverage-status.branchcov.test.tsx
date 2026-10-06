@@ -23,6 +23,7 @@ describe("CoverageStatus — branch coverage", () => {
         },
       ],
     };
+
     render(<CoverageStatus data={data} />);
     // ternary falsy arm → c.detail 원문 그대로 렌더
     expect(screen.getByText("no data collected")).toBeInTheDocument();

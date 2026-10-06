@@ -41,6 +41,7 @@ vi.mock("@/components/ui/price-chart-lazy", () => ({
 }));
 
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -55,12 +56,14 @@ describe("Strategy page branches", () => {
         regime: null, allocation: { long_pct: 0, short_pct: 0, cash_pct: 0 },
         actions: [], positions: { positions: [] },
       };
+
       if (path.includes("/api/backtest")) return {
         result: { total_return: -2.5, sharpe: 0.3, spy_sharpe: 0.8,
           max_drawdown: -10, spy_max_drawdown: -15, spy_total_return: 8,
           transaction_costs: 0.3, total_days: 100, regime_changes: 2 },
         timing: null, stress: [],
       };
+
       return {};
     });
 
@@ -81,6 +84,7 @@ describe("Strategy page branches", () => {
           { ticker: "MSFT", direction: "long", return_pct: -3.5 },
         ] },
       };
+
       if (path.includes("/api/backtest")) return {
         result: { total_return: 12.5, sharpe: 1.2, spy_sharpe: 0.8,
           max_drawdown: -8, spy_max_drawdown: -15, spy_total_return: 8,
@@ -93,6 +97,7 @@ describe("Strategy page branches", () => {
           { name: "2008", spy_return: -37, strategy_return: -12, protected: true },
         ],
       };
+
       return {};
     });
 

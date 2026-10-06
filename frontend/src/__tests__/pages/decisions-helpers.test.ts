@@ -54,6 +54,7 @@ describe("groupByDate", () => {
       { date: "2026-08-25", id: 2 },
       { date: "2026-08-24", id: 1 },
     ];
+
     const groups = groupByDate(rows);
     expect(groups.map(([d, r]) => [d, r.length])).toEqual([
       ["2026-08-25", 2],

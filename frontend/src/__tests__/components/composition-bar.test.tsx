@@ -28,6 +28,7 @@ describe("toBarSegments", () => {
       slice("A", 30, 0), slice("B", 20, 1), slice("C", 15, 2), slice("D", 12, 3),
       slice("E", 10, 4), slice("F", 8, 0), slice("G", 5, 1),
     ];
+
     const segs = toBarSegments(many, "기타");
     expect(segs).toHaveLength(6);
     expect(segs[5]).toEqual({ label: "기타", value: 13, color: OTHER_COLOR });
@@ -48,6 +49,7 @@ describe("toBarSegments", () => {
       ],
       "기타",
     );
+
     expect(segs.map((s) => s.label)).toEqual(["A", "B", "C", "D", "기타"]);
     expect(segs[4]).toEqual({ label: "기타", value: 20, color: OTHER_COLOR });
   });
@@ -61,6 +63,7 @@ describe("toBarSegments", () => {
       ],
       "기타",
     );
+
     expect(segs).toHaveLength(6);
     expect(segs[5]).toEqual({ label: "기타", value: 18, color: OTHER_COLOR });
   });

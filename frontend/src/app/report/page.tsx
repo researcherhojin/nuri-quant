@@ -13,6 +13,7 @@ export default function ReportPage() {
   async function generateReport() {
     setLoading(true);
     setReport(null);
+
     try {
       // 컨텍스트 먼저 표시
       const ctxRes = await fetch(`/api/report/context`);

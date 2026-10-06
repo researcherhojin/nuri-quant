@@ -26,6 +26,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -47,8 +48,10 @@ function setupMocks(overrides: { scorecard?: unknown; cross?: unknown } = {}) {
   mockFetchAPI.mockImplementation((path: string) => {
     if (path.includes("/api/scorecard"))
       return Promise.resolve(overrides.scorecard ?? { scorecard, date: "2026-01-15" });
+
     if (path.includes("/api/cross-analysis"))
       return Promise.resolve(overrides.cross ?? { data: [] });
+
     return Promise.resolve({});
   });
 }

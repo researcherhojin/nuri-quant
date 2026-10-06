@@ -28,6 +28,7 @@ export const FG_ZONES = [
 
 export function zoneLabel(value: number): string {
   const zone = FG_ZONES.find((z) => value < z.to) ?? FG_ZONES[FG_ZONES.length - 1];
+
   return zone.label;
 }
 

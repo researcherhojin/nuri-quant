@@ -127,12 +127,16 @@ export function mergeAccountTotals(
   cashAccounts: Array<{ account: string; total_usd: number | null }>,
 ): Array<{ account: string; value: number | null }> {
   const totals = new Map<string, number | null>();
+
   const add = (account: string, value: number | null) => {
     const prev = totals.get(account);
     totals.set(account, prev === null || value === null ? null : (prev ?? 0) + value);
   };
+
   for (const av of accountValues) add(av.account, av.value);
+
   for (const c of cashAccounts) add(c.account, c.total_usd);
+
   return Array.from(totals.entries()).map(([account, value]) => ({ account, value }));
 }
 
@@ -159,6 +163,7 @@ export const SECTOR_COLORS = [
   "#fbbf24", // amber-400
   "#a78bfa", // violet-400
 ] as const;
+
 // Larger palette for ticker-level composition (12 distinct colors for top 12).
 export const TICKER_COLORS = [
   "#34d399", // emerald-400
@@ -174,6 +179,7 @@ export const TICKER_COLORS = [
   "#fb923c", // orange-400
   "#e879f9", // fuchsia-400
 ] as const;
+
 /**
  * "기타" 조각 색 (#1301). **의도적으로 토큰이 아니다.**
  *
@@ -215,8 +221,10 @@ export function summarizeHoldings(
     (sum, h) => sum + (h.positionPct ?? 0),
     0,
   );
+
   // visible_value_usd = (visiblePctSum/100) × totalPortfolioUsd
   const visibleValueUsd = (visiblePctSum / 100) * totalUsd;
+
   const visibleWeight = (h: EnrichedHolding): number =>
     visiblePctSum > 0 ? ((h.positionPct ?? 0) / visiblePctSum) * 100 : 0;
 
@@ -224,17 +232,22 @@ export function summarizeHoldings(
   let todayUsdDelta = 0;
   let upCount = 0;
   let downCount = 0;
+
   for (const h of holdings) {
     if (h.dailyDeltaPct == null) continue;
+
     if (h.dailyDeltaPct > 0) upCount++;
     else if (h.dailyDeltaPct < 0) downCount++;
+
     if (h.positionPct != null && totalUsd > 0) {
       const valueUsd = (h.positionPct / 100) * totalUsd;
       todayUsdDelta += valueUsd * (h.dailyDeltaPct / 100);
     }
   }
+
   const todayTotalPct =
     visibleValueUsd > 0 ? (todayUsdDelta / visibleValueUsd) * 100 : 0;
+
   const today: TodayPnL = {
     totalUsd: todayUsdDelta,
     totalPct: todayTotalPct,
@@ -248,17 +261,22 @@ export function summarizeHoldings(
   // missing positionPct (they can't contribute meaningfully).
   let cumCostUsd = 0;
   let cumValueUsd = 0;
+
   for (const h of holdings) {
     if (!Number.isFinite(h.pnlPct)) continue;
+
     if (h.positionPct == null || totalUsd <= 0) continue;
     const valueUsd = (h.positionPct / 100) * totalUsd;
     const costUsd = valueUsd / (1 + h.pnlPct / 100);
+
     if (!Number.isFinite(costUsd)) continue;
     cumValueUsd += valueUsd;
     cumCostUsd += costUsd;
   }
+
   const cumGainUsd = cumValueUsd - cumCostUsd;
   const cumGainPct = cumCostUsd > 0 ? (cumGainUsd / cumCostUsd) * 100 : 0;
+
   const cumulative: CumulativePnL = {
     totalUsd: cumGainUsd,
     totalPct: cumGainPct,
@@ -271,6 +289,7 @@ export function summarizeHoldings(
   let wr_winners = 0;
   let wr_losers = 0;
   let wr_flat = 0;
+
   for (const h of holdings) {
     if (!Number.isFinite(h.pnlPct)) {
       wr_flat++;
@@ -282,7 +301,9 @@ export function summarizeHoldings(
       wr_flat++;
     }
   }
+
   const wr_movers = wr_winners + wr_losers;
+
   const winRate: WinRateSummary = {
     winners: wr_winners,
     losers: wr_losers,
@@ -294,6 +315,7 @@ export function summarizeHoldings(
   // daily delta is unavailable). Aggregate Σ(value × delta) / Σ(value) per
   // account label, then attach to byAccount slices below.
   const accountDeltaAgg = new Map<string, { value: number; deltaWeighted: number }>();
+
   for (const h of holdings) {
     if (h.dailyDeltaPct == null || h.positionPct == null || totalUsd <= 0) continue;
     const v = (h.positionPct / 100) * totalUsd;
@@ -309,6 +331,7 @@ export function summarizeHoldings(
   //    cash-only accounts should show up even though they're filtered out of
   //    the main table.
   const rawAccounts = options.accountValues ?? [];
+
   const byAccount: AccountSlice[] = rawAccounts
     // #1284: 미상(null)은 크기를 모르므로 정렬·비중에 넣을 수 없다. 제외하되
     // 그 사실은 히어로의 사유 배너가 말한다 — 여기서 0 으로 접으면 다른 계좌
@@ -317,8 +340,10 @@ export function summarizeHoldings(
     .sort((a, b) => b.value - a.value)
     .map((a, i): AccountSlice => {
       const agg = accountDeltaAgg.get(a.account);
+
       const dailyDeltaPct =
         agg && agg.value > 0 ? agg.deltaWeighted / agg.value : null;
+
       return {
         account: a.account,
         valueUsd: a.value,
@@ -330,9 +355,12 @@ export function summarizeHoldings(
 
   // 3) Sector breakdown — aggregate visibleWeight + value + delta per sector.
   type SectorAgg = { weight: number; value: number; deltaW: number; deltaSum: number };
+
   const sectorMap = new Map<string, SectorAgg>();
+
   for (const h of holdings) {
     const w = visibleWeight(h);
+
     if (w <= 0) continue;
     const key = h.sector ?? "Other";
     // `if (w <= 0) continue` above guarantees positionPct is non-null & > 0, so the `?? 0` arm is dead
@@ -341,15 +369,19 @@ export function summarizeHoldings(
     const cur = sectorMap.get(key) ?? { weight: 0, value: 0, deltaW: 0, deltaSum: 0 };
     cur.weight += w;
     cur.value += v;
+
     if (h.dailyDeltaPct != null && v > 0) {
       cur.deltaW += v;
       cur.deltaSum += v * h.dailyDeltaPct;
     }
+
     sectorMap.set(key, cur);
   }
+
   const sortedSectors = Array.from(sectorMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
   const topSectors = sortedSectors.slice(0, 4);
   const restSectors = sortedSectors.slice(4);
+
   const buildSectorSlice = (name: string, agg: SectorAgg, color: string): SectorSlice => ({
     name,
     weight: agg.weight,
@@ -357,9 +389,11 @@ export function summarizeHoldings(
     dailyDeltaPct: agg.deltaW > 0 ? agg.deltaSum / agg.deltaW : null,
     color,
   });
+
   const sectors: SectorSlice[] = topSectors.map(([name, agg], i) =>
     buildSectorSlice(name, agg, SECTOR_COLORS[i]),
   );
+
   if (restSectors.length > 0) {
     const otherAgg = restSectors.reduce<SectorAgg>(
       (acc, [, a]) => ({
@@ -370,6 +404,7 @@ export function summarizeHoldings(
       }),
       { weight: 0, value: 0, deltaW: 0, deltaSum: 0 },
     );
+
     // every sectorMap entry passed `if (w <= 0) continue` (w > 0), so restSectors weights sum > 0 — false arm dead
     /* v8 ignore next 3 */
     if (otherAgg.weight > 0) {
@@ -389,9 +424,12 @@ export function summarizeHoldings(
     deltaW: number;
     deltaSum: number;
   };
+
   const tickerMap = new Map<string, TickerAgg>();
+
   for (const h of holdings) {
     const w = visibleWeight(h);
+
     if (w <= 0) continue;
     // `if (w <= 0) continue` above guarantees positionPct is non-null & > 0, so the `?? 0` arm is dead
     /* v8 ignore next */
@@ -400,6 +438,7 @@ export function summarizeHoldings(
     const existing = tickerMap.get(h.ticker);
     const deltaW = h.dailyDeltaPct != null && valueUsd > 0 ? valueUsd : 0;
     const deltaSum = h.dailyDeltaPct != null && valueUsd > 0 ? valueUsd * h.dailyDeltaPct : 0;
+
     if (existing) {
       existing.weight += w;
       existing.valueUsd += valueUsd;
@@ -416,10 +455,12 @@ export function summarizeHoldings(
       });
     }
   }
+
   const sortedTickers = Array.from(tickerMap.entries()).sort((a, b) => b[1].weight - a[1].weight);
   const TOP_TICKER_COUNT = 12;
   const topTickers = sortedTickers.slice(0, TOP_TICKER_COUNT);
   const restTickers = sortedTickers.slice(TOP_TICKER_COUNT);
+
   const buildTickerSlice = (
     ticker: string,
     displayName: string,
@@ -434,11 +475,13 @@ export function summarizeHoldings(
     dailyDeltaPct: data.deltaW > 0 ? data.deltaSum / data.deltaW : null,
     color,
   });
+
   // topTickers capped at 12 (TOP_TICKER_COUNT) = TICKER_COLORS.length, so [i] is always defined; `?? OTHER_COLOR` is dead
   /* v8 ignore next 3 */
   const byTicker: TickerSlice[] = topTickers.map(([ticker, data], i) =>
     buildTickerSlice(ticker, data.displayName, data, TICKER_COLORS[i] ?? OTHER_COLOR),
   );
+
   if (restTickers.length > 0) {
     const otherAgg = restTickers.reduce<TickerAgg>(
       (acc, [, d]) => ({
@@ -451,6 +494,7 @@ export function summarizeHoldings(
       }),
       { weight: 0, valueUsd: 0, sector: null, displayName: `Other (${restTickers.length})`, deltaW: 0, deltaSum: 0 },
     );
+
     // every tickerMap entry passed `if (w <= 0) continue` (w > 0), so restTickers weights sum > 0 — false arm dead
     /* v8 ignore next 3 */
     if (otherAgg.weight > 0) {
@@ -465,6 +509,7 @@ export function summarizeHoldings(
   //    green, the losers list is empty (don't fake a "loss" by showing the
   //    least-green holding under a red ↓).
   const withPnl = holdings.filter((h) => Number.isFinite(h.pnlPct));
+
   const winners = [...withPnl]
     .filter((h) => h.pnlPct > 0)
     .sort((a, b) => b.pnlPct - a.pnlPct)
@@ -472,6 +517,7 @@ export function summarizeHoldings(
     .map(
       (h): MoverEntry => ({ account: h.account, ticker: h.ticker, pnlPct: h.pnlPct }),
     );
+
   const losers = [...withPnl]
     .filter((h) => h.pnlPct < 0)
     .sort((a, b) => a.pnlPct - b.pnlPct)
@@ -483,15 +529,19 @@ export function summarizeHoldings(
   // 5) Concentration — Herfindahl on VISIBLE-normalized fractions + single largest
   let hhi = 0;
   let topHolding: ConcentrationSummary["topHolding"] = null;
+
   for (const h of holdings) {
     const weight = visibleWeight(h);
+
     if (weight <= 0) continue;
     const frac = weight / 100;
     hhi += frac * frac;
+
     if (!topHolding || weight > topHolding.weight) {
       topHolding = { ticker: h.ticker, weight };
     }
   }
+
   // Academic buckets: HHI < 0.10 low, 0.10-0.18 medium, > 0.18 high.
   const level: ConcentrationSummary["level"] =
     hhi < 0.1 ? "low" : hhi < 0.18 ? "medium" : "high";

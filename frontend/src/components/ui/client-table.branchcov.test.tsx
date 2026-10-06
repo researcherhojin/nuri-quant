@@ -31,6 +31,7 @@ describe("ClientTable branch coverage", () => {
     const { container } = render(
       <ClientTable variant="scanner" data={[]} title="My Title" compact />
     );
+
     expect(container.textContent).toContain("My Title");
   });
 
@@ -46,6 +47,7 @@ describe("ClientTable branch coverage", () => {
       // win_rate*100 === 0 (neutral, no "+"), avg_return === 0 (neutral), profit_factor non-number
       { signal_id: "MACD", total_trades: 0, win_rate: 0, profit_factor: "n/a", avg_return: 0 },
     ];
+
     const { container } = render(<ClientTable variant="scorecard" data={data} />);
     const txt = container.textContent || "";
     // pct(v*100) positive → leading "+"
@@ -69,6 +71,7 @@ describe("ClientTable branch coverage", () => {
       { ticker: "NVDA", price: undefined, change_1d: "n/a", change_5d: 0, rsi: "x", signal: "HOLD", score: 0,
         agent_action: null, agent_confidence: null, approved: null, reason: null },
     ];
+
     const { container } = render(<ClientTable variant="scanner" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("$250.50");
@@ -83,6 +86,7 @@ describe("ClientTable branch coverage", () => {
       { description: "Stop", phase: "P1", passed: true, detail: "ok" },
       { description: "Limit", phase: "P2", passed: false, detail: null },
     ];
+
     const { container } = render(<ClientTable variant="gate" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("✓"); // FINDING-002
@@ -97,6 +101,7 @@ describe("ClientTable branch coverage", () => {
     const data = [
       { ticker: "AMD", conflict_type: "X", severity: "high", buy_signals: ["a", "b"], sell_signals: undefined },
     ];
+
     const { container } = render(<ClientTable variant="conflicts" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("a, b");
@@ -108,6 +113,7 @@ describe("ClientTable branch coverage", () => {
     const data = [
       { signal_id: "RSI", status: "DRIFT", all_time_wr: 55.0, recent_wr: -10.0, drift_pct: 0 },
     ];
+
     const { container } = render(<ClientTable variant="drift" data={data} />);
     expect(container.textContent).toContain("55.0%");
   });
@@ -117,6 +123,7 @@ describe("ClientTable branch coverage", () => {
       { ticker: "GOOGL", sector: "Tech", action: "REBALANCE", current_weight: 12.3, target_weight: 10.0, signals: ["s1"] },
       { ticker: "META", sector: null, action: "TRIM", current_weight: undefined, target_weight: undefined, signals: undefined },
     ];
+
     const { container } = render(<ClientTable variant="rebalance" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("12.3%");
@@ -150,6 +157,7 @@ describe("ClientTable branch coverage", () => {
         take_profit_triggered: null, take_profit_sell_pct: 0, trailing_stop_triggered: false,
       },
     ];
+
     const { container } = render(<ClientTable variant="targets" data={data} />);
     const txt = container.textContent || "";
     expect(txt).toContain("TRAIL STOP");
@@ -173,6 +181,7 @@ describe("ClientTable branch coverage", () => {
       { ticker: "AMD", price: 150.5, change_1d: 1.0, change_5d: 2.0, rsi: 50, signal: "BUY", score: 70,
         agent_action: "LONG", agent_confidence: 80, approved: false, reason: "risk veto" },
     ];
+
     const { container } = render(<ClientTable variant="scanner" data={data} />);
     expect(container.textContent).toContain("AMD");
     expect(container.textContent).toContain("미승인");
@@ -184,6 +193,7 @@ describe("ClientTable branch coverage", () => {
       { priority: 2, ticker: "IONQ", severity: "high", action: "SELL_PARTIAL", sell_shares: 50, sell_value_usd: 2500, reason: "trim" },
       { priority: 3, ticker: "NBIS", severity: "low", action: "OTHER", sell_shares: 10, sell_value_usd: 0, reason: null },
     ];
+
     const { container } = render(<ClientTable variant="advisor" data={data} />);
     const txt = container.textContent || "";
     // priority 1 → red, 2 → amber, 3 → zinc

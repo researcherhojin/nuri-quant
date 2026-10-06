@@ -15,12 +15,14 @@ export async function middleware(request: NextRequest) {
 
   // 로그인 페이지 + auth API는 통과
   const { pathname } = request.nextUrl;
+
   if (pathname === "/login" || pathname === "/api/auth") {
     return NextResponse.next();
   }
 
   // 쿠키의 토큰과 기대 토큰을 timing-safe로 비교
   const authCookie = request.cookies.get("nuri-auth")?.value;
+
   if (authCookie && timingSafeEqual(authCookie, await hashToken(password))) {
     return NextResponse.next();
   }

@@ -43,6 +43,7 @@ vi.mock("@/components/ui/price-chart-lazy", () => ({
 }));
 
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -87,8 +88,11 @@ describe("Ticker page branches", () => {
   it("null consensus, no fund/targets/external", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("not found"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("not found"));
+
       if (url.includes("/ticker/")) return Promise.resolve({
         ticker: "ZZZZ", price: { close: null },
         consensus: { final_action: null, final_confidence: null,
@@ -96,6 +100,7 @@ describe("Ticker page branches", () => {
         analyst_ratings: [], earnings: [], insider_trades: [],
         superinvestors: [], fundamentals: null,
       });
+
       return Promise.resolve({});
     });
     const mod = await import("@/app/ticker/[symbol]/page");
@@ -112,17 +117,20 @@ describe("Ticker page branches", () => {
       if (url.includes("/prices")) return Promise.resolve({
         prices: [{ date: "2025-01-01", close: 190, open: 188, high: 192, low: 187, volume: 1000000 }],
       });
+
       if (url.includes("/targets/")) return Promise.resolve({
         stock_type: "growth", stop_loss: 181.82, stop_loss_pct: -7,
         target_1: 234.60, target_1_pct: 20, target_2: 273.70, target_2_pct: 40,
         trailing_stop_pct: 15, analyst_target: 220.0, analyst_upside_pct: 12.5,
       });
+
       if (url.includes("/external/")) return Promise.resolve({
         count: 2, data: [
           { source: "tipranks", data_type: "consensus", value: "Strong Buy" },
           { source: "dataroma", data_type: "holders", value: "3 supers" },
         ],
       });
+
       if (url.includes("/ticker/")) return Promise.resolve({
         ticker: "AAPL", price: { close: 195.50 },
         consensus: { final_action: "BUY", final_confidence: 85,
@@ -145,6 +153,7 @@ describe("Ticker page branches", () => {
         fundamentals: { pe_ratio: 28.5, roe: 0.45, revenue_growth: 0.08,
           debt_to_equity: 1.2, profit_margin: 0.25, beta: 1.15 },
       });
+
       return Promise.resolve({});
     });
     const mod = await import("@/app/ticker/[symbol]/page");

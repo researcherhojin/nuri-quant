@@ -4,6 +4,7 @@ import type { MacroEvent } from "@/components/ui/market-context";
 
 function evt(category: string, conf = 0.8, hoursAgo = 2): MacroEvent {
   const ts = new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString();
+
   return {
     category, headline: "", sentiment: 0, confidence: conf,
     published_at: ts, source: "test",
@@ -46,6 +47,7 @@ describe("getMacroImpactedSectors", () => {
       evt("oil_supply_shock"),
       evt("fed_hawkish"),
     ]);
+
     expect(sectors.has("energy")).toBe(true);
     expect(sectors.has("bank")).toBe(true);
     expect(sectors.has("financial")).toBe(true);

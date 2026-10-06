@@ -17,6 +17,7 @@ async function openPalette(page: Page) {
     if (!(await page.getByTestId("command-palette").isVisible())) {
       await page.keyboard.press("ControlOrMeta+k");
     }
+
     await expect(page.getByTestId("command-palette")).toBeVisible({ timeout: 1000 });
   }).toPass({ timeout: 15000 });
 }

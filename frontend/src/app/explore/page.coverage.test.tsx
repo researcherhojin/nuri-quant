@@ -15,6 +15,7 @@ vi.mock("next/link", () => ({
 
 // ── @/lib/api fetchAPI: 엔드포인트별 응답을 테스트가 주입 ──
 const fetchAPIMock = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));
@@ -29,10 +30,13 @@ function routeFetch(
     for (const key of Object.keys(byPath)) {
       if (path.startsWith(key)) {
         const v = byPath[key];
+
         if (typeof v === "function") return (v as () => Promise<unknown>)();
+
         return Promise.resolve(v);
       }
     }
+
     return Promise.resolve(null);
   });
 }
@@ -184,6 +188,7 @@ describe("QuickLinkCard", () => {
     const { container } = render(
       <QuickLinkCard ticker="005930.KS" name="삼성전자" price={71000} prev={70000} />,
     );
+
     // isKr TRUE → formatPrice ₩ 분기
     expect(container).toHaveTextContent("₩71,000");
     // delta >= 0 → emerald deltaColor arm
@@ -196,6 +201,7 @@ describe("QuickLinkCard", () => {
     const { container } = render(
       <QuickLinkCard ticker="AAPL" name="Apple" price={180} prev={200} />,
     );
+
     // isKr FALSE → formatPrice $ 분기
     expect(container).toHaveTextContent("$180");
     // delta < 0 → red deltaColor arm
@@ -208,6 +214,7 @@ describe("QuickLinkCard", () => {
     const { container } = render(
       <QuickLinkCard ticker="MSFT" name="Microsoft" price={null} prev={null} />,
     );
+
     // hasPrice FALSE → priceStr = EXPLORE.NO_PRICE placeholder
     expect(container).toHaveTextContent("미수집");
     // delta null → deltaStr empty → 색상 span 미렌더

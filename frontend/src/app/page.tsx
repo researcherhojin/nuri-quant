@@ -154,17 +154,21 @@ async function Dashboard({
   ]);
 
   const holdingCount = portfolio?.count ?? portfolio?.holdings?.length ?? 0;
+
   if (holdingCount === 0) redirect("/explore");
 
   // #1284: `|| 1400` 이 여기 있었다. 백엔드는 `exchange_rate: null` 로 부재를 **정직하게**
   // 알려주는데 프론트가 그 신호를 버리고 숫자를 지어냈고, 그 값이 헤드라인 총액까지 갔다.
   const KRW_RATE = d.exchange_rate;
+
   // 원화 표시 여부 — `holding-row.tsx` 와 같은 기준(통화 우선, 접미사는 .KS/.KQ 둘 다).
   // 접미사만 보면 `.KQ`(코스닥)와 무접미 원화 보유를 달러로 오분류한다. 인라인 사본이
   // 여러 곳에 흩어져 있고 그 통합은 #1286 이 다룬다.
   const isKrwHolding = (h: PortfolioHolding) =>
     h.currency === "KRW" || !!h.ticker?.endsWith(".KS") || !!h.ticker?.endsWith(".KQ");
+
   const hasKrwHolding = (portfolio?.holdings ?? []).some(isKrwHolding);
+
   // 환율이 없고 원화 보유가 있으면 **통화 혼합 합계 자체가 미상**이다 — KR 종목만이
   // 아니라 총액이 미상이므로 달러 종목의 비중도 말할 수 없다 (분모가 없다).
   const holdingsValue: number | null =
@@ -173,14 +177,18 @@ async function Dashboard({
       : (portfolio?.holdings?.reduce((sum: number, h: PortfolioHolding) => {
           const price = h.latest_price || 0;
           const qty = h.quantity || 0;
+
           return sum + (isKrwHolding(h) ? (price * qty) / (KRW_RATE as number) : price * qty);
         }, 0) ?? 0);
+
   // #213: 총 자산 = holdings + cash. cash는 portfolio.yaml 기반 /api/portfolio에서 옴.
   // 백엔드가 환산 불가로 판정하면 `total_cash_usd` 도 null 로 온다 (#1284).
   const cashTotalUsd: number | null =
     portfolio?.cash?.total_cash_usd ?? d.cash_summary?.total_cash_usd ?? 0;
+
   const totalValue: number | null =
     holdingsValue == null || cashTotalUsd == null ? null : holdingsValue + cashTotalUsd;
+
   // 값을 못 낸 **이유**. 조용한 "—" 는 결함처럼 보이므로 배너로 사유를 함께 낸다.
   const fxUnavailable = d.fx_unavailable ?? null;
 
@@ -199,10 +207,12 @@ async function Dashboard({
   // ticker_accounts(ticker→label, 단일 매핑)로 풀 수 없어서 collision이 발생했음 — 각
   // holding의 raw account를 key로 라벨을 lookup하여 fix.
   const accountLabels = d.account_labels || {};
+
   const labeledHoldings = holdings.map((h: PortfolioHolding) => ({
     ...h,
     accountLabel: accountKo(accountLabels[h.account ?? ""] || h.account || ""),
   }));
+
   const builtHoldings = buildEnrichedHoldings(
     labeledHoldings as Parameters<typeof buildEnrichedHoldings>[0],
     d.actions as RawAction[],
@@ -213,15 +223,18 @@ async function Dashboard({
     // totalValue 는 holdings (USD 환산) + cash 합계 — pie denominator 로 사용.
     { totalPortfolioUsd: totalValue, usdKrwRate: KRW_RATE },
   );
+
   // #214 polish: sparkline은 90일을 backend에서 받고, 선택된 period에 맞춰 최근 N개만 frontend에서 slice
   const allEnrichedHoldings = builtHoldings.map((h) => ({
     ...h,
     sparkline: h.sparkline.slice(-sparklinePeriod),
   }));
+
   // #214 polish: 연금 holdings은 월 리밸런싱이라 daily dashboard에서 제외.
   // 연금 전용 UI는 별도 페이지(/portfolio)에서 볼 수 있음.
   // "Pension" / "Pension 2" / "연금" / "연금 2" 등 모든 번호 suffix 변형을 prefix로 잡는다.
   const isPensionLabel = (label: string) => label.startsWith(SECTION.PENSION) || label.startsWith("Pension");
+
   // #223 iter 7c: dashboard view sorts by positionPct desc (largest position first)
   // — overrides the buildEnrichedHoldings default (account → status → pnl) which is
   // useful for /portfolio's grouped view but wrong for the dashboard's "biggest
@@ -234,6 +247,7 @@ async function Dashboard({
     // sort, so the comparator never sees a null positionPct.
     /* v8 ignore next */
     .sort((a, b) => (b.positionPct ?? 0) - (a.positionPct ?? 0));
+
   const hiddenPensionCount = allEnrichedHoldings.length - enrichedHoldings.length;
 
   // #503 Phase C — 24h 내 high-conf macro 이벤트의 영향 sector keyword set.
@@ -251,6 +265,7 @@ async function Dashboard({
     accountValues,
     d.cash_summary?.accounts ?? [],
   );
+
   const summary = summarizeHoldings(enrichedHoldings, {
     totalPortfolioUsd: totalValue,
     accountValues: mergedAccountValues,
@@ -346,6 +361,7 @@ async function Dashboard({
         // ignore lands on a plain statement (JSX-attribute ignores are flaky).
         /* v8 ignore next */
         const topOpportunities = (opportunitiesData?.opportunities ?? []).slice(0, 3);
+
         return (
           <div>
             <div className="flex items-center justify-between mb-2">

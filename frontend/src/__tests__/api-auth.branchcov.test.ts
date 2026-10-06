@@ -36,6 +36,7 @@ vi.mock("next/server", () => {
       },
     }),
   };
+
   return { __esModule: true, NextResponse, default: { NextResponse } };
 });
 
@@ -51,10 +52,12 @@ describe("POST /api/auth — branch coverage", () => {
   it("returns 401 when password field is absent (nullish-coalescing null-arm)", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "correct");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({}), // password 누락
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(401);
     expect(resp.body).toEqual({ error: "Invalid password" });
@@ -64,10 +67,12 @@ describe("POST /api/auth — branch coverage", () => {
   it("returns 401 when DASHBOARD_PASSWORD is unset", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "anything" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(401);
     expect(resp.body).toEqual({ error: "Auth not configured" });
@@ -77,10 +82,12 @@ describe("POST /api/auth — branch coverage", () => {
   it("returns 401 with a wrong password", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "correct");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "wrong" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(401);
     expect(resp.body).toEqual({ error: "Invalid password" });
@@ -92,10 +99,12 @@ describe("POST /api/auth — branch coverage", () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
     vi.stubEnv("NODE_ENV", "test");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "secret123" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(200);
     expect(resp.body).toEqual({ ok: true });
@@ -110,10 +119,12 @@ describe("POST /api/auth — branch coverage", () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
     vi.stubEnv("NODE_ENV", "production");
     const { POST } = await import("@/app/api/auth/route");
+
     const req = new Request("http://localhost:3000/api/auth", {
       method: "POST",
       body: JSON.stringify({ password: "secret123" }),
     });
+
     const resp = await POST(req);
     expect(resp.status).toBe(200);
     const cookie = (resp.cookies as unknown as MockCookies)._store["nuri-auth"];

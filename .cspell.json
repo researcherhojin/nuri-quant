@@ -456,6 +456,7 @@
     "depreciat",
     "devlp",
     "diskcache",
+    "dmmulroy",
     "docstrings",
     "dogfood",
     "dogfooding",
@@ -677,6 +678,7 @@
     "overcomplication",
     "overfit",
     "overstrong",
+    "oxlint",
     "pathlib",
     "pbmn",
     "pctile",
@@ -931,6 +933,7 @@
     "package-lock.json",
     "*.svg",
     "*.min.js",
-    "NEXT_SESSION.md"
+    "NEXT_SESSION.md",
+    "frontend/tools/**"
   ]
 }

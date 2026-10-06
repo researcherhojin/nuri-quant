@@ -32,9 +32,11 @@ async function resolveRoute(
 ): Promise<string | null> {
   if (route !== "decision-detail") return route;
   const res = await request.get("/api/decisions?limit=1");
+
   if (!res.ok()) return null;
   const body = (await res.json()) as { decisions?: Array<{ id: number }> };
   const id = body.decisions?.[0]?.id;
+
   return id != null ? `/decisions/${id}` : null;
 }
 
@@ -46,6 +48,7 @@ for (const vp of VIEWPORT_MATRIX) {
       test(`${routeSpec} — no horizontal scroll, content capped`, async ({ page, request }) => {
         const route = await resolveRoute(routeSpec, request);
         test.skip(route === null, "decision 데이터 없음 — 상세 라우트 생략");
+
         if (route === null) return;
         await page.goto(route, { timeout: 30000, waitUntil: "networkidle" });
 
@@ -54,11 +57,13 @@ for (const vp of VIEWPORT_MATRIX) {
         const widths = await page.evaluate(() => {
           const root = document.documentElement;
           const main = document.querySelector("main");
+
           return {
             rootScroll: root.scrollWidth, rootClient: root.clientWidth,
             mainScroll: main?.scrollWidth ?? 0, mainClient: main?.clientWidth ?? 0,
           };
         });
+
         expect(widths.rootScroll, `${route} @ ${vp.name}: root 가로 스크롤`).toBeLessThanOrEqual(widths.rootClient);
         expect(widths.mainScroll, `${route} @ ${vp.name}: main 가로 스크롤 (${widths.mainScroll} > ${widths.mainClient})`).toBeLessThanOrEqual(widths.mainClient);
 
@@ -66,16 +71,21 @@ for (const vp of VIEWPORT_MATRIX) {
         // 못 본다). 래퍼 내부의 카드/섹션이 래퍼 경계를 1px 초과해 벗어나면 FAIL.
         const cap = await page.evaluate(() => {
           const wrapper = document.querySelector("main > div");
+
           if (!wrapper) return null;
           const wb = wrapper.getBoundingClientRect();
           let worst = 0;
+
           for (const el of wrapper.querySelectorAll("section, [data-slot=card], table")) {
             const r = el.getBoundingClientRect();
+
             if (r.width === 0) continue; // hidden
             worst = Math.max(worst, r.right - wb.right, wb.left - r.left);
           }
+
           return { wrapperW: wb.width, worstOverhang: worst };
         });
+
         expect(cap, `${route} @ ${vp.name}: main > div 래퍼 없음`).not.toBeNull();
         expect(cap!.wrapperW, `${route} @ ${vp.name}: 래퍼 폭 ${cap!.wrapperW}px > 캡 ${CONTENT_CAP_PX}px`).toBeLessThanOrEqual(CONTENT_CAP_PX);
         expect(cap!.worstOverhang, `${route} @ ${vp.name}: 패널이 래퍼 경계를 ${cap!.worstOverhang}px 이탈`).toBeLessThanOrEqual(1);

@@ -74,5 +74,6 @@ export function mergeScanSwing(scan: ScanResult[], swing: SwingEntry[]): MergedS
       reason: sw.reason ?? null,
     });
   }
+
   return rows;
 }

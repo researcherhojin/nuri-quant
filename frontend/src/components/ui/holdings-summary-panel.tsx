@@ -24,12 +24,15 @@ interface HoldingsSummaryPanelProps {
 
 const cardClass =
   "rounded bg-zinc-900/40 border border-zinc-800/60 px-3 py-2";
+
 const cardLabelClass =
   "text-[9px] text-zinc-500 uppercase tracking-wide";
 
 function formatUsd(v: number): string {
   const abs = Math.abs(v);
+
   if (abs >= 1000) return `$${Math.round(abs).toLocaleString()}`;
+
   return `$${abs.toFixed(2)}`;
 }
 

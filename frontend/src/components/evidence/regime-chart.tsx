@@ -38,7 +38,9 @@ export function buildRegimeRows(data: RegimeData) {
     sma50: d.sma50,
     sma200: d.sma200,
   }));
+
   const vix = data.vix.map((d) => ({ date: d.date.slice(5), vix: d.value }));
+
   return { spy, vix };
 }
 
@@ -49,6 +51,7 @@ export function priceTick(v: unknown): string {
 
 export function regimeChipLabel(regime: RegimeData["regime"]): string | null {
   if (!regime) return null;
+
   return `${regime.regime} · 신뢰도 ${Math.round(regime.confidence * 100)}%`;
 }
 

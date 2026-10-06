@@ -15,6 +15,7 @@ vi.mock("next/link", () => ({
 
 // @/lib/api fetchAPI: 엔드포인트별 응답 주입
 const fetchAPIMock = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));
@@ -56,6 +57,7 @@ describe("RecentSignals — signal_id nullish fallback (line 141 `?? \"\"`)", ()
     const msftLink = Array.from(container.querySelectorAll("a")).find((a) =>
       a.getAttribute("href")?.includes("MSFT"),
     );
+
     expect(msftLink).toBeDefined();
     const labelSpans = msftLink!.querySelectorAll("span");
     // span[0] = ticker, span[1] = signalKo(fallback) === ""

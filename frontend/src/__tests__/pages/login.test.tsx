@@ -107,9 +107,11 @@ describe("LoginPage", () => {
   it("shows loading state during submission", async () => {
     // Use a never-resolving promise to keep the loading state active
     let resolvePromise: (value: { ok: boolean }) => void;
+
     const pendingPromise = new Promise<{ ok: boolean }>((resolve) => {
       resolvePromise = resolve;
     });
+
     global.fetch = vi.fn().mockReturnValue(pendingPromise);
 
     render(<LoginPage />);
@@ -145,7 +147,9 @@ describe("LoginPage", () => {
     let callCount = 0;
     global.fetch = vi.fn().mockImplementation(() => {
       callCount++;
+
       if (callCount === 1) return Promise.resolve({ ok: false, status: 401 });
+
       return Promise.resolve({ ok: true });
     });
 

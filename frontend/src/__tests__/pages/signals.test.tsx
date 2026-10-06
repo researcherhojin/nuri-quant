@@ -39,9 +39,11 @@ function setupFetchAPI(overrides: { scorecard?: unknown; crossAnalysis?: unknown
     if (path.includes("/api/scorecard")) {
       return Promise.resolve(overrides.scorecard ?? mockScorecard);
     }
+
     if (path.includes("/api/cross-analysis")) {
       return Promise.resolve(overrides.crossAnalysis ?? mockCrossAnalysis);
     }
+
     return Promise.resolve({});
   });
 }

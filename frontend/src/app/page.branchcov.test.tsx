@@ -38,6 +38,7 @@ vi.mock("@/components/ui/composition-section", async () => {
   const actual = await vi.importActual<typeof import("@/components/ui/composition-section")>(
     "@/components/ui/composition-section",
   );
+
   return {
     ...actual,
     CompositionSection: () => <div data-testid="composition-stub" />,
@@ -115,7 +116,9 @@ function makeFetchAPI(overrides: Record<string, Json>) {
     "/api/market-context": { macro_events: [], system_health: {} },
     "/api/coverage": null as unknown as Json,
   };
+
   const map = { ...base, ...overrides };
+
   return vi.fn().mockImplementation((path: string) => Promise.resolve(map[path] ?? {}));
 }
 
@@ -129,6 +132,7 @@ function manyHoldings(n: number) {
     latest_price: 120,
     currency: "USD",
   }));
+
   return [...rows, BAD_HOLDING];
 }
 
@@ -145,6 +149,7 @@ async function renderWith(
   await act(async () => {
     ({ container } = render(OverviewPage(searchParams ? { searchParams } : undefined)));
   });
+
   // The nested async Dashboard only commits after its fetchAPI Promise.all (and,
   // for the searchParams path, the extra `await searchParams` microtask) drains.
   // Pump microtask + macrotask cycles until THIS render's committed Dashboard
@@ -159,7 +164,9 @@ async function renderWith(
       await new Promise((r) => setTimeout(r, 0));
     });
   }
+
   expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
+
   return container;
 }
 
@@ -272,6 +279,7 @@ describe("page.tsx branch coverage", () => {
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
     });
+
     // macroLevel(80) -> emerald color span in the macro strip.
     expect(container.querySelector("span.text-emerald-400")).not.toBeNull();
   });
@@ -286,6 +294,7 @@ describe("page.tsx branch coverage", () => {
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
     });
+
     // macroLevel(35) -> orange color span (WEAK).
     expect(container.querySelector("span.text-orange-400")).not.toBeNull();
   });
@@ -316,6 +325,7 @@ describe("page.tsx branch coverage", () => {
         },
       },
     });
+
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
 
@@ -335,6 +345,7 @@ describe("page.tsx branch coverage", () => {
         ],
       },
     });
+
     // The events strip still renders (description shown) despite the empty date.
     expect(container.textContent || "").toContain("AAPL");
   });
@@ -370,6 +381,7 @@ describe("page.tsx branch coverage", () => {
       // key 부재는 React key 경고를 냈다 (#1180 과 같은 mock-형태 결함, run #3161 stderr).
       "/api/freshness": { items: [{ key: "p", label: "P", status: "PASS", age_hours: 1, message: "" }], overall: "PASS" } as unknown as Json,
     });
+
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
 
@@ -385,6 +397,7 @@ describe("page.tsx branch coverage", () => {
     await act(async () => {
       render(OverviewPage());
     });
+
     for (let i = 0; i < 20; i++) {
       if ((nav.redirect as unknown as { mock: { calls: unknown[][] } }).mock.calls.length) break;
       await act(async () => {
@@ -392,6 +405,7 @@ describe("page.tsx branch coverage", () => {
         await new Promise((r) => setTimeout(r, 0));
       });
     }
+
     expect((nav.redirect as unknown as { mock: { calls: unknown[][] } }).mock.calls.some((c) => c[0] === "/explore")).toBe(true);
   });
 
@@ -415,6 +429,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     expect(container.textContent || "").toContain("AAPL");
   });
 
@@ -433,6 +448,7 @@ describe("page.tsx branch coverage", () => {
       // rebalance-advisor resolves to null -> advisor is null.
       "/api/rebalance-advisor": null as unknown as Json,
     });
+
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
 
@@ -448,6 +464,7 @@ describe("page.tsx branch coverage", () => {
     const container = await renderWith({
       "/api/portfolio": { count: 1 } as unknown as Json,
     });
+
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
 
@@ -463,6 +480,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       } as unknown as Json,
     });
+
     expect(container.textContent || "").toContain("AAPL");
   });
 
@@ -480,6 +498,7 @@ describe("page.tsx branch coverage", () => {
     await act(async () => {
       render(OverviewPage());
     });
+
     for (let i = 0; i < 20; i++) {
       if ((nav.redirect as unknown as { mock: { calls: unknown[][] } }).mock.calls.length) break;
       await act(async () => {
@@ -487,6 +506,7 @@ describe("page.tsx branch coverage", () => {
         await new Promise((r) => setTimeout(r, 0));
       });
     }
+
     expect((nav.redirect as unknown as { mock: { calls: unknown[][] } }).mock.calls.some((c) => c[0] === "/explore")).toBe(true);
   });
 
@@ -507,6 +527,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     expect(container.textContent || "").toContain("NOACCT");
   });
 
@@ -535,6 +556,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     expect(container.textContent || "").toContain("LOSR");
   });
 
@@ -545,6 +567,7 @@ describe("page.tsx branch coverage", () => {
     const container = await renderWith({
       "/api/freshness": { items: [], details: [], overall: "FAIL" } as unknown as Json,
     });
+
     expect(container.querySelector('[data-testid="rail-freshness"]')).toBeNull();
   });
 
@@ -571,6 +594,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
   });
 
@@ -598,6 +622,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     expect(container.textContent || "").toContain("EMPACC");
   });
 
@@ -654,6 +679,7 @@ describe("page.tsx branch coverage", () => {
     const container = await renderWith({
       "/api/portfolio": { count: 10, holdings: manyHoldings(10), cash: { total_cash_usd: 0 } },
     });
+
     const toggle = container.querySelector('[data-testid="holdings-toggle"]') as HTMLAnchorElement | null;
     expect(toggle).not.toBeNull();
     expect(toggle!.getAttribute("href")).toBe("/?holdings=expanded");
@@ -670,6 +696,7 @@ describe("page.tsx branch coverage", () => {
       { "/api/portfolio": { count: 10, holdings: manyHoldings(10), cash: { total_cash_usd: 0 } } },
       Promise.resolve({ holdings: "expanded" }),
     );
+
     const toggle = container.querySelector('[data-testid="holdings-toggle"]') as HTMLAnchorElement | null;
     expect(toggle).not.toBeNull();
     expect(toggle!.getAttribute("href")).toBe("/");
@@ -794,6 +821,7 @@ describe("page.tsx branch coverage", () => {
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
     });
+
     // The 권장(target) span renders only when hasMeaningfulTarget is true.
     expect(container.textContent || "").toContain("권장");
   });
@@ -813,6 +841,7 @@ describe("page.tsx branch coverage", () => {
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
     });
+
     expect(container.textContent || "").toContain("권장");
   });
 
@@ -865,6 +894,7 @@ describe("page.tsx branch coverage", () => {
         cash: { total_cash_usd: 0 },
       },
     });
+
     // The hidden-pension note (SECTION.PENSION + count) renders next to the loser.
     expect(container.textContent || "").toContain("LOS");
   });
@@ -879,6 +909,7 @@ describe("page.tsx branch coverage", () => {
         overall: "WARN",
       } as unknown as Json,
     });
+
     const list = container.querySelector('[data-testid="rail-freshness"]');
     expect(list).not.toBeNull();
     expect(list?.textContent).toContain("주가 데이터");

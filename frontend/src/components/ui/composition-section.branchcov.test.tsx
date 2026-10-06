@@ -24,6 +24,7 @@ function makeSummary(overrides?: Partial<HoldingsSummary>): HoldingsSummary {
     topMovers: { winners: [], losers: [] },
     concentration: { herfindahl: 0, topHolding: null, level: "low" },
   };
+
   return { ...base, ...overrides };
 }
 
@@ -43,6 +44,7 @@ describe("CompositionSection — branch coverage", () => {
         },
       ],
     });
+
     render(<CompositionSection summary={summary} totalUsd={1000} activeTab="ticker" />);
     const row = screen.getByTestId("composition-legend-AAA");
     // The USD value span (w-20 cell) must be present but contain no "$"
@@ -58,6 +60,7 @@ describe("CompositionSection — branch coverage", () => {
         level: "medium",
       },
     });
+
     render(<CompositionSection summary={summary} totalUsd={1000} activeTab="ticker" />);
     const card = screen.getByTestId("side-concentration");
     const herfindahlSpan = card.querySelector("span.text-sm")!;
@@ -75,6 +78,7 @@ describe("CompositionSection — branch coverage", () => {
         level: "low",
       },
     });
+
     render(<CompositionSection summary={summary} totalUsd={1000} activeTab="ticker" />);
     const card = screen.getByTestId("side-concentration");
     const herfindahlSpan = card.querySelector("span.text-sm")!;
@@ -91,6 +95,7 @@ describe("CompositionSection — branch coverage", () => {
         level: "high",
       },
     });
+
     render(<CompositionSection summary={summary} totalUsd={1000} activeTab="ticker" />);
     const card = screen.getByTestId("side-concentration");
     const herfindahlSpan = card.querySelector("span.text-sm")!;

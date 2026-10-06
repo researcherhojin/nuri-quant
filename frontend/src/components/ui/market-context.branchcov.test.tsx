@@ -57,6 +57,7 @@ describe("market-context branch coverage (residual arms)", () => {
       60,
       14,
     );
+
     expect(sl).not.toBeNull();
     expect(sl!.latest).toBeLessThan(0);
   });
@@ -70,6 +71,7 @@ describe("market-context branch coverage (residual arms)", () => {
         health={{ regime: { regime: "risk_off", trend: "bear", confidence: 80 } }}
       />,
     );
+
     expect(container.querySelector(".border-l-red-500\\/60")).not.toBeNull();
   });
 
@@ -83,6 +85,7 @@ describe("market-context branch coverage (residual arms)", () => {
         health={{ regime: { trend: "sideways", confidence: 45 } as SystemHealth["regime"] }}
       />,
     );
+
     // banner placeholder "—" is the right arm of `regime.regime ?? "—"`
     expect(getByText(/현재 —/)).toBeDefined();
   });
@@ -95,6 +98,7 @@ describe("market-context branch coverage (residual arms)", () => {
         health={{ regime: { regime: "risk_on", trend: "bull", confidence: 80 } }}
       />,
     );
+
     // value sliced to 6 chars uppercase → "RISK_O", carries bull emerald color
     expect(getByText("RISK_O").className).toContain("text-emerald-400");
   });
@@ -107,6 +111,7 @@ describe("market-context branch coverage (residual arms)", () => {
       makeEvent({ published_at: "2026-01-11T08:00:00Z", sentiment: 0.5 }),
       makeEvent({ published_at: "2026-01-11T12:00:00Z", sentiment: -0.5 }),
     ];
+
     const sl = sparklinePath(events, 60, 14);
     expect(sl).not.toBeNull();
     expect(Math.abs(sl!.latest)).toBeLessThanOrEqual(0.1);
@@ -143,9 +148,11 @@ describe("market-context branch coverage (residual arms)", () => {
         headline: "third event",
       }),
     ];
+
     const { container, getByText } = render(
       <MarketContext events={events} health={{ regime: { trend: "sideways", confidence: 80 } as SystemHealth["regime"] }} />,
     );
+
     // unknown category fallback glyph
     expect(getByText("📌")).toBeDefined();
     // undefined confidence → not high-conf → non-bold "font-medium" arm present
@@ -158,10 +165,12 @@ describe("market-context branch coverage (residual arms)", () => {
   it("truncates a headline longer than 60 chars", () => {
     const longHeadline =
       "This is an extremely long macro headline that definitely exceeds the sixty character truncation threshold for sure";
+
     const events = [
       makeEvent({ published_at: "2026-01-10T10:00:00Z", headline: longHeadline }),
       makeEvent({ published_at: "2026-01-11T10:00:00Z" }),
     ];
+
     const { getByText } = render(<MarketContext events={events} health={{}} />);
     expect(getByText(/\.\.\.$/)).toBeDefined();
   });

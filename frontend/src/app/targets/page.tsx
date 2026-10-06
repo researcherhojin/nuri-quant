@@ -37,6 +37,7 @@ function Loading() {
 // === Main ===
 async function TargetsSection() {
   let data: { targets: PriceTarget[]; count: number };
+
   try {
     data = await fetchAPI<{ targets: PriceTarget[]; count: number }>("/api/targets");
   } catch {

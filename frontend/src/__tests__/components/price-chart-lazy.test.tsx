@@ -12,6 +12,7 @@ vi.mock("next/dynamic", () => ({
         <span data-testid="data-len">{String((props.data as unknown[])?.length ?? 0)}</span>
       </div>
     );
+
     return Stub;
   },
 }));

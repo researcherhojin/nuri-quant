@@ -25,26 +25,34 @@ import { join } from "node:path";
 import { CHART_COLORS, OTHER_COLOR } from "@/components/dashboard/composition-bar";
 
 const SRC = join(process.cwd(), "src");
+
 const CSS = readFileSync(join(SRC, "app/globals.css"), "utf8");
 
 function darkToken(name: string): string {
   const dark = CSS.slice(CSS.search(/\.dark(?![\w-])/));
   const m = dark.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`));
+
   if (!m) throw new Error(`.dark 에서 --${name} 을 찾지 못했다`);
+
   return m[1];
 }
 
 const srgb = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+
 function luminance(hex: string): number {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+
   return 0.2126 * srgb(r) + 0.7152 * srgb(g) + 0.0722 * srgb(b);
 }
+
 function ratio(a: string, b: string): number {
   const [la, lb] = [luminance(a), luminance(b)];
+
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
 }
 
 const SEGMENT_COLORS = [...CHART_COLORS, OTHER_COLOR];
+
 const NON_TEXT_MIN = 3.0;
 
 describe("차트 세그먼트 인접 대비 (#1435)", () => {
@@ -52,7 +60,13 @@ describe("차트 세그먼트 인접 대비 (#1435)", () => {
     // 이것이 성립해야 구분선이 제 역할을 한다 — 한 조각 옆에서만 안 보여도 그 경계는
     // 구분되지 않는다. 이전 OTHER_COLOR 가 정확히 그 상태였다 (구분선과 2.00:1).
     const sep = darkToken("background");
-    const weak = SEGMENT_COLORS.map((c) => [c, ratio(sep, c)] as const).filter(([, r]) => r < NON_TEXT_MIN);
+
+    const weak = SEGMENT_COLORS.flatMap((c) => {
+      const r = ratio(sep, c);
+
+      return r < NON_TEXT_MIN ? [[c, r] as const] : [];
+    });
+
     expect(weak.map(([c, r]) => `${c} ${r.toFixed(2)}:1`),
       "구분선과 3:1 미만인 세그먼트 색이 있다 — 그 경계는 구분되지 않는다").toEqual([]);
   });
@@ -68,9 +82,11 @@ describe("차트 세그먼트 인접 대비 (#1435)", () => {
   it("카나리아 — 팔레트만으로는 3:1 을 못 만든다 (구분선이 필요한 이유)", () => {
     // 이 전제가 깨지면(예: 팔레트 교체로 인접 대비가 확보되면) 구분선 근거를 다시 쓸 것.
     const pairs: number[] = [];
+
     for (let i = 0; i < CHART_COLORS.length; i++) {
       for (let j = i + 1; j < CHART_COLORS.length; j++) pairs.push(ratio(CHART_COLORS[i], CHART_COLORS[j]));
     }
+
     expect(Math.max(...pairs)).toBeLessThan(NON_TEXT_MIN);
     expect(pairs).toHaveLength(10); // 5C2 — 스캔이 조합을 빠뜨리지 않았는지
   });

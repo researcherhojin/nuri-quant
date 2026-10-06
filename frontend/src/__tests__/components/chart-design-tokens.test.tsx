@@ -29,42 +29,54 @@ import type { PriceData } from "@/components/ui/price-chart";
 // recharts 를 가로채 실제로 넘어온 props 를 노출시킨다. 같은 요소가 여러 번 나오면
 // (PriceChart 의 YAxis 2개 — 두 번째는 숨김 volume 축) 순서대로 쌓는다.
 const captured: Record<string, Record<string, unknown>[]> = {};
+
 type StubProps = Record<string, unknown> & { children?: React.ReactNode };
 
 vi.mock("recharts", () => {
   const cap = (name: string, { children, ...props }: StubProps) => {
     (captured[name] ??= []).push(props);
+
     return <div data-testid={`rc-${name}`}>{children as React.ReactNode}</div>;
   };
+
   // 명명 함수 선언이다 — 팩토리로 만들면 displayName 을 붙여야 하는데 그 대입이
   // `react-hooks/immutability` 에 걸린다.
   function ResponsiveContainer({ children }: StubProps) {
     return <div>{children as React.ReactNode}</div>;
   }
+
   function ComposedChart({ children }: StubProps) {
     return <div>{children as React.ReactNode}</div>;
   }
+
   function CartesianGrid(p: StubProps) {
     return cap("CartesianGrid", p);
   }
+
   function XAxis(p: StubProps) {
     return cap("XAxis", p);
   }
+
   function YAxis(p: StubProps) {
     return cap("YAxis", p);
   }
+
   function Tooltip(p: StubProps) {
     return cap("Tooltip", p);
   }
+
   function Bar(p: StubProps) {
     return cap("Bar", p);
   }
+
   function Area(p: StubProps) {
     return cap("Area", p);
   }
+
   function Line(p: StubProps) {
     return cap("Line", p);
   }
+
   return { ResponsiveContainer, ComposedChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Area, Line };
 });
 
@@ -130,10 +142,13 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
 
   it("차트 소스에 중립 hex 리터럴이 남아 있지 않다", () => {
     const offenders: string[] = [];
+
     for (const rel of CHART_FILES) {
       const found = readFileSync(join(process.cwd(), rel), "utf8").match(NEUTRAL_HEX) ?? [];
+
       if (found.length) offenders.push(`${rel}: ${found.join(", ")}`);
     }
+
     expect(offenders, `중립 hex 잔존:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 
@@ -142,10 +157,13 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
     // 특히 범례 스와치(`bg-zinc-400`)는 이제 `var(--muted-foreground)` 로 그려지는 계열선
     // 바로 옆에 있어서, 안 고치면 **범례가 자기 계열선과 어긋난다.**
     const offenders: string[] = [];
+
     for (const rel of CHART_FILES) {
       const found = readFileSync(join(process.cwd(), rel), "utf8").match(ZINC_CLASS) ?? [];
+
       if (found.length) offenders.push(`${rel}: ${found.join(", ")}`);
     }
+
     expect(offenders, `zinc 클래스 잔존:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 
@@ -189,6 +207,7 @@ describe("차트 레이어는 다크 토큰을 쓴다 (#1275)", () => {
     // 한 상수로 뭉개면 한쪽을 조정할 때 다른 쪽이 따라 움직인다 (#1275 이 명시한 주의).
     const theme = await import("@/lib/chart-theme");
     expect(theme.CHART_GRID_STROKE).not.toBe(theme.CHART_EMPTY_FILL);
+
     for (const [name, value] of Object.entries(theme)) {
       expect(String(value), `${name} 이 토큰이 아니다`).toMatch(/var\(--/);
     }

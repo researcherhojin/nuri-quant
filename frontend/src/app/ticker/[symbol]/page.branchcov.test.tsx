@@ -29,8 +29,11 @@ function setupFetches(opts: {
   const external = "external" in opts ? opts.external : null;
   mockFetchAPI.mockImplementation((path: string) => {
     if (path.includes("/prices")) return Promise.resolve(prices);
+
     if (path.includes("/targets/")) return Promise.resolve(targets);
+
     if (path.includes("/external/")) return Promise.resolve(external);
+
     return Promise.resolve(opts.data);
   });
 }
@@ -65,9 +68,11 @@ describe("TickerDetail branch coverage", () => {
     // 부재 패널 한 줄 스트립 — 7개 전부 나열, US 티커라 KR 힌트 없음
     const strip = screen.getByTestId("ticker-missing-panels");
     expect(strip.textContent).toContain("미수집 데이터:");
+
     for (const name of ["Analyst Ratings", "Earnings", "Insider Activity", "Fundamentals", "Smart Money", "Price Targets", "External Data"]) {
       expect(strip.textContent).toContain(name);
     }
+
     expect(strip.textContent).not.toContain("KR 종목");
     // Smart Money / Fundamentals 카드 미렌더 (supers 빈배열, fund undefined)
     expect(screen.queryByText(/Smart Money \(/)).not.toBeInTheDocument();

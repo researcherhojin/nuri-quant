@@ -13,6 +13,7 @@ import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 type RechartsTickFormatter = (value: number | string) => string;
+
 type RechartsTooltipFormatter = (value: number | string, name?: string) => [string, string];
 
 describe("EquityCurveChart — Tooltip formatters", () => {
@@ -30,15 +31,18 @@ describe("EquityCurveChart — Tooltip formatters", () => {
       XAxis: ({ tickFormatter }: { tickFormatter?: RechartsTickFormatter }) => {
         // Cover the XAxis tickFormatter: (v) => String(v).slice(2, 7)
         if (tickFormatter) tickFormatter("2024-06-15");
+
         return null;
       },
       YAxis: ({ tickFormatter }: { tickFormatter?: RechartsTickFormatter }) => {
         // Cover the YAxis tickFormatter: (v) => `${v}%`
         if (tickFormatter) tickFormatter(25);
+
         return null;
       },
       Tooltip: (props: { formatter?: RechartsTooltipFormatter }) => {
         if (props.formatter) capturedFormatters.push(props.formatter);
+
         return null;
       },
       CartesianGrid: () => null,
@@ -51,11 +55,13 @@ describe("EquityCurveChart — Tooltip formatters", () => {
 
   it("captures and exercises strategy/SPY formatter", async () => {
     const { EquityCurveChart } = await import("@/components/ui/equity-curve-chart");
+
     const data = [
       { date: "2024-01-01", strategy: 12.5, spy: 8.3, drawdown: -2.1 },
       { date: "2024-01-02", strategy: -3.7, spy: -1.2, drawdown: -5.4 },
       { date: "2024-01-03", strategy: 0, spy: 0, drawdown: 0 },
     ];
+
     render(<EquityCurveChart data={data} />);
 
     // Two Tooltips: one for strategy/SPY chart, one for drawdown chart
@@ -91,9 +97,11 @@ describe("EquityCurveChart — Tooltip formatters", () => {
 
   it("exercises string value coercion in formatters", async () => {
     const { EquityCurveChart } = await import("@/components/ui/equity-curve-chart");
+
     const data = [
       { date: "2024-01-01", strategy: 5.0, spy: 3.0, drawdown: -1.0 },
     ];
+
     render(<EquityCurveChart data={data} />);
 
     const mainFormatter = capturedFormatters[0];

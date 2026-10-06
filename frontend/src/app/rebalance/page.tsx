@@ -14,12 +14,14 @@ import { AdvisorSection } from "@/app/rebalance/advisor-section";
 // export: 테스트에서 async Server Component 를 직접 await/render 하기 위함
 export async function RebalanceSection() {
   let data: { actions: RebalanceAction[]; method: string; actionable: number } | { error: string };
+
   try {
     data = await fetchAPI<{ actions: RebalanceAction[]; method: string; actionable: number }>("/api/rebalance?method=rp");
   } catch {
     // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
     return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
   }
+
   // 원문 에러 문자열 노출 금지 (design-review F-002) — 한국어 카피 + 다음 행동
   if ("error" in data) return <p className="text-red-400 text-sm">{ERRORS.REBALANCE_FAILED}</p>;
 

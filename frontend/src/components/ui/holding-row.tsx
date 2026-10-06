@@ -120,8 +120,10 @@ export function buildEnrichedHoldings(
   const usdKrwRate = options.usdKrwRate ?? 0;
   const targetByTicker = new Map(targets.map((t) => [t.ticker, t]));
   const earningsByTicker = new Map<string, RawEvent[]>();
+
   for (const ev of upcomingEvents) {
     if (!ev.ticker) continue;
+
     if (ev.event_type !== "earnings") continue;
     const list = earningsByTicker.get(ev.ticker) ?? [];
     list.push(ev);
@@ -133,12 +135,12 @@ export function buildEnrichedHoldings(
   const _now = new Date();
   const todayMs = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()).getTime();
 
+  // filter().map() 한 쌍 대신 flatMap 한 번 (anti-slop no-array-filter-map) — 가드가 TS narrow 를 겸한다
   const enriched = holdings
-    // h.avg_price != null 가드 뒤이므로 (h.avg_price ?? 0) 의 redundant nullish 제거 — TS 가 number 로 narrow
-    .filter((h) => h.latest_price != null && h.avg_price != null && h.avg_price > 0)
-    .map((h): EnrichedHolding => {
-      const latest = h.latest_price as number;
-      const avg = h.avg_price as number;
+    .flatMap((h): EnrichedHolding[] => {
+      if (h.latest_price == null || h.avg_price == null || !(h.avg_price > 0)) return [];
+      const latest = h.latest_price;
+      const avg = h.avg_price;
       const pnlPct = (latest / avg - 1) * 100;
       const accountRaw = h.account ?? "";
       const accountLabel = h.accountLabel ?? accountRaw;
@@ -163,6 +165,7 @@ export function buildEnrichedHoldings(
       const stopLossPrice = target?.stop_loss ?? null;
       const tpTriggered = target?.take_profit_triggered ?? null;
       let status: HoldingStatus;
+
       if (stopLossPrice != null && latest < stopLossPrice) {
         status = { kind: "stop_loss" };
       } else if (advisor) {
@@ -181,16 +184,20 @@ export function buildEnrichedHoldings(
 
       // Watch: nearest upcoming earnings within 30 days
       const events = earningsByTicker.get(h.ticker) ?? [];
+
       const upcoming = events
         .map((ev) => {
           // Parse YYYY-MM-DD as local date (avoid UTC interpretation)
           const [y, m, d] = ev.date.split("-").map(Number);
+
           if (!y || !m || !d) return { ev, days: Number.NaN };
           const eventMs = new Date(y, m - 1, d).getTime();
+
           return { ev, days: Math.round((eventMs - todayMs) / 86_400_000) };
         })
         .filter(({ days }) => Number.isFinite(days) && days >= 0 && days <= 30)
         .sort((a, b) => a.days - b.days)[0];
+
       const watch: WatchTrigger = upcoming ? { kind: "earnings", daysUntil: upcoming.days } : { kind: "none" };
 
       // 통화 추론은 lib/format 한 곳 (#1197) — 이전 로컬 판정은 .KQ(코스닥)를 놓쳤다
@@ -199,28 +206,32 @@ export function buildEnrichedHoldings(
 
       // #214: 일변 (오늘 vs 어제) + sparkline (30일 closes)
       const prevClose = h.previous_close;
+
       const dailyDeltaPct =
         prevClose != null && prevClose > 0
           ? ((latest - prevClose) / prevClose) * 100
           : null;
+
       const sparkline = Array.isArray(h.sparkline_30d) ? h.sparkline_30d : [];
 
       // #218: per-holding 비중 계산 (USD 기준).
       // KR 종목은 usdKrwRate 로 환산. totalUsd<=0 이거나 필수 값 누락 시 null.
       const qty = h.quantity ?? 0;
       const holdingValueLocal = latest * qty;
+
       const holdingValueUsd =
         currency === "KRW"
           ? usdKrwRate > 0
             ? holdingValueLocal / usdKrwRate
             : null
           : holdingValueLocal;
+
       const positionPct =
         holdingValueUsd != null && totalUsd > 0
           ? (holdingValueUsd / totalUsd) * 100
           : null;
 
-      return {
+      return [{
         account: accountLabel,
         ticker: h.ticker,
         name: h.name ?? null,
@@ -240,7 +251,7 @@ export function buildEnrichedHoldings(
         watch,
         sector: h.sector ?? null,
         positionPct,
-      };
+      }];
     });
 
   // Sort: account asc → status priority → |pnl| desc
@@ -253,11 +264,14 @@ export function buildEnrichedHoldings(
     buy: 6,
     hold: 7,
   };
+
   enriched.sort((a, b) => {
     if (a.account !== b.account) return a.account.localeCompare(b.account);
     const pa = statusPriority[a.status.kind];
     const pb = statusPriority[b.status.kind];
+
     if (pa !== pb) return pa - pb;
+
     return Math.abs(b.pnlPct) - Math.abs(a.pnlPct);
   });
 
@@ -323,11 +337,13 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
 
   // #214: 일변 (daily delta)
   const hasDelta = h.dailyDeltaPct != null;
+
   const deltaClass = !hasDelta
     ? "text-zinc-700"
     : h.dailyDeltaPct! >= 0
     ? "text-emerald-400"
     : "text-red-400";
+
   const deltaText = !hasDelta
     ? "—"
     : `${h.dailyDeltaPct! >= 0 ? "+" : ""}${h.dailyDeltaPct!.toFixed(1)}%`;
@@ -341,6 +357,7 @@ export function HoldingRow({ holding: h, href, macroAwareSectors }: HoldingRowPr
 
   // target_2 cell — highlight when target_1 reached but target_2 not (next goal)
   const t2NextGoal = h.target1Reached && !h.target2Reached;
+
   const t2Cell = h.target2Reached ? (
     <span className="text-emerald-400 text-[10px]">{HOLDING_STATUS.REACHED}</span>
   ) : (

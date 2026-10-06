@@ -34,6 +34,7 @@ export function sellTooltipFormatter(
 ): [string, string] {
   const row = entry?.payload;
   const detail = row ? `${row.action} — ${row.recovery}` : "심각도";
+
   return [`${Number(value).toFixed(1)}%`, detail];
 }
 

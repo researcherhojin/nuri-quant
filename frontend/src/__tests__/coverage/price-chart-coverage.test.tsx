@@ -65,21 +65,25 @@ describe("PriceChart", () => {
 describe("PriceChart utility functions coverage", () => {
   it("handles short data (< sma period)", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const shortData = Array.from({ length: 10 }, (_, i) => ({
       date: `2024-01-${String(i + 1).padStart(2, "0")}`,
       open: 100, high: 102, low: 98, close: 101, volume: 500,
     }));
+
     render(<PriceChart data={shortData} ticker="TEST" />);
     expect(screen.getByText("TEST")).toBeInTheDocument();
   });
 
   it("handles volume formatting in different ranges", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const data = Array.from({ length: 60 }, (_, i) => ({
       date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
       open: 100, high: 102, low: 98, close: 101,
       volume: i < 20 ? 500 : i < 40 ? 50000 : 5000000, // < 1K, K range, M range
     }));
+
     render(<PriceChart data={data} ticker="VOL" />);
     expect(screen.getByText("VOL")).toBeInTheDocument();
   });

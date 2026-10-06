@@ -70,6 +70,7 @@ describe("ClientTable — variant coverage", () => {
 describe("ClientTable branches", () => {
   it("renders targets with signal types and price formats", async () => {
     const { ClientTable } = await import("@/components/ui/client-table");
+
     const data = [
       { ticker: "AAPL", stock_type: "growth", current_price: 195.50,
         stop_loss: 181.82, target_1: 234.60, target_2: 273.70, analyst_target: 220.0,
@@ -84,6 +85,7 @@ describe("ClientTable branches", () => {
         stop_loss: 0, target_1: 0, target_2: 0, analyst_target: 0,
         take_profit_triggered: null, trailing_stop_triggered: false, take_profit_sell_pct: 0 },
     ];
+
     render(<ClientTable variant="targets" data={data} />);
     expect(screen.getByText("TP1 (50%)")).toBeInTheDocument();
     expect(screen.getByText("TP2 (25%)")).toBeInTheDocument();
@@ -94,11 +96,13 @@ describe("ClientTable branches", () => {
 
   it("renders scorecard with negative/zero pct", async () => {
     const { ClientTable } = await import("@/components/ui/client-table");
+
     const data = [
       { signal_id: "rsi_oversold", total_trades: 100, win_rate: 0.65, profit_factor: 2.1, avg_return: 5.0 },
       { signal_id: "gap_down", total_trades: 50, win_rate: 0.45, profit_factor: 0.8, avg_return: -3.2 },
       { signal_id: "bb_bounce", total_trades: 30, win_rate: 0.50, profit_factor: 1.0, avg_return: 0.0 },
     ];
+
     const { container } = render(<ClientTable variant="scorecard" data={data} />);
     expect(container.querySelector(".text-emerald-400")).not.toBeNull();
     expect(container.querySelector(".text-red-400")).not.toBeNull();

@@ -200,6 +200,7 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
         <TreemapCell x={0} y={0} width={100} height={50} name="AAA" pnl_pct={-12} violation="stop_loss" depth={1} />
       </svg>,
     );
+
     expect(container.textContent).toContain("AAA");
     expect(container.textContent).toContain("-12.0%");
     const rect = container.querySelector("rect");
@@ -211,6 +212,7 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
         <TreemapCell x={0} y={0} width={100} height={50} depth={0} />
       </svg>,
     );
+
     expect(root.container.querySelector("rect")).toBeNull();
   });
 
@@ -220,6 +222,7 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
         <TreemapCell x={0} y={0} width={30} height={15} name="AAA" pnl_pct={3} depth={1} />
       </svg>,
     );
+
     expect(container.textContent).not.toContain("AAA");
   });
 
@@ -229,6 +232,7 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
         <TreemapCell x={0} y={0} width={100} height={50} name="BBB" pnl_pct={3} depth={1} />
       </svg>,
     );
+
     expect(wide.container.textContent).toContain("+3.0%");
 
     // recharts 가 빈 props 로 부르는 방어 경로 — 기본값 0 destructure
@@ -237,6 +241,7 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
         <TreemapCell depth={1} />
       </svg>,
     );
+
     const rect = bare.container.querySelector("rect");
     expect(rect?.getAttribute("width")).toBe("0");
     expect(rect?.getAttribute("fill")).toBe(pnlColor(0));

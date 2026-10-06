@@ -19,6 +19,7 @@ vi.mock("@/components/ui/price-chart", () => ({
 
 // Mock fetchAPI at module level
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -94,9 +95,13 @@ describe("TickerPage", () => {
     vi.clearAllMocks();
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve(priceData);
+
       if (url.includes("/targets/")) return Promise.resolve(targets);
+
       if (url.includes("/external/")) return Promise.resolve(external);
+
       if (url.includes("/ticker/")) return Promise.resolve(fullData);
+
       return Promise.resolve({});
     });
   });
@@ -202,8 +207,11 @@ describe("TickerPage", () => {
   it("handles empty data gracefully", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("404"));
+
       return Promise.resolve({
         ticker: "NEW", price: {}, consensus: {},
         analyst_ratings: [], earnings: [], insider_trades: [],
@@ -228,8 +236,11 @@ describe("TickerPage", () => {
   it("folds an all-null fundamentals row into the missing strip instead of an empty card", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("404"));
+
       return Promise.resolve({
         ticker: "NEW", price: {}, consensus: {},
         analyst_ratings: [], earnings: [], insider_trades: [], superinvestors: [],
@@ -247,8 +258,11 @@ describe("TickerPage", () => {
   it("adds the KR source-unsupported hint to the missing strip for .KS tickers", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("404"));
+
       return Promise.resolve({
         ticker: "005930.KS", price: {}, consensus: {},
         analyst_ratings: [], earnings: [], insider_trades: [],
@@ -264,8 +278,11 @@ describe("TickerPage", () => {
   it("handles null earnings fields (partial branch coverage)", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+
       if (url.includes("/external/")) return Promise.reject(new Error("404"));
+
       return Promise.resolve({
         ticker: "NULL", price: { close: 50 }, consensus: { verdicts: [] },
         analyst_ratings: [],
@@ -289,8 +306,11 @@ describe("TickerPage", () => {
   it("handles no consensus data", async () => {
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve({ prices: [] });
+
       if (url.includes("/targets/")) return Promise.reject(new Error("404"));
+
       if (url.includes("/external/")) return Promise.resolve({ count: 0, data: [] });
+
       return Promise.resolve({
         ticker: "TEST", price: { close: 100 }, consensus: { verdicts: [] },
         analyst_ratings: [], earnings: [], insider_trades: [],
@@ -310,6 +330,7 @@ describe("TickerPage", () => {
 describe("TickerPage — 자리표시자는 의견이 아니다 (#1436)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+
     const withPlaceholder = {
       ...fullData,
       consensus: {
@@ -324,11 +345,16 @@ describe("TickerPage — 자리표시자는 의견이 아니다 (#1436)", () => 
         ],
       },
     };
+
     mockFetchAPI.mockImplementation((url: string) => {
       if (url.includes("/prices")) return Promise.resolve(priceData);
+
       if (url.includes("/targets/")) return Promise.resolve(targets);
+
       if (url.includes("/external/")) return Promise.resolve(external);
+
       if (url.includes("/ticker/")) return Promise.resolve(withPlaceholder);
+
       return Promise.resolve({});
     });
   });

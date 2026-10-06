@@ -18,6 +18,7 @@ import type { HoldingsSummary } from "@/lib/holdings-summary";
 import { COMPOSITION } from "@/lib/strings";
 
 export const COMPOSITION_TABS = ["ticker", "sector", "account"] as const;
+
 export type CompositionTab = (typeof COMPOSITION_TABS)[number];
 
 const TAB_LABELS: Record<CompositionTab, string> = {
@@ -28,6 +29,7 @@ const TAB_LABELS: Record<CompositionTab, string> = {
 
 export function parseCompositionTab(raw: string | undefined): CompositionTab {
   if (raw === "sector" || raw === "account" || raw === "ticker") return raw;
+
   return "ticker";
 }
 
@@ -39,6 +41,7 @@ interface CompositionSectionProps {
 
 const sideCardClass =
   "rounded bg-zinc-900/40 border border-zinc-800/60 px-3 py-2 flex flex-col gap-1";
+
 const sideCardLabelClass =
   "text-[9px] text-zinc-500 uppercase tracking-wide";
 
@@ -78,6 +81,7 @@ function buildSlicesAndLegend(
       })),
     };
   }
+
   if (tab === "sector") {
     return {
       slices: summary.sectors.map((s) => ({
@@ -97,6 +101,7 @@ function buildSlicesAndLegend(
       })),
     };
   }
+
   // account
   return {
     slices: summary.byAccount.map((a) => ({
@@ -125,6 +130,7 @@ export function CompositionSection({
   activeTab,
 }: CompositionSectionProps) {
   const built = buildSlicesAndLegend(summary, activeTab);
+
   // 색 재매핑 (#1210, plan §1 색 예산): 상위 5 = 차트 카테고리색, 나머지 = 무채.
   // holdings-summary 의 캔디 팔레트는 무시한다 — 바·레전드가 같은 규칙을 공유.
   // summary 자체 Other 버킷(top-12/top-4 병합 잔여, 항상 마지막)은 순번과 무관하게
@@ -133,9 +139,11 @@ export function CompositionSection({
     ...row,
     color: !row.isOther && i < CHART_COLORS.length ? CHART_COLORS[i] : OTHER_COLOR,
   });
+
   const slices = built.slices.map(remap);
   const legend = built.legend.map(remap);
   const hasData = slices.length > 0;
+
   // #1284: 총액 미상이면 "—". 0 으로 접으면 구성 합계가 0 달러로 보인다.
   const totalLabel =
     totalUsd == null ? "—" : `$${totalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -151,6 +159,7 @@ export function CompositionSection({
         >
           {COMPOSITION_TABS.map((t) => {
             const active = t === activeTab;
+
             return (
               <Link
                 key={t}
@@ -195,11 +204,13 @@ export function CompositionSection({
             {legend.map((row) => {
               const deltaUp = (row.dailyDeltaPct ?? 0) >= 0;
               const hasDelta = row.dailyDeltaPct != null && Number.isFinite(row.dailyDeltaPct);
+
               const deltaColor = !hasDelta
                 ? "text-zinc-700"
                 : deltaUp
                 ? "text-emerald-400"
                 : "text-red-400";
+
               return (
                 <div
                   key={row.label}

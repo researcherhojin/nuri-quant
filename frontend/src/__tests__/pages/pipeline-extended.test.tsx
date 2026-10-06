@@ -33,12 +33,15 @@ describe("Pipeline handleRunStep", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "started" }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockSteps, pipeline_status: "ready" }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -56,6 +59,7 @@ describe("Pipeline handleRunStep", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
     const buttons = screen.queryAllByText(/Run|실행/);
+
     if (buttons.length > 0) {
       await act(async () => { fireEvent.click(buttons[0]); });
       await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
@@ -68,9 +72,11 @@ describe("Pipeline handleRunStep", () => {
   it("handles POST error without crashing", async () => {
     fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
       if (opts?.method === "POST") return Promise.reject(new Error("network"));
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockSteps, pipeline_status: "ready" }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
@@ -79,10 +85,12 @@ describe("Pipeline handleRunStep", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
     const buttons = screen.queryAllByText(/Run|실행/);
+
     if (buttons.length > 0) {
       await act(async () => { fireEvent.click(buttons[0]); });
       await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
     }
+
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });
 
@@ -94,9 +102,11 @@ describe("Pipeline handleRunStep", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ error: "already running" }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockSteps, pipeline_status: "ready" }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
@@ -105,6 +115,7 @@ describe("Pipeline handleRunStep", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
     const buttons = screen.queryAllByText(/Run|실행/);
+
     if (buttons.length > 0) {
       await act(async () => { fireEvent.click(buttons[0]); });
       await act(async () => { await new Promise((r) => setTimeout(r, 200)); });

@@ -7,21 +7,25 @@ vi.mock("@base-ui/react/tabs", () => {
   const TabsRoot = ({ children, className, ...props }: { children: React.ReactNode; className?: string; [key: string]: unknown }) => (
     <div data-slot="tabs" className={className} data-testid="tabs-root" {...props}>{children}</div>
   );
+
   TabsRoot.displayName = "TabsRoot";
 
   const TabsList = ({ children, className, ...props }: { children: React.ReactNode; className?: string; [key: string]: unknown }) => (
     <div data-slot="tabs-list" className={className} data-testid="tabs-list" {...props}>{children}</div>
   );
+
   TabsList.displayName = "TabsList";
 
   const TabsTab = ({ children, className, ...props }: { children: React.ReactNode; className?: string; [key: string]: unknown }) => (
     <button data-slot="tabs-trigger" className={className} data-testid="tabs-trigger" {...props}>{children}</button>
   );
+
   TabsTab.displayName = "TabsTab";
 
   const TabsPanel = ({ children, className, ...props }: { children: React.ReactNode; className?: string; [key: string]: unknown }) => (
     <div data-slot="tabs-content" className={className} data-testid="tabs-content" {...props}>{children}</div>
   );
+
   TabsPanel.displayName = "TabsPanel";
 
   return {
@@ -39,9 +43,11 @@ vi.mock("class-variance-authority", () => ({
   cva: (base: string, config?: { variants?: { variant?: Record<string, string> } }) => {
     return (options?: { variant?: string }) => {
       let result = base;
+
       if (options?.variant && config?.variants?.variant?.[options.variant]) {
         result += " " + config.variants.variant[options.variant];
       }
+
       return result;
     };
   },

@@ -31,47 +31,64 @@ interface MarketPulseProps {
 /** VIX color: <15 calm (emerald), 15-25 normal, >25 elevated (red). */
 function vixColor(vix: number | null | undefined): "green" | "red" | "default" {
   if (vix == null) return "default";
+
   if (vix < 15) return "green";
+
   if (vix > 25) return "red";
+
   return "default";
 }
 
 /** Fear & Greed color: <25 fear (red, contrarian buy), >75 greed (red, caution), middle = green. */
 function fearGreedColor(fg: number | null | undefined): "green" | "red" | "default" {
   if (fg == null) return "default";
+
   if (fg < 25 || fg > 75) return "red";
+
   if (fg >= 40 && fg <= 60) return "green";
+
   return "default";
 }
 
 /** Fear & Greed label. */
 function fearGreedLabel(fg: number | null | undefined): string {
   if (fg == null) return "—";
+
   if (fg < 25) return "Extreme Fear";
+
   if (fg < 45) return "Fear";
+
   if (fg <= 55) return "Neutral";
+
   if (fg <= 75) return "Greed";
+
   return "Extreme Greed";
 }
 
 /** Macro score color: 60+ favorable, <40 weak, middle neutral. */
 function macroColor(score: number): "green" | "red" | "default" {
   if (score >= 60) return "green";
+
   if (score < 40) return "red";
+
   return "default";
 }
 
 /** Trend color: bull=green, bear=red, sideways=default. */
 function trendColor(trend: string): "green" | "red" | "default" {
   if (trend === "bull") return "green";
+
   if (trend === "bear") return "red";
+
   return "default";
 }
 
 /** Regime confidence interpretation. */
 function confidenceLabel(conf: number): string {
   if (conf >= 80) return "high conviction";
+
   if (conf >= 60) return "moderate";
+
   return "low conviction";
 }
 

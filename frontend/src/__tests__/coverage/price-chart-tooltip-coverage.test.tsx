@@ -31,10 +31,12 @@ describe("PriceChart — Tooltip formatter", () => {
       YAxis: ({ tickFormatter }: { tickFormatter?: (v: number) => string }) => {
         // Cover price YAxis tickFormatter: (v) => v.toFixed(0)
         if (tickFormatter) tickFormatter(150.7);
+
         return null;
       },
       Tooltip: (props: { formatter?: RechartsTooltipFormatter }) => {
         if (props.formatter) capturedFormatter = props.formatter;
+
         return null;
       },
       CartesianGrid: () => null,
@@ -47,11 +49,13 @@ describe("PriceChart — Tooltip formatter", () => {
 
   it("formats volume, close, and SMA names correctly", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const data = Array.from({ length: 60 }, (_, i) => ({
       date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
       open: 100, high: 105, low: 95, close: 100 + i * 0.5,
       volume: 1_500_000,
     }));
+
     render(<PriceChart data={data} ticker="AAPL" />);
 
     expect(capturedFormatter).not.toBeNull();
@@ -80,11 +84,13 @@ describe("PriceChart — Tooltip formatter", () => {
   // #1197 잠금: KR 티커 툴팁은 ₩ — 헤더는 ₩ 인데 툴팁만 $ 였던 혼합 표기 회귀 방지
   it("formats KRW ticker tooltip prices with ₩", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const data = Array.from({ length: 30 }, (_, i) => ({
       date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
       open: 1_120_000, high: 1_140_000, low: 1_100_000, close: 1_128_000 + i,
       volume: 10_000,
     }));
+
     render(<PriceChart data={data} ticker="402340.KS" />);
 
     expect(capturedFormatter).not.toBeNull();
@@ -96,11 +102,13 @@ describe("PriceChart — Tooltip formatter", () => {
 
   it("formats volume in K range", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const data = Array.from({ length: 30 }, (_, i) => ({
       date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
       open: 100, high: 105, low: 95, close: 100,
       volume: 50_000,
     }));
+
     render(<PriceChart data={data} ticker="TEST" />);
 
     expect(capturedFormatter).not.toBeNull();
@@ -110,11 +118,13 @@ describe("PriceChart — Tooltip formatter", () => {
 
   it("formats small volume numbers", async () => {
     const { PriceChart } = await import("@/components/ui/price-chart");
+
     const data = Array.from({ length: 30 }, (_, i) => ({
       date: `2024-01-${String((i % 28) + 1).padStart(2, "0")}`,
       open: 100, high: 105, low: 95, close: 100,
       volume: 500,
     }));
+
     render(<PriceChart data={data} ticker="MICRO" />);
 
     expect(capturedFormatter).not.toBeNull();

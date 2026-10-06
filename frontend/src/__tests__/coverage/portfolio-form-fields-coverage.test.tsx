@@ -30,9 +30,11 @@ describe("Portfolio — add form field coverage", () => {
       if (typeof url === "string" && url.includes("/api/portfolio/sample") && opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (typeof url === "string" && url.includes("/api/portfolio")) {
         return Promise.resolve({
           ok: true,
@@ -54,6 +56,7 @@ describe("Portfolio — add form field coverage", () => {
           }),
         });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     }) as unknown as typeof fetch;
   });
@@ -69,12 +72,14 @@ describe("Portfolio — add form field coverage", () => {
 
     // Open add form
     const addBtn = screen.queryByText("Add Holding");
+
     if (!addBtn) return;
     await act(async () => { fireEvent.click(addBtn); });
 
     // Account select (line 285-288)
     const selects = document.querySelectorAll("select");
     const accountSelect = selects[0];
+
     if (accountSelect) {
       fireEvent.change(accountSelect, { target: { value: "demo" } });
       expect((accountSelect as HTMLSelectElement).value).toBe("demo");
@@ -87,24 +92,28 @@ describe("Portfolio — add form field coverage", () => {
 
     // Ticker input (line 289-290)
     const tickerInput = screen.queryByPlaceholderText(/Ticker/);
+
     if (tickerInput) {
       fireEvent.change(tickerInput, { target: { value: "TSLA" } });
     }
 
     // Quantity input (line 291-292)
     const qtyInput = screen.queryByPlaceholderText(/Quantity/);
+
     if (qtyInput) {
       fireEvent.change(qtyInput, { target: { value: "25" } });
     }
 
     // Avg Price input (line 293-294)
     const priceInput = screen.queryByPlaceholderText(/Avg Price/);
+
     if (priceInput) {
       fireEvent.change(priceInput, { target: { value: "250.50" } });
     }
 
     // Currency select (line 295-299)
     const currencySelect = selects[1];
+
     if (currencySelect) {
       fireEvent.change(currencySelect, { target: { value: "KRW" } });
       expect((currencySelect as HTMLSelectElement).value).toBe("KRW");
@@ -114,12 +123,14 @@ describe("Portfolio — add form field coverage", () => {
 
     // Sector input (line 300-301)
     const sectorInput = screen.queryByPlaceholderText(/Sector/);
+
     if (sectorInput) {
       fireEvent.change(sectorInput, { target: { value: "Semiconductor" } });
     }
 
     // Submit the form
     const saveBtn = screen.queryByText("Save");
+
     if (saveBtn) {
       await act(async () => { fireEvent.click(saveBtn); });
       await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -132,30 +143,37 @@ describe("Portfolio — add form field coverage", () => {
     await act(async () => { await new Promise(r => setTimeout(r, 200)); });
 
     const addBtn = screen.queryByText("Add Holding");
+
     if (!addBtn) return;
     await act(async () => { fireEvent.click(addBtn); });
 
     // Select account
     const selects = document.querySelectorAll("select");
+
     if (selects[0]) fireEvent.change(selects[0], { target: { value: "demo" } });
 
     // Fill Korean ticker
     const tickerInput = screen.queryByPlaceholderText(/Ticker/);
+
     if (tickerInput) fireEvent.change(tickerInput, { target: { value: "005930.KS" } });
 
     const qtyInput = screen.queryByPlaceholderText(/Quantity/);
+
     if (qtyInput) fireEvent.change(qtyInput, { target: { value: "5" } });
 
     const priceInput = screen.queryByPlaceholderText(/Avg Price/);
+
     if (priceInput) fireEvent.change(priceInput, { target: { value: "60000" } });
 
     // Set currency to KRW
     if (selects[1]) fireEvent.change(selects[1], { target: { value: "KRW" } });
 
     const sectorInput = screen.queryByPlaceholderText(/Sector/);
+
     if (sectorInput) fireEvent.change(sectorInput, { target: { value: "Electronics" } });
 
     const saveBtn = screen.queryByText("Save");
+
     if (saveBtn) {
       await act(async () => { fireEvent.click(saveBtn); });
       await act(async () => { await new Promise(r => setTimeout(r, 200)); });
@@ -175,6 +193,7 @@ describe("Portfolio — inline edit input interactions", () => {
       if (typeof url === "string" && url.includes("/api/portfolio") && opts?.method === "PUT") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (typeof url === "string" && url.includes("/api/portfolio") && (!opts || !opts.method || opts.method === "GET")) {
         return Promise.resolve({
           ok: true,
@@ -187,6 +206,7 @@ describe("Portfolio — inline edit input interactions", () => {
           }),
         });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     }) as unknown as typeof fetch;
   });
@@ -202,6 +222,7 @@ describe("Portfolio — inline edit input interactions", () => {
 
     // Click Edit button to enter edit mode
     const editBtns = screen.queryAllByText("Edit");
+
     if (editBtns.length > 0) {
       await act(async () => { fireEvent.click(editBtns[0]); });
       await act(async () => { await new Promise(r => setTimeout(r, 100)); });
@@ -226,6 +247,7 @@ describe("Portfolio — inline edit input interactions", () => {
 
       // Save the edit
       const saveBtn = screen.queryByText("Save");
+
       if (saveBtn) {
         await act(async () => { fireEvent.click(saveBtn); });
         await act(async () => { await new Promise(r => setTimeout(r, 200)); });

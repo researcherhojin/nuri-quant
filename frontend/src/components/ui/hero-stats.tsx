@@ -40,7 +40,9 @@ function formatBigUsd(v: number | null): string {
 
 function formatDeltaUsd(v: number): string {
   const abs = Math.abs(v);
+
   if (abs >= 1000) return `$${Math.round(abs).toLocaleString()}`;
+
   return `$${abs.toFixed(0)}`;
 }
 
@@ -130,6 +132,7 @@ export function HeroStats({
         {(() => {
           const wr = summary.winRate;
           const movers = wr.winners + wr.losers;
+
           const wrColor =
             movers === 0
               ? "text-zinc-600"
@@ -138,6 +141,7 @@ export function HeroStats({
               : wr.winRatePct >= 40
               ? "text-amber-400"
               : "text-red-400";
+
           return (
             <div className="flex flex-col" data-testid="hero-winrate">
               <p className="text-[11px] text-zinc-400 uppercase tracking-wide">{HERO.WIN_RATE}</p>

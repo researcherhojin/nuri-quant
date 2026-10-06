@@ -25,6 +25,7 @@ export type ActionSource = "risk_veto" | "divergence_penalty" | "weighted_sum" |
 // scoring_detail 은 SELECT * 경유라 JSON 문자열로 도착한다 — 안전 파싱.
 export function parseScoringDetail(raw: unknown): ScoringDetail | null {
   let obj: unknown = raw;
+
   if (typeof raw === "string") {
     try {
       obj = JSON.parse(raw);
@@ -32,7 +33,9 @@ export function parseScoringDetail(raw: unknown): ScoringDetail | null {
       return null;
     }
   }
+
   if (obj == null || typeof obj !== "object" || Array.isArray(obj)) return null;
+
   return obj as ScoringDetail;
 }
 
@@ -41,9 +44,13 @@ export function parseScoringDetail(raw: unknown): ScoringDetail | null {
 // 가중 합의로 둔갑시키지 않는다.
 export function deriveActionSource(sd: ScoringDetail | null, reasoning: string | null): ActionSource {
   const src = sd?.final_action_source;
+
   if (src === "risk_veto" || src === "divergence_penalty" || src === "weighted_sum") return src;
+
   if (typeof src === "string" && src.length > 0) return "unknown";
+
   if (reasoning?.startsWith(VETO_REASONING_PREFIX)) return "risk_veto";
+
   return "weighted_sum";
 }
 
@@ -51,9 +58,11 @@ export function deriveActionSource(sd: ScoringDetail | null, reasoning: string |
 export function verdictSplit(verdicts: { action: string }[]): { buy: number; sell: number; rest: number } {
   let buy = 0;
   let sell = 0;
+
   for (const v of verdicts) {
     if (v.action === "BUY") buy += 1;
     else if (v.action === "SELL") sell += 1;
   }
+
   return { buy, sell, rest: verdicts.length - buy - sell };
 }

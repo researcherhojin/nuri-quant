@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/command-palette";
 
 const pushMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: (...args: unknown[]) => pushMock(...args) }),
   usePathname: () => "/",

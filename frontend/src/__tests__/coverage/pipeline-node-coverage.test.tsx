@@ -27,7 +27,9 @@ vi.mock("next/link", () => ({
 
 // Override the xyflow mock to actually render PipelineNode
 type FlowNode = { id: string; data?: { label?: ReactNode; [key: string]: unknown } };
+
 type NodeTypesMap = Record<string, ComponentType<{ data?: FlowNode["data"] }>>;
+
 vi.mock("@xyflow/react", () => ({
   ReactFlow: ({ nodes, nodeTypes, children }: {
     nodes?: FlowNode[];
@@ -36,6 +38,7 @@ vi.mock("@xyflow/react", () => ({
   }) => {
     const types = typeof nodeTypes === "function" ? nodeTypes() : nodeTypes;
     const NodeComponent = types?.pipeline;
+
     return (
       <div data-testid="react-flow">
         {nodes?.map((n: FlowNode) => (
@@ -51,7 +54,9 @@ vi.mock("@xyflow/react", () => ({
   Controls: () => null,
   Handle: ({ type }: { type: string; position?: string }) => <div data-testid={`handle-${type}`} />,
   Position: { Left: "left", Right: "right", Top: "top", Bottom: "bottom" },
-  memo: <T extends { displayName?: string }>(fn: T): T => { (fn as { displayName?: string }).displayName = "PipelineNode"; return fn; },
+  memo: <T extends { displayName?: string }>(fn: T): T => { (fn as { displayName?: string }).displayName = "PipelineNode";
+
+ return fn; },
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -91,18 +96,22 @@ describe("Pipeline — PipelineNode rendering", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: stepsWithAllStatuses }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: timelineWithPayloads }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({
           collect: { phase: "collect", total: 2, passed: 2, score: 1, ready: true,
                      conditions: [{ id: "c1", phase: "collect", description: "Prices", passed: true, detail: "OK" }] },
         }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -146,6 +155,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
     // Find run buttons (실행)
     const runButtons = screen.queryAllByText("실행");
+
     if (runButtons.length > 0) {
       await act(async () => { fireEvent.click(runButtons[0]); });
       await act(async () => { await vi.advanceTimersByTimeAsync(1500); });

@@ -9,6 +9,7 @@ import { actionKey, isNewItem, loadAckMap, ackItem } from "@/lib/action-ack";
 // 라이브러리 자체는 스토리지 부재도 try/catch 로 견딘다 (아래 마지막 테스트).
 function makeStorageStub(): Storage {
   let store: Record<string, string> = {};
+
   return {
     getItem: (k: string) => (k in store ? store[k] : null),
     setItem: (k: string, v: string) => { store[k] = String(v); },
@@ -18,8 +19,11 @@ function makeStorageStub(): Storage {
     get length() { return Object.keys(store).length; },
   } as Storage;
 }
+
 const originalDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+
 Object.defineProperty(window, "localStorage", { value: makeStorageStub(), configurable: true });
+
 afterAll(() => {
   if (originalDescriptor) Object.defineProperty(window, "localStorage", originalDescriptor);
   else delete (window as { localStorage?: Storage }).localStorage;
@@ -95,6 +99,7 @@ describe("loadAckMap / ackItem", () => {
   // load 는 {}, ack 는 in-memory 결과를 반환해야 한다.
   it("survives a missing localStorage entirely", () => {
     Object.defineProperty(window, "localStorage", { value: undefined, configurable: true });
+
     try {
       expect(loadAckMap()).toEqual({});
       expect(ackItem({}, item())).toEqual({ "AAA|Alpha|SELL|urgent": "2026-08-25" });

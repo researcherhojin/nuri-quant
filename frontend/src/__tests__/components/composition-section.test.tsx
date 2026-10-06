@@ -20,6 +20,7 @@ import { OTHER_COLOR as BAR_OTHER_COLOR } from "@/components/dashboard/compositi
 /** `#RRGGBB` → `rgb(r, g, b)` — 브라우저가 style 속성을 되돌려주는 형태. */
 function rgb(hex: string): string {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+
   return `rgb(${r}, ${g}, ${b})`;
 }
 
@@ -97,9 +98,11 @@ describe("CompositionSection", () => {
     render(
       <CompositionSection summary={summary()} totalUsd={12500} activeTab="ticker" />,
     );
+
     const firstDot = screen
       .getByTestId("composition-legend-TSLA")
       .querySelector("span[style]") as HTMLElement;
+
     // summary fixture 는 #34d399 (candy) 를 주지만 렌더는 --chart-1 값이어야 한다
     expect(firstDot.getAttribute("style")).toContain("rgb(76, 144, 240)"); // #4C90F0
     const segments = screen.getAllByTestId("composition-bar-segment");
@@ -144,9 +147,11 @@ describe("CompositionSection", () => {
         activeTab="sector"
       />,
     );
+
     const otherDot = screen
       .getByTestId("composition-legend-Other")
       .querySelector("span[style]") as HTMLElement;
+
     // 상수에서 계산한다 — 리터럴을 박아두면 그 사본이 정본과 갈라진다 (#1435 에서 실제로
     // OTHER_COLOR 를 바꾸자 이 줄만 남아 FAIL 했다). 이 테스트가 잠그는 것은 "기타 버킷이
     // 카테고리 색을 받지 않는다" 이지 특정 hex 가 아니다.

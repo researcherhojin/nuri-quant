@@ -63,6 +63,7 @@ export interface MarketFacts {
 /* ── 레짐 전환 배너 (full-width, 조건부) ─────────────────────── */
 export function RegimeShiftBanner({ regime }: { regime: Partial<SystemHealth["regime"]> }) {
   if (!isRegimeShifting(regime)) return null;
+
   return (
     <div className="rounded-lg bg-amber-950/40 border border-amber-700/50 px-3 py-2 flex items-center gap-2 text-xs">
       <TriangleAlert className="shrink-0 size-3.5 text-amber-400" aria-hidden />
@@ -93,8 +94,11 @@ function RailRow({ label, value, sub, href, color, valueNode, title }: {
 /** 옛 FreshnessBar 와 같은 규칙 — 1h 미만·시간·일·N/A. */
 export function formatAge(hours: number): string {
   if (hours >= 9000) return "N/A";
+
   if (hours < 1) return "<1h";
+
   if (hours < 24) return `${Math.round(hours)}h`;
+
   return `${Math.floor(hours / 24)}d`;
 }
 
@@ -106,15 +110,20 @@ export function formatAge(hours: number): string {
 export function macroRowFromDashboard(m: MacroReading): { value: string; sub: string; color: string } {
   if ((m.coverage ?? 1) <= 0) return { value: "—", sub: m.interpretation || "—", color: "text-zinc-500" };
   const level = MACRO_LEVELS[m.interpretation];
+
   if (!level) return { value: `${m.score}`, sub: m.interpretation || "—", color: "text-zinc-500" };
+
   return { value: `${m.score}`, sub: level.label, color: level.color };
 }
 
 /** 권장 배분이 의미 있을 때만 (0/100 기본값이나 실제와 같은 값은 "권장" 이 아니다 — MarketStrip 규칙 승계). */
 export function meaningfulTarget(actual: Allocation | null, target: Allocation | null): Allocation | null {
   if (actual == null || target == null) return null;
+
   if (!(target.long > 0 || target.short > 0)) return null;
+
   if (target.long === actual.long && target.cash === actual.cash) return null;
+
   return target;
 }
 
@@ -128,16 +137,19 @@ export function SystemHealthRail({ health, market, freshnessItems = [] }: {
   const macro: Partial<SystemHealth["macro"]> = health.macro || {};
   const freshness: Partial<SystemHealth["freshness"]> = health.freshness || {};
   const vixInfo = vixZone(market?.vix ?? null);
+
   // 대시보드 macro 블록(coverage 포함)이 있으면 그것, 없으면(MarketContext 경로) health 그대로 — 같은 산식이다.
   const macroRow = market?.macro
     ? macroRowFromDashboard(market.macro)
     : { value: `${macro.score ?? 0}`, sub: macro.interpretation ?? "—", color: healthColor(macro.score ?? 0, [40, 60]) };
+
   // #1284: null 은 "현금 100%" 가 아니라 **미상**이다. 센티널로 접으면 환율이 없을 때
   // 화면이 "전액 현금" 이라고 주장하게 된다 — 없는 것과 모르는 것은 다르다.
   const allocationUnknown = market?.actualAllocation === null;
   const actual = market?.actualAllocation ?? { long: 0, short: 0, cash: 100 };
   const target = meaningfulTarget(allocationUnknown ? null : actual, market?.targetAllocation ?? market?.fallbackAllocation ?? null);
   const attention = freshnessItems.filter((i) => i.status !== "PASS");
+
   return (
     <div className="rounded-lg bg-zinc-900/60 border border-zinc-800/50 divide-y divide-zinc-800/50" data-testid="system-rail">
       <p className="px-3 py-2 text-[11px] font-semibold text-zinc-300">{CONTEXT.RAIL_TITLE}</p>
@@ -213,6 +225,7 @@ export function SystemHealthRail({ health, market, freshnessItems = [] }: {
         <ul className="px-3 py-1.5 space-y-0.5" data-testid="rail-freshness">
           {attention.map((item) => {
             const fail = item.status === "FAIL";
+
             return (
               <li key={item.key} className="flex items-center gap-2 text-[11px]" title={item.message}>
                 <span className={`w-3 text-center ${fail ? "text-red-400" : "text-amber-400"}`} aria-hidden>{fail ? "\u2715" : "\u25B3"}</span>
@@ -231,6 +244,7 @@ export function SystemHealthRail({ health, market, freshnessItems = [] }: {
 export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[]; regimeTrend: string | undefined }) {
   if (events.length === 0) return null;
   const pinned = shouldPinCard(events);
+
   return (
     <div className={`rounded-lg bg-zinc-900/40 border ${pinned ? "border-amber-500/70 ring-1 ring-amber-500/30 shadow-amber-500/10 shadow-md" : "border-zinc-800/60"} border-l-4 ${regimeStripe(regimeTrend)} p-2.5`}>
       <div className="flex items-center justify-between mb-1.5">
@@ -241,8 +255,10 @@ export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[];
         </h4>
         {(() => {
           const sl = sparklinePath(events, 60, 14);
+
           if (!sl) return null;
           const trendColor = sl.latest > 0.1 ? "stroke-emerald-400" : sl.latest < -0.1 ? "stroke-red-400" : "stroke-zinc-500";
+
           return (
             <svg width="60" height="14" className={trendColor} aria-label="7d sentiment trend">
               <path d={sl.path} fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -256,6 +272,7 @@ export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[];
           const date = ev.published_at?.slice(5, 10) ?? "";
           const isHighConf = (ev.confidence ?? 0) >= 0.8;
           const headlineCls = isHighConf ? "text-zinc-300 font-medium" : "text-zinc-500";
+
           return (
             <div key={i} className="flex items-start gap-1.5 text-[11px]">
               <span className="shrink-0">{style.emoji}</span>

@@ -41,7 +41,9 @@ const verdictStyles: Record<string, { bg: string; text: string; label: string }>
 
 function actionTagCls(action: string): string {
   if (action === "BUY") return "bg-emerald-500/20 text-emerald-400";
+
   if (action === "SELL") return "bg-red-500/20 text-red-400";
+
   return "bg-zinc-700 text-zinc-400";
 }
 
@@ -61,8 +63,10 @@ function OpportunityRow({ opp }: { opp: Opportunity }) {
 
   const runAnalysis = async () => {
     setLoading(true);
+
     try {
       const res = await fetch(`/api/consensus/${opp.ticker}`);
+
       if (res.ok) {
         const data = await res.json();
         setAnalysis({

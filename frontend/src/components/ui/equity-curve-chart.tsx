@@ -38,6 +38,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
   const [period, setPeriod] = useState<number>(9999);
 
   const sliced = data.slice(-period);
+
   if (sliced.length === 0) return null;
 
   const chartData = sliced;
@@ -92,6 +93,7 @@ export function EquityCurveChart({ data }: EquityCurveChartProps) {
               formatter={(value, name) => {
                 const v = Number(value);
                 const label = name === "strategy" ? "Strategy" : "SPY";
+
                 return [`${v > 0 ? "+" : ""}${v.toFixed(1)}%`, label];
               }}
             />

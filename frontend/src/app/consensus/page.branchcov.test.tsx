@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@testing-library/react";
 
 const fetchAPIMock = vi.fn();
+
 vi.mock("@/lib/api", () => ({ fetchAPI: (...args: unknown[]) => fetchAPIMock(...args) }));
 
 // ConsensusSection 자식(Card/ConsensusTable)은 자체 contract(verdicts/scoring_detail)를 요구하므로
@@ -10,6 +11,7 @@ vi.mock("@/components/ui/card", () => ({
   Card: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   CardContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+
 vi.mock("@/components/ui/consensus-table", () => ({
   ConsensusTable: ({ vix }: { vix: number | null }) => (
     <div data-testid="table-vix">{String(vix)}</div>

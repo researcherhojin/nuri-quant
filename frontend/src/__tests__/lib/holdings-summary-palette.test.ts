@@ -22,6 +22,7 @@ function luminance(hex: string): number {
   const h = hex.replace("#", "");
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
   const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
@@ -48,6 +49,7 @@ describe("composition 팔레트 (#1301)", () => {
     ] as [string, readonly string[]][]) {
       expect(new Set(palette).size, `${name} 에 중복 색`).toBe(palette.length);
     }
+
     expect(SIBLINGS).not.toContain(OTHER_COLOR);
   });
 

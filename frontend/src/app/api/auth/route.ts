@@ -24,5 +24,6 @@ export async function POST(request: Request) {
     maxAge: 60 * 60 * 24 * 7, // 7일
     path: "/",
   });
+
   return response;
 }

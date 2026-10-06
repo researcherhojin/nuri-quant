@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 
 // Mock the useStream hook at module level
 const mockStreamData = vi.fn();
+
 vi.mock("@/lib/use-stream", () => ({
   useStream: () => mockStreamData(),
 }));
