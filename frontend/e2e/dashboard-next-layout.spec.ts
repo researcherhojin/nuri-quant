@@ -69,3 +69,20 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [2560, 1440], [3440, 1
     }
   });
 }
+
+// 상세 모달은 표 셀 안에 렌더된다 — 탐색 후보 칸은 `text-align: right`, 파이프라인 decide 칸은 거기에
+// `white-space: nowrap` 까지 준다. 상속을 끊지 않으면 본문이 오른쪽 정렬되고 글머리표만 왼쪽 끝에 남거나(#1692)
+// 문단이 줄바꿈 없이 가로로 넘친다.
+for (const [name, host] of [["radar", '[class*="candidates"] tbody td:last-child'], ["decide", '[class*="pipelineStatus"]']]) {
+  test(`${name} detail dialog body is left-aligned and wraps inside its table cell`, async ({ page }) => {
+    await page.goto("/dashboard-next");
+    const cell = page.locator(host).filter({ has: page.locator("dialog") }).first();
+    await cell.getByRole("button").click();
+    const dialog = cell.locator("dialog[open]");
+    await expect(dialog).toBeVisible();
+
+    const styles = await dialog.evaluate(el => [...el.querySelectorAll("h3, p, li")].map(node => `${getComputedStyle(node).textAlign}/${getComputedStyle(node).whiteSpace}`));
+    expect(styles.length).toBeGreaterThan(0);
+    expect(new Set(styles)).toEqual(new Set(["left/normal"]));
+  });
+}

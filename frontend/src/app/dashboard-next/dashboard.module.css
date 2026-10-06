@@ -236,7 +236,7 @@
 .footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; color: var(--muted); font-size: var(--fs-xs); }
 .footer > div { display: flex; gap: 18px; }
 .footer .textButton { font-size: var(--fs-xs); }
-.dialog { margin: auto; background: #1b2431; color: #e8eef8; border: 1px solid #43536b; border-radius: 10px; padding: 24px; width: min(620px, calc(100vw - 32px)); max-height: 80dvh; overflow: auto; box-shadow: 0 24px 100px #0009; font-size: var(--fs-title); }
+.dialog { margin: auto; background: #1b2431; color: #e8eef8; border: 1px solid #43536b; border-radius: 10px; padding: 24px; width: min(620px, calc(100vw - 32px)); max-height: 80dvh; overflow: auto; box-shadow: 0 24px 100px #0009; font-size: var(--fs-title); text-align: left; white-space: normal; }
 .dialog::backdrop { background: #050a13b8; backdrop-filter: blur(4px); }
 .dialog[open] { animation: dialogEnter 150ms ease-out; }
 @keyframes dialogEnter { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
