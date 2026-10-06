@@ -317,13 +317,14 @@ def _detect_recovery(spy_df: pd.DataFrame) -> bool:
 def _detect_sector_rotation(db_path=None, date: str | None = None) -> bool:
     """SPY 횡보(±2%) + 섹터 ETF 중 하나라도 3%+ 수익 → 섹터 순환.
 
-    20일 수익률 기준. 섹터 ETF 가격이 없으면 graceful skip.
+    20일 수익률 기준. 섹터 ETF 가격이 없거나 SPY 와 같은 날로 끝나지 않으면 graceful skip —
+    ETF 수집이 멈추면 몇 주 전 창의 수익률이 오늘 SPY 와 비교돼 가짜 순환이 나온다 (#1631).
     """
     date_filter = f"AND date <= '{date}'" if date else ""
 
     # SPY 20일 수익률
     spy_prices = query(
-        f"SELECT close FROM prices WHERE ticker = 'SPY' {date_filter} ORDER BY date DESC LIMIT 21",
+        f"SELECT date, close FROM prices WHERE ticker = 'SPY' {date_filter} ORDER BY date DESC LIMIT 21",
         db_path=db_path,
     )
     if len(spy_prices) < 21:
@@ -331,16 +332,17 @@ def _detect_sector_rotation(db_path=None, date: str | None = None) -> bool:
     spy_ret = (spy_prices[0]["close"] - spy_prices[-1]["close"]) / spy_prices[-1]["close"] * 100
     if abs(spy_ret) > 2:
         return False  # SPY가 횡보가 아님
+    spy_latest = spy_prices[0]["date"]
 
     # 섹터 ETF 중 하나라도 3%+ 수익
     sector_etfs = ["XLK", "XLF", "XLE", "XLV", "XLI", "XLP", "XLU", "XLY", "XLC", "XLRE"]
     for etf in sector_etfs:
         etf_prices = query(
-            f"SELECT close FROM prices WHERE ticker = ? {date_filter} ORDER BY date DESC LIMIT 21",
+            f"SELECT date, close FROM prices WHERE ticker = ? {date_filter} ORDER BY date DESC LIMIT 21",
             (etf,),
             db_path=db_path,
         )
-        if len(etf_prices) < 21:
+        if len(etf_prices) < 21 or etf_prices[0]["date"] != spy_latest:
             continue
         etf_ret = (etf_prices[0]["close"] - etf_prices[-1]["close"]) / etf_prices[-1]["close"] * 100
         if etf_ret > 3:
