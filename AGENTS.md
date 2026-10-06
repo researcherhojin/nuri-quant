@@ -57,6 +57,8 @@ git diff --cached -U0 | grep -nE '^\+.*(datetime\.now\(|import (sqlite3|openai))
 .venv/bin/python scripts/verify/check_privacy_leak.py <changed files>          # rule 7
 ```
 
+- **No completion claim without fresh evidence.** Before saying done / fixed / passing, run the command that proves it and quote its output (counts, exit code). An earlier run, a partial run or another agent's report is not evidence; "should" and "probably" do not belong in a completion claim. (`.claude/rules/flow.md`)
+
 ## Action axes (orthogonal — never conflate)
 
 - `alpha_action ∈ {LONG, SHORT, FLAT}` — expected-return signal. A stop-loss breach is the only mechanical path to `FLAT`.
