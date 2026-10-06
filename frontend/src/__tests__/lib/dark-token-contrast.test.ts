@@ -376,12 +376,3 @@ describe("다크 토큰 대비 (#1431)", () => {
     expect(failing).toEqual(["primary", "success", "danger"]);
   });
 });
-
-describe("차트 색 리터럴 드리프트 (#1431)", () => {
-  // codex R1: `composition-bar.tsx` 가 --chart-* 를 hex 리터럴로 복사해 두어, 토큰을 바꿔도
-  // 그 차트는 안 바뀌고 리터럴을 바꾸면 위 게이트를 우회한다. 두 벌을 묶는다.
-  it("CHART_COLORS 가 --chart-1..5 토큰과 같다", async () => {
-    const { CHART_COLORS } = await import("@/components/dashboard/composition-bar");
-    expect(CHART_COLORS.map((c) => c.toUpperCase())).toEqual([1, 2, 3, 4, 5].map((i) => token(`chart-${i}`)));
-  });
-});

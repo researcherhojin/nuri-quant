@@ -57,6 +57,6 @@ make setup-hooks     # `make setup` 에 포함 — pre-commit + pre-push 심볼�
 | Scope accumulation | ~40 min | PR template + `check_drift.py` |
 | **Total addressable** | **~120 min** | **4 scripts + 1 PR template** |
 
-## Overview Preview 유지보수
+## Overview 유지보수
 
-별도 비교 화면 `/dashboard-next`의 구성, API 계약, 데이터 갱신 방법, 포트폴리오 평가와 반응형 검증은 [Overview Preview 구현 및 운영 안내](DASHBOARD_NEXT.md)에 정리되어 있다. 새 데이터 갱신 API는 백그라운드 수집·재계산을 수행하며 판정 원장 작업은 실행하지 않는다.
+홈 화면 Overview(`/`, 예전 `/dashboard-next`)의 구성, API 계약, 데이터 갱신 방법, 포트폴리오 평가와 반응형 검증은 [Overview 구현 및 운영 안내](OVERVIEW.md)에 정리되어 있다. 새 데이터 갱신 API는 백그라운드 수집·재계산을 수행하며 판정 원장 작업은 실행하지 않는다.

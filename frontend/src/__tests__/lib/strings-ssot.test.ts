@@ -31,9 +31,7 @@ const ROUTE_HEADING_PAGES: Record<string, keyof typeof NAV> = {
 const MIGRATED = [
   "src/components/ui/sidebar.tsx",
   "src/app/pipeline/page.tsx",
-  "src/components/ui/action-items.tsx",
-  "src/components/dashboard/system-rail.tsx",
-  "src/app/page.tsx",
+  "src/app/(overview)/page.tsx",
 ];
 
 const HANGUL = /[가-힣]/;

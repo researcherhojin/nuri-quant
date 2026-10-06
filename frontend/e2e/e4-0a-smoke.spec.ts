@@ -76,18 +76,22 @@ for (const { path, name } of PAGES) {
     // visible error 텍스트 감지 (일반적 UI 에러 표시)
     let visibleErrorText: string | null = null;
 
-    const errorMarkers = [
+    // "500" 은 줄 하나를 차지할 때만 에러 표시다 — Overview(`/`, #1698)의 "S&P 500" 지수 라벨이
+    // 부분 문자열 "500 " 에 걸려 정상 화면이 FAIL 했다.
+    const errorMarkers: (string | RegExp)[] = [
       "Application error",
       "Internal Server Error",
-      "500 ",
+      /(^|\n)\s*500\s*(\||\n|$)/,
       "404 Not Found",
       "ECONNREFUSED",
       "Failed to fetch",
     ];
 
     for (const m of errorMarkers) {
-      if (pageText.includes(m)) {
-        visibleErrorText = m;
+      const hit = typeof m === "string" ? (pageText.includes(m) ? m : null) : (pageText.match(m)?.[0] ?? null);
+
+      if (hit) {
+        visibleErrorText = hit;
         break;
       }
     }

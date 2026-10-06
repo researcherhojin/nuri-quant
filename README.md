@@ -112,7 +112,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | Metric | Value |
 |--------|-------|
 | Backend tests | 8,339 collected across 392 files |
-| Frontend test files | 143 vitest files |
+| Frontend test files | 109 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 60 cron entries |
 | API endpoints | 70 declared in `nuri/api/routes/` |
@@ -124,7 +124,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 |----------|----------|
 | [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, decisions and investment rules (authoritative) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, database, configuration, CI/CD |
-| [`docs/DASHBOARD_NEXT.md`](docs/DASHBOARD_NEXT.md) | Overview Preview: portfolio composition, data refresh, responsive layout and verification |
+| [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | Overview (home `/`): portfolio composition, data refresh, responsive layout and verification |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
 | [`SECURITY.md`](SECURITY.md) | Security policy and LLM egress rules |
