@@ -192,3 +192,40 @@ describe("portfolio page — validation & early-return coverage", () => {
     expect(importCallsAfter).toBe(importCallsBefore); // import POST never fired
   });
 });
+
+// #1681: 한국 종목은 이름을 앞세우고 티커를 옆에 흐리게. 이름이 없으면 티커만.
+describe("portfolio page — Korean holding names (#1681)", () => {
+  const base = { account: "Brokerage Alpha", quantity: 1, avg_price: 100, sector: "", latest_price: null, price_date: null };
+
+  async function renderWith(holdings: object[]) {
+    fetchMock.mockImplementation(() => jsonResponse({ holdings }));
+    await act(async () => {
+      render(<PortfolioPage />);
+    });
+  }
+
+  it("KR holding with a name shows the name with the ticker beside it", async () => {
+    await renderWith([{ ...base, ticker: "DEMO.KS", currency: "KRW", name: "예시전자" }]);
+    const ticker = await screen.findByText("DEMO.KS");
+    const link = ticker.closest("a");
+
+    expect(link).toHaveAttribute("href", "/ticker/DEMO.KS");
+    expect(link).toHaveTextContent("예시전자DEMO.KS");
+    expect(ticker).toHaveClass("text-muted-foreground");
+  });
+
+  it("KR holding without a name shows the ticker only", async () => {
+    await renderWith([{ ...base, ticker: "DEMO.KQ", currency: "KRW", name: null }]);
+    const link = (await screen.findByText("DEMO.KQ")).closest("a");
+
+    expect(link).toHaveTextContent(/^DEMO\.KQ$/);
+  });
+
+  it("US holding keeps the ticker as the primary text", async () => {
+    await renderWith([{ ...base, ticker: "DEMO", currency: "USD", name: "Demo Corp" }]);
+    const link = (await screen.findByText("DEMO")).closest("a");
+
+    expect(link).toHaveTextContent(/^DEMO$/);
+    expect(screen.queryByText("Demo Corp")).not.toBeInTheDocument();
+  });
+});
