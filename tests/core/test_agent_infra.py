@@ -29,7 +29,7 @@ def db_path(tmp_path):
 class TestSchemaMigrations:
     """16 신규 migration (#25 audit / #26 flags / #27 runs / #28 messages / #29 walkforward_runs / #30 regime_posteriors / #31 hypotheses / #32 causal_audits / #33 agent_decisions / #34 decision_outcomes / #35 execution_blocks / #36 incidents / #37 dr_replicas / #38 collector_runs / #39 drift_alerts / #40 foundation_benchmarks) 적용 확인."""
 
-    def test_schema_version_at_66(self, db_path):
+    def test_schema_version_at_67(self, db_path):
         """Phase 1+2 + discord_outbox + agent_control/agent_dev_log channel CHECK 확장 (#582) +
         held_add_shadow (#518) + market_postmortem (#596 Phase 2) +
         incidents signal_evaluation_stale enum 확장 (#825) +
@@ -59,8 +59,9 @@ class TestSchemaMigrations:
         incidents replica_stale enum 확장 (#1531) — DR 복제 정지를 #ops 로 띄우는 detector
         의 타입. 복제는 2026-09-12 부터 534 회 연속 실패했는데 9 일간 아무 신호가 없었다 +
         prices close NULL 반쪽 행 제거 (#1630) — #1480 이전에 쓰인 행이 레짐 분류기와
-        결정 추적기를 TypeError 로 죽였다"""
-        assert get_schema_version(db_path) == 66
+        결정 추적기를 TypeError 로 죽였다 +
+        prices 시가 0 봉 제거 (#1644) — 거래정지일 KIS 현재가가 봉으로 저장돼 있었다"""
+        assert get_schema_version(db_path) == 67
 
     def test_block_type_allowlist_matches_sql_check(self, db_path):
         """`_BLOCK_TYPES`(파이썬 검증) 와 execution_blocks CHECK(스키마) 는 같아야 한다.

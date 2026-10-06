@@ -167,6 +167,19 @@ class TestInquirePriceKR:
         assert row["close"] == 210500.0
         assert row["volume"] == 1000000
 
+    @pytest.mark.parametrize(
+        "output",
+        [{"stck_prpr": "210500"}, {"stck_prpr": "210500", "stck_oprc": "0"}],
+        ids=["no-open-field", "open-zero"],
+    )
+    def test_no_open_price_is_not_a_bar(self, output):
+        """거래정지·개장 전에는 현재가만 있고 시가가 0 이다 — 봉이 아니므로 None (#1644)."""
+        creds = KISCredentials("k", "s", "", "", "prod")
+        mock_resp = MagicMock(status_code=200)
+        mock_resp.json.return_value = {"rt_cd": "0", "output": output}
+        with patch("nuri.collectors.kis_realtime.requests.get", return_value=mock_resp):
+            assert inquire_price_kr(creds, "token", "005930.KS") is None
+
     def test_empty_output_returns_none(self):
         creds = KISCredentials("k", "s", "", "", "prod")
         mock_resp = MagicMock()
@@ -184,7 +197,7 @@ class TestInquirePriceKR:
         success_resp = MagicMock(status_code=200)
         success_resp.json.return_value = {
             "rt_cd": "0",
-            "output": {"stck_prpr": "100000"},
+            "output": {"stck_prpr": "100000", "stck_oprc": "99000", "stck_hgpr": "101000", "stck_lwpr": "98500"},
         }
         with patch("nuri.collectors.kis_realtime.requests.get", side_effect=[rate_limit_resp, success_resp]):
             with patch("nuri.collectors.kis_realtime.time.sleep"):  # sleep 우회

@@ -518,6 +518,23 @@ class TestMigration66PurgesHalfPriceRows:
         assert query("SELECT COUNT(*) n FROM prices WHERE close IS NULL", db_path=db_path)[0]["n"] == 0
 
 
+class TestMigration67PurgesZeroOpenBars:
+    """#1644 — 거래정지일에 KIS 현재가로 저장된 시가 0 봉은 마이그레이션이 지운다."""
+
+    def test_zero_open_bars_are_deleted_and_real_bars_survive(self, db_path):
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('000001.KS', '2025-12-01', 0, 0, 0, 5000.0, 0)"
+            )
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('000001.KS', '2025-12-15', 5100.0, 5200.0, 5000.0, 5150.0, 10)"
+            )
+            conn.execute("DELETE FROM schema_version WHERE version = 67")
+        init_db(db_path)
+        rows = query("SELECT date FROM prices WHERE ticker = '000001.KS' ORDER BY date", db_path=db_path)
+        assert [r["date"] for r in rows] == ["2025-12-15"]
+
+
 class TestMigration23ShortHorizonOutcomes:
     """#468 — outcome_7d/14d/21d columns added to recommendations."""
 

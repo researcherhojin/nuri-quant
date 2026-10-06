@@ -2125,4 +2125,14 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # 쓰기 쪽 불변식("close 는 NULL 이 아니다")을 기존 행에도 적용한다.
         "DELETE FROM prices WHERE close IS NULL;",
     ),
+    (
+        67,
+        "prices 의 시가 0 봉(거래정지일 KIS 현재가) 제거 (#1644)",
+        # KIS 한국 현재가는 거래정지(또는 개장 전)에 stck_prpr 만 있고 시·고·저가가 0 이다. 그 행이
+        # 봉으로 저장돼 운영에 한 종목 27행(연속 거래일 세 묶음)이 남았다 — 같은 날 다른 KR 종목
+        # 200+ 개는 정상 봉이 있어 시장은 열려 있었고 그 종목만 거래가 없었다. 다른 어떤 소스도
+        # 거래 없는 날의 봉을 주지 않으므로 지운다. 재발은 inquire_price_kr 이 시가 0 을 None 으로
+        # 돌려 막는다. 미국 KIS 현재가(시가 필드 없음)는 save() 가드가 완전한 봉을 지킨다 (#1636).
+        "DELETE FROM prices WHERE close IS NOT NULL AND COALESCE(open, 0) = 0;",
+    ),
 ]
