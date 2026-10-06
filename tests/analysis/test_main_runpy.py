@@ -69,10 +69,18 @@ class TestRebalanceAdvisorMain:
 
         fake_report = {
             "actions": [
-                {"ticker": "AAA", "reason": "concentration", "sell_value_usd": 5000.0,
-                 "severity": "critical", "violation_type": "single_position_cap",
-                 "sell_shares": 10, "action": "SELL_ALL", "current_price": 500.0,
-                 "current_weight_pct": 30.0, "target_weight_pct": 15.0},
+                {
+                    "ticker": "AAA",
+                    "reason": "concentration",
+                    "sell_value_usd": 5000.0,
+                    "severity": "critical",
+                    "violation_type": "single_position_cap",
+                    "sell_shares": 10,
+                    "action": "SELL_ALL",
+                    "current_price": 500.0,
+                    "current_weight_pct": 30.0,
+                    "target_weight_pct": 15.0,
+                },
             ],
             "total_violations": 2,
             "violations_by_type": {"single_position_cap": 2},
@@ -181,8 +189,8 @@ class TestPortfolioMain:
 
 
 class TestRebalanceMain:
-    def test_main_default_method_mvo(self, db_path, monkeypatch, capsys):
-        """rebalance.main([]): default method=mvo, analyze_rebalance + print_rebalance 호출."""
+    def test_main_default_method_rp(self, db_path, monkeypatch, capsys):
+        """rebalance.main([]): default method=rp — 시스템 경로(regime_aware_rebalance)와 STRATEGY §3.10 과 같다 (#1645)."""
         import pandas as pd
 
         from nuri.analysis import rebalance
@@ -197,7 +205,7 @@ class TestRebalanceMain:
         monkeypatch.setattr(rebalance, "print_rebalance", lambda d: print("REB_OK"))
         rc = rebalance.main([])
         assert rc == 0
-        assert captured_method["method"] == "mvo"
+        assert captured_method["method"] == "rp"
         assert "REB_OK" in capsys.readouterr().out
 
     def test_main_method_rp(self, db_path, monkeypatch):
@@ -207,7 +215,9 @@ class TestRebalanceMain:
         from nuri.analysis import rebalance
 
         captured = {}
-        monkeypatch.setattr(rebalance, "analyze_rebalance", lambda method="mvo": captured.update({"m": method}) or pd.DataFrame())
+        monkeypatch.setattr(
+            rebalance, "analyze_rebalance", lambda method="mvo": captured.update({"m": method}) or pd.DataFrame()
+        )
         monkeypatch.setattr(rebalance, "print_rebalance", lambda d: None)
         rc = rebalance.main(["--method", "rp"])
         assert rc == 0

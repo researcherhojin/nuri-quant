@@ -162,7 +162,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--method", choices=["mvo", "rp"], default="mvo", help="최적화 방법: mvo(샤프 최대화) 또는 rp(리스크 패리티)"
+        "--method",
+        choices=["mvo", "rp"],
+        default="rp",
+        help="최적화 방법: rp(리스크 패리티, 시스템 기본 경로 — STRATEGY §3.10) 또는 mvo(샤프 최대화, 명시 선택만, #1645)",
     )
     args = parser.parse_args(argv)
 
