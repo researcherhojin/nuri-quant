@@ -67,14 +67,32 @@
 .warning { width: 100%; font-size: var(--fs-label); color: #f1ca91; }
 
 /* ── 지표 카드 4개 ──────────────────────────────────────────────── */
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space); }
+/* 시장 카드(#1676)가 지수 4개를 담느라 2.4칸을 쓴다 — 1280 폭에서도 칸당 ~85px 라 "27,477.31" 이 들어간다 */
+.metrics { display: grid; grid-template-columns: minmax(0, 2.4fr) repeat(3, minmax(0, 1fr)); gap: var(--space); }
 .metrics article { display: flex; flex-direction: column; justify-content: center; gap: 4px; box-shadow: inset 0 1px 0 #ffffff05; border: 1px solid var(--line); background: linear-gradient(135deg, #202b3b44, transparent 70%), var(--surface); border-radius: 8px; padding: 12px var(--pad); min-width: 0; }
 .metricLabel { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-label); color: var(--muted); }
 .metricLabel svg { color: #899db7; }
 .metrics strong { display: block; font-size: var(--fs-value); letter-spacing: -.7px; font-weight: 500; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.metrics strong.regimeValue { font-size: calc(22px + var(--font-step)); line-height: 1.3; }
 .metrics strong > span { color: var(--muted); font-size: var(--fs-label); font-weight: 400; letter-spacing: 0; }
 .metrics small { font-size: var(--fs-label); }
+/* 시장 카드: 지수 칸 3줄(이름과 기준일 · 레벨 · 변화율) + 레짐 한 줄. 1440×900 의 지표 행이 100px 라
+   줄 높이를 1.2 로 묶어야 패딩 포함 ~96px 에 들어간다 — 줄을 늘리면 그 행을 먼저 키울 것 */
+.marketCard { gap: 4px; }
+.indices { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; line-height: 1.2; }
+.indices li { min-width: 0; }
+.indices li + li { border-left: 1px solid var(--line); padding-left: 10px; }
+.indexHead { display: block; color: var(--muted); font-size: var(--fs-label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.indexHead b { color: #d0dae8; font-weight: 550; }
+.metrics .indices strong { display: block; font-size: var(--fs-h3); letter-spacing: -.3px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.indexChange { display: flex; gap: 6px; font-size: var(--fs-label); white-space: nowrap; }
+.indexHead time { color: var(--muted); font-size: var(--fs-xs); }
+/* 1400px 이하에선 지수 칸이 ~85px 라 18px 레벨(27,599.79)이 잘린다 — 사다리 한 단 아래로 */
+@media (max-width: 1400px) { .metrics .indices strong { font-size: var(--fs-title); } }
+.indexEmpty { color: var(--muted); font-size: var(--fs-label); }
+.regimeLine { display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--muted); font-size: var(--fs-label); line-height: 1.2; }
+.regimeLine b { color: var(--text); font-weight: 550; white-space: nowrap; }
+.metrics .regimeLine small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.regimeLine > svg { margin-left: auto; flex-shrink: 0; color: #899db7; }
 
 /* ── 패널 공통 ──────────────────────────────────────────────────── */
 .primaryGrid { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: var(--space); min-height: 0; }
@@ -264,6 +282,8 @@
   .inbox { grid-template-columns: minmax(140px, .8fr) minmax(0, 1.5fr); }
   .evidence { padding: 12px; }
   .secondaryGrid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr); }
+  /* 1251px 아래에선 2.4칸이면 지수 칸이 다섯 자리 레벨을 못 담는다 — 1050px 에서 한 줄을 다 쓰기 전까지 3칸 */
+  .metrics { grid-template-columns: minmax(0, 3fr) repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 1100px) { .portfolioBody .compositionChart { flex: none; height: 220px; } }
 @media (max-width: 1050px) {
@@ -276,13 +296,17 @@
   .secondaryGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .secondaryGrid > section:first-child { grid-column: 1 / -1; }
   .panelBody { max-height: 320px; }
+  /* 시장 카드는 한 줄을 다 쓰고 나머지 세 카드가 그 아래에 선다 — 2.4칸으로는 지수 칸이 60px 아래로 준다 */
+  .metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metrics .marketCard { grid-column: 1 / -1; }
 }
 @media (max-width: 700px) { .donutTotal strong { font-size: calc(17px + var(--font-step)); } }
 @media (max-width: 600px) {
   .header { flex-wrap: wrap; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .metrics article { padding: 12px; min-height: 98px; }
-  .metrics strong.regimeValue { font-size: var(--fs-h3); }
+  .indices { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; }
+  .indices li:nth-child(odd) { border-left: 0; padding-left: 0; }
   .summaryLabel { display: none; }
   .verdict { flex-basis: 100%; }
   .summary { padding: 10px; }

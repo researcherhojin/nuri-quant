@@ -1589,3 +1589,133 @@ class TestLatestActionsDecisionLink:
         aapl = next(a for a in actions if a["ticker"] == "AAPL")
         assert aapl["decision_id"] == decision_id
         assert aapl["as_of"] == today
+
+
+class TestMarketIndices:
+    """#1676: 시장 카드 머리글의 공식 지수 블록 — 미국은 macro, 한국은 prices."""
+
+    @staticmethod
+    def _bar(ticker: str, date: str, close: float) -> dict:
+        return {
+            "ticker": ticker,
+            "date": date,
+            "open": close,
+            "high": close,
+            "low": close,
+            "close": close,
+            "volume": 0,
+            "adj_close": close,
+        }
+
+    def test_reads_us_from_macro_and_kr_from_prices_with_change(self, db_path):
+        from nuri.api.routes.dashboard import _get_market_indices
+
+        upsert_macro(
+            [
+                {"indicator": "sp500", "date": "2026-01-01", "value": 1000.0, "source": "yfinance"},
+                {"indicator": "sp500", "date": "2026-01-02", "value": 1010.0, "source": "yfinance"},
+                {"indicator": "nasdaq_composite", "date": "2026-01-01", "value": 2000.0, "source": "yfinance"},
+                {"indicator": "nasdaq_composite", "date": "2026-01-02", "value": 1950.0, "source": "yfinance"},
+            ],
+            db_path=db_path,
+        )
+        upsert_prices(
+            pd.DataFrame([self._bar("KOSPI", "2026-01-01", 3000.0), self._bar("KOSPI", "2026-01-02", 3000.0)]),
+            db_path=db_path,
+        )
+
+        by_key = {i["key"]: i for i in _get_market_indices(db_path=db_path)}
+
+        assert by_key["sp500"] == {
+            "key": "sp500",
+            "label": "S&P 500",
+            "close": 1010.0,
+            "prev_close": 1000.0,
+            "change_pct": 1.0,
+            "date": "2026-01-02",
+        }
+        assert by_key["nasdaq"]["change_pct"] == -2.5
+        assert by_key["kospi"]["change_pct"] == 0.0
+        assert by_key["kospi"]["date"] == "2026-01-02"
+
+    def test_change_is_against_the_previous_stored_observation_across_a_gap(self, db_path):
+        """수집이 빠진 날이 있으면 변화율은 그 앞 관측 대비다 — 화면 문구도 '직전 관측' 이다."""
+        from nuri.api.routes.dashboard import _get_market_indices
+
+        upsert_prices(
+            pd.DataFrame([self._bar("KOSPI", "2026-01-02", 3000.0), self._bar("KOSPI", "2026-01-06", 3030.0)]),
+            db_path=db_path,
+        )
+
+        kospi = {i["key"]: i for i in _get_market_indices(db_path=db_path)}["kospi"]
+        assert kospi["prev_close"] == 3000.0
+        assert kospi["change_pct"] == 1.0
+        assert kospi["date"] == "2026-01-06"
+
+    def test_missing_data_is_null_and_shape_is_preserved(self, db_path):
+        from nuri.api.routes.dashboard import _get_market_indices
+
+        # KOSDAQ 은 한 행뿐 — 값은 있지만 변화율의 기준이 없다
+        upsert_prices(pd.DataFrame([self._bar("KOSDAQ", "2026-01-02", 900.0)]), db_path=db_path)
+
+        result = _get_market_indices(db_path=db_path)
+
+        assert [i["key"] for i in result] == ["sp500", "nasdaq", "kospi", "kosdaq"]
+        empty = {"close": None, "prev_close": None, "change_pct": None, "date": None}
+        for item in result[:3]:
+            assert {k: item[k] for k in empty} == empty
+        assert result[3]["close"] == 900.0
+        assert result[3]["prev_close"] is None
+        assert result[3]["change_pct"] is None
+
+    def test_zero_previous_value_does_not_divide(self, db_path):
+        from nuri.api.routes.dashboard import _get_market_indices
+
+        upsert_macro(
+            [
+                {"indicator": "sp500", "date": "2026-01-01", "value": 0.0, "source": "yfinance"},
+                {"indicator": "sp500", "date": "2026-01-02", "value": 1000.0, "source": "yfinance"},
+            ],
+            db_path=db_path,
+        )
+
+        sp500 = _get_market_indices(db_path=db_path)[0]
+
+        assert sp500["close"] == 1000.0
+        assert sp500["change_pct"] is None
+
+    def test_query_failure_degrades_to_nulls(self, tmp_path):
+        """스키마 없는 DB — 실제 `no such table` 이 나도 4개 항목 shape 를 유지한다.
+
+        (facade `query` 를 갈아끼우지 않는다 — tests/CLAUDE.md "facade 리더 재바인딩 금지")
+        """
+        from nuri.api.routes.dashboard import _get_market_indices
+
+        result = _get_market_indices(db_path=tmp_path / "no_schema.db")
+
+        assert len(result) == 4
+        assert all(i["close"] is None and i["change_pct"] is None for i in result)
+
+    def test_us_indices_come_from_macro_not_prices(self):
+        """미국 지수를 prices 에 또 넣지 않는다 — `.KS`/`.KQ` 가 없는 이름은 US 종목 universe 로 샌다 (#710).
+
+        prices 에서 읽는 지수는 `StockKRCollector.INDEX_TICKERS` 가 이미 쓰는 KOSPI/KOSDAQ 뿐이다.
+        (여기서 stock_kr 를 import 하지 않는다 — 먼저 import 하면 tests/collectors/test_stock_kr.py 의
+        pykrx 스텁이 순서에 따라 깨진다.)
+        """
+        from nuri.api.routes.dashboard import MARKET_INDICES
+
+        tables = {key: (table, ident) for key, _, table, ident in MARKET_INDICES}
+        assert tables == {
+            "sp500": ("macro", "sp500"),
+            "nasdaq": ("macro", "nasdaq_composite"),
+            "kospi": ("prices", "KOSPI"),
+            "kosdaq": ("prices", "KOSDAQ"),
+        }
+
+    def test_dashboard_response_carries_market_indices(self, db_path):
+        from nuri.api.routes.dashboard import _build_dashboard
+
+        result = _build_dashboard()
+
+        assert [i["key"] for i in result["market_indices"]] == ["sp500", "nasdaq", "kospi", "kosdaq"]

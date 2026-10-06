@@ -144,6 +144,8 @@ def _build_dashboard() -> dict:
         # stale gate 근거 — 어떤 입력이 얼마나 낡아 판단이 보류됐는지 (빈 리스트 = 게이트 통과)
         "verdict_stale_inputs": verdict_stale_inputs,
         "regime": regime_data,
+        # 공식 지수 레벨 (#1676) — 시장 카드의 머리글. regime 은 그 아래 시스템 분류로 남는다
+        "market_indices": _get_market_indices(),
         "macro": macro_data,
         "allocation": allocation,  # target (regime 권장) — legacy 이름, backward compat
         "target_allocation": allocation,  # explicit 이름 — regime 권장 비율
@@ -163,6 +165,57 @@ def _build_dashboard() -> dict:
         "ticker_accounts": ticker_accounts,
         "account_labels": account_labels_map,
     }
+
+
+# 공식 지수 — (응답 key, 표시 이름, 테이블, 식별자). 순서가 곧 화면 순서다 (#1676).
+# 미국 지수는 `macro` 테이블에서 읽는다: `MacroCollector` 가 매시 `^GSPC`/`^IXIC` 를
+# `sp500`/`nasdaq_composite` 로 이미 수집한다. `prices` 에 같은 지수를 또 넣으면 `.KS`/`.KQ`
+# 접미사가 없어 `is_kr_ticker()` 필터를 통과하고, US 종목 universe(decision_alpha 치환 후보 ·
+# walkforward 패널)에 거래 가능 종목처럼 섞인다 — KOSDAQ 이 #710 에서 그렇게 새었다.
+# 한국 지수는 `StockKRCollector` 가 `prices` 에 `KOSPI`/`KOSDAQ` 로 넣는 행을 그대로 쓴다.
+MARKET_INDICES: tuple[tuple[str, str, str, str], ...] = (
+    ("sp500", "S&P 500", "macro", "sp500"),
+    ("nasdaq", "NASDAQ", "macro", "nasdaq_composite"),
+    ("kospi", "KOSPI", "prices", "KOSPI"),
+    ("kosdaq", "KOSDAQ", "prices", "KOSDAQ"),
+)
+
+_INDEX_SQL = {
+    "macro": "SELECT date, value FROM macro WHERE indicator = ? AND value IS NOT NULL ORDER BY date DESC LIMIT 2",
+    "prices": "SELECT date, close AS value FROM prices WHERE ticker = ? AND close IS NOT NULL ORDER BY date DESC LIMIT 2",
+}
+
+
+def _get_market_indices(db_path=None) -> list[dict]:
+    """지수별 최근 값 · 직전 관측값 · 변화율 · 기준일. 항상 `MARKET_INDICES` 전체 shape 를 낸다.
+
+    변화율은 **직전 저장 관측** 대비다 — 직전 거래일이 아니다. 수집이 하루 빠졌거나 휴장이면
+    여러 날의 변화가 된다. 값이 없으면 null 이다 — 0 이나 직전 값으로 채우지 않는다. 직전 관측이 없거나 0 이면
+    `change_pct` 만 null. 최근 값은 장중 수집분일 수 있어 확정 종가라고 단정하지 않는다
+    (macro 는 매시, stock_kr 은 장중 5분마다 그날 봉을 덮어쓴다).
+    """
+    from nuri.core.db import DatabaseError, query
+
+    out = []
+    for key, label, table, identifier in MARKET_INDICES:
+        item = {"key": key, "label": label, "close": None, "prev_close": None, "change_pct": None, "date": None}
+        try:
+            rows = query(_INDEX_SQL[table], (identifier,), db_path=db_path)
+        except DatabaseError:
+            # DB 오류만 결측으로 강등한다 — 코드 결함까지 "지수 없음" 으로 숨기지 않는다
+            logger.exception("market index %s 조회 실패", key)
+            rows = []
+        if rows:
+            close = float(rows[0]["value"])
+            prev = float(rows[1]["value"]) if len(rows) > 1 else None
+            item.update(
+                close=close,
+                prev_close=prev,
+                change_pct=round((close / prev - 1) * 100, 2) if prev else None,
+                date=rows[0]["date"],
+            )
+        out.append(item)
+    return out
 
 
 def _get_cached_regime() -> dict:

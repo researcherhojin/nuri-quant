@@ -23,6 +23,10 @@ function Empty({ failed = false }: { failed?: boolean }) {
   return <p className={styles.empty}>{failed ? COPY.UNAVAILABLE : COPY.EMPTY}</p>;
 }
 
+function regimeName(key: string): string {
+  return lookup(REGIME_LABEL, key) || key;
+}
+
 function direction(value: number | null | undefined) {
   return value == null ? "unknown" : value > 0 ? "up" : value < 0 ? "down" : "flat";
 }
@@ -44,6 +48,10 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
   // 백엔드 placeholder(coverage 0 · "Unavailable") 는 점수로 보이지 않는다 — #1026 · #1652 와 같은 규칙
   const macroAvailable = dashboard && dashboard.macro.coverage !== 0 && dashboard.macro.interpretation !== "Unavailable";
   const regimeAvailable = dashboard && dashboard.regime.regime !== "unknown";
+  const indices = dashboard?.market_indices ?? [];
+  // 특수 레짐일 때만 기본 판정(추세 × 변동성)을 따로 보인다 — 기본 레짐이면 같은 말의 반복이다
+  const baseKey = dashboard?.regime.volatility ? `${dashboard.regime.trend}_${dashboard.regime.volatility}_vol` : null;
+  const baseRegime = regimeAvailable && baseKey && baseKey !== dashboard.regime.regime ? baseKey : null;
   const delayed = freshness?.details.filter((item) => item.status !== "PASS").sort((a, b) => Number(b.status === "FAIL") - Number(a.status === "FAIL")) ?? [];
   const delayedKeys = delayed.map((item) => item.key);
 
@@ -81,15 +89,29 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
       </section>
 
       <div className={styles.metrics} aria-label={COPY.METRICS.ARIA}>
-        <article>
-          <div className={styles.metricLabel}>
+        {/* 머리글은 공식 지수, 레짐은 그 아래 시스템 분류 한 줄 — 배분을 정하므로 지우지 않는다 (#1676) */}
+        <article className={styles.marketCard} aria-label={COPY.METRICS.INDICES}>
+          {indices.length ? (
+            <ul className={styles.indices}>{indices.map((index) => (
+              <li key={index.key}>
+                {/* 기준일은 이름 줄에 MM-DD 로 — 등락률 줄에 두면 좁은 폭(1280)에서 옆 칸 숫자와 붙는다 */}
+                <span className={styles.indexHead}><b>{index.label}</b> {index.date ? <time dateTime={index.date}>{index.date.slice(5)}</time> : <time>{COPY.METRICS.INDEX_DATE_UNKNOWN}</time>}</span>
+                <strong>{displayNumber(index.close, "", 2)}</strong>
+                <span className={styles.indexChange}>
+                  <span className={styles.change} data-direction={direction(index.change_pct)}>{displayChange(index.change_pct, 2)}</span>
+                </span>
+              </li>
+            ))}</ul>
+          ) : <p className={styles.indexEmpty}>{COPY.METRICS.INDICES_UNAVAILABLE}</p>}
+          <div className={styles.regimeLine}>
             <DetailDialog label={COPY.METRICS.REGIME} icon={<Info size={12} />} title={COPY.METRICS.REGIME_GUIDE_TITLE}>
               {COPY.METRICS.REGIME_GUIDE.map((text) => <p key={text}>{text}</p>)}
             </DetailDialog>
-            <Globe2 size={16} />
+            <b>{regimeAvailable ? regimeName(dashboard.regime.regime) : "—"}</b>
+            {/* confidence 는 기본 판정의 추세 검사 + VIX·밴드폭 변동성 교차 검사 중 통과 비율이다(값 없는 검사는 분모에서 빠짐) — 특수 분류 옆에 "신뢰도" 로 두면 그 분류의 확신처럼 읽힌다 */}
+            <small>{[baseRegime ? COPY.METRICS.REGIME_BASE(regimeName(baseRegime)) : null, COPY.METRICS.REGIME_AGREEMENT(displayNumber(regimeAvailable ? dashboard.regime.confidence : null, "%"))].filter(Boolean).join(" · ")}</small>
+            <Globe2 size={14} aria-hidden="true" />
           </div>
-          <strong className={styles.regimeValue}>{regimeAvailable ? lookup(REGIME_LABEL, dashboard.regime.regime) || dashboard.regime.regime : "—"}</strong>
-          <small>{COPY.METRICS.REGIME_CONFIDENCE} {displayNumber(regimeAvailable ? dashboard.regime.confidence : null, "%")}</small>
         </article>
         <article>
           <div className={styles.metricLabel}>

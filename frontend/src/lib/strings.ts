@@ -650,6 +650,12 @@ export const REGIME_LABEL = {
   bear_high_vol: "하락 · 고변동",
   sideways_low_vol: "횡보 · 저변동",
   sideways_high_vol: "횡보 · 고변동",
+  // 특수 레짐 4종 (nuri/quant/regime/classifier.py SPECIAL_REGIMES) — 키가 없으면 화면이 원문 키를 낸다.
+  // 키 집합은 tests/quant/regime/test_regime_label_coverage.py 가 ALL_REGIMES 와 대조한다.
+  euphoria: "과열",
+  stagflation: "스태그플레이션",
+  recovery: "회복 초기",
+  sector_rotation: "섹터 순환",
 } satisfies Record<string, string>;
 
 /* ── Overview Preview (/dashboard-next, #1658) ──────────────────────────────── */
@@ -681,13 +687,19 @@ export const DASHBOARD_NEXT = {
   },
   METRICS: {
     ARIA: "현재 시장 환경",
-    REGIME: "시장 흐름",
-    REGIME_GUIDE_TITLE: "시장 흐름을 읽는 법",
+    INDICES: "주요 지수",
+    INDICES_UNAVAILABLE: "지수 정보를 불러올 수 없습니다.",
+    INDEX_DATE_UNKNOWN: "기준일 없음",
+    REGIME: "시스템 분류",
+    REGIME_GUIDE_TITLE: "주요 지수와 시스템 분류",
     REGIME_GUIDE: [
-      "시스템이 분류한 시장의 추세와 변동성입니다. 상승·하락·횡보는 추세, 저변동·고변동은 가격 흔들림의 정도를 뜻합니다.",
-      "분류 신뢰도는 모델의 분류 점수이며 앞으로 오를 확률이나 수익 확률이 아닙니다. 데이터 업데이트 상태와 함께 확인하세요.",
+      "주요 지수는 S&P 500·NASDAQ 종합·KOSPI·KOSDAQ 의 최근 저장값과 직전 관측 대비 변화율입니다. 수집이 빠진 날이나 휴장일이 끼면 며칠치 변화일 수 있습니다. 장중에는 확정 종가가 아닐 수 있고, 미국과 한국의 기준일이 다를 수 있습니다.",
+      "시스템 분류는 시장 흐름(레짐)이며 목표 자산 배분에 쓰입니다. 기본 판정은 추세(상승·하락·횡보)와 변동성(저변동·고변동)입니다.",
+      "특수 조건이 맞으면 기본 판정 대신 특수 분류가 표시됩니다 — 과열(VIX 12 미만이면서 공포·탐욕 지수 80 초과), 스태그플레이션(물가 상승률 4% 초과이면서 GDP 성장률 1% 미만), 회복 초기(장기 하락 뒤 50일 이동평균이 200일 이동평균을 다시 넘어섬), 섹터 순환(S&P 500 ETF 20일 수익률 ±2% 이내인데 섹터 ETF 하나 이상이 3% 이상 상승). 회복 초기·스태그플레이션·섹터 순환은 강한 경제 이벤트 신호로 지정되기도 합니다.",
+      "검사 일치는 기본 판정을 점검하는 검사 중 통과한 비율입니다 — 추세 검사(공포·탐욕 지수, RSI, 50일 이동평균 기울기)와 변동성 교차 검사(VIX와 볼린저 밴드 폭이 같은 쪽을 가리키는지). 값이 없는 지표의 검사는 빠지므로 분모가 달라질 수 있습니다. 특수 분류의 신뢰도가 아니며, 앞으로 오를 확률이나 수익 확률도 아닙니다.",
     ],
-    REGIME_CONFIDENCE: "분류 신뢰도",
+    REGIME_BASE: (base: string) => `기본 판정 ${base}`,
+    REGIME_AGREEMENT: (pct: string) => `검사 일치 ${pct}`,
     MACRO: "경제 여건 점수",
     MACRO_GUIDE_TITLE: "경제 여건 점수의 의미",
     MACRO_GUIDE: [

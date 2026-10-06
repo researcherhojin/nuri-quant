@@ -5,12 +5,16 @@ const number = z.number().nullable();
 
 const allocation = z.object({ long: number, short: number, cash: number });
 
+// 공식 지수 (#1676). 값이 없으면 백엔드가 null 을 보낸다 — 화면은 0 으로 바꾸지 않는다.
+const marketIndex = z.object({ key: z.string(), label: z.string(), close: number, prev_close: number, change_pct: number, date: z.string().nullable() });
+
 export const dashboardSchema = z.object({
+  market_indices: z.array(marketIndex).optional(),
   exchange_rate: number.optional(),
   verdict: z.string(),
   verdict_level: z.string(),
   verdict_stale_inputs: z.array(z.object({ key: z.string(), label: z.string(), last_updated: z.string().nullable(), age_hours: number })).optional(),
-  regime: z.object({ regime: z.string(), trend: z.string(), confidence: number, vix: number.optional(), fear_greed: number.optional() }),
+  regime: z.object({ regime: z.string(), trend: z.string(), volatility: z.string().optional(), confidence: number, vix: number.optional(), fear_greed: number.optional() }),
   macro: z.object({ score: number, interpretation: z.string(), coverage: number.optional() }),
   actual_allocation: allocation.nullable().optional(),
   target_allocation: allocation.optional(),

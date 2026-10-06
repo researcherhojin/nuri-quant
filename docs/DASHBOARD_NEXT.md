@@ -9,7 +9,7 @@
 | 영역 | 표시 내용과 사용 방법 |
 |---|---|
 | 시스템 의견 | 백엔드의 종합 의견과 지연 입력을 함께 표시한다. |
-| 시장 흐름 | 상승·하락·횡보와 변동성 분류. 설명 창에서 분류 신뢰도의 의미를 확인한다. |
+| 주요 지수 · 시스템 분류 | 머리글은 S&P 500·NASDAQ·KOSPI·KOSDAQ 의 최근 값, 직전 관측 대비 변화율, 기준일(#1676). 그 아래 한 줄이 시스템 분류(레짐) — 특수 레짐(과열·스태그플레이션·회복 초기·섹터 순환)이면 기본 판정(추세 × 변동성)을 따로 적고, `confidence` 는 "검사 일치" 로 표시한다. 기본 판정을 점검하는 검사(추세 검사 3종 + VIX·볼린저 밴드 폭 변동성 교차 검사, 값 없는 지표는 분모에서 빠짐) 중 통과한 비율이지 특수 분류의 신뢰도가 아니기 때문이다. 분류는 목표 배분을 정하므로 지수로 대체하지 않는다. |
 | 경제 여건 점수 | 금리·물가·고용·시장 심리 등 시스템 점수. 라벨은 백엔드 분류를 그대로 번역한 기존 대시보드와 같은 네 단계(양호·보통·부진·취약)와 **입력 부족**이며, 점수로 라벨을 다시 만들지 않는다. coverage 0 의 대체 점수는 숨긴다. |
 | 우선 점검 항목 | `/api/actions`의 우선 확인 건수와 검토·포트폴리오 규칙 건수. |
 | 보유 종목 점검 | 우선 확인·검토·포트폴리오 규칙·유지 탭. 선택한 종목의 기준일, 근거, 비중, 손익과 두 신호를 표시한다. |
@@ -18,7 +18,7 @@
 | 데이터 업데이트 | 정상·주의·지연 소스, 전체 소스 설명, 갱신 작업 진입점. |
 | 파이프라인 상태 | 최근 실행 이벤트, 판정 원장 산출물, 스케줄러 상태를 구분한다. |
 
-**시장 국면 → 시장 흐름**, **매크로 환경 → 경제 여건 점수**,
+**시장 국면 → 시스템 분류**(주요 지수 아래 한 줄, #1676 — 이전 이름 시장 흐름), **매크로 환경 → 경제 여건 점수**,
 **판단 모니터 → 보유 종목 점검**, **자산 배분 → 내 포트폴리오**로 표현을 정리했다.
 신뢰도는 수익 확률이 아니며, `alpha_action`과 `portfolio_action`은 독립된 축이다.
 화면의 판단은 백엔드가 생성한 결과이고 주문 실행 기능은 없다.
@@ -30,13 +30,23 @@
 
 | 조회 API | 사용 영역 |
 |---|---|
-| `GET /api/dashboard` | 시스템 의견, 시장 분류, 경제 점수, VIX, 환율, 알림 |
+| `GET /api/dashboard` | 시스템 의견, 주요 지수(`market_indices`), 시장 분류, 경제 점수, VIX, 환율, 알림 |
 | `GET /api/actions` | 점검 목록과 판정 원장 링크 |
 | `GET /api/opportunities` | 탐색 후보와 가격 변화 |
 | `GET /api/portfolio` | 보유 수량·종목명·최근 가격·현금 |
 | `GET /api/freshness` | 데이터 업데이트 상태 |
 | `GET /api/pipeline/status` | 단계별 이벤트와 판정 원장 요약 |
 | `GET /api/scheduler/health` | 클라이언트가 별도로 조회하는 스케줄러 상태 |
+
+### `market_indices` (#1676)
+
+`/api/dashboard` 의 `market_indices` 는 항상 4개 항목을 이 순서로 낸다 — `sp500` · `nasdaq` · `kospi` · `kosdaq`.
+각 항목은 `{key, label, close, prev_close, change_pct, date}` 이다. `change_pct` 는 `(close / prev_close − 1) × 100` 을 소수 둘째 자리로 반올림한 값이다.
+
+- **출처가 둘이다.** 미국 지수는 `macro` 테이블(`sp500` · `nasdaq_composite`)에서 읽는다. `MacroCollector` 가 매시 `^GSPC` · `^IXIC` 를 수집한다. 한국 지수는 `prices` 의 `KOSPI` · `KOSDAQ` 행이다(`StockKRCollector`).
+- **미국 지수는 `prices` 에 넣지 않는다.** `.KS` · `.KQ` 접미사가 없는 이름이라 `is_kr_ticker()` 필터를 통과한다. 그러면 US 종목 universe(decision_alpha 치환 후보 · walkforward 패널)에 거래 가능 종목처럼 섞인다(#710 의 KOSDAQ 과 같은 경로).
+- **결측은 null 이다.** 행이 없으면 4개 값이 모두 null 이다. 직전 관측이 없거나 0 이면 `change_pct` 만 null 이다. 조회가 실패해도 항목 shape 는 유지한다. 화면은 null 을 `—` 로 내고 0% 로 바꾸지 않는다.
+- **`close` 는 최근 저장값이다.** macro 는 매시, stock_kr 은 장중 5분마다 그날 봉을 덮어쓰므로 장중에는 확정 종가가 아닐 수 있다. 미국과 한국의 `date` 는 다를 수 있다.
 
 클라이언트 요청은 상대 `/api/*` 경로를 사용한다.
 파이프라인은 진입 시·60초 간격·수동 조회·화면 복귀 시 갱신하고 숨겨진 탭에서는 주기 조회를 건너뛴다.
@@ -116,6 +126,8 @@ Decide는 독립 예약 작업이 없으며 Consensus 내부에서 `record_decis
 | `frontend/src/lib/strings.ts` · `frontend/src/components/ui/sidebar.tsx` | 화면의 **모든** 사용자 노출 문구(`DASHBOARD_NEXT`, 패널별 하위 객체), 기존 대시보드와 공용인 분류 라벨(`MACRO_INTERPRETATION` · `REGIME_LABEL`), 탐색 링크. 컴포넌트와 테스트는 리터럴 대신 여기서 읽는다 (#1252) |
 | `frontend/src/app/layout.tsx` | Preview 전용 폭 확장을 위한 컨테이너 표시 |
 | `nuri/api/routes/pipeline.py` | Decide 원장 산출물 조회 |
+| `nuri/api/routes/dashboard.py` (`MARKET_INDICES` · `_get_market_indices`) · `tests/api/test_dashboard.py::TestMarketIndices` | 주요 지수 블록과 결측·변화율 회귀 테스트 (#1676) |
+| `tests/quant/regime/test_regime_label_coverage.py` | 분류기의 10개 레짐(`ALL_REGIMES`) 과 `REGIME_LABEL` 키를 양방향으로 대조한다 |
 | `nuri/api/routes/pipeline_refresh.py` · `nuri/api/main.py` | 갱신 작업 API와 라우터 등록 |
 | `tests/api/test_pipeline_refresh.py` | 순서·실패·중복·인증·슬롯·원장 관측 회귀 테스트 |
 | `frontend/src/__tests__/pages/dashboard-next*.test.tsx` | 패널·신호·결측값·이름·전체 목록·조회·갱신 테스트 |
@@ -163,6 +175,7 @@ E2E는 실제 로컬 API를 사용한다. 개인 보유값을 고정한 기대�
 
 - **글자 크기는 사다리 토큰 6개뿐**: `--fs-xs` 10 · `--fs-label` 11 · `--fs-body` 13 · `--fs-title` 14 · `--fs-h3` 18 · `--fs-value` 26 (px). 전부 `--font-step`(1600px 부터 폭 160px 당 +0.32px, 최대 +2px — 1920 에서 +0.6, 2560 에서 +1.9)이 더해져 큰 화면에서 조금만 커진다. 초안은 1920 에서 +2.9px 였고 "큰 화면에서 글자가 크다" 는 피드백(2026-10-06)으로 줄였다. `calc(8px + …)` 같은 임의 값은 쓰지 않는다 — 초안의 8·9px 기반 보조 문구가 1440px 에서 9px 로 떨어졌던 것이 계기다. e2e 는 1920px 이상에서 범례 글자가 라벨 토큰 11px 아래로 떨어지지 않는지 본다.
 - **간격 토큰 3개**: `--space`(패널 사이, 12–24px) · `--pad`(패널 안쪽 좌우, 14–20px) · `--row`(목록 행 상하 8px, 대형 화면 11px). 표 행·소스 행·파이프라인 행이 같은 `--row` 를 쓴다.
+- **시장 카드 (#1676)**: 지표 행의 2.4칸을 쓰고 1250px 이하에서는 3칸, 1050px 이하에서는 한 줄 전체를 쓰며 600px 이하에서는 지수가 2×2 로 배치된다. 지수 칸은 이름과 기준일(`MM-DD`) · 레벨(`--fs-h3`, 1400px 이하 `--fs-title`) · 변화율의 3줄이다 — 1280px 에서 칸이 약 85px 라 다섯 자리 레벨(27,599.79)이 18px 로는 잘리고, 기준일을 변화율 줄에 두면 옆 칸 숫자와 붙는다(2026-10-07 실측). 기준일 줄은 좁으면 말줄임된다(전체 날짜는 `<time datetime>`). 레짐은 그 아래 한 줄이다. 1440×900 에서 지표 행은 100px 이고, 줄 높이 1.2 로 묶어야 패딩 포함 약 96px 에 들어간다. 줄을 늘리려면 `grid-template-rows` 의 지표 행부터 키우고 레이아웃 e2e 를 다시 돌린다.
 - **범례 스크롤**: 도넛 옆 범례는 차트 행 트랙을 `minmax(0, 1fr)` 로 고정해 그 높이 안에서만 스크롤한다. 초안은 범례가 아래 "전체 N개 구성" 문구를 덮었다.
 - **아이콘**: `↗`·`ⓘ` 문자 대신 lucide 아이콘(`ArrowUpRight`·`Info`)을 `aria-hidden` 으로 붙인다. 접근성 이름과 테스트의 버튼 이름은 문구만이다(`DetailDialog` 의 `icon` prop).
 - **근거 영역**: 선택 종목의 지표는 근거 아래에 자연스럽게 이어진다(초안은 패널 바닥에 붙여 큰 빈칸이 생겼다).
