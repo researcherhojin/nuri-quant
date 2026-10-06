@@ -17,6 +17,15 @@ interface Holding {
   sector: string;
   latest_price: number | null;
   price_date: string | null;
+  // /api/portfolio 가 .KS/.KQ 에만 채운다. 미국 종목·이름 미확인은 null.
+  name?: string | null;
+}
+
+// 한국 종목만 이름을 앞세운다. 이름이 없으면 티커만 — 이름을 지어내지 않는다.
+function krName(row: Holding): string | null {
+  const name = row.name?.trim();
+
+  return /\.(KS|KQ)$/.test(row.ticker) && name ? name : null;
 }
 
 // Account list is derived from existing holdings — no hardcoded broker names.
@@ -233,11 +242,16 @@ function PortfolioContent() {
   const columns = [
     {
       key: "ticker", label: "Ticker",
-      render: (_: string, row: Holding) => (
-        <Link href={`/ticker/${row.ticker}`} className="font-medium text-emerald-400 hover:underline">
-          {row.ticker}
-        </Link>
-      ),
+      render: (_: string, row: Holding) => {
+        const name = krName(row);
+
+        return (
+          <Link href={`/ticker/${row.ticker}`} className="font-medium text-emerald-400 hover:underline">
+            {name ?? row.ticker}
+            {name && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{row.ticker}</span>}
+          </Link>
+        );
+      },
     },
     {
       key: "quantity", label: "Qty", align: "right" as const,
