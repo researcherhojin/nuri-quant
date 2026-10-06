@@ -86,6 +86,12 @@ us_core:
   - XLF
   - XLE
   - XLV
+  - XLI
+  - XLP
+  - XLU
+  - XLY
+  - XLC
+  - XLRE
 us_sp500_extended:
   description: 미국 S&P 500 — us_core에 없는 추가 종목 (458개)
   tickers:
