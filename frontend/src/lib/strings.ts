@@ -548,16 +548,14 @@ export const ACTION = {
 export const OPPORTUNITY = {
   TITLE: "기회 탐색",
   SUBTITLE: "뉴스·이슈 종목",
-  PROS: "찬성",
-  CONS: "반대",
+  // #1683: 판정은 API 가 아니라 파이프라인(BUY 후보 emitter)의 분류다. 스캐너가 본 사실은 "관측" 일 뿐이다.
+  SYSTEM: "시스템 판단",
+  OBSERVATIONS: "스캐너 관측",
+  // 10-Agent 분석 결과(신뢰도) 앞에 붙는 라벨
   VERDICT: "판정",
   ANALYZE: "10-Agent 분석",
   CHART: "차트 보기",
   EMPTY: "현재 감지된 기회가 없습니다.",
-  POSITIVE: "매수 고려",
-  NEUTRAL: "관망",
-  DANGER: "매수 금지",
-  MUTED: "데이터 부족",
   // #1252: "전체 {n}건 →" — 숫자를 사이에 끼우므로 접두/접미로 나눈다
   // (`PIPELINE.RUNNING_SUFFIX` 와 같은 관례).
   ALL_PREFIX: "전체",
@@ -571,6 +569,27 @@ export const OPPORTUNITY = {
   PEEK_COLLAPSE: "상세 접기",
   AGREEMENT_SUFFIX: "% 합의",
   ANALYZING: "분석 중...",
+} as const;
+
+/**
+ * #1683: 탐색 후보에 붙는 파이프라인 분류 문구. 점수·임계·차단 사유는 전부 API 값이다 —
+ * 여기에는 숫자 임계를 두지 않는다. 매매 지시가 아니라 시스템의 분류다.
+ */
+export const SYSTEM_STANCE = {
+  QUALIFIED: "후보 기준 통과",
+  BELOW_THRESHOLD: "기준 미달",
+  EXCLUDED: "제외",
+  BLOCKED: "차단",
+  NOT_SCORED: "미평가",
+  REASON: {
+    held: "보유 중",
+    cooldown: "쿨다운",
+    leverage_etf: "레버리지 ETF",
+    no_factor: "팩터 데이터 없음",
+    no_price: "가격 데이터 없음",
+    evaluation_failed: "평가 실패",
+  },
+  NOTE: "BUY 후보 emitter 의 채점·게이트 분류입니다. 매매 지시가 아닙니다.",
 } as const;
 
 export const CONTEXT = {
@@ -826,10 +845,9 @@ export const DASHBOARD_NEXT = {
     COL_5D: "5일 변화",
     COL_VERDICT: "시스템 판단",
     DETAIL_TITLE: (ticker: string) => `${ticker} · 탐색 근거`,
-    PROS: "긍정 근거",
-    CONS: "유의점",
-    NO_PROS: "제공된 근거 없음",
-    NO_CONS: "제공된 유의점 없음",
+    // #1683: 스캐너 관측은 판정이 아니다 — 시스템 판단은 COL_VERDICT 자리의 파이프라인 분류다
+    OBSERVATIONS: "스캐너 관측",
+    NO_OBSERVATIONS: "스캐너 관측 없음",
     NOT_A_DECISION: "탐색 후보의 가격 변화입니다. 신규 판단이나 판단 변경을 의미하지 않습니다.",
     GENERATED: (time: string) => `목록 생성 · ${time} · 개별 가격 관측 시각은 제공되지 않습니다.`,
     TICKER_DETAIL: "종목 상세",

@@ -17,10 +17,8 @@ const positiveOpp = {
   rsi: 83,
   signal: "breakout",
   score: 69,
-  pros: ["breakout 시그널 (Score 69)"],
-  cons: ["RSI 83 과매수"],
-  verdict: "관망 — 혼재 시그널, 조건부 진입 대기",
-  verdict_level: "neutral",
+  observations: ["breakout 시그널 (Score 69)", "RSI 83 과매수"],
+  system: { status: "qualified", score: 78.4, threshold: 70, reason: null },
 };
 
 const dangerOpp = {
@@ -32,10 +30,8 @@ const dangerOpp = {
   rsi: 17,
   signal: "volume_spike",
   score: 37,
-  pros: ["RSI 17 과매도"],
-  cons: ["5D -20.2% 급락 — 하락 모멘텀", "급락 + volume_spike — 원인 확인 필요"],
-  verdict: "매수 금지 — 극단적 하락, 원인 확인 전 진입 위험",
-  verdict_level: "danger",
+  observations: ["5D -20.2% 급락", "급락 + volume_spike — 원인 확인 필요"],
+  system: { status: "blocked", score: null, threshold: null, reason: "VIX 31.0 > 30 (신규 매수 차단)" },
 };
 
 const mutedOpp = {
@@ -47,10 +43,8 @@ const mutedOpp = {
   rsi: 70,
   signal: "momentum",
   score: 23,
-  pros: [],
-  cons: [],
-  verdict: "데이터 부족 — 판단 불가",
-  verdict_level: "muted",
+  observations: [],
+  system: { status: "not_scored", score: null, threshold: null, reason: "no_factor" },
 };
 
 describe("OpportunityExplorer", () => {
@@ -91,25 +85,40 @@ describe("OpportunityExplorer", () => {
     expect(screen.getByText("RSI 83")).toBeTruthy();
   });
 
-  it("renders pros section", () => {
+  // #1683: 판정 칸은 파이프라인(BUY 후보 emitter) 분류 — 점수·임계는 API 값 그대로
+  it("renders the pipeline stance — qualified with score / threshold", () => {
     render(<OpportunityExplorer opportunities={[positiveOpp]} />);
-    expect(screen.getByText("찬성")).toBeTruthy();
-    expect(screen.getByText(/breakout 시그널/)).toBeTruthy();
+    expect(screen.getByTestId("system-stance").textContent).toBe("후보 기준 통과 78 / 70");
   });
 
-  it("renders cons section", () => {
-    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
-    expect(screen.getByText("반대")).toBeTruthy();
-    expect(screen.getByText(/RSI 83 과매수/)).toBeTruthy();
+  it("renders the pipeline stance — below threshold", () => {
+    const below = { ...positiveOpp, system: { status: "below_threshold", score: 52, threshold: 65, reason: null } };
+    // 69.6 은 내림 — 반올림이면 "기준 미달 70 / 70" 이라는 자기모순 라벨이 된다
+    const edge = { ...positiveOpp, ticker: "EDGE", system: { status: "below_threshold", score: 69.6, threshold: 70, reason: null } };
+    render(<OpportunityExplorer opportunities={[below, edge]} />);
+    expect(screen.getAllByTestId("system-stance").map((b) => b.textContent)).toEqual(["기준 미달 52 / 65", "기준 미달 69 / 70"]);
   });
 
-  it("renders verdict badge — neutral", () => {
-    render(<OpportunityExplorer opportunities={[positiveOpp]} />);
-    expect(screen.getByText("관망")).toBeTruthy();
+  it("renders the pipeline stance — excluded with the gate", () => {
+    const cool = { ...positiveOpp, system: { status: "excluded", score: null, threshold: 70, reason: "cooldown" } };
+    render(<OpportunityExplorer opportunities={[cool]} />);
+    expect(screen.getByTestId("system-stance").textContent).toBe("제외 · 쿨다운");
   });
 
-  // #1652: 행에는 첫 찬성·첫 반대만, 펼치면 전체 + 판정 문장
-  it("shows only the first pro/con in the row and the full lists in the quick-peek", () => {
+  it("renders the pipeline stance — blocked run, reason in the peek", () => {
+    render(<OpportunityExplorer opportunities={[dangerOpp]} />);
+    const badge = screen.getByTestId("system-stance");
+    expect(badge.textContent).toBe("차단");
+    expect(badge.getAttribute("title")).toBe("차단 · VIX 31.0 > 30 (신규 매수 차단)");
+  });
+
+  it("renders the pipeline stance — not scored, with why", () => {
+    render(<OpportunityExplorer opportunities={[mutedOpp]} />);
+    expect(screen.getByTestId("system-stance").textContent).toBe("미평가 · 팩터 데이터 없음");
+  });
+
+  // #1652: 행에는 첫 관측만, 펼치면 전체 관측 + 시스템 분류 문장
+  it("shows only the first observation in the row and the full list in the quick-peek", () => {
     render(<OpportunityExplorer opportunities={[dangerOpp]} />);
     expect(screen.queryByTestId("opportunity-row-peek")).toBeNull();
     expect(screen.getByText(/^5D -20.2% 급락/)).toBeTruthy();
@@ -117,26 +126,16 @@ describe("OpportunityExplorer", () => {
     expect(screen.getByText("+1")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /SNOW 상세 펼치기/ }));
     const peek = screen.getByTestId("opportunity-row-peek");
+    expect(peek.textContent).toContain("스캐너 관측");
     expect(peek.textContent).toContain("급락 + volume_spike — 원인 확인 필요");
-    expect(peek.textContent).toContain("매수 금지 — 극단적 하락, 원인 확인 전 진입 위험");
+    expect(peek.textContent).toContain("차단 · VIX 31.0 > 30 (신규 매수 차단)");
   });
 
-  it("renders column headers so 찬성/반대/판정 stay visible without expanding", () => {
+  it("renders column headers so 시스템 판단/스캐너 관측 stay visible without expanding", () => {
     render(<OpportunityExplorer opportunities={[mutedOpp]} />);
-    expect(screen.getByText("찬성")).toBeTruthy();
-    expect(screen.getByText("반대")).toBeTruthy();
-    expect(screen.getByText("판정")).toBeTruthy();
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2); // 찬성·반대 없음
-  });
-
-  it("renders verdict badge — danger", () => {
-    render(<OpportunityExplorer opportunities={[dangerOpp]} />);
-    expect(screen.getByText("매수 금지")).toBeTruthy();
-  });
-
-  it("renders verdict badge — muted", () => {
-    render(<OpportunityExplorer opportunities={[mutedOpp]} />);
-    expect(screen.getByText("데이터 부족")).toBeTruthy();
+    expect(screen.getByText("시스템 판단")).toBeTruthy();
+    expect(screen.getByText("스캐너 관측")).toBeTruthy();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1); // 관측 없음
   });
 
   it("links to ticker detail page", () => {
@@ -274,10 +273,10 @@ describe("OpportunityExplorer", () => {
     expect(screen.getByText("ETN")).toBeTruthy();
   });
 
-  it("falls back to muted style for unknown verdict_level", () => {
-    const unknownLevel = { ...positiveOpp, verdict_level: "unknown_level" };
-    render(<OpportunityExplorer opportunities={[unknownLevel]} />);
-    expect(screen.getByText("데이터 부족")).toBeTruthy();
+  it("treats an unknown status as not scored instead of inventing a stance", () => {
+    const unknown = { ...positiveOpp, system: { status: "unknown_status", score: null, threshold: null, reason: null } };
+    render(<OpportunityExplorer opportunities={[unknown]} />);
+    expect(screen.getByTestId("system-stance").textContent).toBe("미평가");
   });
 
   it("shows zero change_5d with plus sign", () => {

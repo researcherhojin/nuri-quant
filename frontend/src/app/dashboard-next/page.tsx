@@ -11,6 +11,11 @@ import { PipelineStatus } from "./pipeline-status";
 import { DetailDialog } from "./detail-dialog";
 import styles from "./dashboard.module.css";
 import { lookup } from "@/lib/utils";
+import { SYSTEM_STANCE } from "@/lib/strings";
+import { stanceLabel, stanceText, stanceTone } from "@/lib/system-stance";
+
+// 시스템 분류 톤 → 이 화면의 배지 톤. `.dashboard [data-tone="positive"]` 는 배경을 칠하므로 배지에 쓰지 않는다.
+const BADGE_TONE = { positive: "neutral", neutral: "warning", danger: "danger", muted: "neutral" } as const;
 
 export const dynamic = "force-dynamic";
 
@@ -273,12 +278,12 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
                     <td className={styles.change} data-direction={direction(item.change_1d)}>{displayChange(item.change_1d)}</td>
                     <td className={styles.change} data-direction={direction(item.change_5d)}>{displayChange(item.change_5d)}</td>
                     <td>
-                      <DetailDialog label={item.verdict.split("—")[0].trim()} title={COPY.RADAR_PANEL.DETAIL_TITLE(item.ticker)}>
-                        <p>{item.verdict}</p>
-                        <h3>{COPY.RADAR_PANEL.PROS}</h3>
-                        <ul>{item.pros.length ? item.pros.map((reason, i) => <li key={i}>{reason}</li>) : <li>{COPY.RADAR_PANEL.NO_PROS}</li>}</ul>
-                        <h3>{COPY.RADAR_PANEL.CONS}</h3>
-                        <ul>{item.cons.length ? item.cons.map((reason, i) => <li key={i}>{reason}</li>) : <li>{COPY.RADAR_PANEL.NO_CONS}</li>}</ul>
+                      <DetailDialog label={stanceLabel(item.system)} title={COPY.RADAR_PANEL.DETAIL_TITLE(item.ticker)}>
+                        <h3>{COPY.RADAR_PANEL.COL_VERDICT}</h3>
+                        <p><span className={styles.badge} data-tone={BADGE_TONE[stanceTone(item.system)]}>{stanceText(item.system)}</span></p>
+                        <p className={styles.basis}>{SYSTEM_STANCE.NOTE}</p>
+                        <h3>{COPY.RADAR_PANEL.OBSERVATIONS}</h3>
+                        <ul>{item.observations.length ? item.observations.map((obs, i) => <li key={i}>{obs}</li>) : <li>{COPY.RADAR_PANEL.NO_OBSERVATIONS}</li>}</ul>
                         <p className={styles.basis}>{COPY.RADAR_PANEL.NOT_A_DECISION}</p>
                         <p className={styles.basis}>{COPY.RADAR_PANEL.GENERATED(displayTime(opportunities.generated_at))}</p>
                         <Link href={`/ticker/${encodeURIComponent(item.ticker)}`} className={styles.textLink}>{COPY.RADAR_PANEL.TICKER_DETAIL} <ArrowUpRight size={14} /></Link>

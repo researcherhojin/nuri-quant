@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
-import { OPPORTUNITY } from "@/lib/strings";
-import { lookup } from "@/lib/utils";
+import { OPPORTUNITY, SYSTEM_STANCE } from "@/lib/strings";
+import { stanceLabel, stanceText, stanceTone, type SystemStance } from "@/lib/system-stance";
 
 interface AgentVerdict {
   ticker: string;
@@ -23,22 +23,22 @@ export interface Opportunity {
   rsi: number | null;
   signal: string | null;
   score: number | null;
-  pros: string[];
-  cons: string[];
-  verdict: string;
-  verdict_level: string;
+  // #1683: 스캐너가 본 사실 — 판정이 아니다
+  observations: string[];
+  // 파이프라인(BUY 후보 emitter)의 분류 — 판정은 API 가 아니라 여기서 온다
+  system: SystemStance;
 }
 
 interface OpportunityExplorerProps {
   opportunities: Opportunity[];
 }
 
-const verdictStyles = {
-  positive: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: OPPORTUNITY.POSITIVE },
-  neutral: { bg: "bg-amber-500/20", text: "text-amber-400", label: OPPORTUNITY.NEUTRAL },
-  danger: { bg: "bg-red-500/20", text: "text-red-400", label: OPPORTUNITY.DANGER },
-  muted: { bg: "bg-zinc-700/50", text: "text-zinc-500", label: OPPORTUNITY.MUTED },
-} satisfies Record<string, { bg: string; text: string; label: string }>;
+const toneStyles = {
+  positive: { bg: "bg-emerald-500/20", text: "text-emerald-400" },
+  neutral: { bg: "bg-amber-500/20", text: "text-amber-400" },
+  danger: { bg: "bg-red-500/20", text: "text-red-400" },
+  muted: { bg: "bg-zinc-700/50", text: "text-zinc-400" },
+} satisfies Record<string, { bg: string; text: string }>;
 
 function actionTagCls(action: string): string {
   if (action === "BUY") return "bg-emerald-500/20 text-emerald-400";
@@ -52,9 +52,8 @@ function actionTagCls(action: string): string {
 const TH = "px-2 py-1 text-[11px] font-medium text-zinc-600";
 
 /**
- * #1652 U6: 카드(3장, 찬성/반대 2열 여백) → 액션 테이블과 같은 32px 행 + quick-peek.
- * 행에는 첫 찬성·첫 반대만 보이고, 펼치면 전체 근거·판정 문장·10-Agent 결과가 나온다.
- * 데이터 계약·문자열(OPPORTUNITY.*)·분석 fetch 동작은 카드 시절 그대로다.
+ * #1652 U6: 카드 → 액션 테이블과 같은 32px 행 + quick-peek.
+ * #1683: 판정 칸은 파이프라인 분류(`system`)이고, 스캐너 관측은 첫 줄만 보이다가 펼치면 전부 나온다.
  */
 function OpportunityRow({ opp }: { opp: Opportunity }) {
   const [expanded, setExpanded] = useState(false);
@@ -86,7 +85,9 @@ function OpportunityRow({ opp }: { opp: Opportunity }) {
     }
   };
 
-  const style = lookup(verdictStyles, opp.verdict_level) || verdictStyles.muted;
+  const style = toneStyles[stanceTone(opp.system)];
+  const label = stanceLabel(opp.system);
+  const text = stanceText(opp.system);
   const change5d = opp.change_5d ?? 0;
   const change5dColor = change5d >= 0 ? "text-emerald-400" : "text-red-400";
   const rsiColor = opp.rsi == null ? "" : opp.rsi < 30 ? "text-emerald-400" : opp.rsi > 70 ? "text-red-400" : "text-zinc-500";
@@ -124,20 +125,14 @@ function OpportunityRow({ opp }: { opp: Opportunity }) {
           )}
         </td>
         <td className="h-8 px-2 whitespace-nowrap">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${style.bg} ${style.text}`} title={opp.verdict}>
-            {style.label}
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-sm ${style.bg} ${style.text}`} title={text} data-testid="system-stance">
+            {label}
           </span>
         </td>
-        <td className="h-8 px-2 max-w-0 w-[28%]">
-          <p className="text-[11px] text-zinc-400 truncate" title={opp.pros.join(" · ")}>
-            {opp.pros[0] ?? <span className="text-zinc-700">—</span>}
-            {opp.pros.length > 1 && <span className="text-zinc-600"> +{opp.pros.length - 1}</span>}
-          </p>
-        </td>
-        <td className="h-8 px-2 max-w-0 w-[28%]">
-          <p className="text-[11px] text-zinc-400 truncate" title={opp.cons.join(" · ")}>
-            {opp.cons[0] ?? <span className="text-zinc-700">—</span>}
-            {opp.cons.length > 1 && <span className="text-zinc-600"> +{opp.cons.length - 1}</span>}
+        <td className="h-8 px-2 max-w-0 w-[40%]">
+          <p className="text-[11px] text-zinc-400 truncate" title={opp.observations.join(" · ")}>
+            {opp.observations[0] ?? <span className="text-zinc-700">—</span>}
+            {opp.observations.length > 1 && <span className="text-zinc-600"> +{opp.observations.length - 1}</span>}
           </p>
         </td>
         <td className="h-8 px-2 whitespace-nowrap text-[11px] tabular-nums">
@@ -183,22 +178,16 @@ function OpportunityRow({ opp }: { opp: Opportunity }) {
       </tr>
       {expanded && (
         <tr id={peekId} className="border-b border-zinc-800/40 bg-zinc-900/40" data-testid="opportunity-row-peek">
-          <td colSpan={8} className="px-3 py-2">
-            <p className="text-[11px] text-zinc-300 mb-1.5">
-              <span className={`font-bold mr-1.5 ${style.text}`}>{style.label}</span>
-              {opp.verdict}
+          <td colSpan={7} className="px-3 py-2">
+            <p className="text-[11px] text-zinc-300">
+              <span className="text-zinc-500 mr-1.5">{OPPORTUNITY.SYSTEM}</span>
+              <span className={`font-bold ${style.text}`}>{text}</span>
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
-              <div>
-                <span className="text-emerald-500 font-semibold">{OPPORTUNITY.PROS}</span>
-                {opp.pros.length === 0 && <span className="ml-2 text-zinc-600">—</span>}
-                {opp.pros.map((p, i) => <p key={i} className="text-zinc-400 leading-tight mt-0.5">{p}</p>)}
-              </div>
-              <div>
-                <span className="text-red-500 font-semibold">{OPPORTUNITY.CONS}</span>
-                {opp.cons.length === 0 && <span className="ml-2 text-zinc-600">—</span>}
-                {opp.cons.map((c, i) => <p key={i} className="text-zinc-400 leading-tight mt-0.5">{c}</p>)}
-              </div>
+            <p className="text-[10px] text-zinc-600 mb-1.5">{SYSTEM_STANCE.NOTE}</p>
+            <div className="text-[11px]">
+              <span className="text-zinc-500 font-semibold">{OPPORTUNITY.OBSERVATIONS}</span>
+              {opp.observations.length === 0 && <span className="ml-2 text-zinc-600">—</span>}
+              {opp.observations.map((o, i) => <p key={i} className="text-zinc-400 leading-tight mt-0.5">{o}</p>)}
             </div>
           </td>
         </tr>
@@ -224,9 +213,8 @@ export function OpportunityExplorer({ opportunities }: OpportunityExplorerProps)
             <th scope="col" className={TH}>{OPPORTUNITY.COL_TICKER}</th>
             <th scope="col" className={TH}>{OPPORTUNITY.COL_PRICE}</th>
             <th scope="col" className={TH}>{OPPORTUNITY.COL_SIGNAL}</th>
-            <th scope="col" className={TH}>{OPPORTUNITY.VERDICT}</th>
-            <th scope="col" className={TH}>{OPPORTUNITY.PROS}</th>
-            <th scope="col" className={TH}>{OPPORTUNITY.CONS}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.SYSTEM}</th>
+            <th scope="col" className={TH}>{OPPORTUNITY.OBSERVATIONS}</th>
             <th scope="col" className={TH}>{OPPORTUNITY.COL_METRICS}</th>
             <th scope="col" className="px-2 py-1" />
           </tr>

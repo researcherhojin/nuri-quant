@@ -36,6 +36,7 @@ Artifact 정책 (codex Plan Q4 A+B):
 from __future__ import annotations
 
 import logging
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -470,11 +471,21 @@ def format_brief_embed(ctx: dict) -> dict:
     if ops:
         op_lines = []
         for o in ops:
-            verdict_level = o.get("verdict_level", "")
-            marker = {"positive": "🟢", "neutral": "🟡", "danger": "🔴"}.get(verdict_level, "⚪")
+            # 파이프라인(buy_candidate_emitter) 분류 — API 가 판정을 지어내지 않는다 (#1683)
+            system = o.get("system") or {}
+            status = system.get("status", "")
+            marker = {"qualified": "🟢", "excluded": "🟡", "blocked": "🔴"}.get(status, "⚪")
+            # 표식과 같은 축의 숫자를 보인다 — 표식은 시스템 분류인데 스캐너 score 를 찍으면
+            # "🟢 X score 40" 처럼 두 점수가 섞인다 (#1683 Codex P2)
+            sys_score, threshold = system.get("score"), system.get("threshold")
+            stance = (
+                f"시스템 {math.floor(sys_score)}/{math.floor(threshold)}"
+                if sys_score is not None and threshold is not None
+                else (status or "미평가")
+            )
             op_lines.append(
                 f"{marker} {o.get('ticker', '?'):<6} "
-                f"score {o.get('score', 0) or 0:.0f} · "
+                f"{stance} · "
                 f"5D {o.get('change_5d', 0) or 0:+.1f}% · "
                 f"RSI {o.get('rsi', 0) or 0:.0f}"
             )
@@ -603,12 +614,11 @@ def format_brief_markdown(ctx: dict) -> str:
             lines.append(
                 f"- {o.get('ticker', '?')} score={o.get('score', 0) or 0:.0f} "
                 f"5D={o.get('change_5d', 0) or 0:+.1f}% RSI={o.get('rsi', 0) or 0:.0f} "
-                f"signal={o.get('signal', '-')}"
+                f"signal={o.get('signal', '-')} system={(o.get('system') or {}).get('status', '-')}"
             )
-            for p in (o.get("pros") or [])[:2]:
-                lines.append(f"  ✓ {p}")
-            for c in (o.get("cons") or [])[:2]:
-                lines.append(f"  ✗ {c}")
+            # 스캐너 관측 — 판정이 아니다 (#1683)
+            for obs in (o.get("observations") or [])[:3]:
+                lines.append(f"  · {obs}")
         lines.append("")
 
     events = ctx.get("macro_events") or []

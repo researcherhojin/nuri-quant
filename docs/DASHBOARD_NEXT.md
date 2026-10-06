@@ -32,7 +32,7 @@
 |---|---|
 | `GET /api/dashboard` | 시스템 의견, 주요 지수(`market_indices`), 시장 분류, 경제 점수, VIX, 환율, 알림 |
 | `GET /api/actions` | 점검 목록과 판정 원장 링크 |
-| `GET /api/opportunities` | 탐색 후보와 가격 변화 |
+| `GET /api/opportunities` | 탐색 후보와 가격 변화 · 시스템 판단(`system`, BUY 후보 emitter 분류) · 스캐너 관측 |
 | `GET /api/portfolio` | 보유 수량·종목명·최근 가격·현금 |
 | `GET /api/freshness` | 데이터 업데이트 상태 |
 | `GET /api/pipeline/status` | 단계별 이벤트와 판정 원장 요약 |
