@@ -50,7 +50,7 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 
 ## freshness.py — Data Freshness SLA
 
-`FRESHNESS_POLICIES` per data source. `check_freshness(key)` returns PASS/WARN/FAIL. 임계(`warn_hours`/`fail_hours`)는 `config/freshness.yaml` 이 정본이고 `_load_config()` 가 기동 시 주입한다 — 키 목록은 양방향 대조라 config 누락/잉여 둘 다 ValueError (#1180). 쿼리·라벨은 구현이라 코드에 남는다. `VERDICT_GATE_KEYS`/`stale_verdict_inputs()` 는 dashboard verdict 의 stale gate 입력 (FAIL 만 센다 — WARN 은 주말/공휴일 정상 나이).
+`FRESHNESS_POLICIES` per data source. `check_freshness(key)` returns PASS/WARN/FAIL. 임계(`warn_hours`/`fail_hours`)는 `config/freshness.yaml` 이 정본이고 `_load_config()` 가 기동 시 주입한다 — 키 목록은 양방향 대조라 config 누락/잉여 둘 다 ValueError (#1180). 쿼리·라벨은 구현이라 코드에 남는다. `VERDICT_GATE_KEYS`/`stale_verdict_inputs()` 는 dashboard verdict 의 stale gate 입력 (FAIL 만 센다). WARN 은 "예정 도착보다 늦음" 이다 (#1677): 임계는 각 소스의 실제 도착 시각(cron·공표 지연)으로 정하고, `warn_calendar` (`us_market` = 주말 + NYSE 휴장, `weekend` = 한국용 토·일, 달력은 `nuri/core/market_calendar.py`)가 장이 없던 날을 **WARN 에서만** 뺀다 — FAIL 은 verdict_gate 입력이라 그대로 둔다. **Test:** `tests/core/test_freshness.py::TestWarnCalendar::test_closed_days_never_rescue_a_fail`.
 
 정책을 추가/삭제하면 `tests/core/test_freshness.py::TestFreshnessPolicies::test_expected_policy_keys` 가 **일부러**
 깨진다 — 양방향 allowlist 라 등재할 때 "왜 이 정책이 생겼는지" 한 줄을 그 테스트에 같이

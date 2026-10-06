@@ -1392,22 +1392,24 @@ class TestFactorCompositeWired:
         assert _STAGE_OF_JOB["factors"] == "analyze"
 
     def test_runs_after_its_sentiment_input(self):
-        """fear_greed(08:00) **뒤**에 돈다 — 앞서면 센티먼트가 하루 묵은 값이 된다.
+        """그날 fear_greed 수집 **뒤**에 돈다 — 앞서면 센티먼트가 하루 묵은 값이 된다.
 
         `composite._market_sentiment()` 는 없으면 성분을 빼고 비중을 재배분하므로
-        조용히 죽지는 않지만, 같은 날 값을 두고 전날 값을 쓸 이유가 없다.
+        조용히 죽지는 않지만, 같은 날 값을 두고 전날 값을 쓸 이유가 없다. fear_greed 는
+        #1677 부터 매시(`7 * * * *`)라 "factors 시각 이전, 같은 날 마지막 수집" 이 있는지를 본다.
         """
         from nuri.scheduler import SCHEDULES
 
         crons = {j["name"]: j["cron"] for j in SCHEDULES if j["name"] in ("factors", "fear_greed")}
 
-        def _minute_of_day(cron: str) -> int:
+        def _runs_minute_of_day(cron: str) -> list[int]:
             minute, hour = cron.split()[:2]
-            return int(hour) * 60 + int(minute)
+            hours = range(24) if hour == "*" else [int(h) for h in hour.split(",")]
+            return [h * 60 + int(minute) for h in hours]
 
-        assert _minute_of_day(crons["factors"]) > _minute_of_day(crons["fear_greed"]), (
-            f"factors({crons['factors']}) 가 fear_greed({crons['fear_greed']}) 보다 이르다"
-        )
+        factors_at = _runs_minute_of_day(crons["factors"])[0]
+        same_day_before = [m for m in _runs_minute_of_day(crons["fear_greed"]) if m < factors_at]
+        assert same_day_before, f"factors({crons['factors']}) 전에 그날 fear_greed({crons['fear_greed']}) 수집이 없다"
         assert crons["factors"].split()[2:] == ["*", "*", "*"], "매일 돌아야 한다 (소비자는 매 거래일 발행)"
 
 
