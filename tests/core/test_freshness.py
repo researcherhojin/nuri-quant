@@ -1,7 +1,7 @@
 """nuri.core.freshness 모듈 테스트 — 데이터 신선도 SLA 체크."""
 
 import pathlib
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -949,17 +949,20 @@ class TestDecisionsContextPolicy:
             "두 번 연속 실패가 다음 실행 전에 표면화되지 않는다"
         )
 
-    def test_a_day_old_complete_row_is_warn_not_fail(self, db_path):
-        """하루 지난 완전 행은 WARN 이지 FAIL 이 아니다 (시계 무관 — 나이 24~48h)."""
+    def test_a_day_old_row_is_fresh_until_the_next_run_is_late(self, db_path):
+        """#1677: 07:05 실행 전의 어제 행은 정상이다 — 24h 경계는 매일 00:00~07:05 에 WARN 을 냈다.
+        다음 실행(07:05)이 지나도 오늘 행이 없으면 WARN, FAIL 은 아니다."""
         from nuri.core.freshness import check_freshness
-        from nuri.core.timezone import kst_now
 
-        yesterday = (kst_now() - timedelta(days=1)).strftime("%Y-%m-%d")
-        self._seed(db_path, yesterday, regime="bull_low_vol", scoring_detail='{"x":1}')
+        self._seed(db_path, "2026-10-05", regime="bull_low_vol", scoring_detail='{"x":1}')
 
-        result = check_freshness("decisions_context", db_path=db_path)
-        assert 24 <= result["age_hours"] < 48, result
-        assert result["status"] == "WARN", result
+        with patch("nuri.core.freshness.kst_now", return_value=datetime(2026, 10, 6, 7, 0, tzinfo=KST)):
+            before_run = check_freshness("decisions_context", db_path=db_path)
+        with patch("nuri.core.freshness.kst_now", return_value=datetime(2026, 10, 6, 9, 0, tzinfo=KST)):
+            run_missed = check_freshness("decisions_context", db_path=db_path)
+
+        assert before_run["age_hours"] == 31.0 and before_run["status"] == "PASS", before_run
+        assert run_missed["age_hours"] == 33.0 and run_missed["status"] == "WARN", run_missed
 
 
 class TestHolidayCalendar:
@@ -984,8 +987,11 @@ class TestHolidayCalendar:
             ):
                 conn.execute("INSERT INTO macro (indicator, date, value) VALUES (?, ?, 1.0)", (ind, d))
 
-    def test_labor_day_gap_is_warn_not_fail(self, db_path):
-        """프로덕션 재현 — DGS3MO 09-03(목), 나머지 09-04(금), 09-07 노동절, 지금 09-08 14:30."""
+    def test_labor_day_gap_is_not_a_failure(self, db_path):
+        """프로덕션 재현 — DGS3MO 09-03(목), 나머지 09-04(금), 09-07 노동절, 지금 09-08 14:30.
+
+        그 시각 FRED 의 최신 관측은 실제로 09-03 이었다 — 정상이다. #1469 는 FAIL 을 막았고, #1677 부터는
+        주말(09-05·09-06)도 WARN 에서 빠져 PASS 다. FAIL 면제는 여전히 공휴일만(`holidays_excused`)."""
         from nuri.core.freshness import check_freshness
 
         self._seed_macro(db_path, "2026-09-03", "2026-09-04")
@@ -993,8 +999,9 @@ class TestHolidayCalendar:
             r = check_freshness("macro_market", db_path=db_path)
         assert r["age_hours"] == 134.5
         assert r["holidays_excused"] == ["2026-09-07"]
-        assert r["status"] == "WARN", r
-        assert "공휴일 1일 제외" in r["message"]
+        assert r["closed_days_excused"] == ["2026-09-05", "2026-09-06"]
+        assert r["status"] == "PASS", r
+        assert "휴장·공휴일 3일 제외" in r["message"]
 
     def test_same_gap_without_a_holiday_is_still_fail(self, db_path):
         """잠금 — 면제는 공휴일이 있을 때만. 한 주 뒤 같은 간격(09-10 목 → 09-15 화)은 FAIL 이 맞다."""
@@ -1064,3 +1071,102 @@ class TestHolidayCalendar:
         monkeypatch.setattr(fresh_mod, "_CONFIG_PATH", bad)
         with pytest.raises(ValueError, match="holiday_calendar"):
             fresh_mod._load_config()
+
+
+class TestWarnCalendar:
+    """#1677: `warn_calendar` — 장이 안 열린 날은 **WARN 에서만** 뺀다. FAIL(verdict_gate 입력)은 그대로.
+
+    예전엔 주가·VIX·팩터가 매주 주말 내내, 그리고 평일 새벽마다 정상 운영 중에도 "업데이트 필요" 였다.
+    """
+
+    @staticmethod
+    def _seed_spy(db_path, day: str):
+        from nuri.core.db import get_db
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
+                "VALUES ('SPY', ?, 100, 100, 100, 100, 1000)",
+                (day,),
+            )
+
+    def _check(self, db_path, now: datetime):
+        from nuri.core.freshness import check_freshness
+
+        with patch("nuri.core.freshness.kst_now", return_value=now):
+            return check_freshness("prices", db_path=db_path)
+
+    def test_friday_bar_on_monday_is_fresh(self, db_path):
+        """금 10-02 일봉, 월 10-05 20:00 KST(뉴욕 월 07:00) — 92h 지만 토·일은 장이 없었다."""
+        self._seed_spy(db_path, "2026-10-02")
+        r = self._check(db_path, datetime(2026, 10, 5, 20, 0, tzinfo=KST))
+        assert r["age_hours"] == 92.0
+        assert r["closed_days_excused"] == ["2026-10-03", "2026-10-04"]
+        assert r["status"] == "PASS", r
+
+    def test_weekend_mornings_in_korea_are_not_late(self, db_path):
+        """Codex P1 재현 — 휴장일을 뉴욕 날짜로 세던 동안 일·월 10:30~12:30 KST 에 늦은 게 없는데 WARN 이었다.
+        나이는 00:00 KST 부터 재므로 휴장일도 KST 로 그 날이 지나면 뺀다."""
+        self._seed_spy(db_path, "2026-10-02")
+        sunday = self._check(db_path, datetime(2026, 10, 4, 11, 0, tzinfo=KST))
+        monday = self._check(db_path, datetime(2026, 10, 5, 11, 0, tzinfo=KST))
+        assert sunday["age_hours"] == 59.0 and sunday["closed_days_excused"] == ["2026-10-03"]
+        assert sunday["status"] == "PASS", sunday
+        assert monday["closed_days_excused"] == ["2026-10-03", "2026-10-04"]
+        assert monday["status"] == "PASS", monday
+
+    def test_weekday_bar_is_fresh_until_its_arrival_is_late(self, db_path):
+        """월 10-05 일봉: 수 06:17 KST 에 화요일 봉이 와야 한다. 06:00 은 정상, 12:00 엔 늦음."""
+        self._seed_spy(db_path, "2026-10-05")
+        assert self._check(db_path, datetime(2026, 10, 7, 6, 0, tzinfo=KST))["status"] == "PASS"
+        late = self._check(db_path, datetime(2026, 10, 7, 12, 0, tzinfo=KST))
+        assert late["age_hours"] == 60.0 and late["closed_days_excused"] == []
+        assert late["status"] == "WARN", late
+
+    def test_closed_days_never_rescue_a_fail(self, db_path):
+        """잠금 — 목 10-01 일봉, 화 10-06 06:00 KST: 126h > fail 120. 주말을 빼면 78h 지만 FAIL 은 그대로다.
+        FAIL 까지 달력으로 깎으면 verdict_gate 가 이전보다 늦게 발화한다 (판정 동작 변경)."""
+        self._seed_spy(db_path, "2026-10-01")
+        r = self._check(db_path, datetime(2026, 10, 6, 6, 0, tzinfo=KST))
+        assert r["age_hours"] == 126.0
+        assert r["status"] == "FAIL", r
+
+    def test_unknown_warn_calendar_is_refused_at_load(self, tmp_path, monkeypatch):
+        import yaml as _yaml
+
+        import nuri.core.freshness as fresh_mod
+
+        with open(fresh_mod._CONFIG_PATH, encoding="utf-8") as f:
+            cfg = _yaml.safe_load(f)
+        cfg["thresholds"]["prices"]["warn_calendar"] = "lunar"
+        bad = tmp_path / "freshness.yaml"
+        bad.write_text(_yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+        monkeypatch.setattr(fresh_mod, "_CONFIG_PATH", bad)
+        try:
+            with pytest.raises(ValueError, match="warn_calendar"):
+                fresh_mod._load_config()
+        finally:
+            monkeypatch.undo()
+            fresh_mod._load_config()  # 실패 도중 일부 정책이 갱신됐을 수 있다 — 실제 config 로 복원
+
+
+class TestMarketCalendar:
+    """`nuri/core/market_calendar.py` — 열린 구간 규약과 NYSE 규칙 (#1636 에서 이동, #1677)."""
+
+    def test_open_interval_counts_only_days_strictly_between(self):
+        from nuri.core.market_calendar import us_market_closed_days
+
+        assert us_market_closed_days(date(2026, 10, 2), date(2026, 10, 5)) == [date(2026, 10, 3), date(2026, 10, 4)]
+        assert us_market_closed_days(date(2026, 10, 3), date(2026, 10, 4)) == []
+
+    def test_nyse_closes_on_good_friday_but_not_columbus_day(self):
+        from nuri.core.market_calendar import us_market_closed_days
+
+        assert date(2026, 4, 3) in us_market_closed_days(date(2026, 4, 1), date(2026, 4, 6))  # Good Friday
+        assert us_market_closed_days(date(2026, 10, 9), date(2026, 10, 13)) == [date(2026, 10, 10), date(2026, 10, 11)]
+
+    def test_weekend_calendar_counts_korean_holidays_as_open(self):
+        """KR 은 휴장 달력이 없다 — 추석(2026-09-25 금)은 세지 않아 정직하게 WARN 으로 남는다."""
+        from nuri.core.market_calendar import weekend_days
+
+        assert weekend_days(date(2026, 9, 24), date(2026, 9, 28)) == [date(2026, 9, 26), date(2026, 9, 27)]

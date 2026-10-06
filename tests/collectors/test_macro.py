@@ -419,6 +419,75 @@ class TestPartAIndicatorRegistry:
         assert indicators["dxy"] == "yfinance"
 
 
+class TestSameDayTail:
+    """#1677: FRED T+1 지표 중 같은 값을 yfinance 가 당일 주는 것(VIX)은 FRED 최신일 **뒤** 날짜만 채운다."""
+
+    def test_vix_tail_is_filled_but_overlap_and_rates_are_not(self, monkeypatch, db_with_portfolio):
+        import sys
+
+        import pandas as pd
+
+        from nuri.collectors.macro import MacroCollector
+
+        mock_fred = MagicMock()
+        mock_fred.get_series.return_value = pd.Series([18.5], index=pd.to_datetime(["2025-01-15"]))
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+
+        def stub_yf(self, days):
+            return [
+                {"indicator": "vix", "date": "2025-01-15", "value": 19.0, "source": "yfinance"},  # FRED 와 겹침
+                {"indicator": "vix", "date": "2025-01-16", "value": 21.0, "source": "yfinance"},  # FRED 미발행 당일
+                {"indicator": "us_10y_yield", "date": "2025-01-16", "value": 4.1, "source": "yfinance"},  # 대용치
+            ]
+
+        monkeypatch.setattr(MacroCollector, "_collect_yfinance", stub_yf)
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
+
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+        rows = {(r["indicator"], r["date"]): r["source"] for r in collector.collect(days=30)}
+
+        assert rows[("vix", "2025-01-15")] == "FRED"  # 겹치는 날은 FRED 공식값
+        assert rows[("vix", "2025-01-16")] == "yfinance"  # 당일 꼬리
+        # 금리 대용치(^TNX)는 FRED 시리즈에 섞지 않는다
+        assert ("us_10y_yield", "2025-01-16") not in rows
+
+    def test_an_open_session_is_not_filled(self, monkeypatch, db_with_portfolio):
+        """Codex P2 — 장중 ^VIX 일봉은 종가가 아니다. 뉴욕 16:20 전의 당일 세션은 채우지 않는다."""
+        import sys
+        from datetime import datetime
+
+        import pandas as pd
+
+        import nuri.collectors.macro as macro_mod
+        from nuri.collectors.macro import MacroCollector
+        from nuri.core.timezone import KST
+
+        mock_fred = MagicMock()
+        mock_fred.get_series.return_value = pd.Series([18.5], index=pd.to_datetime(["2026-10-05"]))
+        monkeypatch.setitem(sys.modules, "fredapi", MagicMock(Fred=MagicMock(return_value=mock_fred)))
+        monkeypatch.setattr(
+            MacroCollector,
+            "_collect_yfinance",
+            lambda self, days: [
+                {"indicator": "vix", "date": "2026-10-06", "value": 20.0, "source": "yfinance"},
+                {"indicator": "vix", "date": "2026-10-07", "value": 21.0, "source": "yfinance"},
+            ],
+        )
+        monkeypatch.setattr(MacroCollector, "_collect_toss_fx", lambda self: [])
+        collector = MacroCollector()
+        collector.api_key = "real_key"
+
+        # 2026-10-08 01:00 KST = 뉴욕 10-07 12:00 (장중) → 10-06 만, 10-07 은 아직 아니다
+        monkeypatch.setattr(macro_mod, "kst_now", lambda: datetime(2026, 10, 8, 1, 0, tzinfo=KST))
+        dates = {r["date"] for r in collector.collect(days=30) if r["indicator"] == "vix" and r["source"] == "yfinance"}
+        assert dates == {"2026-10-06"}
+        # 2026-10-08 06:00 KST = 뉴욕 10-07 17:00 (마감 후) → 10-07 도 채운다
+        monkeypatch.setattr(macro_mod, "kst_now", lambda: datetime(2026, 10, 8, 6, 0, tzinfo=KST))
+        dates = {r["date"] for r in collector.collect(days=30) if r["indicator"] == "vix" and r["source"] == "yfinance"}
+        assert dates == {"2026-10-06", "2026-10-07"}
+
+
 class TestFredUnitsMatchIndicatorNames:
     """지표 **이름이 약속하는 단위**와 FRED 원본 단위가 어긋나지 않는지 잠근다 (#1065).
 

@@ -13,7 +13,8 @@ FRED_API_KEY가 있으면 FRED 우선, 없으면 yfinance에서 핵심 지표를
 import logging
 import os
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -74,6 +75,27 @@ FRED_SERIES = {
 FRED_UNITS = {
     "cpi_yoy": "pc1",
 }
+
+# FRED 가 T+1 로만 주는데 같은 값을 yfinance 가 장 마감 직후(장중엔 실시간) 주는 지표 (#1677).
+# FRED 최신일 **뒤의** 날짜만 yfinance 로 채운다 — 다음 날 FRED 공식값이 같은 날짜를 덮어쓴다
+# (upsert 는 indicator+date 키). VIX 는 ^VIX 종가 = CBOE VIX 종가 = VIXCLS 라 값의 의미가 같다.
+# 금리는 넣지 않는다: ^IRX 는 2년물이 아니라 13주물이고 ^TNX 도 재무부 CMT 와 다른 값이라
+# 같은 시리즈에 섞으면 수준이 튄다 — FRED H.15 의 T+1 이 정직한 값이다.
+SAME_DAY_TAIL = ("vix",)
+
+# 꼬리는 **마감된 세션만** 채운다 (#1677 Codex P2). yfinance 일봉은 장중에도 그날 행을 주는데, 그 값은
+# 종가가 아니다 — 07:05 합의·VIX 게이트가 읽는 입력에 장중 값이 들어가면 VIXCLS 와 의미가 달라진다.
+# VIX 정규장 종가는 16:15 ET 라 여유를 두고 16:20.
+_NEW_YORK = ZoneInfo("America/New_York")
+_VIX_SESSION_CLOSED_AT = (16, 20)
+
+
+def _session_closed(day: str, now: datetime) -> bool:
+    """`day`(YYYY-MM-DD, 뉴욕 거래일) 세션이 `now` 기준으로 마감됐는가."""
+    ny = now.astimezone(_NEW_YORK)
+    today = ny.date().isoformat()
+    return day < today or (day == today and (ny.hour, ny.minute) >= _VIX_SESSION_CLOSED_AT)
+
 
 # yfinance fallback 심볼 매핑 (FRED 없을 때 사용)
 YFINANCE_SYMBOLS = {
@@ -139,6 +161,19 @@ class MacroCollector(BaseCollector):
         yf_records = self._collect_yfinance(days)
         fred_indicators = {r["indicator"] for r in fred_records}
         yf_supplement = [r for r in yf_records if r["indicator"] not in fred_indicators]
+        # FRED T+1 지표의 당일 꼬리 — FRED 가 아직 없는 날짜만 (#1677)
+        fred_latest: dict[str, str] = {}
+        for r in fred_records:
+            if r["indicator"] in SAME_DAY_TAIL and r["date"] > fred_latest.get(r["indicator"], ""):
+                fred_latest[r["indicator"]] = r["date"]
+        now = kst_now()
+        yf_supplement += [
+            r
+            for r in yf_records
+            if r["indicator"] in fred_latest
+            and r["date"] > fred_latest[r["indicator"]]
+            and _session_closed(r["date"], now)
+        ]
         if yf_supplement:
             yf_only_keys = sorted({r["indicator"] for r in yf_supplement})
             self.logger.info(

@@ -12,6 +12,7 @@ from typing import Optional
 import yaml
 
 from nuri.core.db import query
+from nuri.core.market_calendar import us_market_closed_days, weekend_days
 from nuri.core.timezone import KST, kst_now
 
 _CONFIG_PATH = Path(__file__).parent.parent.parent / "config" / "freshness.yaml"
@@ -62,8 +63,8 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         "label": "기술 지표 (US)",
     },
     "signals_kr": {
-        # 임계는 prices 와 같은 48/120 — 설날·추석 연휴에는 정직하게 WARN/FAIL 이 뜬다
-        # (시장이 닫혀 지표가 실제로 낡은 상태다).
+        # 임계 48/120 + `warn_calendar: weekend`(토·일만 WARN 에서 뺀다, #1677) — 한국 휴장 달력이
+        # 없어 설날·추석 연휴에는 정직하게 WARN/FAIL 이 뜬다 (시장이 닫혀 지표가 실제로 낡은 상태다).
         "query": (
             "SELECT MAX(date) FROM (SELECT date FROM signals "
             "WHERE ticker IN ({placeholders}) "
@@ -130,7 +131,7 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         # (2026-09-08 노동절 다음 날 14:30 KST, DGS3MO 09-03 → 134.5h FAIL, FRED 는
         # realtime_end 09-04 로 최신). config 의 `holiday_calendar: us_federal` 이 그 날짜들을
         # 나이에서 면제한다 (#1469). **Test:** tests/core/test_freshness.py::
-        # TestHolidayCalendar::test_labor_day_gap_is_warn_not_fail
+        # TestHolidayCalendar::test_labor_day_gap_is_not_a_failure
         "query": (
             "SELECT MIN(d) FROM (SELECT MAX(date) AS d FROM macro "
             "WHERE indicator IN ('us_10y_yield', 'us_2y_yield', 'us_3m_yield', 'put_call_ratio') "
@@ -179,8 +180,8 @@ FRESHNESS_POLICIES: dict[str, dict] = {
     #
     # 임계 근거: 이 job 은 `scheduler.py` cron `5 7 * * *` — **주말 포함 매일**이다
     # (prod 실측: #898 이후 29일 중 간격 1일 28회 / 2일 1회, 그 2일은 #1191 로그인세션 outage).
-    # `date` 는 00:00 KST 앵커 문자열이라 당일 run 직전 정상 나이가 ~31h → warn 24 는
-    # `consensus` 와 같은 값·같은 이유다.
+    # `date` 는 00:00 KST 앵커 문자열이라 당일 run 직전 정상 나이가 ~31.1h → warn 32 는
+    # `consensus` 와 같은 값·같은 이유다 (#1677 전엔 24 라 매일 00:00~07:05 에 WARN 이었다).
     #
     # **fail 은 (55.08, 79.08) 열린 구간이어야 한다** — 임계가 이 정책의 설계 지점이다:
     #   - 하한 55.08h = 월 00:00 앵커에서 수 07:05. 이게 하루짜리 정당한 degradation
@@ -322,6 +323,11 @@ def _us_federal_holidays(start: date, end: date) -> list[date]:
 # 임계를 연휴 폭만큼 넓히면 평상시 진짜 지연을 그만큼 늦게 잡는다 (#1469).
 _HOLIDAY_CALENDARS = {"us_federal": _us_federal_holidays}
 
+# **WARN 에만** 쓰는 휴장 달력 (#1677). 장이 안 열린 날은 새 데이터가 생길 수 없으므로 그날을
+# "업데이트 필요" 로 세지 않는다 — 정상 운영 중에 WARN 이 매주 주말 내내 뜨던 원인이다. FAIL 은
+# 이 달력을 쓰지 않는다: FAIL 은 verdict_gate 입력이라 판정 동작을 바꾸지 않으려면 손대지 않는다.
+_WARN_CALENDARS = {"us_market": us_market_closed_days, "weekend": weekend_days}
+
 
 def _load_config() -> dict:
     """config/freshness.yaml 로드 + 정책 골격에 임계 주입 (#1180).
@@ -352,6 +358,12 @@ def _load_config() -> dict:
                 f"freshness.yaml {key}.holiday_calendar 미지원: {cal!r} (지원: {sorted(_HOLIDAY_CALENDARS)})"
             )
         FRESHNESS_POLICIES[key]["holiday_calendar"] = cal
+        warn_cal = hours.get("warn_calendar")
+        if warn_cal is not None and warn_cal not in _WARN_CALENDARS:
+            raise ValueError(
+                f"freshness.yaml {key}.warn_calendar 미지원: {warn_cal!r} (지원: {sorted(_WARN_CALENDARS)})"
+            )
+        FRESHNESS_POLICIES[key]["warn_calendar"] = warn_cal
 
     gate = cfg.get("verdict_gate") or []
     unknown = [k for k in gate if k not in code_keys]
@@ -479,25 +491,40 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
 
     age_hours = (now - last_dt).total_seconds() / 3600
 
+    from zoneinfo import ZoneInfo
+
+    ny_today = now.astimezone(ZoneInfo("America/New_York")).date()
+
     # 소스가 쉬는 공휴일은 나이에서 뺀다 — 발행이 없는 날을 "낡음" 으로 세면 연휴마다 오탐이다.
     holidays: list[date] = []
     cal = policy.get("holiday_calendar")
     if cal:
-        from zoneinfo import ZoneInfo
-
-        holidays = _HOLIDAY_CALENDARS[cal](last_dt.date(), now.astimezone(ZoneInfo("America/New_York")).date())
+        holidays = _HOLIDAY_CALENDARS[cal](last_dt.date(), ny_today)
     effective_hours = age_hours - 24 * len(holidays)
-    excuse = f", 공휴일 {len(holidays)}일 제외 → {effective_hours:.1f}h" if holidays else ""
 
-    if effective_hours <= policy["warn_hours"]:
+    # WARN 은 장이 안 열린 날까지 뺀다 (#1677). 공휴일과 겹치는 날은 한 번만 센다.
+    # 끝점은 **KST 오늘**이다 — 나이가 날짜의 00:00 KST 부터 재지므로 휴장일도 KST 로 그 날이 지나면
+    # 빼야 둘이 맞는다. 뉴욕 날짜를 쓰면 일·월 오전(뉴욕 자정까지 13~14h)마다 늦은 게 없는데 WARN 이
+    # 났다 (#1677 Codex P1). FAIL 의 공휴일 면제는 뉴욕 규약(#1469)을 그대로 둔다.
+    closed: list[date] = []
+    warn_cal = policy.get("warn_calendar")
+    if warn_cal:
+        closed = sorted(set(_WARN_CALENDARS[warn_cal](last_dt.date(), now.date())) - set(holidays))
+    warn_hours_effective = effective_hours - 24 * len(closed)
+
+    fail_excuse = f", 공휴일 {len(holidays)}일 제외 → {effective_hours:.1f}h" if holidays else ""
+    excused = len(holidays) + len(closed)
+    excuse = f", 휴장·공휴일 {excused}일 제외" if excused else ""
+
+    if effective_hours > policy["fail_hours"]:
+        status = "FAIL"
+        message = f"오래됨 ({age_hours:.1f}h{fail_excuse})"
+    elif warn_hours_effective <= policy["warn_hours"]:
         status = "PASS"
         message = f"최신 ({age_hours:.1f}h{excuse})"
-    elif effective_hours <= policy["fail_hours"]:
+    else:
         status = "WARN"
         message = f"업데이트 필요 ({age_hours:.1f}h{excuse})"
-    else:
-        status = "FAIL"
-        message = f"오래됨 ({age_hours:.1f}h{excuse})"
 
     return {
         "key": key,
@@ -506,6 +533,7 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
         "last_updated": str(value),
         "age_hours": round(age_hours, 1),
         "holidays_excused": [d.isoformat() for d in holidays],
+        "closed_days_excused": [d.isoformat() for d in closed],
         "message": message,
     }
 

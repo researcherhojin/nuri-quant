@@ -36,16 +36,10 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import requests
 from dotenv import load_dotenv
-from pandas.tseries.holiday import (
-    AbstractHolidayCalendar,
-    GoodFriday,
-    Holiday,
-    USFederalHolidayCalendar,
-    sunday_to_monday,
-)
 
 from nuri.collectors.base import BaseCollector
 from nuri.core.db import get_tickers, query, upsert_prices
+from nuri.core.market_calendar import nyse_holidays
 from nuri.core.timezone import kst_now, today_kst
 
 load_dotenv()
@@ -369,25 +363,6 @@ _NEW_YORK = ZoneInfo("America/New_York")
 _US_REGULAR_OPEN = dtime(9, 30)
 
 
-class _NYSEHolidayCalendar(AbstractHolidayCalendar):
-    """NYSE 휴장일 ≈ 연방 공휴일 − (Columbus Day, Veterans Day: 장은 연다) + Good Friday.
-
-    New Year's 는 연방 규칙(nearest_workday)과 달리 토요일이면 금요일에 쉬지 않는다 — 일요일만
-    월요일로 넘긴다. 특별 휴장(국장 등)은 모델에 없다 *(facts, no fix)*. `nuri/core/freshness.py`
-    의 `_us_federal_holidays` 는 발행 달력용 연방 공휴일이라 이 달력과 다른 것이 맞다.
-    """
-
-    rules = (
-        [Holiday("New Year's Day", month=1, day=1, observance=sunday_to_monday)]
-        + [
-            r
-            for r in USFederalHolidayCalendar.rules
-            if r.name not in ("New Year's Day", "Columbus Day", "Veterans Day")
-        ]
-        + [GoodFriday]
-    )
-
-
 def us_session_date(now: datetime | None = None) -> str:
     """이 미국 시세가 속한 거래일 (YYYY-MM-DD, 뉴욕 달력).
 
@@ -401,11 +376,8 @@ def us_session_date(now: datetime | None = None) -> str:
     d = et.date()
     if et.time() < _US_REGULAR_OPEN:
         d -= timedelta(days=1)
-    # stubs 가 holidays() 원소를 느슨하게 잡는다 — freshness._us_federal_holidays 와 같은 방식으로 date 로 확정
-    closed = {
-        pd.Timestamp(ts).to_pydatetime().date()
-        for ts in _NYSEHolidayCalendar().holidays(start=d - timedelta(days=14), end=d)
-    }
+    # 휴장 달력은 신선도 판정과 공유한다 (nuri/core/market_calendar.py, #1677)
+    closed = nyse_holidays(d - timedelta(days=14), d)
     while d.weekday() >= 5 or d in closed:
         d -= timedelta(days=1)
     return d.isoformat()

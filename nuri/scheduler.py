@@ -663,7 +663,7 @@ def _run_held_add_shadow():
         #
         # 비교 기준이 `prices` 인 이유: `save_composite` 가 `factors.date` 에 찍는 값이
         # 바로 `_market_as_of()` = `MAX(date) FROM prices` 다. 두 값이 같다 = 팩터가 최신
-        # 시장 데이터로 계산됐다. `check_freshness("factors")` 는 임계가 48h 라 "오늘 잡이
+        # 시장 데이터로 계산됐다. `check_freshness("factors")` 는 임계가 58h(+휴장일, #1677)라 "오늘 잡이
         # 돌았는가" 를 묻기엔 너무 헐겁다.
         factors_as_of = (query("SELECT MAX(date) AS d FROM factors")[0] or {}).get("d")
         prices_as_of = (query("SELECT MAX(date) AS d FROM prices")[0] or {}).get("d")
@@ -889,8 +889,12 @@ SCHEDULES = [
     {"name": "macro", "func": _run_collector, "args": ("macro",), "cron": "0 * * * *"},
     # 기술적 지표 (미장 마감 후 07:00)
     {"name": "technical", "func": _run_collector, "args": ("technical",), "cron": "0 7 * * 2-6"},
-    # Fear & Greed (매일 08:00)
-    {"name": "fear_greed", "func": _run_collector, "args": ("fear_greed",), "cron": "0 8 * * *"},
+    # Fear & Greed (매일 06:07) — 미국장 마감(05:00/06:00 KST) 뒤 첫 값을 그날 대표값으로 남긴다.
+    # 08:00 에서 당겼다 (#1677): 화면이 매일 00~08시에 "업데이트 필요" 였다. 매시로 돌리면 date 가
+    # KST 오늘이라 같은 날 행이 계속 덮여 대표값이 23:07 KST(뉴욕 장중) 값이 된다 — 레짐·브리프·
+    # 백테스트가 읽는 과거 행의 표본 기준이 바뀌므로 하루 한 번, 마감 후 값을 유지한다 (#1677 Codex P2).
+    # :00(macro·news)과 겹치지 않게 :07.
+    {"name": "fear_greed", "func": _run_collector, "args": ("fear_greed",), "cron": "7 6 * * *"},
     # 멀티팩터 합성 스코어 (매일 08:10) — `buy_signals.yaml` 에서 가중치 0.40 인 최대 입력인데
     # 2026-04-14 이후 갱신이 끊겨 있었다. 잡이 없어서지 버그가 아니었다 (#1071).
     # 08:10 인 이유: 입력 셋이 모두 그 앞에 끝난다 — prices(`stock_us_dawn` ~06:00) ·
