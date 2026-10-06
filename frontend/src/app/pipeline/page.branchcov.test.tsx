@@ -388,6 +388,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
         { timestamp: "2026-05-31T09:03:00Z", event_type: "start", step: "diagnose", payload: { other: 1 } }, // 457 JSON.stringify else
         { timestamp: "2026-05-31T09:04:00Z", event_type: "weird", step: "recommend", payload: {} }, // 437 EVENT_ICONS fallback "•" ; payload {} truthy → JSON.stringify "{}"
         { timestamp: "2026-05-31T09:05:00Z", event_type: "success", step: "track", payload: null }, // 449 payload && false → no <p>
+        { timestamp: "2026-05-31T09:06:00Z", event_type: "success", step: "decide", payload: 0 }, // #1661 스칼라 0 → 요약 "0" 한 줄
       ],
     };
 
@@ -397,6 +398,8 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await waitFor(() => expect(screen.getByText("err output here")).toBeInTheDocument());
     expect(screen.getByText("make x")).toBeInTheDocument();
     expect(screen.getByText("boom")).toBeInTheDocument();
+    // payload 0 은 맨 텍스트 노드가 아니라 요약 줄 안에 "0" 으로 나온다 (#1661)
+    expect(screen.getAllByText("0").some((el) => el.tagName === "P" && el.classList.contains("line-clamp-1"))).toBe(true);
     // EVENT_ICONS 폴백 — 미지 타입은 중립 Circle 아이콘 (F-003 #1237)
     expect(screen.getByTestId("event-icon-weird")).toBeInTheDocument();
   });

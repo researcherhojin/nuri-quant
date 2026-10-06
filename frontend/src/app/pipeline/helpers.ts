@@ -6,7 +6,7 @@
  * 계열의 raw JSON 결함). 사람이 읽는 요약 한 줄로 바꾼다.
  */
 
-import { isBoolean, isNumber, isString, type JsonValue } from "@/lib/types";
+import { isBoolean, isNumber, isPlainObject, isString, type JsonValue } from "@/lib/types";
 
 const MAX_KV = 3;
 
@@ -26,8 +26,17 @@ function fmtValue(v: JsonValue): string {
   }
 }
 
-export function summarizePayload(payload: Record<string, JsonValue> | null | undefined): string {
-  if (!payload || Object.keys(payload).length === 0) return "";
+/**
+ * payload 는 객체가 보통이지만 백엔드(`get_timeline`)는 JSON 디코드에 실패하면 **원문 문자열**을,
+ * 비었으면 null 을 그대로 내보내고 `json.loads` 는 배열·스칼라도 낸다 (#1661). 객체가 아니면
+ * 키로 풀지 않고 값 하나로 80자까지 보인다 — 문자열을 `Object.entries` 로 돌리면 글자 인덱스가 찍힌다.
+ */
+export function summarizePayload(payload: JsonValue | undefined): string {
+  if (payload == null || payload === "") return "";
+
+  if (!isPlainObject(payload)) return fmtValue(payload).slice(0, 80);
+
+  if (Object.keys(payload).length === 0) return "";
 
   // 우선순위 키 단독 표기 — 원 동작 정확 패리티 (codex R1 P2): stderr 만 80자
   // 절단하고 command/error 는 전문 통과 (시각 절단은 line-clamp-1 몫)
