@@ -101,7 +101,7 @@ make spellcheck-ci                           # cspell (required CI check)
 make help                                    # every target
 ```
 
-Timings: M5 Max, 2026-08-14; no gate checks them. `make setup-hooks` installs the pre-commit (ruff/eslint autofix) and pre-push (`scripts/verify/pre_push_check.sh --skip-tests`) hooks. Use `uv sync --all-extras --all-groups`, not bare `uv sync`.
+Push once, after the local gates: run `bash scripts/verify/pre_push_check.sh --skip-tests` plus the affected tests, fold all review findings into one push — every push cancels the running CI and re-queues from the back (19 jobs against a 20-job concurrency limit). Timings: M5 Max, 2026-08-14; no gate checks them. `make setup-hooks` installs the pre-commit (ruff/eslint autofix) and pre-push (`scripts/verify/pre_push_check.sh --skip-tests`) hooks. Use `uv sync --all-extras --all-groups`, not bare `uv sync`.
 
 ## When reviewing (Flow phase 4, `/codex review`)
 

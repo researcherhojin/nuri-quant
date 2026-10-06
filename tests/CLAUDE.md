@@ -150,7 +150,10 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
 
 ### runpy + mock
 
-`runpy.run_module()` re-executes module source, **invalidating all mocks**. Use `patch("source.module.function")` for source-level patching, not `patch("target.module.function")`.
+`runpy.run_module()` re-executes the module source, so **any attribute patched on that module is discarded** — `monkeypatch.setattr("pkg.mod.func", ...)` has no effect on the re-executed `pkg.mod`. Patch the boundary the re-executed code reaches through *another* module instead: a dependency module's attribute (`monkeypatch.setattr(subprocess, "run", fake)`, `monkeypatch.setitem(sys.modules, "yfinance", stub)`) or a provider the module imports from. Then assert the stub was called, so the test proves the real path did not run.
+
+`tests/llm/test_thesis_query.py::test_module_main_guard` carried a module-attribute patch for five months; runpy dropped it and every local run invoked the real thesis query — Codex plus the local LLM, 40 s, and a file under `data/thesis_query/` per run (#1634). CI never noticed because its runners have neither binary and `main()` still returned 0.
+**Test:** `tests/llm/test_thesis_query.py::test_module_main_guard` — asserts the `subprocess.run` stub received the consult command and the temp out-dir.
 
 ### yfinance is imported inside functions
 

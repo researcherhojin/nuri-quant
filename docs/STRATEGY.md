@@ -208,7 +208,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 ### 3.6 Regime-adaptive framework (E3)
 **상태 (2026-04-29)**: Phase 1 shadow shipped (#479). **Phase 2 paired counterfactual: FAIL by binary rule** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizons는 robust PASS (CI_lower=+1.95% / +2.60%). 자세히 아래 "Phase 2 verdict" 참조. **Phase 3 영구 보류 (2026-04-29 3-LLM consensus)** — Codex(gpt-5.4) Round 1 B → Round 2 A, Qwen3.5-122B Round 1 D → Round 2 A, Claude A 일관. Phase 1 shadow telemetry 영구 유지 (`enabled: false`, 무기한). Reopen trigger: §7.1 auto-trade reversal only. 자세한 Round 1/2 verdicts: `data/llm_consults/2026-04-29_e3-phase2-shelve-decision.md` + `..._round2-three-way.md` (gitignored, 사용자 머신 local).
 **Phase 2 verdict (2026-04-29, branch `feat/e3-phase2-paired-counterfactual`)**:
-- Spec: `docs/plans/E3_phase2_paired_counterfactual.md` (post Round 5 codex GATE PASS)
+- Spec: `docs/plans/E3_phase2_paired_counterfactual.md` (local-only, gitignored; post Round 5 codex GATE PASS)
 - Universe: us_core 85 frozen (81/85 with ≥1000 price rows), 2020-01-01+
 - Gate: `recovery_confirmed AND vix_favorable(VIX<22 AND 3d_slope<0) AND regime_favorable(in {bull_low_vol, recovery} AND conf≥0.60)`. macro_benign dropped — no 5Y backfill.
 - Sample: 14,728 raw 20d-breakouts → 166 eligible (post-90d-window) on 7 unique trading days. Effective N≈7 (binding power-limit caveat).

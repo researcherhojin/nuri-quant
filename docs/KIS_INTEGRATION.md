@@ -190,12 +190,20 @@ KIS 는 미국 종목을 거래소별로 구분한다.
 
 `FID_COND_MRKT_DIV_CODE = "J"` (주식 구분).
 
+## 날짜와 저장 규칙 (#1636)
+
+- **미국 시세의 `date` 는 뉴욕 거래일이다.** KIS 해외 현재가 응답에는 날짜가 없다. 예전에는 `today_kst()` 를 찍어, 미국 장이 열려 있는 KST 아침마다 같은 세션이 일일 수집기(yfinance, 미국 거래일)보다 하루 뒤 날짜로 저장됐다. `us_session_date()` 가 America/New_York 으로 변환해 정규장 개장(09:30) 전이면 직전 세션, 주말과 NYSE 휴장일(연방 공휴일 − Columbus/Veterans Day + Good Friday, New Year's 는 일→월만)은 직전 영업일로 당긴다. 특별 휴장은 모델에 없다. 한국 시세는 `today_kst()` 가 맞다.
+- **O/H/L 없는 현재가는 완전한 봉을 덮지 않는다.** 해외 현재가(HHDFS00000300)는 `last`/`tvol` 만 주어 open/high/low 가 0 이다. `upsert_prices` 는 INSERT OR REPLACE 라, 날짜가 맞아진 뒤에는 이 행이 yfinance 일봉을 통째로 덮을 수 있다. `KISRealtimeCollector.save()` 는 (ticker, date) 에 `open != 0` 인 봉이 있으면 그 행을 쓰지 않고, 봉이 없거나 앞선 관측도 O/H/L 이 없으면 쓴다. 한국 현재가와 yfinance fallback 행은 OHLC 를 갖고 오므로 그대로 갱신된다.
+- **yfinance fallback 의 `date` 는 봉의 인덱스 날짜다.**
+
+**Test:** `tests/collectors/test_kis_us_session_date.py` — 달력 12 케이스 · 행 날짜 · fallback 날짜 · save 가드 4 케이스.
+
 ## 검증 결과
 
 | 테스트 | 결과 |
 |---|---|
 | **23개 보유 종목 수집** | 100% (KIS 21 + yfinance fallback 2) |
-| **단위 테스트** | 36 PASS (`tests/collectors/test_kis_realtime.py`) |
+| **단위 테스트** | 62 collected across `tests/collectors/test_kis_realtime.py` · `test_kis_realtime_branches.py` · `test_kis_token_cache.py` · `test_kis_us_session_date.py` (2026-10-06) |
 | **검증 함수** | `_is_rate_limit`, `_is_token_cooldown`, `load_credentials`, `inquire_price_kr/us` |
 
 ## 알려진 한계
