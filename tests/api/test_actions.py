@@ -113,9 +113,9 @@ class TestOpportunitiesEndpoint:
         assert resp.status_code == 200
         assert isinstance(resp.json()["opportunities"], list)
 
-    def test_opportunities_have_verdict(self, fast_client):
+    def test_opportunities_carry_system_stance_and_observations(self, fast_client):
         for opp in fast_client.get("/api/opportunities").json()["opportunities"]:
-            for key in ("ticker", "verdict", "verdict_level", "pros", "cons"):
+            for key in ("ticker", "system", "observations"):
                 assert key in opp
 
     def test_excludes_portfolio_tickers(self, fast_client):
@@ -589,42 +589,111 @@ class TestGetRuleViolations:
             assert _get_rule_violations() == []
 
 
-class TestComputeVerdict:
-    def setup_method(self):
-        from nuri.api.routes.actions import _compute_verdict
+def _evaluation(**kw):
+    """emitter 의 실제 dataclass 로 만든 평가 결과 — API 가 그 필드를 그대로 옮기는지 본다."""
+    from nuri.trading.recommend.buy_candidate_emitter import Evaluation, TickerEvaluation
 
-        self._verdict = _compute_verdict
+    tickers = {t: TickerEvaluation(t, d, score=sc) for t, (d, sc) in kw.pop("tickers", {}).items()}
+    base = {"regime": "bull_low_vol", "vix": 18.0, "timestamp_kst": "2026-01-01 00:00:00 KST", "threshold": 70}
+    return Evaluation(**{**base, **kw}, tickers=tickers)
 
-    def test_extreme_drop_danger(self):
-        _, level = self._verdict(["good"], ["bad"], {"score": 10, "rsi": 15, "change_5d": -25})
-        assert level == "danger"
 
-    def test_no_pros_with_cons_danger(self):
-        text, level = self._verdict([], ["risky"], {"score": 20, "rsi": 50, "change_5d": -5})
-        assert level == "danger"
-        assert "근거 부족" in text
+class TestSystemStance:
+    """`/api/opportunities` 의 `system` 은 파이프라인 채점 결과다 — API 가 판정을 만들지 않는다 (#1683)."""
 
-    def test_strong_positive(self):
-        text, level = self._verdict(["a", "b"], [], {"score": 50, "rsi": 50, "change_5d": 5})
-        assert level == "positive"
-        assert "매수 고려" in text
+    def _stance(self, ticker, evaluation):
+        from nuri.api.routes.actions import _system_stance
 
-    def test_mixed_signals_neutral(self):
-        _, level = self._verdict(["good"], ["bad"], {"score": 30, "rsi": 50, "change_5d": 5})
-        assert level == "neutral"
+        return _system_stance(ticker, evaluation)
 
-    def test_overbought_neutral(self):
-        text, level = self._verdict(["one"], [], {"score": 20, "rsi": 50, "change_5d": 18})
-        assert level == "neutral"
-        assert "눌림목" in text
+    def test_qualified_and_below_threshold_carry_the_pipeline_score_and_threshold(self):
+        ev = _evaluation(tickers={"AAA": ("qualified", 78.04), "BBB": ("below_threshold", 52.0)})
+        assert self._stance("AAA", ev) == {"status": "qualified", "score": 78.0, "threshold": 70, "reason": None}
+        assert self._stance("BBB", ev) == {"status": "below_threshold", "score": 52.0, "threshold": 70, "reason": None}
 
-    def test_empty_muted(self):
-        _, level = self._verdict([], [], {"score": 5, "rsi": 50, "change_5d": 0})
-        assert level == "muted"
+    def test_a_score_just_under_the_threshold_is_never_sent_as_the_threshold(self):
+        """#1683 Codex P2 — 반올림이면 69.96 이 70.0 으로 나가 화면이 "기준 미달 70 / 70" 이 된다. 내림이다."""
+        stance = self._stance("CCC", _evaluation(tickers={"CCC": ("below_threshold", 69.96)}))
+        assert stance["score"] == 69.9
 
-    def test_positive_needs_high_score(self):
-        _, level = self._verdict(["a", "b"], [], {"score": 30, "rsi": 50, "change_5d": 5})
-        assert level != "positive"  # score 30 < 40 threshold
+    @pytest.mark.parametrize("gate", ["held", "cooldown", "leverage_etf"])
+    def test_gated_ticker_is_excluded_with_its_gate(self, gate):
+        stance = self._stance("AAA", _evaluation(tickers={"AAA": (gate, None)}))
+        assert stance["status"] == "excluded"
+        assert stance["reason"] == gate
+        assert stance["score"] is None
+
+    def test_blocked_run_marks_every_candidate_blocked_with_the_emitter_reason(self):
+        ev = _evaluation(threshold=None, blocked_reason="VIX 31.0 > 30 (신규 매수 차단)")
+        stance = self._stance("AAA", ev)
+        assert stance["status"] == "blocked"
+        assert stance["reason"] == "VIX 31.0 > 30 (신규 매수 차단)"
+
+    def test_ticker_outside_the_factor_snapshot_is_not_scored(self):
+        assert self._stance("ZZZ", _evaluation())["reason"] == "no_factor"
+        assert self._stance("ZZZ", _evaluation())["status"] == "not_scored"
+
+    def test_ticker_without_price_history_is_not_scored(self):
+        stance = self._stance("AAA", _evaluation(tickers={"AAA": ("no_price", None)}))
+        assert (stance["status"], stance["reason"]) == ("not_scored", "no_price")
+
+    def test_failed_evaluation_says_so_instead_of_inventing_a_status(self):
+        stance = self._stance("AAA", None)
+        assert (stance["status"], stance["reason"]) == ("not_scored", "evaluation_failed")
+
+
+class TestBuildOpportunitiesMapping:
+    """스캔 후보 → 관측 + 파이프라인 분류. 예전 `_compute_verdict` 의 판정 문구는 사라졌다."""
+
+    def _build(self, scan, evaluation):
+        import nuri.api.routes.actions as actions
+
+        with (
+            patch.object(actions, "_get_portfolio_map", return_value={}),
+            patch.object(actions, "_get_recent_scan_results", return_value=scan),
+            patch.object(actions, "_get_improving_signals", return_value=set()),
+            patch.object(actions, "_get_pipeline_evaluation", return_value=evaluation),
+        ):
+            return actions._build_opportunities()
+
+    def test_candidate_gets_scanner_observations_and_pipeline_stance(self):
+        scan = [{"ticker": "AAA", "score": 40, "rsi": 20, "change_5d": -3, "volume_ratio": 1.0, "signal": "momentum"}]
+        (opp,) = self._build(scan, _evaluation(tickers={"AAA": ("below_threshold", 52.0)}))
+        assert opp["observations"] == ["RSI 20 과매도"]
+        assert opp["system"]["status"] == "below_threshold"
+        assert opp["score"] == 40, "스캐너 점수는 그대로 — 파이프라인 점수는 system.score"
+        for gone in ("verdict", "verdict_level", "pros", "cons"):
+            assert gone not in opp
+
+    def test_no_candidates_skips_the_evaluation(self):
+        import nuri.api.routes.actions as actions
+
+        with (
+            patch.object(actions, "_get_portfolio_map", return_value={}),
+            patch.object(actions, "_get_recent_scan_results", return_value=[]),
+            patch.object(actions, "_get_improving_signals", return_value=set()),
+            patch.object(actions, "_get_pipeline_evaluation") as ev,
+        ):
+            assert actions._build_opportunities() == []
+        ev.assert_not_called()
+
+    def test_evaluation_failure_is_logged_and_returns_none(self):
+        from nuri.api.routes.actions import _get_pipeline_evaluation
+
+        with patch("nuri.trading.recommend.buy_candidate_emitter.evaluate_universe", side_effect=RuntimeError("boom")):
+            assert _get_pipeline_evaluation() is None
+
+    def test_endpoint_runs_the_real_evaluation(self, client, monkeypatch):
+        """배선 잠금: 격리 DB 에는 factors 가 없으므로 실제 emitter 평가가 실행 차단을 낸다."""
+        import nuri.api.routes.actions as actions
+
+        monkeypatch.setattr(actions, "_get_recent_scan_results", lambda: [{"ticker": "NEWCO", "score": 10}])
+        monkeypatch.setattr(actions, "_get_improving_signals", lambda: set())
+        actions._opportunities_cache["data"] = None
+        (opp,) = client.get("/api/opportunities").json()["opportunities"]
+        actions._opportunities_cache["data"] = None
+        assert opp["system"]["status"] == "blocked"
+        assert "factors" in opp["system"]["reason"]
 
 
 # ═══════════════════════════════════════════════════
@@ -1355,6 +1424,7 @@ class TestBuildOpportunitiesLogic:
             patch("nuri.api.routes.actions._get_portfolio_map", return_value=portfolio or {}),
             patch("nuri.api.routes.actions._get_recent_scan_results", return_value=scans),
             patch("nuri.api.routes.actions._get_improving_signals", return_value=improving or set()),
+            patch("nuri.api.routes.actions._get_pipeline_evaluation", return_value=None),
         ):
             from nuri.api.routes.actions import _build_opportunities
 
@@ -1366,40 +1436,40 @@ class TestBuildOpportunitiesLogic:
 
     def test_breakout_pro(self):
         result = self._run([self._scan("BRK", signal="breakout", score=55)])
-        assert any("breakout" in p for p in result[0]["pros"])
+        assert any("breakout" in p for p in result[0]["observations"])
 
     def test_momentum_pro(self):
         result = self._run([self._scan("MOM", signal="momentum", change_5d=15)])
-        assert any("모멘텀" in p for p in result[0]["pros"])
+        assert any("모멘텀" in p for p in result[0]["observations"])
 
     def test_oversold_with_improving(self):
         result = self._run([self._scan("DIP", rsi=28, vol=2.5)], improving={"rsi_oversold"})
-        assert any("승률 상승" in p for p in result[0]["pros"])
+        assert any("승률 상승" in p for p in result[0]["observations"])
 
     def test_oversold_without_improving(self):
         result = self._run([self._scan("DIP2", rsi=30, vol=1.0)], improving=set())
-        assert any("과매도" in p for p in result[0]["pros"])
-        assert not any("승률 상승" in p for p in result[0]["pros"])
+        assert any("과매도" in p for p in result[0]["observations"])
+        assert not any("승률 상승" in p for p in result[0]["observations"])
 
     def test_volume_spike_pro(self):
         result = self._run([self._scan("VOL", vol=2.5)])
-        assert any("거래량" in p for p in result[0]["pros"])
+        assert any("거래량" in p for p in result[0]["observations"])
 
     def test_overbought_con(self):
         result = self._run([self._scan("HOT", rsi=85)])
-        assert any("과매수" in c for c in result[0]["cons"])
+        assert any("과매수" in c for c in result[0]["observations"])
 
     def test_crash_con(self):
         result = self._run([self._scan("FALL", change_5d=-18)])
-        assert any("급락" in c for c in result[0]["cons"])
+        assert any("급락" in c for c in result[0]["observations"])
 
     def test_chase_con(self):
         result = self._run([self._scan("RUN", change_5d=25)])
-        assert any("급등" in c for c in result[0]["cons"])
+        assert any("급등" in c for c in result[0]["observations"])
 
     def test_volume_spike_crash_con(self):
         result = self._run([self._scan("BAD", signal="volume_spike", change_5d=-12)])
-        assert any("원인 확인" in c for c in result[0]["cons"])
+        assert any("원인 확인" in c for c in result[0]["observations"])
 
     def test_sorted_by_score(self):
         result = self._run([self._scan("LOW", score=10), self._scan("HIGH", score=70)])

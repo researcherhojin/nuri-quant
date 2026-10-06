@@ -232,7 +232,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/actions` | GET | 우선순위 분류된 오늘의 액션 (🔴urgent/🟡check/🟦portfolio/✅hold). 연금/IRP 제외, 중복 제거. 각 항목에 `decision_id` + `as_of` (same-date `decisions` LEFT JOIN, #1182) — 프론트가 `/decisions/{id}` 증거 체인으로 링크 |
-| `/api/opportunities` | GET | 비보유 이슈 종목 탐색 — scan + WSB + events 기반 찬성/반대/판정 |
+| `/api/opportunities` | GET | 비보유 스캐너 후보 — 스캐너 관측(`observations`) + BUY 후보 emitter 분류(`system`: qualified / below_threshold / excluded / blocked / not_scored, #1683) |
 | `/api/market-context` | GET | 시스템 건강 (regime/macro/freshness) + 매크로 이벤트 (한국어 카테고리) |
 | `/api/backtest/equity` | GET | Equity curve + drawdown + metrics (Recharts frontend용 경량 데이터) |
 
@@ -358,7 +358,7 @@ data/
 
 ## Testing
 
-8,318 backend tests across 392 files (collection) + frontend vitest (143 files) + Playwright E2E (11 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,766 tests(143 files); E2E 88 tests는 2026-09-29 측정 기록이다. 변경 범위의 검증은 [Overview Preview](DASHBOARD_NEXT.md)의 실행 기록을 참고한다.
+8,331 backend tests across 392 files (collection) + frontend vitest (143 files) + Playwright E2E (11 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,766 tests(143 files); E2E 88 tests는 2026-09-29 측정 기록이다. 변경 범위의 검증은 [Overview Preview](DASHBOARD_NEXT.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 

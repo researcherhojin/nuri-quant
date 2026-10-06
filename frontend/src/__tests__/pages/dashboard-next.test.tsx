@@ -119,12 +119,22 @@ describe("decision desk", () => {
     warn.mockRestore();
   });
   it("labels price changes by period and never describes them as new decisions", async () => {
-    responses["/api/opportunities"] = { opportunities: [{ ticker: "EXAMPLE", signal: null, score: null, verdict: "관망", verdict_level: "neutral", pros: [], cons: [], change_1d: 1.2, change_5d: null }] };
+    const stance = (status: string, score: number | null, reason: string | null) => ({ status, score, threshold: 70, reason });
+    responses["/api/opportunities"] = { opportunities: [
+      { ticker: "EXAMPLE", signal: null, score: null, observations: [], system: stance("below_threshold", 52.4, null), change_1d: 1.2, change_5d: null },
+      { ticker: "COOLED", signal: null, score: null, observations: [], system: stance("excluded", null, "cooldown"), change_1d: null, change_5d: null },
+      { ticker: "STOPPED", signal: null, score: null, observations: [], system: { ...stance("blocked", null, "VIX 31.0 > 30 (신규 매수 차단)"), threshold: null }, change_1d: null, change_5d: null },
+    ] };
     await renderPage({});
+    // #1683: 판단 칸은 파이프라인 분류 — 점수·임계·사유가 API 값 그대로 나온다
+    expect(screen.getByRole("button", { name: "기준 미달 52 / 70" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "제외 · 쿨다운" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "차단" })).toBeInTheDocument();
+    expect(within(screen.getByLabelText("STOPPED · 탐색 근거")).getByText("차단 · VIX 31.0 > 30 (신규 매수 차단)")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "1일 변화" })).toBeInTheDocument();
     expect(screen.getAllByText("+1.2%")[0]).toBeInTheDocument();
-    expect(screen.getByText(/신규 판단이나 판단 변경을 의미하지 않습니다/)).toBeInTheDocument();
-    expect(screen.getByText(/개별 가격 관측 시각은 제공되지 않습니다/)).toBeInTheDocument();
+    expect(screen.getAllByText(/신규 판단이나 판단 변경을 의미하지 않습니다/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/개별 가격 관측 시각은 제공되지 않습니다/)[0]).toBeInTheDocument();
   });
   it("surfaces delayed inputs next to the brief even if pipeline steps completed", async () => {
     responses["/api/dashboard"] = { ...dashboard, verdict_level: "neutral" };
@@ -345,8 +355,8 @@ describe("market and source panels", () => {
     expect(within(sources).queryByText(DASHBOARD_NEXT.EMPTY)).not.toBeInTheDocument();
     warn.mockRestore();
   });
-  it("colors falling and flat changes and lists the candidate's pros and cons", async () => {
-    responses["/api/opportunities"] = { generated_at: "2026-01-01T00:00:00Z", opportunities: [{ ticker: "EXAMPLE", signal: "momentum", score: 70, verdict: "관심 — 추세 확인", verdict_level: "positive", pros: ["추세 유지"], cons: ["변동성 확대"], change_1d: -1.5, change_5d: 0 }] };
+  it("colors falling and flat changes and lists the candidate's scanner observations", async () => {
+    responses["/api/opportunities"] = { generated_at: "2026-01-01T00:00:00Z", opportunities: [{ ticker: "EXAMPLE", signal: "momentum", score: 70, observations: ["추세 유지", "변동성 확대"], system: { status: "qualified", score: 78, threshold: 70, reason: null }, change_1d: -1.5, change_5d: 0 }] };
     await renderPage({});
     const row = screen.getByRole("rowheader", { name: "EXAMPLE" }).closest("tr")!;
     const cells = row.querySelectorAll("td[data-direction]");
@@ -355,19 +365,19 @@ describe("market and source panels", () => {
     expect(cells[1]).toHaveAttribute("data-direction", "flat");
     const detail = screen.getByLabelText("EXAMPLE · 탐색 근거");
 
+    expect(within(detail).getByText(DASHBOARD_NEXT.RADAR_PANEL.OBSERVATIONS)).toBeInTheDocument();
     expect(within(detail).getByText("추세 유지")).toBeInTheDocument();
     expect(within(detail).getByText("변동성 확대")).toBeInTheDocument();
-    expect(within(detail).queryByText(DASHBOARD_NEXT.RADAR_PANEL.NO_PROS)).not.toBeInTheDocument();
-    expect(within(detail).queryByText(DASHBOARD_NEXT.RADAR_PANEL.NO_CONS)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "관심" })).toBeInTheDocument();
+    expect(within(detail).queryByText(DASHBOARD_NEXT.RADAR_PANEL.NO_OBSERVATIONS)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "후보 기준 통과 78 / 70" })).toBeInTheDocument();
   });
-  it("says so when a candidate has no pros or cons", async () => {
-    responses["/api/opportunities"] = { opportunities: [{ ticker: "EXAMPLE", signal: null, score: null, verdict: "관망", verdict_level: "neutral", pros: [], cons: [], change_1d: null, change_5d: null }] };
+  it("says so when a candidate has no observations and was not scored", async () => {
+    responses["/api/opportunities"] = { opportunities: [{ ticker: "EXAMPLE", signal: null, score: null, observations: [], system: { status: "not_scored", score: null, threshold: 70, reason: "no_factor" }, change_1d: null, change_5d: null }] };
     await renderPage({});
     const detail = screen.getByLabelText("EXAMPLE · 탐색 근거");
 
-    expect(within(detail).getByText(DASHBOARD_NEXT.RADAR_PANEL.NO_PROS)).toBeInTheDocument();
-    expect(within(detail).getByText(DASHBOARD_NEXT.RADAR_PANEL.NO_CONS)).toBeInTheDocument();
+    expect(within(detail).getByText(DASHBOARD_NEXT.RADAR_PANEL.NO_OBSERVATIONS)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "미평가 · 팩터 데이터 없음" })).toBeInTheDocument();
     expect(screen.getByRole("rowheader", { name: "EXAMPLE" }).closest("tr")!.querySelector("td[data-direction]")).toHaveAttribute("data-direction", "unknown");
   });
   it("lists system alerts, says none when empty, and unavailable when the dashboard failed", async () => {

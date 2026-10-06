@@ -848,6 +848,128 @@ def test_draft_thesis_counts_as_absent(db, cfg_path):
     assert res.candidates[0].thesis is None
 
 
+# --- Read-only evaluation (#1683) -------------------------------------------
+# `/api/opportunities` 가 자체 임계로 판정을 지어내지 않고 이 채점 결과를 그대로 보여준다.
+
+
+def _seed_strong(db_path, ticker: str):
+    _seed_factor(db_path, ticker, 0.95)
+    _seed_prices(db_path, ticker, [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
+    _seed_rsi(db_path, ticker, 55)
+
+
+def test_evaluation_assigns_every_gate_its_disposition(db, cfg_path):
+    """종목마다 왜 후보가 됐는지 / 안 됐는지가 하나의 disposition 으로 남는다."""
+    from nuri.trading.recommend.buy_candidate_emitter import evaluate_universe
+
+    upsert_portfolio(
+        [{"account": "test", "ticker": "HELD", "quantity": 1, "avg_price": 100, "currency": "USD", "sector": "Tech"}],
+        db,
+    )
+    for t in ("HELD", "COOL", "SOXL", "STRONG"):
+        _seed_strong(db, t)
+    _seed_factor(db, "WEAK", 0.30)
+    _seed_prices(db, "WEAK", [100.0] * 30 + [99.0])
+    _seed_rsi(db, "WEAK", 50)
+    _seed_factor(db, "NOPRICE", 0.95)  # factor 는 있으나 가격 이력이 없다
+    _seed_vix(db, 20.0)
+    _use_regime("sideways_low_vol")
+    with get_db(db) as conn:
+        conn.execute(
+            "INSERT INTO pipeline_events (timestamp, event_type, payload) "
+            "VALUES (datetime('now', '-1 days'), 'holdings_monitor_alert', '{\"ticker\": \"COOL\"}')"
+        )
+
+    ev = evaluate_universe(config_path=cfg_path)
+    got = {t: e.disposition for t, e in ev.tickers.items()}
+    assert got == {
+        "HELD": "held",
+        "COOL": "cooldown",
+        "SOXL": "leverage_etf",
+        "STRONG": "qualified",
+        "WEAK": "below_threshold",
+        "NOPRICE": "no_price",
+    }
+    assert ev.blocked_reason is None
+    assert ev.threshold == 70
+    strong, weak = ev.tickers["STRONG"].score, ev.tickers["WEAK"].score
+    assert strong is not None and strong >= 70
+    assert weak is not None and weak < 70
+    # 게이트에 걸린 종목은 채점하지 않는다 — 점수가 있으면 "채점 후 제외" 로 오독된다
+    assert all(ev.tickers[t].score is None for t in ("HELD", "COOL", "SOXL", "NOPRICE"))
+
+
+def test_evaluation_below_threshold_run_is_not_a_blocked_run(db, cfg_path):
+    """최고점이 임계 미달인 것은 emit 의 요약이지 실행 차단이 아니다.
+
+    평가 쪽 `blocked_reason` 에 새면 API 가 평범한 날의 모든 후보를 "차단" 으로 표시한다.
+    """
+    from nuri.trading.recommend.buy_candidate_emitter import evaluate_universe
+
+    _seed_factor(db, "WEAK", 0.30)
+    _seed_prices(db, "WEAK", [100.0] * 30 + [99.0])
+    _seed_rsi(db, "WEAK", 50)
+    _seed_vix(db, 20.0)
+    _use_regime("sideways_low_vol")
+
+    ev = evaluate_universe(config_path=cfg_path)
+    assert ev.blocked_reason is None
+    assert ev.tickers["WEAK"].disposition == "below_threshold"
+    assert "threshold" in (emit_buy_candidates(config_path=cfg_path).blocked_reason or "")
+
+
+@pytest.mark.parametrize(
+    ("setup", "needle"),
+    [
+        ("vix", "VIX"),
+        ("regime", "regime=bear_high_vol"),
+        ("threshold", "사실상 차단"),
+        ("factors", "factors"),
+    ],
+)
+def test_evaluation_blocked_run_scores_nothing(db, cfg_path, setup, needle):
+    """하드 게이트에 걸린 실행은 사유만 남기고 아무 종목도 채점하지 않는다 (emit 과 같은 사유 문자열)."""
+    from nuri.trading.recommend.buy_candidate_emitter import evaluate_universe
+
+    if setup != "factors":
+        _seed_strong(db, "STRONG")
+    _seed_vix(db, 35.0 if setup == "vix" else 20.0)
+    _use_regime({"regime": "bear_high_vol", "threshold": "sideways_high_vol"}.get(setup, "sideways_low_vol"))
+
+    ev = evaluate_universe(config_path=cfg_path)
+    assert needle in (ev.blocked_reason or "")
+    assert ev.tickers == {}
+    assert ev.blocked_reason == emit_buy_candidates(config_path=cfg_path).blocked_reason
+
+
+def test_emit_takes_its_scores_from_the_evaluation(db, cfg_path, monkeypatch):
+    """채점 경로는 하나다 — emit 은 평가 결과를 고를 뿐 다시 채점하지 않는다.
+
+    Mutation lock: emit 안에 채점 루프를 되살리면 가짜 평가의 점수·skip 이 결과에 안 실려 FAIL.
+    """
+    import nuri.trading.recommend.buy_candidate_emitter as mod
+
+    fake = mod.Evaluation(
+        regime="sideways_low_vol",
+        vix=20.0,
+        timestamp_kst="2026-01-01 00:00:00 KST",
+        threshold=70,
+        tickers={
+            "ONLYFAKE": mod.TickerEvaluation(
+                "ONLYFAKE", "qualified", score=88.0, sources={"factor": 90.0}, price={"close": 10.0}, rsi=None
+            ),
+            "SKIPFAKE": mod.TickerEvaluation("SKIPFAKE", "cooldown", skip_reason="cooldown 5d (fake)"),
+        },
+    )
+    monkeypatch.setattr(mod, "evaluate_universe", lambda config_path=None, db_path=None: fake)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert [c.ticker for c in res.candidates] == ["ONLYFAKE"]
+    assert res.candidates[0].score == 88.0
+    assert res.skipped == {"SKIPFAKE": "cooldown 5d (fake)"}
+    assert res.n_scored == 1
+
+
 class TestBusinessDaysAgoIsTheInverseOfBusdayCount:
     """시드 헬퍼는 프로덕션 나이 계산의 **역함수**여야 한다 (#1270).
 
