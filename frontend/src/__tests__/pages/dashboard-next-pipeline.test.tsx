@@ -167,6 +167,17 @@ describe("pipeline step labels", () => {
     expect(within(dialog).getByText("최근 원장 기준일: 미확인 · 기록 —건")).toBeInTheDocument();
     expect(within(dialog).getByText(/^실행 이벤트: paused · /)).toBeInTheDocument();
   });
+  it("shows every stage, decide included, in the same MM-DD HH:mm KST form (#1675)", async () => {
+    await render0([
+      { step: "collect", label: "Collect", status: "done", last_updated: "2026-10-07T05:45:00+09:00" },
+      { step: "decide", label: "Decide", status: "idle", last_updated: null, artifact: { status: "available", date: "2026-10-06", count: 17, recorded_at: "2026-10-06T07:05:04+09:00" } },
+    ]);
+    const panel = screen.getByRole("region", { name: "파이프라인 실행 상태" });
+
+    expect(within(panel).getByText("10-07 05:45")).toBeInTheDocument();
+    expect(within(panel).getByText("10-06 07:05")).toBeInTheDocument();
+    expect(within(panel).queryByText("2026-10-06")).not.toBeInTheDocument();
+  });
   it("counts an available decide artifact with no count as zero records", async () => {
     await render0([{ step: "decide", label: "Decide", status: "done", last_updated: null, artifact: { status: "available", date: "2026-01-02", count: null } }]);
     expect(screen.getByRole("button", { name: "0건 기록" })).toBeInTheDocument();

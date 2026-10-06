@@ -4,7 +4,7 @@ import DashboardNext from "@/app/dashboard-next/page";
 import Loading from "@/app/dashboard-next/loading";
 import { readPanel, freshnessSchema } from "@/app/dashboard-next/data";
 import { DASHBOARD_NEXT } from "@/lib/strings";
-import { displayChange, displayTime } from "@/app/dashboard-next/format";
+import { displayChange, displayShortTime, displayTime } from "@/app/dashboard-next/format";
 
 const fetchAPI = vi.hoisted(() => vi.fn());
 
@@ -139,6 +139,13 @@ describe("decision desk", () => {
     expect(displayTime("2026-01-01T00:00:00Z")).toContain("09:00 KST");
     expect(displayTime("2026-01-01T00:00:00")).toBe("2026-01-01 00:00:00");
     expect(displayTime(null)).toBe("기준 시각 미제공");
+  });
+  it("renders every row time as MM-DD HH:mm in KST (#1675)", () => {
+    expect(displayShortTime("2026-10-06T20:45:00Z")).toBe("10-07 05:45");
+    expect(displayShortTime("2026-10-07T05:45:00+09:00")).toBe("10-07 05:45");
+    expect(displayShortTime("2026-10-06 09:00:00")).toBe("10-06 09:00");
+    expect(displayShortTime(null)).toBeNull();
+    expect(displayShortTime("2026-13-45T99:00:00Z")).toBeNull();
   });
   it("renders zoned timestamps that fail to parse as unknown instead of NaN", () => {
     expect(displayTime("2026-13-45T99:00:00Z")).toBe("기준 시각 미제공");

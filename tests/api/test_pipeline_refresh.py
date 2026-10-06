@@ -186,13 +186,19 @@ def test_decide_reports_latest_ledger_date_without_inventing_execution():
     assert step["status"] == "idle"
     assert step["last_updated"] is None
     assert step["execution_mode"] == "inline_with_consensus"
-    assert step["artifact"] == {"status": "available", "date": "2026-01-02", "count": 2}
+    artifact = step["artifact"]
+    assert {k: v for k, v in artifact.items() if k != "recorded_at"} == {
+        "status": "available",
+        "date": "2026-01-02",
+        "count": 2,
+    }
+    assert artifact["recorded_at"].endswith("+09:00")  # #1675 기록 시각은 KST 오프셋을 달고 나간다
 
 
 def test_decide_empty_unavailable_and_error_are_distinct(monkeypatch):
     from nuri.core.events import emit_event
 
-    assert pipeline._decision_artifact() == {"status": "empty", "date": None, "count": 0}
+    assert pipeline._decision_artifact() == {"status": "empty", "date": None, "count": 0, "recorded_at": None}
     emit_event("step_failed", "decide", {"error": "synthetic failure"})
     assert next(row for row in pipeline.get_pipeline_status()["steps"] if row["step"] == "decide")["status"] == "error"
 
@@ -200,4 +206,4 @@ def test_decide_empty_unavailable_and_error_are_distinct(monkeypatch):
         raise DatabaseError("synthetic failure")
 
     monkeypatch.setattr(pipeline, "query", fail)
-    assert pipeline._decision_artifact() == {"status": "unavailable", "date": None, "count": None}
+    assert pipeline._decision_artifact() == {"status": "unavailable", "date": None, "count": None, "recorded_at": None}

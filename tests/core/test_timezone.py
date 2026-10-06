@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from nuri.core.timezone import ET, KST, UTC, kst_now, to_kst, today_kst, today_utc, utc_now
+from nuri.core.timezone import ET, KST, UTC, kst_now, sqlite_utc_to_kst_iso, to_kst, today_kst, today_utc, utc_now
 
 
 class TestTimezoneConstants:
@@ -95,3 +95,24 @@ class TestToKst:
         # ET 10:00 = UTC 15:00 = KST 00:00 (다음날)
         assert kst.hour == 0
         assert kst.day == 16
+
+
+class TestSqliteUtcToKstIso:
+    """#1675: SQLite datetime('now') 텍스트(UTC, 오프셋 없음)는 KST 오프셋을 붙여 내보낸다."""
+
+    def test_utc_text_becomes_kst_with_offset(self):
+        assert sqlite_utc_to_kst_iso("2026-10-06 20:45:00") == "2026-10-07T05:45:00+09:00"
+
+    def test_t_separator_and_fraction_are_accepted(self):
+        assert sqlite_utc_to_kst_iso("2026-10-05T22:05:04.123") == "2026-10-06T07:05:04+09:00"
+
+    def test_missing_value_passes_through(self):
+        assert sqlite_utc_to_kst_iso(None) is None
+        assert sqlite_utc_to_kst_iso("") == ""
+
+    def test_offset_bearing_value_is_not_shifted_twice(self):
+        assert sqlite_utc_to_kst_iso("2026-10-07T05:45:00+09:00") == "2026-10-07T05:45:00+09:00"
+        assert sqlite_utc_to_kst_iso("2026-10-06T20:45:00Z") == "2026-10-07T05:45:00+09:00"
+
+    def test_unreadable_value_passes_through_instead_of_raising(self):
+        assert sqlite_utc_to_kst_iso("not-a-time") == "not-a-time"

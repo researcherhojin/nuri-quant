@@ -74,7 +74,7 @@ it("shows Decide artifacts separately from idle events and retains actual errors
   const { rerender } = render(<PipelineStatus initial={{ steps: [step] }} />);
   await act(async () => {});
   expect(screen.getByRole("button", { name: "3건 기록" })).toBeInTheDocument();
-  expect(screen.getByText("2026-01-02")).toBeInTheDocument();
+  expect(screen.getByText("01-02")).toBeInTheDocument(); // #1675 다른 스테이지와 같은 MM-DD 축
   rerender(<PipelineStatus key="error" initial={{ steps: [{ ...step, status: "error" }] }} />);
   await act(async () => {});
   expect(screen.getByRole("button", { name: "실행 오류" })).toBeInTheDocument();

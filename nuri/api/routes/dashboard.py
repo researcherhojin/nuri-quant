@@ -650,8 +650,13 @@ def _get_pipeline_status() -> dict:
     """파이프라인 6단계 최신 실행 상태."""
     try:
         from nuri.core.events import get_pipeline_status
+        from nuri.core.timezone import sqlite_utc_to_kst_iso
 
-        return get_pipeline_status()
+        status = get_pipeline_status()
+        # pipeline_events 는 오프셋 없는 UTC 텍스트 — 화면이 KST 로 오독하지 않게 경계에서 변환 (#1675)
+        for step in status.values():
+            step["timestamp"] = sqlite_utc_to_kst_iso(step.get("timestamp"))
+        return status
     except Exception as e:
         logger.debug(f"Pipeline status: {e}")
         return {}

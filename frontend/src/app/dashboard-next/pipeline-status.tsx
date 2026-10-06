@@ -7,7 +7,7 @@ import { DASHBOARD_NEXT as COPY } from "@/lib/strings";
 import { pipelineSchema, schedulerSchema, type Pipeline } from "./pipeline-contract";
 import { RefreshDialog } from "./refresh-dialog";
 import { DetailDialog } from "./detail-dialog";
-import { displayTime } from "./format";
+import { displayShortTime, displayTime } from "./format";
 import styles from "./dashboard.module.css";
 import { lookup } from "@/lib/utils";
 
@@ -105,8 +105,9 @@ export function PipelineStatus({ initial, delayedKeys = [] }: { initial: Pipelin
           <div className={styles.pipelineRow} key={step.step}>
             <span className={styles.statusDot} data-tone={step.status === "error" ? "danger" : step.status === "running" ? "positive" : "neutral"} />
             <span title={step.label}>{lookup(T.STAGES, step.step) || step.label}</span>
-            <small title={displayTime(step.last_updated)}>
-              {step.step === "decide" ? step.artifact?.date || T.NO_LEDGER_DATE : step.last_updated?.slice(5, 16).replace("T", " ") || T.NO_EVENT}
+            {/* 모든 스테이지가 같은 형식(MM-DD HH:mm KST) — decide 는 판정일이 아니라 그 판정일 행이 처음 기록된 시각 (#1675) */}
+            <small title={displayTime(step.step === "decide" ? step.artifact?.recorded_at : step.last_updated)}>
+              {displayShortTime(step.step === "decide" ? step.artifact?.recorded_at : step.last_updated) || (step.step === "decide" ? step.artifact?.date?.slice(5) || T.NO_LEDGER_DATE : T.NO_EVENT)}
             </small>
             <span className={styles.pipelineStatus}>
               {step.step === "decide" ? (
