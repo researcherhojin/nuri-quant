@@ -68,9 +68,9 @@ flowchart LR
 | **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and applies the hard-veto gates (formerly `certify`; the portfolio-wide certification verdict was retired, STRATEGY §6) |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
-The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
+The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 60 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
 
-- Scheduling: 59 cron jobs · in-process
+- Scheduling: 60 cron jobs · in-process
 - Storage: SQLite WAL · 61 tables
 - Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
@@ -111,10 +111,10 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,266 collected across 389 files |
+| Backend tests | 8,276 collected across 390 files |
 | Frontend test files | 140 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
-| Scheduler jobs | 59 cron entries |
+| Scheduler jobs | 60 cron entries |
 | API endpoints | 68 declared in `nuri/api/routes/` |
 | Database | SQLite WAL · 61 tables, 67 forward-only migrations |
 

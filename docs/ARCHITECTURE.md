@@ -22,14 +22,14 @@ The phase table above is the data model. At runtime there is no orchestrator: `n
 
 ```mermaid
 flowchart TB
-    CLOCK["APScheduler — 59 registered jobs<br/>no job calls another"]
+    CLOCK["APScheduler — 60 registered jobs<br/>no job calls another"]
 
-    subgraph JOBS["What those 59 jobs are"]
+    subgraph JOBS["What those 60 jobs are"]
         JC["collect · 29"]
         JA["analyze · 1"]
         JD["consensus · 1"]
         JT["track · 5"]
-        JO["operate · 23<br/>briefs · dispatchers · watchdogs · backup"]
+        JO["operate · 24<br/>briefs · dispatchers · watchdogs · backup · retention"]
     end
 
     DB[("SQLite WAL · 61 tables")]
@@ -232,7 +232,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 ## Scheduler
 
-`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
+`nuri/scheduler.py` defines 60 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
 
 ## Environment Variables
 
@@ -352,7 +352,7 @@ data/
 
 ## Testing
 
-8,266 backend tests across 389 files + 1,665 frontend vitest (140 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+8,276 backend tests across 390 files + 1,665 frontend vitest (140 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 

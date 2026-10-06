@@ -15,7 +15,7 @@ PYTHON = .venv/bin/python
         scan scan-extended scan-kr swing swing-check strategy strategy-execute positions \
         backtest backtest-ls backtest-stress backtest-rules \
         optimize mean-reversion pairs \
-        targets rebalance evidence external \
+        targets rebalance evidence external prune-reports prune-reports-dry \
         api dashboard start \
         full-scan quick-scan \
         deploy deploy-mini pre-deploy backup scheduler-reload-remote ports ports-kill \
@@ -38,7 +38,7 @@ help:
 	@echo "  Pipeline:     make full-scan, make quick-scan"
 	@echo "  Trading:      make targets, make rebalance, make recommend"
 	@echo "  Strategy:     make strategy, make backtest-ls, make optimize, make mean-reversion, make pairs"
-	@echo "  Reports:      make report, make report-llm, make evidence, make external"
+	@echo "  Reports:      make report, make report-llm, make evidence, make external, make prune-reports[-dry] (30일 보존)"
 	@echo "  Server:       make api, make dashboard, make start"
 	@echo "  Deploy:       make deploy-mini (★ MBP → Mac mini 1-cmd), make scheduler-reload-remote, make deploy, make backup"
 	@echo "  Dev sync:     make sync-start / sync-end / sync-status"
@@ -491,6 +491,12 @@ rebalance:
 
 evidence:
 	$(PYTHON) -m nuri.analysis.evidence_charts
+
+prune-reports: ## data/reports 날짜 디렉터리 30일 보존 정리 (#1654; 스케줄러가 일요일 03:30 에 같은 일을 한다). dry-run: make prune-reports-dry
+	$(PYTHON) -m nuri.analysis.report_prune
+
+prune-reports-dry:
+	$(PYTHON) -m nuri.analysis.report_prune --dry-run
 
 external:
 	$(PYTHON) -m nuri.collectors.external --summary
