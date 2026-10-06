@@ -851,6 +851,14 @@ def _run_offbox_heartbeat():
 # ═══════════════════════════════════════════════════════
 
 
+def _prune_reports():
+    """`data/reports/` 날짜 디렉터리 30일 보존 (#1654). 주 1회, 소비자는 전부 최신 디렉터리만 읽는다."""
+    from nuri.analysis.report_prune import prune_report_dirs
+
+    removed = prune_report_dirs()
+    logger.info("prune_reports: %d directories removed", len(removed))
+
+
 def _self_restart():
     """fd 누수 누적 차단용 일일 자가 재시작 (#780).
 
@@ -1121,6 +1129,10 @@ SCHEDULES = [
     # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
     # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
     {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},
+    # data/reports 날짜 디렉터리 30일 보존 (#1654) — 일요일 03:30 KST. `wallstreet` 과 같은 슬롯이지만
+    # 그쪽은 DB 에만 쓰고 report 디렉터리를 읽지 않는다; `memory_snapshot`(04:00) 이 읽는
+    # signal_results.csv 는 CONSUMED_ARTIFACTS 가드로 최신 보유 디렉터리가 남는다.
+    {"name": "prune_reports", "func": _prune_reports, "args": (), "cron": "30 3 * * 0"},
 ]
 
 
