@@ -364,3 +364,38 @@ class TestCollectIndicesMultiIndexColumns:
         # MultiIndex normalize → KOSPI/KOSDAQ 각각 3 rows = 최소 1+ row 생성
         assert results is not None
         assert len(results) > 0
+
+
+class TestHaltDaysAreNotBars:
+    """#1644 — pykrx 가 거래정지일에 주는 시가·고가·저가 0, 거래량 0 행은 저장하지 않는다."""
+
+    def _raw(self):
+        import pandas as pd
+
+        idx = pd.to_datetime(["2026-06-25", "2026-06-26", "2026-06-29"])
+        return pd.DataFrame(
+            {
+                "시가": [120500, 0, 0],
+                "고가": [121000, 0, 0],
+                "저가": [119500, 0, 0],
+                "종가": [120000, 120000, 120000],
+                "거래량": [35000, 0, 0],
+            },
+            index=idx,
+        )
+
+    def test_zero_open_zero_volume_rows_are_dropped(self, monkeypatch):
+        from nuri.collectors import stock_kr as mod
+
+        monkeypatch.setattr(mod, "_call_with_timeout", lambda fn, timeout, *a: self._raw())
+        df = mod.StockKRCollector()._collect_ticker("000001.KS", "20260625", "20260629")
+        assert df is not None
+        assert df["date"].tolist() == ["2026-06-25"]
+        assert float(df["open"].iloc[0]) == 120500
+
+    def test_all_halt_rows_returns_none(self, monkeypatch):
+        from nuri.collectors import stock_kr as mod
+
+        raw = self._raw().iloc[1:]
+        monkeypatch.setattr(mod, "_call_with_timeout", lambda fn, timeout, *a: raw)
+        assert mod.StockKRCollector()._collect_ticker("000001.KS", "20260626", "20260629") is None

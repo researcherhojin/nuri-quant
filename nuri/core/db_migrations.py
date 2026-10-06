@@ -2125,4 +2125,16 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # 쓰기 쪽 불변식("close 는 NULL 이 아니다")을 기존 행에도 적용한다.
         "DELETE FROM prices WHERE close IS NULL;",
     ),
+    (
+        67,
+        "prices 의 시가 0 봉(거래정지일 pykrx 행) 제거 (#1644)",
+        # pykrx get_market_ohlcv 는 거래정지일을 시가=고가=저가=0, 거래량=0, 종가=직전 종가 행으로 준다.
+        # stock_kr.py 가 그대로 저장해 운영에 3종목 27행(연속 거래일 세 묶음)이 남았다 — 같은 날 다른
+        # KR 종목 200+ 개는 정상 봉이 있어 시장은 열려 있었고 그 종목들만 거래가 없었다. 체결이 없는
+        # 날은 봉이 아니므로 지운다. 재발은 stock_kr._collect_ticker 가 그 행을 걸러 막는다(일요일
+        # 365일 백필이 다시 넣던 것도 그 필터가 막는다). KIS 한국 현재가는 같은 모양을 None 으로
+        # 돌리고(방어), 미국 KIS 현재가(시가 필드 없음)는 save() 가드가 완전한 봉을 지킨다 (#1636).
+        # 거래량 조건을 함께 둬 stock_kr 의 필터와 같은 모양만 지운다 — 시가 필드가 없는 KIS 미국 첫 관측 행(거래량 있음)은 남는다.
+        "DELETE FROM prices WHERE close IS NOT NULL AND COALESCE(open, 0) = 0 AND COALESCE(volume, 0) = 0;",
+    ),
 ]
