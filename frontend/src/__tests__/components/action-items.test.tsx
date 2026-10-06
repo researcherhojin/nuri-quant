@@ -453,3 +453,27 @@ describe("NEW badge + ack (#1212)", () => {
     expect(html).not.toContain("action-new-badge");
   });
 });
+
+// #1652: 행의 근거는 잘리므로 펼침에는 첫 근거부터 전부 있어야 한다
+describe("quick-peek lists every reason including the first (#1652)", () => {
+  it("renders reasons[0] in the peek, not only the tail", () => {
+    const item = {
+      ticker: "RBL", action: "BUY", confidence: 70, pnl_pct: 1.2, position_pct: 3.4, priority: "portfolio",
+      reasons: ["리밸런스 권고 — 계좌 비중 20.2% > 한도 25%", "두 번째 근거"],
+    };
+    render(<ActionItems urgent={[]} check={[]} hold={[]} portfolio={[item]} />);
+    expect(screen.queryByTestId("action-row-reasons")).toBeNull();
+    fireEvent.click(screen.getByTestId("action-row-toggle"));
+    const reasons = screen.getByTestId("action-row-reasons");
+    expect(reasons.textContent).toContain("리밸런스 권고 — 계좌 비중 20.2% > 한도 25%");
+    expect(reasons.textContent).toContain("두 번째 근거");
+  });
+
+  it("keeps the evidence-chain text for assistive tech while showing only the arrow", () => {
+    const item = { ticker: "RBL", action: "BUY", confidence: 70, pnl_pct: null, position_pct: null, priority: "check", reasons: ["r"], decision_id: 7 };
+    render(<ActionItems urgent={[]} check={[item]} hold={[]} />);
+    const link = screen.getByText(/증거 체인/).closest("a");
+    expect(link?.getAttribute("href")).toBe("/decisions/7");
+    expect(link?.getAttribute("title")).toContain("증거 체인");
+  });
+});
