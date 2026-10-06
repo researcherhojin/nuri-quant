@@ -6,10 +6,11 @@
  * 은 §3.10 SAA framework 의 future scope.
  */
 import type { MacroEvent } from "@/components/ui/market-context";
+import { lookup } from "@/lib/utils";
 
 // 카테고리 → sector keyword 집합. holding.sector 가 한국어 / ETF prefix 포함이라
 // substring 매칭으로 검사한다 (e.g., "ETF/USIndex" 는 "Index" 를 contain).
-const CATEGORY_SECTORS: Record<string, string[]> = {
+const CATEGORY_SECTORS = {
   oil_supply_shock: ["Energy", "Oil"],
   geopolitical_escalation: ["Energy", "Defense", "Aero"],
   geopolitical_de_escalation: ["Energy", "Defense", "Aero"],
@@ -19,7 +20,7 @@ const CATEGORY_SECTORS: Record<string, string[]> = {
   sector_rally: [], // ticker-specific, sector-agnostic
   earnings_beat: [],
   earnings_miss: [],
-};
+} satisfies Record<string, string[]>;
 
 /**
  * 활성 macro event 들이 영향을 주는 sector keyword 의 lower-case Set.
@@ -35,7 +36,7 @@ export function getMacroImpactedSectors(events: MacroEvent[]): Set<string> {
     const ts = Date.parse(ev.published_at);
 
     if (!Number.isFinite(ts) || ts < cutoff) continue;
-    const sectors = CATEGORY_SECTORS[ev.category] ?? [];
+    const sectors = lookup(CATEGORY_SECTORS, ev.category) ?? [];
 
     for (const s of sectors) result.add(s.toLowerCase());
   }

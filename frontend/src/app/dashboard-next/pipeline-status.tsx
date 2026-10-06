@@ -9,6 +9,7 @@ import { RefreshDialog } from "./refresh-dialog";
 import { DetailDialog } from "./detail-dialog";
 import { displayTime } from "./format";
 import styles from "./dashboard.module.css";
+import { lookup } from "@/lib/utils";
 
 const T = COPY.PIPELINE_PANEL;
 
@@ -86,7 +87,7 @@ export function PipelineStatus({ initial, delayedKeys = [] }: { initial: Pipelin
     };
   }, [refreshKey]);
 
-  const footerStatus = failed ? T.STALE : health ? T.SCHEDULER[health] || T.SCHEDULER_OTHER(health) : T.SCHEDULER_PENDING;
+  const footerStatus = failed ? T.STALE : health ? lookup(T.SCHEDULER, health) || T.SCHEDULER_OTHER(health) : T.SCHEDULER_PENDING;
 
   return (
     <section className={styles.panel} aria-label={T.ARIA}>
@@ -103,7 +104,7 @@ export function PipelineStatus({ initial, delayedKeys = [] }: { initial: Pipelin
         {pipeline?.steps.length ? pipeline.steps.map((step) => (
           <div className={styles.pipelineRow} key={step.step}>
             <span className={styles.statusDot} data-tone={step.status === "error" ? "danger" : step.status === "running" ? "positive" : "neutral"} />
-            <span title={step.label}>{T.STAGES[step.step] || step.label}</span>
+            <span title={step.label}>{lookup(T.STAGES, step.step) || step.label}</span>
             <small title={displayTime(step.last_updated)}>
               {step.step === "decide" ? step.artifact?.date || T.NO_LEDGER_DATE : step.last_updated?.slice(5, 16).replace("T", " ") || T.NO_EVENT}
             </small>
@@ -115,11 +116,11 @@ export function PipelineStatus({ initial, delayedKeys = [] }: { initial: Pipelin
                 >
                   <p>{T.DECIDE_GUIDE}</p>
                   <p>{T.DECIDE_LEDGER(step.artifact?.date || T.NOT_PROVIDED, step.artifact?.count == null ? "—" : String(step.artifact.count))}</p>
-                  <p>{T.DECIDE_EVENT(T.EVENTS[step.status] || step.status, displayTime(step.last_updated))}</p>
+                  <p>{T.DECIDE_EVENT(lookup(T.EVENTS, step.status) || step.status, displayTime(step.last_updated))}</p>
                   <p>{T.DECIDE_CAVEAT}</p>
                   <Link href="/decisions" className={styles.textLink}>{T.LEDGER_LINK} <ArrowUpRight size={14} /></Link>
                 </DetailDialog>
-              ) : T.EVENTS[step.status] || step.status}
+              ) : lookup(T.EVENTS, step.status) || step.status}
             </span>
           </div>
         )) : <p className={styles.empty}>{pipeline ? T.EMPTY : T.UNAVAILABLE}</p>}

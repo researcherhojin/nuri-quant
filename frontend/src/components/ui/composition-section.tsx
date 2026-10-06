@@ -58,10 +58,19 @@ interface LegendRow {
   isOther?: boolean;
 }
 
-function buildSlicesAndLegend(
-  summary: HoldingsSummary,
-  tab: CompositionTab,
-): { slices: Array<{ label: string; value: number; color: string; isOther?: boolean }>; legend: LegendRow[] } {
+interface Slice {
+  label: string;
+  value: number;
+  color: string;
+  isOther?: boolean;
+}
+
+interface SlicesAndLegend {
+  slices: Slice[];
+  legend: LegendRow[];
+}
+
+function buildSlicesAndLegend(summary: HoldingsSummary, tab: CompositionTab): SlicesAndLegend {
   if (tab === "ticker") {
     return {
       slices: summary.byTicker.map((t) => ({

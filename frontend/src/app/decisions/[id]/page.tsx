@@ -13,6 +13,7 @@ import { isNumber, isString, type JsonValue } from "@/lib/types";
 import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailFlags, parseDetailKV, todayKst } from "@/app/decisions/helpers";
 import { deriveActionSource, parseScoringDetail, verdictSplit } from "@/app/decisions/verdict-path";
 import { DECISIONS } from "@/lib/strings";
+import { lookup } from "@/lib/utils";
 
 // === Types ===
 interface Evidence {
@@ -75,33 +76,33 @@ interface Thesis {
 
 // 반증 기준 판정 색. `unevaluable` 을 회색으로 두는 것이 핵심 — 초록(이상 없음)으로
 // 보이면 "측정 못 했다" 가 "지켜졌다" 로 읽히고, 그게 이 기능이 막으려는 것이다.
-const CRITERION_TONE: Record<string, string> = {
+const CRITERION_TONE = {
   breached: "text-rose-500",
   holding: "text-emerald-500",
   unevaluable: "text-muted-foreground",
-};
+} satisfies Record<string, string>;
 
-const CRITERION_LABEL: Record<string, string> = {
+const CRITERION_LABEL = {
   breached: "반증됨",
   holding: "유지",
   unevaluable: "측정 불가",
-};
+} satisfies Record<string, string>;
 
 // 논지 verdict (#1096). `unevaluable` 은 회색이다 — 초록으로 칠하면 "측정 못 했다" 가
 // 화면에서 "지켜졌다" 로 읽히고, 그게 이 원장이 막으려는 것 자체다.
-const VERDICT_TONE: Record<string, string> = {
+const VERDICT_TONE = {
   broken: "bg-rose-500/15 text-rose-400",
   held: "bg-emerald-500/15 text-emerald-400",
   abandoned: "bg-amber-500/15 text-amber-400",
   unevaluable: "bg-muted text-muted-foreground",
-};
+} satisfies Record<string, string>;
 
-const VERDICT_LABEL: Record<string, string> = {
+const VERDICT_LABEL = {
   broken: "반증됨",
   held: "지켜짐",
   abandoned: "철회됨",
   unevaluable: "측정 불가",
-};
+} satisfies Record<string, string>;
 
 interface DecisionDetail {
   id: number;
@@ -188,7 +189,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
   // 사용자에게 중요한 뜻은 어느 쪽이든 같다 — 이 값은 당시 증거로 검증할 수 없다.
   const regimeUnverifiable = d.regime != null && !evidence.some((e) => e.source_type === "regime");
   // #1216: 판정 상태 — outcome intent 태그 + 판정 기준일/D-n (리스트와 동일 규칙)
-  const outcomeTag = OUTCOME_TAG[d.outcome] ?? OUTCOME_TAG.pending;
+  const outcomeTag = lookup(OUTCOME_TAG, d.outcome) ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(d.date, d.outcome, todayKst());
 
   // #1257 판정 경로 — scoring_detail(#1256) 우선, 과거 행은 reasoning 프리픽스 fallback.
@@ -415,10 +416,10 @@ export async function DecisionProvenance({ id }: { id: string }) {
             {d.thesis && (
               <span
                 className={`ml-auto text-[10px] px-1.5 py-0.5 rounded-sm ${
-                  VERDICT_TONE[d.thesis.verdict ?? ""] ?? "bg-muted text-muted-foreground"
+                  lookup(VERDICT_TONE, d.thesis.verdict ?? "") ?? "bg-muted text-muted-foreground"
                 }`}
               >
-                {d.thesis.verdict ? VERDICT_LABEL[d.thesis.verdict] : "진행 중"}
+                {d.thesis.verdict ? lookup(VERDICT_LABEL, d.thesis.verdict) : "진행 중"}
               </span>
             )}
           </div>
@@ -456,7 +457,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   </p>
                   {d.thesis.criteria.map((c) => (
                     <div key={c.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
-                      <span className={`w-14 shrink-0 ${CRITERION_TONE[c.last_result ?? ""] ?? "text-muted-foreground"}`}>
+                      <span className={`w-14 shrink-0 ${lookup(CRITERION_TONE, c.last_result ?? "") ?? "text-muted-foreground"}`}>
                         {c.last_result ? CRITERION_LABEL[c.last_result] : "미점검"}
                       </span>
                       <span className="text-foreground/90">{c.statement}</span>

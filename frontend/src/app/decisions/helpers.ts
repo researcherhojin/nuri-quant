@@ -46,12 +46,12 @@ export function adjudicationInfo(decisionDate: string, outcome: string, today: s
 }
 
 /** outcome → intent 태그 (성공→BUY 배지 오매핑(#1216) 대체) */
-export const OUTCOME_TAG: Record<string, { label: string; cls: string }> = {
+export const OUTCOME_TAG = {
   success: { label: DECISIONS.OUTCOME_SUCCESS, cls: "bg-emerald-500/15 text-emerald-400" },
   failure: { label: DECISIONS.OUTCOME_FAILURE, cls: "bg-red-500/15 text-red-400" },
   neutral: { label: DECISIONS.OUTCOME_NEUTRAL, cls: "bg-zinc-500/15 text-zinc-400" },
   pending: { label: DECISIONS.OUTCOME_PENDING, cls: "bg-zinc-700/40 text-zinc-500" },
-};
+} satisfies Record<string, { label: string; cls: string }>;
 
 /** date DESC 정렬을 유지한 채 일자별 그룹으로 묶는다 */
 export function groupByDate<T extends { date: string }>(rows: T[]): Array<[string, T[]]> {
@@ -125,7 +125,12 @@ export function fmtKvValue(v: JsonValue | undefined): string {
 const PLACEHOLDER_KEYS = new Set(["degraded", "abstained"]);
 
 /** evidence.detail 에 실린 자리표시자 축. 없으면 둘 다 false (축이 붙기 전 행). */
-export function parseDetailFlags(detail: string | null): { degraded: boolean; abstained: boolean } {
+export interface DetailFlags {
+  degraded: boolean;
+  abstained: boolean;
+}
+
+export function parseDetailFlags(detail: string | null): DetailFlags {
   if (!detail) return { degraded: false, abstained: false };
 
   try {

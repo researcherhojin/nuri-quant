@@ -7,7 +7,7 @@
  */
 import { ReactNode } from "react";
 
-interface Column {
+export interface Column {
   key: string;
   label: string;
   align?: "left" | "center" | "right";

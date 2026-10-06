@@ -60,7 +60,13 @@ export function deriveActionSource(sd: ScoringDetail | null, reasoning: string |
 }
 
 // 합의 분포 (BUY/SELL/중립·무의견) — 히어로의 분포 바 입력.
-export function verdictSplit(verdicts: { action: string }[]): { buy: number; sell: number; rest: number } {
+export interface VerdictSplit {
+  buy: number;
+  sell: number;
+  rest: number;
+}
+
+export function verdictSplit(verdicts: { action: string }[]): VerdictSplit {
   let buy = 0;
   let sell = 0;
 

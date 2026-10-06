@@ -8,6 +8,7 @@ import { z } from "zod";
 import { DASHBOARD_NEXT as COPY } from "@/lib/strings";
 import { DetailDialog } from "./detail-dialog";
 import styles from "./dashboard.module.css";
+import { lookup } from "@/lib/utils";
 
 const T = COPY.REFRESH_DIALOG;
 
@@ -119,7 +120,7 @@ function RefreshJobs({ delayedKeys }: { delayedKeys: string[] }) {
       <label key={job.id} className={styles.refreshJob}>
         <input type="checkbox" checked={selected.includes(job.id)} disabled={!!activeRun || sending} onChange={(e) => setSelected((value) => e.target.checked ? [...value, job.id] : value.filter((id) => id !== job.id))} />
         <span><b>{job.label}</b><small>{job.description}</small></span>
-        <span>{T.JOB_STATUS[catalog.run?.jobs.find((item) => item.id === job.id)?.status ?? ""]}</span>
+        <span>{lookup(T.JOB_STATUS, catalog.run?.jobs.find((item) => item.id === job.id)?.status)}</span>
       </label>
     ))}
     {!!unsupported.length && <p className={styles.caution}>{T.UNSUPPORTED}</p>}
@@ -129,7 +130,7 @@ function RefreshJobs({ delayedKeys }: { delayedKeys: string[] }) {
       </button>
       <Link href="/pipeline" className={styles.textLink}>{T.PIPELINE_LINK} <ArrowUpRight size={14} /></Link>
     </div>
-    {catalog?.run && <p role="status">{T.LAST_REQUEST}{T.JOB_STATUS[catalog.run.status] ?? catalog.run.status}</p>}
+    {catalog?.run && <p role="status">{T.LAST_REQUEST}{lookup(T.JOB_STATUS, catalog.run.status) ?? catalog.run.status}</p>}
     {result && <p role="status">{result}</p>}
     {error && <p role="alert" className={styles.caution}>{error}</p>}
     <p className={styles.basis}>{T.NOTE}</p>

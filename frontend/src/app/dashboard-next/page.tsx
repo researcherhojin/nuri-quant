@@ -9,6 +9,7 @@ import { RefreshDialog } from "./refresh-dialog";
 import { PipelineStatus } from "./pipeline-status";
 import { DetailDialog } from "./detail-dialog";
 import styles from "./dashboard.module.css";
+import { lookup } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,7 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
             </DetailDialog>
             <Globe2 size={16} />
           </div>
-          <strong className={styles.regimeValue}>{regimeAvailable ? REGIME_LABEL[dashboard.regime.regime] || dashboard.regime.regime : "—"}</strong>
+          <strong className={styles.regimeValue}>{regimeAvailable ? lookup(REGIME_LABEL, dashboard.regime.regime) || dashboard.regime.regime : "—"}</strong>
           <small>{COPY.METRICS.REGIME_CONFIDENCE} {displayNumber(regimeAvailable ? dashboard.regime.confidence : null, "%")}</small>
         </article>
         <article>
@@ -98,7 +99,7 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
             <ChartNoAxesCombined size={16} />
           </div>
           <strong>{displayNumber(macroAvailable ? dashboard.macro.score : null)}<span>{COPY.METRICS.MACRO_DENOMINATOR}</span></strong>
-          <small>{macroAvailable ? MACRO_INTERPRETATION[dashboard.macro.interpretation] || dashboard.macro.interpretation : COPY.METRICS.MACRO_UNAVAILABLE}</small>
+          <small>{macroAvailable ? lookup(MACRO_INTERPRETATION, dashboard.macro.interpretation) || dashboard.macro.interpretation : COPY.METRICS.MACRO_UNAVAILABLE}</small>
         </article>
         <article>
           <div className={styles.metricLabel}><span>{COPY.METRICS.VIX}</span><Activity size={16} /></div>
@@ -189,7 +190,7 @@ export default async function DashboardNext({ searchParams }: { searchParams?: P
               {freshness?.details.length ? freshness.details.map((item) => (
                 <div className={styles.sourceRow} key={item.key}>
                   <span><b>{item.label}</b><small>{item.message || displayTime(item.last_updated)}</small></span>
-                  <span className={styles.badge} data-tone={item.status === "FAIL" ? "danger" : item.status === "WARN" ? "warning" : "neutral"}>{COPY.STATUS[item.status] || item.status}</span>
+                  <span className={styles.badge} data-tone={item.status === "FAIL" ? "danger" : item.status === "WARN" ? "warning" : "neutral"}>{lookup(COPY.STATUS, item.status) || item.status}</span>
                 </div>
               )) : <Empty failed={!freshness} />}
               {!!dashboard?.verdict_stale_inputs?.length && <p className={styles.caution}>{COPY.TRUST_PANEL.STALE_INPUTS}{dashboard.verdict_stale_inputs.map((item) => item.label).join(" · ")}</p>}

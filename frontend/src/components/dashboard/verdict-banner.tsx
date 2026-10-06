@@ -7,18 +7,19 @@
  * 서술하므로 (#1181) 배너는 표면화만 담당한다 (Surface rung).
  */
 import { verdictLabels } from "./helpers";
+import { lookup } from "@/lib/utils";
 
-const BANNER_STYLES: Record<string, { box: string; tag: string }> = {
+const BANNER_STYLES = {
   aggressive: { box: "bg-emerald-500/10 border-emerald-500/30", tag: "bg-emerald-500/15 text-emerald-400" },
   neutral:    { box: "bg-zinc-800/40 border-zinc-700/60",       tag: "bg-zinc-500/15 text-zinc-300" },
   cautious:   { box: "bg-amber-500/10 border-amber-500/30",     tag: "bg-amber-500/15 text-amber-400" },
   defensive:  { box: "bg-red-500/10 border-red-500/30",         tag: "bg-red-500/15 text-red-400" },
   stale:      { box: "bg-amber-500/10 border-amber-500/40",     tag: "bg-amber-500/15 text-amber-400" },
-};
+} satisfies Record<string, { box: string; tag: string }>;
 
 export function VerdictBanner({ verdict, level }: { verdict: string; level: string }) {
-  const s = BANNER_STYLES[level] ?? BANNER_STYLES.neutral;
-  const label = verdictLabels[level] ?? verdictLabels.neutral;
+  const s = lookup(BANNER_STYLES, level) ?? BANNER_STYLES.neutral;
+  const label = lookup(verdictLabels, level) ?? verdictLabels.neutral;
 
   return (
     <div

@@ -18,7 +18,7 @@ export interface SystemHealth {
 }
 
 // MarketContextProps 는 #1208 컴포넌트 삭제 때 남은 고아 — #1212 에서 제거
-export const categoryStyles: Record<string, { emoji: string; color: string }> = {
+export const categoryStyles = {
   geopolitical_escalation: { emoji: "🔴", color: "text-red-400" },
   geopolitical_de_escalation: { emoji: "🟢", color: "text-emerald-400" },
   oil_supply_shock: { emoji: "🛢", color: "text-amber-400" },
@@ -28,7 +28,7 @@ export const categoryStyles: Record<string, { emoji: string; color: string }> = 
   earnings_beat: { emoji: "📈", color: "text-emerald-400" },
   earnings_miss: { emoji: "📉", color: "text-red-400" },
   sector_rally: { emoji: "🚀", color: "text-blue-400" },
-};
+} satisfies Record<string, { emoji: string; color: string }>;
 
 export function healthColor(value: number, thresholds: [number, number]): string {
   if (value >= thresholds[1]) return "text-emerald-400";

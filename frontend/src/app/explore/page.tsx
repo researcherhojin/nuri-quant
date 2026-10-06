@@ -18,6 +18,7 @@ interface Candidate {
 
 // ── Search component (Client) ──
 import { ExploreSearch } from "./search";
+import { lookup } from "@/lib/utils";
 
 // ── Price data types ──
 interface BatchPriceData {
@@ -93,7 +94,7 @@ async function MarketContext() {
       {trend && (
         <span className="flex items-center gap-1.5">
           <span className={`${tColor} font-semibold`}>{trendKo(trend)}</span>
-          {REGIME_GUIDE[trend] && <span className="text-zinc-600">— {REGIME_GUIDE[trend]}</span>}
+          {lookup(REGIME_GUIDE, trend) && <span className="text-zinc-600">— {lookup(REGIME_GUIDE, trend)}</span>}
         </span>
       )}
       {vix != null && (
