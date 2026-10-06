@@ -504,6 +504,20 @@ class TestSchemaMigration:
         assert rows[0]["c"] == len(_MIGRATIONS)
 
 
+class TestMigration66PurgesHalfPriceRows:
+    """#1630 — #1480 이전에 쓰인 close NULL 반쪽 행은 마이그레이션이 지운다."""
+
+    def test_half_rows_are_deleted_and_good_rows_survive(self, db_path):
+        with get_db(db_path) as conn:
+            conn.execute("INSERT INTO prices (ticker, date, close, volume) VALUES ('XLK', '2026-08-27', 100.0, 1)")
+            conn.execute("INSERT INTO prices (ticker, date, close, volume) VALUES ('XLK', '2026-08-28', NULL, 1)")
+            conn.execute("DELETE FROM schema_version WHERE version = 66")
+        init_db(db_path)
+        rows = query("SELECT date, close FROM prices WHERE ticker = 'XLK' ORDER BY date", db_path=db_path)
+        assert rows == [{"date": "2026-08-27", "close": 100.0}]
+        assert query("SELECT COUNT(*) n FROM prices WHERE close IS NULL", db_path=db_path)[0]["n"] == 0
+
+
 class TestMigration23ShortHorizonOutcomes:
     """#468 — outcome_7d/14d/21d columns added to recommendations."""
 
