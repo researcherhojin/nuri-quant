@@ -37,6 +37,7 @@ from nuri.api.routes import (
     external,
     learning_memory,
     pipeline,
+    pipeline_refresh,
     portfolio,
     rebalance,
     regime,
@@ -118,6 +119,7 @@ app.include_router(rebalance.router, prefix="/api")
 app.include_router(coverage.router, prefix="/api")
 app.include_router(engine.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
+app.include_router(pipeline_refresh.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(swing.router, prefix="/api")
 app.include_router(ticker.router, prefix="/api")

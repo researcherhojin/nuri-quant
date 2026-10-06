@@ -14,7 +14,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
 npm run lint           # eslint && oxlint (anti-slop rules — see "Anti-slop (oxlint)" below)
-npm run test           # vitest run (1665 tests, 140 files)
+npm run test           # vitest run (1697 tests, 143 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -29,6 +29,10 @@ Rules that are `off`, and why (turning one on is its own PR that fixes the sites
 - `no-module-mocking` — `vi.mock` is this test suite's seam (recharts, `next/link`, `@/lib/api`), 190 sites.
 - `no-chained-type-assertions` / `no-unknown-returns` in tests only — `as unknown as Json` fixtures.
 - `no-known-value-widening` (64 source sites), `require-safety-comment-for-type-assertion` (34), `no-runtime-typeof` (25), `no-unsafe-dictionary-type` (24), `no-unknown-parameters` (14) — recharts formatter callbacks typed `unknown` and API JSON typed `Record<string, unknown>`; the fix is boundary parsing into named types, not a cast.
+
+## Overview Preview (`/dashboard-next`, #1658)
+
+A second dashboard over the same APIs, kept beside `/` for comparison; it does not replace the home page. Everything about it lives in `src/app/dashboard-next/` plus `docs/DASHBOARD_NEXT.md` (screen, API contract, refresh jobs, responsive rules, the detail-pass rules for type and spacing tokens). Its copy is `DASHBOARD_NEXT` in `src/lib/strings.ts`; the macro and regime label maps it shares with the main dashboard are `MACRO_INTERPRETATION` / `REGIME_LABEL` there. The layout spec `e2e/dashboard-next-layout.spec.ts` runs six viewports against the live API.
 
 ## Server Components Pattern
 

@@ -7,7 +7,7 @@
  */
 import Link from "next/link";
 import { Pin, TriangleAlert } from "lucide-react";
-import { CONTEXT, MARKET, MACRO_LEVEL } from "@/lib/strings";
+import { CONTEXT, MARKET, MACRO_INTERPRETATION } from "@/lib/strings";
 import {
   type MacroEvent, type SystemHealth,
   shouldPinCard, sparklinePath, categoryStyles, healthColor, regimeStripe, isRegimeShifting,
@@ -43,10 +43,10 @@ export interface MacroReading { score: number; interpretation: string; coverage?
  * 값으로 분류하고 API 는 반올림해 보내므로 49.6 → {50, "Cautious"} 를 점수로 다시 나누면 "보통" 이 된다 (Codex #1652 r3).
  */
 const MACRO_LEVELS: Record<string, { label: string; color: string }> = {
-  Favorable: { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" },
-  Neutral: { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" },
-  Cautious: { label: MACRO_LEVEL.WEAK, color: "text-orange-400" },
-  Adverse: { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" },
+  Favorable: { label: MACRO_INTERPRETATION.Favorable, color: "text-emerald-400" },
+  Neutral: { label: MACRO_INTERPRETATION.Neutral, color: "text-zinc-300" },
+  Cautious: { label: MACRO_INTERPRETATION.Cautious, color: "text-orange-400" },
+  Adverse: { label: MACRO_INTERPRETATION.Adverse, color: "text-red-400" },
 };
 
 export interface MarketFacts {

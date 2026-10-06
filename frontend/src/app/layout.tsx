@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           <Sidebar />
 
-          <div className="flex-1 flex flex-col min-h-screen">
+          <div className="flex-1 flex flex-col min-h-screen min-w-0">
             {/* Top Bar */}
             <header className="h-11 border-b border-border flex items-center px-6 shrink-0">
               <LiveIndicator />
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 울트라와이드에서 공백/폭만 늘리는 것을 차단. 테이블의 2xl 정보 확장
                 컬럼(#218)은 뷰포트 breakpoint 기준이라 영향 없음 */}
             <main className="flex-1 p-6 overflow-auto">
-              <div className="mx-auto w-full max-w-[1600px]">
+              <div data-page-container className="mx-auto w-full max-w-[1600px]">
                 {children}
               </div>
             </main>

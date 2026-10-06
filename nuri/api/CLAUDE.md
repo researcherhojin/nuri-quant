@@ -2,7 +2,7 @@
 
 ## Scope
 
-The dashboard's read surface (68 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
+The dashboard's read surface (70 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
 
 Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "Server Components Pattern" before touching frontend call sites.
 

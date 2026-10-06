@@ -198,14 +198,16 @@ The portfolio-wide certification layer was retired in 2026-10 ([`docs/STRATEGY.m
 
 `nuri/core/freshness.py` implements the data-freshness SLA. `check_freshness(key)` returns PASS, WARN or FAIL. The thresholds (`warn_hours` / `fail_hours` per source) live in `config/freshness.yaml` (#1181). `_load_config()` injects them at import and cross-checks the key set against `FRESHNESS_POLICIES` in both directions; a missing or extra key raises `ValueError`. Queries and labels stay in code. `VERDICT_GATE_KEYS` and `stale_verdict_inputs()` feed the stale gate of the dashboard verdict. Only FAIL blocks; WARN passes because weekend and holiday data age is normal.
 
-`nuri/core/pipeline.py` records stage lifecycle events; it does not orchestrate. `STEP_DEPENDENCIES` declares the 5-stage DAG (`collect → analyze → consensus → decide → track`; `decide` was named `certify` until #1619). `run_step()` checks it and records events but does not enforce it in practice: its only caller is the scheduler, which passes `warn_only=True`, so an unmet dependency is recorded as a dependency warning and the job runs anyway (#894).
+`nuri/core/pipeline.py` records stage lifecycle events; it does not orchestrate. `STEP_DEPENDENCIES` declares the 5-stage DAG (`collect → analyze → consensus → decide → track`; `decide` was named `certify` until #1619). `run_step()` checks it and records events but does not enforce it in practice: the scheduler and the Preview data-refresh worker pass `warn_only=True`, so an unmet dependency is recorded as a dependency warning and the job runs anyway (#894).
 
-Pipeline control API (`nuri/api/routes/pipeline.py`):
+Pipeline control APIs (`nuri/api/routes/pipeline.py` and `nuri/api/routes/pipeline_refresh.py`):
 
-- `GET /api/pipeline/status`: 5-stage status and record counts
+- `GET /api/pipeline/status`: 5-stage lifecycle status and record counts; Decide also carries `execution_mode` and a separate latest-ledger `artifact` (date/count/status)
 - `POST /api/pipeline/{step}/run`: runs a step synchronously (does not go through `run_step()`)
 - `GET /api/pipeline/timeline`: event log
 - `GET /api/freshness`: data freshness report
+- `GET /api/pipeline/refresh`: supported data-refresh jobs and process-local request state
+- `POST /api/pipeline/refresh`: authenticated background data collection/recalculation; HTTP 202, ordered jobs, lifecycle events and a heavy slot. Does not run consensus, decision recording or outcome tracking.
 
 Trade execution API (`nuri/api/routes/trades.py`):
 
@@ -217,9 +219,13 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/api/dashboard` reads pre-computed results from the DB instead of running analysis inline. Consensus comes from the `recommendations` table (populated by `make consensus`). The response includes `freshness` and `pipeline_status` so the dashboard can show data age. The one-line `verdict` is stale-gated (#1181): when any `verdict_gate` input (`config/freshness.yaml`) is FAIL-stale, the response carries `verdict_level: "stale"` and `verdict_stale_inputs`, and the verdict text names the stale inputs instead of giving advice.
 
-## API (68 endpoints)
+### Overview Preview
 
-`nuri/api/routes/` — 68 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 21 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
+`/dashboard-next` is an alternate dashboard for comparison with `/`. It combines market context, holding reviews, portfolio composition, freshness and pipeline observations. The portfolio donut includes every group, uses API-provided Korean names and preserves unknown valuation inputs. Its viewport-based layout is scoped to Preview; the original dashboard retains its container cap. See [Overview Preview implementation and operations](DASHBOARD_NEXT.md) for data contracts, refresh behavior, responsive thresholds, tests and limitations.
+
+## API (70 endpoints)
+
+`nuri/api/routes/` — 70 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 22 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -352,7 +358,7 @@ data/
 
 ## Testing
 
-8,276 backend tests across 390 files + 1,665 frontend vitest (140 files) + 88 Playwright E2E (10 spec files). 백엔드 수·파일 수는 `verify_doc_counts.sh` 가 검사하지만 프론트/E2E 테스트 수는 검사하지 않는다. `vitest list` 가 생성형 테스트를 빼고 세기 때문에(1,604 vs 1,746) 값싼 게이트가 없다. 재측정은 `cd frontend && npx vitest run` · `npx playwright test --list` (2026-09-29 실측).
+8,289 backend tests across 391 files (collection) + frontend vitest (143 files) + Playwright E2E (11 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-06 재측정 1,697 tests(143 files); E2E 88 tests는 2026-09-29 측정 기록이다. 변경 범위의 검증은 [Overview Preview](DASHBOARD_NEXT.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
 

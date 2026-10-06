@@ -91,6 +91,12 @@ class TestAPIRoutes_R9:
         r = _client.get("/api/pipeline/status")
         assert r.status_code == 200
 
+    def test_pipeline_refresh_catalog(self, _client):
+        # #1658: 라우터가 main.py 에 mount 됐는지 — 라우터 객체 존재만 보는 테스트는 404 를 못 잡는다
+        r = _client.get("/api/pipeline/refresh")
+        assert r.status_code == 200
+        assert {job["id"] for job in r.json()["jobs"]} >= {"prices", "technical", "factors"}
+
     def test_freshness(self, _client):
         r = _client.get("/api/freshness")
         assert r.status_code == 200
