@@ -26,6 +26,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+# `strategy_map` 은 `from ...classifier import classify_regime` 로 import 시점에 함수를 묶는다. 아래 테스트가
+# classifier.classify_regime 을 patch 한 **뒤** 문자열 경로로 strategy_map 을 처음 import 하면 mock 이 거기
+# 남아 이후 테스트(tests/api/test_regime.py 등)가 MockRegime 을 받는다 (#1693). 패치 전에 미리 올린다.
+import nuri.quant.regime.strategy_map  # noqa: F401
 from nuri.core.db import (
     get_db,
     init_db,
