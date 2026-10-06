@@ -146,7 +146,7 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
         </td>
         <td className="h-8 px-2 whitespace-nowrap">
           <span className="inline-flex items-center gap-1.5">
-            <span className="relative inline-block w-12 h-1 rounded-full bg-zinc-800 overflow-hidden align-middle">
+            <span className="relative inline-block w-8 h-1 rounded-full bg-zinc-800 overflow-hidden align-middle">
               <span className="absolute inset-y-0 left-0 rounded-full bg-zinc-500" style={{ width: `${confPct}%` }} />
             </span>
             <span className="text-[11px] text-zinc-400 tabular-nums">{item.confidence}</span>
@@ -158,10 +158,14 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
               href={`/decisions/${item.decision_id}`}
               // design-review F-007: 13px 텍스트 링크의 히트 영역을 패딩+네거티브 마진으로
               // 확장 (레이아웃 불변) — 이 링크가 추적성 심장(/decisions/[id])의 진입점이다
-              className="inline-block p-1.5 -m-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
+              // #1652: 텍스트 링크 8행 반복이 근거 컬럼 폭을 먹었다 — 화살표만 보이고 텍스트는
+              // 접근성 트리에 남긴다(스크린리더·테스트는 그대로 "증거 체인" 을 읽는다)
+              className="inline-block p-1.5 -m-1.5 text-sm leading-none text-zinc-500 hover:text-zinc-200 transition-colors focus-visible:outline-2 focus-visible:outline-blue-400/75"
+              title={`${ACTION.EVIDENCE} →`}
               onClick={(e) => e.stopPropagation()}
             >
-              {ACTION.EVIDENCE} →
+              <span className="sr-only">{ACTION.EVIDENCE} →</span>
+              <span aria-hidden="true">↗</span>
             </Link>
           ) : (
             <span className="text-[11px] text-zinc-700">—</span>
@@ -198,10 +202,11 @@ function ActionRow({ item, accent, ackMap, onAck }: { item: ActionItem; accent: 
                 </button>
               )}
             </div>
-            {item.reasons.length > 1 && (
-              <div className="mt-1 space-y-0.5">
-                {item.reasons.slice(1).map((r, i) => (
-                  <p key={i} className="text-[11px] text-zinc-500 leading-tight">{r}</p>
+            {/* #1652: 행의 근거는 잘린다 — 펼침에서는 첫 근거부터 전부 보여 준다 */}
+            {item.reasons.length > 0 && (
+              <div className="mt-1 space-y-0.5" data-testid="action-row-reasons">
+                {item.reasons.map((r, i) => (
+                  <p key={i} className={`text-[11px] leading-tight ${i === 0 ? "text-zinc-300" : "text-zinc-500"}`}>{r}</p>
                 ))}
               </div>
             )}
@@ -227,13 +232,13 @@ function ActionBucketTable({ items, kind, title, ackMap, onAck }: { items: Actio
               th 반응형 클래스는 아래 td 와 1:1 (계좌·비중 = hidden md:table-cell) */}
           <thead>
             <tr className="border-b border-zinc-800/40">
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_TICKER}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 hidden md:table-cell">{ACTION.COL_ACCOUNT}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_ACTION}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_REASON}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 text-right">{ACTION.COL_PNL}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600 text-right hidden md:table-cell">{ACTION.COL_WEIGHT}</th>
-              <th scope="col" className="px-2 py-1 text-[9px] font-medium text-zinc-600">{ACTION.COL_CONF}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600">{ACTION.COL_TICKER}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600 hidden md:table-cell">{ACTION.COL_ACCOUNT}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600">{ACTION.COL_ACTION}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600">{ACTION.COL_REASON}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600 text-right">{ACTION.COL_PNL}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600 text-right hidden md:table-cell">{ACTION.COL_WEIGHT}</th>
+              <th scope="col" className="px-2 py-1 text-[11px] font-medium text-zinc-600">{ACTION.COL_CONF}</th>
               {/* 증거 체인 컬럼 — 링크 텍스트가 자기 서술적이라 헤더 라벨 생략 (getByText 충돌 회피) */}
               <th scope="col" className="px-2 py-1" />
 

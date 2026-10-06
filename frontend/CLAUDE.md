@@ -13,7 +13,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
-npm run test           # vitest run (1674 tests, 141 files)
+npm run test           # vitest run (1665 tests, 140 files)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -37,7 +37,7 @@ Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/po
 
 ## Dashboard Layout (#264 Action-First → U2b Evidence Terminal)
 
-**VerdictBanner** (오늘의 답, 첫 픽셀 #1207) → Hero (4 stats) → RegimeShiftBanner(조건부) → **ActionItems 밀집 테이블 2/3 + SystemHealthRail·MacroEventsCard 1/3** (#1209) → market/events strips → CompositionSection (가로 스택 바 + tabs, #1210) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개 + /scan 링크) → CoverageStatus (`<details>` 접힘, #1210) → footer.
+**VerdictBanner** (오늘의 답, 첫 픽셀 #1207) → Hero (4 stats) → RegimeShiftBanner(조건부) → **ActionItems 밀집 테이블 2/3 + SystemHealthRail·MacroEventsCard 1/3** (#1209; 레일은 #1652 부터 레짐·VIX·심리·매크로·배분·데이터 6행 + WARN/FAIL 신선도 목록 — 옛 MarketStrip 과 푸터 칩은 여기로 흡수) → events strip → CompositionSection (가로 스택 바 + tabs, #1210) → Holdings table (top 8) → **OpportunityExplorer** (상위 3개, 32px 행 + quick-peek #1652, /scan 링크) → CoverageStatus (`<details>` 접힘, #1210) → footer(규칙 위반 + 파이프라인 점).
 
 Data flows through `summarizeHoldings()` in `src/lib/holdings-summary.ts`. Action data from `/api/actions`, `/api/opportunities`, `/api/market-context`.
 

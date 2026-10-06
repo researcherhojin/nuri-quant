@@ -22,17 +22,11 @@ vi.mock("@/lib/api", () => ({
   API_BASE: "http://localhost:8001",
 }));
 
-vi.mock("@/components/ui/freshness-bar", () => ({
-  FreshnessBar: ({ items }: { items: unknown[] }) => (
-    <div data-testid="freshness-bar">{items.length} items</div>
-  ),
-}));
-
 const mockDashboardData = {
   verdict: "관망. 횡보 + 고변동 구간. 대기하며 레짐 전환을 주시하세요.",
   verdict_level: "cautious",
   regime: { regime: "bull_low_vol", trend: "bull", volatility: "low", confidence: 78, vix: 18.5, fear_greed: 55 },
-  macro: { score: 65, interpretation: "Moderately positive" },
+  macro: { score: 65, interpretation: "Neutral", coverage: 1 },
   allocation: { long: 50, short: 10, cash: 40 },
   // #1284: 실 API 는 이 필드를 **항상** 낸다. 빠뜨려두면 `undefined` 가 되어 예전
   // `|| 1400` 폴백을 타고, 그 지어낸 값 위에서 기대치가 계산된다 — 잘못된 mock 형태가
@@ -572,7 +566,7 @@ describe("DashboardPage", () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
-        macro: { score: 75, interpretation: "Positive" },
+        macro: { score: 75, interpretation: "Favorable", coverage: 1 },
       },
     });
     const Page = await import("@/app/page");
@@ -586,7 +580,7 @@ describe("DashboardPage", () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
-        macro: { score: 20, interpretation: "Negative" },
+        macro: { score: 20, interpretation: "Adverse", coverage: 1 },
       },
     });
     const Page = await import("@/app/page");
@@ -600,7 +594,7 @@ describe("DashboardPage", () => {
     setupMocks({
       dashboard: {
         ...mockDashboardData,
-        macro: { score: 35, interpretation: "Below average" },
+        macro: { score: 35, interpretation: "Cautious", coverage: 1 },
       },
     });
     const Page = await import("@/app/page");
@@ -608,6 +602,43 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("부진")).toBeInTheDocument();
     });
+  });
+
+  /* ── macro qualifier labels pass through the page gate (Codex #1652 P1, r1+r2) ── */
+  it("keeps a thin-coverage macro score labelled Insufficient instead of 보통", async () => {
+    // macro_score.py: coverage < MACRO_MIN_COVERAGE → 점수 유지, interpretation "Insufficient"
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 15 }, // VIX 15 → 낮음, so 보통 can only come from the macro row
+        macro: { score: 58, interpretation: "Insufficient", coverage: 0.3 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("Insufficient")).toBeInTheDocument();
+      expect(screen.getByText("58")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("보통")).not.toBeInTheDocument();
+  });
+
+  it("does not show the 50/Unavailable placeholder of a failed macro computation as a score", async () => {
+    // dashboard.py `_get_macro()` 예외 경로 — coverage 0 이 유일한 신호
+    setupMocks({
+      dashboard: {
+        ...mockDashboardData,
+        regime: { ...mockDashboardData.regime, vix: 15 },
+        macro: { score: 50, interpretation: "Unavailable", coverage: 0 },
+      },
+    });
+    const Page = await import("@/app/page");
+    await act(async () => { render(<Page.default />); });
+    await waitFor(() => {
+      expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("50")).not.toBeInTheDocument();
+    expect(screen.queryByText("보통")).not.toBeInTheDocument();
   });
 
   /* ── displayName helper coverage ── */

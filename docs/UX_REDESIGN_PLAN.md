@@ -78,6 +78,7 @@
 | U4a | 주변부 1/2 | ticker(빈 패널 접기·부재 한 줄 스트립)·engine(BLOCKED 다음 행동 링크·빈 상태 한국어 1줄) | 완료 (#1220) |
 | U4b | 주변부 2/2 | scanner(중복 테이블 union 병합 — top-15 ⊂ swing 20 실측)·pipeline(타임라인 payload raw JSON 폐지) + 잔여 빈 상태 스윕 | 완료 (#1221) |
 | U5a-1 | evidence 데이터 API | Plotly HTML iframe(플랜의 'matplotlib PNG' 문구는 낡음)의 5개 차트 쿼리를 `evidence_data.py` 공유 함수로 추출 + `/api/evidence/data/{id}` JSON — 생성기(리포트 아카이브 유지)와 단일 소스 | 완료 (#1224 → PR #1228) |
+| U6 | 가독성 패스 | 시장 사실(추세·VIX·심리·배분)과 WARN/FAIL 신선도를 시스템 레일로 통합(MarketStrip·푸터 칩 벽 제거) · 기회 탐색 카드 → 32px 행 + quick-peek · 액션 행 증거 링크 아이콘화 + 펼침에 첫 근거 전문 | 완료 (#1652) |
 | U5a-2 | evidence 네이티브 차트 | iframe 5개 → recharts (`--chart-*` 토큰, 캔들→종가 라인 허용) | 완료 (#1225 → PR #1229) |
 | U5b | Cmd-K | 라우트 점프 + 티커 검색 팔레트 (경량 자체 구현 우선) | 완료 (#1226 → PR #1230) |
 | U5c | IA 통합 | /advisor→/rebalance 통합 (사용자 확정: A안 — 룰 위반 섹션 + risk-parity 섹션, 구 경로 리다이렉트). scan→explore 흡수는 기각 | 완료 (#1227 → PR #1231) |

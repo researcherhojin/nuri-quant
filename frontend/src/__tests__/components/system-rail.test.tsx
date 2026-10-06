@@ -18,7 +18,7 @@ const market = {
   trend: "bull",
   vix: 15.3,
   fg: 43.3,
-  macroScore: 68,
+  macro: { score: 68, interpretation: "Neutral", coverage: 1 },
   actualAllocation: { long: 78, short: 0, cash: 22 },
   targetAllocation: { long: 80, short: 0, cash: 20 },
   fallbackAllocation: { long: 0, short: 0, cash: 100 },
@@ -59,10 +59,35 @@ describe("SystemHealthRail (#1652 — 시장 사실 + 신선도 흡수)", () => 
     expect(screen.queryByText(/권장/)).toBeNull();
   });
 
-  it("omits the 심리 row when fear_greed is null and shows VIX as a dash", () => {
+  it("omits the VIX and 심리 rows when the values are null — no placeholder rows (Codex #1652 P2)", () => {
     render(<SystemHealthRail health={health} market={{ ...market, vix: null, fg: null }} />);
     expect(screen.queryByText("심리")).toBeNull();
-    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("VIX")).toBeNull();
+  });
+
+  it("shows the backend's 50/Unavailable placeholder (coverage 0) as — / Unavailable, not 50 보통 (#1026, Codex #1652 P1)", () => {
+    // dashboard.py `_get_macro()` 예외 경로의 실제 응답 형태; health.macro 는 그때 {} 다
+    render(<SystemHealthRail health={{ regime: health.regime, freshness: health.freshness }} market={{ ...market, macro: { score: 50, interpretation: "Unavailable", coverage: 0 } }} />);
+    expect(screen.queryByText("보통")).toBeNull();
+    expect(screen.queryByText("50")).toBeNull();
+    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByText("Unavailable")).toBeTruthy();
+  });
+
+  it("keeps the backend's Insufficient qualifier visible for a thin-coverage score instead of a confident level label (Codex #1652 P1 r2)", () => {
+    // macro_score.py: coverage < MACRO_MIN_COVERAGE → 점수는 그대로, 라벨은 "Insufficient"
+    render(<SystemHealthRail health={health} market={{ ...market, macro: { score: 58, interpretation: "Insufficient", coverage: 0.3 } }} />);
+    expect(screen.getByText("58")).toBeTruthy();
+    expect(screen.getByText("Insufficient")).toBeTruthy();
+    expect(screen.queryByText("보통")).toBeNull();
+  });
+
+  it("translates the backend level instead of reclassifying the rounded score (Codex #1652 r3 P2)", () => {
+    // macro_score.py 는 반올림 전 49.6 을 Cautious 로 분류하고 dashboard.py 가 50 으로 반올림한다
+    render(<SystemHealthRail health={health} market={{ ...market, macro: { score: 50, interpretation: "Cautious", coverage: 1 } }} />);
+    expect(screen.getByText("50")).toBeTruthy();
+    expect(screen.getByText("부진")).toBeTruthy();
+    expect(screen.queryByText("보통")).toBeNull();
   });
 
   it("lists only WARN/FAIL freshness items under the 데이터 row", () => {

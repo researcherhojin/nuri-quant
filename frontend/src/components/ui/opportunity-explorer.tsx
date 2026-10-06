@@ -45,7 +45,8 @@ function actionTagCls(action: string): string {
   return "bg-zinc-700 text-zinc-400";
 }
 
-const TH = "px-2 py-1 text-[9px] font-medium text-zinc-600";
+// 머리글 11px — UX plan §1 의 라벨 규격. 액션 테이블(action-items.tsx)도 같은 값 (Codex #1652 P2, 둘 다 9px 에서 올림).
+const TH = "px-2 py-1 text-[11px] font-medium text-zinc-600";
 
 /**
  * #1652 U6: 카드(3장, 찬성/반대 2열 여백) → 액션 테이블과 같은 32px 행 + quick-peek.

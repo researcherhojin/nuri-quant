@@ -57,11 +57,11 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         const { container, rerender } = render(
             <OpportunityExplorer opportunities={[]} />,
         );
-        expect(container.querySelector(".space-y-2")).toBeNull(); // empty arm
+        expect(container.querySelector("table")).toBeNull(); // empty arm
         rerender(
             <OpportunityExplorer opportunities={[make({ ticker: "BUYX" })]} />,
         );
-        expect(container.querySelector(".space-y-2")).not.toBeNull(); // list arm
+        expect(container.querySelector("table")).not.toBeNull(); // list arm
         expect(screen.getByText("BUYX")).toBeTruthy();
     });
 
@@ -150,14 +150,14 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 opportunities={[make({ ticker: "FAILOK" })]}
             />,
         );
-        fireEvent.click(screen.getByRole("button"));
+        fireEvent.click(screen.getByRole("button", { name: /10-Agent 분석/ }));
 
         await waitFor(() => {
             expect(fetchMock).toHaveBeenCalledWith("/api/consensus/FAILOK");
         });
         // ok=false -> setAnalysis 미호출 -> 버튼이 그대로 남음, 분석 패널 없음
         await waitFor(() => {
-            expect(screen.getByRole("button")).toBeTruthy();
+            expect(screen.getByRole("button", { name: /10-Agent 분석/ })).toBeTruthy();
         });
         expect(screen.queryByText("판정 0")).toBeNull();
     });
@@ -175,7 +175,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         render(
             <OpportunityExplorer opportunities={[make({ ticker: "HOLDX" })]} />,
         );
-        fireEvent.click(screen.getByRole("button"));
+        fireEvent.click(screen.getByRole("button", { name: /10-Agent 분석/ }));
 
         // action HOLD -> 배지는 BUY/SELL 아님 -> "bg-zinc-700 text-zinc-400" (line 131)
         const badge = await screen.findByText(
@@ -205,7 +205,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         render(
             <OpportunityExplorer opportunities={[make({ ticker: "ACTX" })]} />,
         );
-        fireEvent.click(screen.getByRole("button"));
+        fireEvent.click(screen.getByRole("button", { name: /10-Agent 분석/ }));
 
         // action BUY -> emerald 배지 (line 129 left), confidence 42 (left arm)
         const badge = await screen.findByText(
@@ -234,7 +234,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         render(
             <OpportunityExplorer opportunities={[make({ ticker: "SELLX" })]} />,
         );
-        fireEvent.click(screen.getByRole("button"));
+        fireEvent.click(screen.getByRole("button", { name: /10-Agent 분석/ }));
 
         // SELL -> red 배지 (line 130 left arm)
         const badge = await screen.findByText(

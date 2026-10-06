@@ -149,7 +149,6 @@ export const STRIP = {
 export const MARKET = {
   ALLOCATION: "배분",
   SENTIMENT: "심리",
-  ECONOMY: "경제",
   ACTUAL: "실제",
   INVEST: "투자",
   CASH: "현금",

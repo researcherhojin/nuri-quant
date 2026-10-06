@@ -5,7 +5,6 @@ import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
 import { fetchAPI } from "@/lib/api";
 
-import { type FreshnessItem } from "@/components/ui/freshness-bar";
 import { CoverageStatus } from "@/components/ui/coverage-status";
 import { buildEnrichedHoldings, type RawAction, type RawTarget, type RawAdvisorAction, type RawEvent } from "@/components/ui/holding-row";
 import { HeroStats } from "@/components/ui/hero-stats";
@@ -15,7 +14,7 @@ import { CompositionSection, parseCompositionTab } from "@/components/ui/composi
 import { ActionItems, type ActionItem } from "@/components/ui/action-items";
 import { OpportunityExplorer, type Opportunity } from "@/components/ui/opportunity-explorer";
 import { type MacroEvent, type SystemHealth } from "@/components/ui/market-context";
-import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner } from "@/components/dashboard/system-rail";
+import { SystemHealthRail, MacroEventsCard, RegimeShiftBanner, type FreshnessItem } from "@/components/dashboard/system-rail";
 import { summarizeHoldings, mergeAccountTotals } from "@/lib/holdings-summary";
 import { getMacroImpactedSectors } from "@/lib/macro-impact";
 import Link from "next/link";
@@ -39,7 +38,9 @@ interface DashboardData {
   verdict: string;
   verdict_level: string;
   regime: { regime: string; trend: string; volatility?: string; confidence: number; vix?: number; fear_greed?: number };
-  macro: { score: number; interpretation: string };
+  // #1026: 실패 시 백엔드는 {score: 50, interpretation: "Unavailable", coverage: 0} 를 낸다 —
+  // 50 은 스키마 자리표시자다. coverage 0 이면 점수를 **쓰지 않는다** (Codex #1652 P1).
+  macro: { score: number; interpretation: string; coverage?: number };
   allocation: { long: number; short: number; cash: number };
   target_allocation?: { long: number; short: number; cash: number };
   // #1284: 환산 불가면 null — 분모를 모르면 배분도 낼 수 없다.
@@ -67,7 +68,8 @@ const EMPTY_DASHBOARD: DashboardData = {
   verdict: COMMON.DEGRADED,
   verdict_level: "stale",
   regime: { regime: "unknown", trend: "unknown", confidence: 0 },
-  macro: { score: 0, interpretation: "" },
+  // coverage 0: 대시보드 fetch 실패 시 레일이 지어낸 "0" 대신 "—" 를 보이게 (#1652)
+  macro: { score: 0, interpretation: "", coverage: 0 },
   allocation: { long: 0, short: 0, cash: 100 },
   actions: [],
   alerts: [],
@@ -259,10 +261,9 @@ async function Dashboard({
     .slice(0, 5)
     .map((ev) => ({ date: ev.date as string, description: ev.description as string | undefined, ticker: ev.ticker as string | null }));
 
-  // 원본 게이트 보존 (#1204): items=[] 이고 details 만 있어도 빈 FreshnessBar 를 렌더.
-  const showFreshness = (freshness?.items?.length ?? 0) > 0 || (freshness?.details?.length ?? 0) > 0;
+  // `items` 가 없으면 `details` (#1204 의 두 형태) — 레일이 PASS 를 거르므로 별도 게이트는 없다 (#1652)
   /* v8 ignore next */
-  const freshnessItems = freshness?.items ?? freshness?.details ?? [];
+  const freshnessItems: FreshnessItem[] = freshness?.items ?? freshness?.details ?? [];
 
   return (
     <div className="flex flex-col gap-4 h-full">
@@ -296,12 +297,13 @@ async function Dashboard({
           <SystemHealthRail
             health={marketCtx?.system_health ?? {}}
             market={{
-              trend, vix, fg, macroScore: d.macro?.score,
+              trend, vix, fg,
+              macro: d.macro,
               actualAllocation: d.actual_allocation,
               targetAllocation: d.target_allocation,
               fallbackAllocation: d.allocation,
             }}
-            freshnessItems={showFreshness ? freshnessItems : []}
+            freshnessItems={freshnessItems}
           />
           <MacroEventsCard
             events={marketCtx?.macro_events ?? []}

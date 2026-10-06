@@ -267,7 +267,7 @@ describe("page.tsx branch coverage", () => {
       "/api/dashboard": {
         verdict: "Hold", verdict_level: "neutral",
         regime: { regime: "bull", trend: "bull", confidence: 80, vix: 15, fear_greed: 55 },
-        macro: { score: 80, interpretation: "good" },
+        macro: { score: 80, interpretation: "Favorable", coverage: 1 },
         allocation: { long: 60, short: 10, cash: 30 },
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
@@ -281,7 +281,7 @@ describe("page.tsx branch coverage", () => {
       "/api/dashboard": {
         verdict: "Hold", verdict_level: "neutral",
         regime: { regime: "bull", trend: "bull", confidence: 80, vix: 15, fear_greed: 55 },
-        macro: { score: 35, interpretation: "weak" },
+        macro: { score: 35, interpretation: "Cautious", coverage: 1 },
         allocation: { long: 60, short: 10, cash: 30 },
         actions: [], alerts: [], gate_score: 80, n_positions: 1, exchange_rate: 1400,
       },
@@ -541,11 +541,11 @@ describe("page.tsx branch coverage", () => {
   // L599 arm — freshness with NEITHER items nor details non-empty: the footer
   // `(items.length>0 || details.length>0)` is FALSE so FreshnessBar is hidden;
   // this drives the AND short-circuit / OR-both-false arms at L599.
-  it("hides FreshnessBar when both items and details are empty (L599)", async () => {
+  it("renders no rail freshness list when both items and details are empty (#1652)", async () => {
     const container = await renderWith({
       "/api/freshness": { items: [], details: [], overall: "FAIL" } as unknown as Json,
     });
-    expect(container.querySelector("div.gap-4.h-full")).not.toBeNull();
+    expect(container.querySelector('[data-testid="rail-freshness"]')).toBeNull();
   });
 
   // L274 `?? 0` arms — null positionPct in the sort comparator. With total
@@ -871,17 +871,16 @@ describe("page.tsx branch coverage", () => {
 
   // L598 arm1 — freshness bar `items.length > 0 || details.length > 0`: provide
   // `details` (not `items`) so the OR right-hand arm renders the FreshnessBar.
-  it("renders FreshnessBar via the details arm (L606 items ?? details)", async () => {
+  it("lists a WARN item that arrives via the details arm (items ?? details, #1652)", async () => {
     const container = await renderWith({
-      // `items` ABSENT (not []) so `freshness?.items ?? freshness?.details` takes
-      // the `?? details` arm; details non-empty so the gate `(... || details>0)`
-      // is also true and FreshnessBar renders.
+      // `items` ABSENT (not []) so `freshness?.items ?? freshness?.details` takes the `?? details` arm
       "/api/freshness": {
-        details: [{ source: "prices", status: "PASS", age_hours: 1, threshold_hours: 24 }],
-        overall: "PASS",
+        details: [{ key: "prices", label: "주가 데이터", status: "WARN", age_hours: 30, message: "stale" }],
+        overall: "WARN",
       } as unknown as Json,
     });
-    // FreshnessBar rendered -> the footer right cluster is non-empty.
-    expect(container.querySelector("div.ml-auto")).not.toBeNull();
+    const list = container.querySelector('[data-testid="rail-freshness"]');
+    expect(list).not.toBeNull();
+    expect(list?.textContent).toContain("주가 데이터");
   });
 });
