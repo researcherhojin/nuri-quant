@@ -646,7 +646,7 @@ const DEFAULT_NODES: Node[] = [
   {
     id: "collect",
     type: "pipeline",
-    position: { x: 0 * NODE_PITCH_X, y: 80 },
+    position: { x: 0, y: 80 },
     data: { label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
   },
   {

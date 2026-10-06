@@ -280,7 +280,7 @@ describe("다크 토큰 대비 (#1431)", () => {
     expect(T.card).toMatch(/^#[0-9A-F]{6}$/);
   });
 
-  it.each(TEXT_PAIRS.filter((p) => !(p.name in KNOWN_BELOW_AA)).map((p) => [p.name, p] as const))(
+  it.each(TEXT_PAIRS.flatMap((p) => (p.name in KNOWN_BELOW_AA ? [] : [[p.name, p] as const])))(
     "%s 는 AA 4.5:1 이상",
     (_name, p) => {
       const bg = resolve(p.bg);

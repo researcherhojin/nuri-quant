@@ -60,7 +60,13 @@ describe("차트 세그먼트 인접 대비 (#1435)", () => {
     // 이것이 성립해야 구분선이 제 역할을 한다 — 한 조각 옆에서만 안 보여도 그 경계는
     // 구분되지 않는다. 이전 OTHER_COLOR 가 정확히 그 상태였다 (구분선과 2.00:1).
     const sep = darkToken("background");
-    const weak = SEGMENT_COLORS.map((c) => [c, ratio(sep, c)] as const).filter(([, r]) => r < NON_TEXT_MIN);
+
+    const weak = SEGMENT_COLORS.flatMap((c) => {
+      const r = ratio(sep, c);
+
+      return r < NON_TEXT_MIN ? [[c, r] as const] : [];
+    });
+
     expect(weak.map(([c, r]) => `${c} ${r.toFixed(2)}:1`),
       "구분선과 3:1 미만인 세그먼트 색이 있다 — 그 경계는 구분되지 않는다").toEqual([]);
   });

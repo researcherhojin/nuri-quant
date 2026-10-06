@@ -12,7 +12,7 @@
  *
  * The remaining 5 arms are genuinely unreachable (redundant nullish guards
  * behind an earlier `if (w <= 0) continue`, the 12-cap palette invariant on
- * topTickers, and the always-positive otherAgg.weight). `/* v8 ignore *​/` is
+ * topTickers, and the always-positive otherAgg.weight). `/* v8 ignore * /` is
  * non-functional in this repo's vitest 4.1.7 + plugin-react toolchain (the SWC
  * transform strips the comment before v8 instruments), so they remain visibly
  * uncovered rather than dishonestly suppressed.

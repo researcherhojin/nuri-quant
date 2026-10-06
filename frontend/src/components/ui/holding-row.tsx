@@ -135,12 +135,12 @@ export function buildEnrichedHoldings(
   const _now = new Date();
   const todayMs = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate()).getTime();
 
+  // filter().map() 한 쌍 대신 flatMap 한 번 (anti-slop no-array-filter-map) — 가드가 TS narrow 를 겸한다
   const enriched = holdings
-    // h.avg_price != null 가드 뒤이므로 (h.avg_price ?? 0) 의 redundant nullish 제거 — TS 가 number 로 narrow
-    .filter((h) => h.latest_price != null && h.avg_price != null && h.avg_price > 0)
-    .map((h): EnrichedHolding => {
-      const latest = h.latest_price as number;
-      const avg = h.avg_price as number;
+    .flatMap((h): EnrichedHolding[] => {
+      if (h.latest_price == null || h.avg_price == null || !(h.avg_price > 0)) return [];
+      const latest = h.latest_price;
+      const avg = h.avg_price;
       const pnlPct = (latest / avg - 1) * 100;
       const accountRaw = h.account ?? "";
       const accountLabel = h.accountLabel ?? accountRaw;
@@ -231,7 +231,7 @@ export function buildEnrichedHoldings(
           ? (holdingValueUsd / totalUsd) * 100
           : null;
 
-      return {
+      return [{
         account: accountLabel,
         ticker: h.ticker,
         name: h.name ?? null,
@@ -251,7 +251,7 @@ export function buildEnrichedHoldings(
         watch,
         sector: h.sector ?? null,
         positionPct,
-      };
+      }];
     });
 
   // Sort: account asc → status priority → |pnl| desc
