@@ -232,6 +232,14 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 스윕의 한계는 명시돼 있다 — 테이블명이 f-string 변수인 쿼리(`coverage.py::_table_tickers`)는
 리터럴에 이름이 없어 안 보이므로 `_COVERAGE_FILTERS` 로 따로 처리했다.
 
+## KIS 실시간 시세의 날짜와 저장 (`kis_realtime.py`, #1636)
+
+- 미국 현재가의 `date` 는 `us_session_date()`(뉴욕 거래일)이고 한국은 `today_kst()` 다. KST 아침의 미국 시세는 뉴욕 기준 **전날** 세션이라 KST 날짜를 찍으면 일일 수집기와 다른 행이 된다 — 최신 날짜로 종목을 정렬하는 리더에서 SPY 만 하루 앞서 보이고, 섹터 순환 감지(#1631)가 ETF 를 전부 건너뛴다.
+- 해외 현재가 응답에는 open/high/low 가 없다(0.0 으로 저장). `save()` 는 (ticker, date) 에 `open != 0` 인 봉이 있으면 그 행을 쓰지 않는다 — `upsert_prices` 가 INSERT OR REPLACE 라 yfinance 일봉을 0 으로 덮기 때문. 앞선 관측도 O/H/L 이 없으면 갱신한다(존재가 아니라 완전성을 본다).
+- yfinance fallback 행의 `date` 는 봉의 인덱스 날짜다.
+
+**Test:** `tests/collectors/test_kis_us_session_date.py::TestUsSessionDate` · `::TestSaveNeverReplacesACompleteBar` · `::TestYfinanceFallbackDate`
+
 ## Macro Data Quirk
 
 `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` queries `us_2y_yield` when `us_3m_yield` is empty.

@@ -74,6 +74,8 @@ The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 
 - Storage: SQLite WAL · 61 tables
 - Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
+A read-only MCP server (`nuri-read`, stdio) exposes BUY candidates, macro facts, data freshness and live quotes to a local AI client; it never exposes holdings, quantities or account data.
+
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime topology and scoring model.
 
 ## Install
