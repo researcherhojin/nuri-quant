@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
 import { formatMoney } from "@/lib/format";
+import { isNumber, isString } from "@/lib/types";
 import { OUTCOME_TAG, adjudicationInfo, fmtFixed, parseDetailFlags, parseDetailKV, todayKst } from "@/app/decisions/helpers";
 import { deriveActionSource, parseScoringDetail, verdictSplit } from "@/app/decisions/verdict-path";
 import { DECISIONS } from "@/lib/strings";
@@ -133,7 +134,7 @@ interface DecisionDetail {
 function parseVerdicts(raw: AgentVerdict[] | string | null): AgentVerdict[] {
   let arr: unknown = raw;
 
-  if (typeof raw === "string") {
+  if (isString(raw)) {
     try {
       arr = JSON.parse(raw);
     } catch {
@@ -522,7 +523,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
               {degradedVerdicts.length + abstainedVerdicts.length > 0
                 ? `${DECISIONS.AGENTS_LIVE_TITLE} ${liveVerdicts.length}`
                 : `에이전트 판정 (${verdicts.length})`}
-              {typeof sd?.panel_coverage === "number" && (
+              {isNumber(sd?.panel_coverage) && (
                 <span className="ml-2 text-faint">
                   {DECISIONS.AGENTS_COVERAGE_LABEL} {Math.round(sd.panel_coverage * 100)}%
                 </span>
@@ -534,9 +535,9 @@ export async function DecisionProvenance({ id }: { id: string }) {
                   <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
                   <StatusBadge status={v.action} />
                   <span className="text-foreground/60">
-                    {typeof v.confidence === "number" ? `${Math.round(v.confidence)}%` : "—"}
+                    {isNumber(v.confidence) ? `${Math.round(v.confidence)}%` : "—"}
                   </span>
-                  {typeof v.reasoning === "string" && (
+                  {isString(v.reasoning) && (
                     <span className="truncate text-foreground/70">{v.reasoning}</span>
                   )}
                 </div>
@@ -552,7 +553,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                     {degradedVerdicts.map((v, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded-sm px-2.5 py-1.5 opacity-70">
                         <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
-                        {typeof v.reasoning === "string" && (
+                        {isString(v.reasoning) && (
                           <span className="truncate text-muted-foreground">{v.reasoning}</span>
                         )}
                       </div>
@@ -571,7 +572,7 @@ export async function DecisionProvenance({ id }: { id: string }) {
                     {abstainedVerdicts.map((v, i) => (
                       <div key={i} className="flex items-center gap-2 text-xs bg-muted/20 rounded-sm px-2.5 py-1.5 opacity-70">
                         <span className="w-28 shrink-0 text-muted-foreground">{v.agent_name}</span>
-                        {typeof v.reasoning === "string" && (
+                        {isString(v.reasoning) && (
                           <span className="truncate text-muted-foreground">{v.reasoning}</span>
                         )}
                       </div>

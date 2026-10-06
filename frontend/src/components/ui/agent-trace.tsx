@@ -7,6 +7,7 @@
  * 최종 합의 결과가 하단에 나타난다.
  */
 import { CONSENSUS } from "@/lib/strings";
+import { isNumber } from "@/lib/types";
 import { useTraceStream } from "@/lib/use-trace-stream";
 import { StatusBadge } from "./status-badge";
 
@@ -32,7 +33,7 @@ function DataPills({ data }: { data: Record<string, unknown> }) {
     <div className="flex flex-wrap gap-1 mt-1">
       {entries.map(([k, v]) => (
         <span key={k} className="text-[9px] bg-muted/50 rounded-sm px-1.5 py-0.5 text-muted-foreground">
-          {k}={typeof v === "number" ? v.toFixed(2) : String(v ?? "")}
+          {k}={isNumber(v) ? v.toFixed(2) : String(v ?? "")}
         </span>
       ))}
     </div>
