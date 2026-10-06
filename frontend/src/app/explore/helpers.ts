@@ -3,12 +3,19 @@
  * Pure functions, no React/Server Component dependency.
  */
 import { TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SIGNAL, EXPLORE } from "@/lib/strings";
+import { lookup } from "@/lib/utils";
 
 export function trendKo(t: string) {
   return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS;
 }
 
-export function vixZone(v: number | null): { label: string; color: string } {
+/** 라벨 + Tailwind 텍스트 색 클래스 */
+export interface ToneLabel {
+  label: string;
+  color: string;
+}
+
+export function vixZone(v: number | null): ToneLabel {
   if (v == null) return { label: "—", color: "text-zinc-500" };
 
   if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
@@ -36,7 +43,7 @@ export function fgLabel(fg: number | null): string {
   return FEAR_GREED.EXTREME_GREED;
 }
 
-export function macroLevel(s: number): { label: string; color: string } {
+export function macroLevel(s: number): ToneLabel {
   if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
 
   if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
@@ -46,7 +53,7 @@ export function macroLevel(s: number): { label: string; color: string } {
   return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
 }
 
-const SIGNAL_KO: Record<string, string> = {
+const SIGNAL_KO = {
   bb_bounce: SIGNAL.BB_BOUNCE, macd_bullish_turn: SIGNAL.MACD_BULLISH_TURN,
   macd_bearish_turn: SIGNAL.MACD_BEARISH_TURN, macd_golden: SIGNAL.MACD_GOLDEN,
   macd_dead: SIGNAL.MACD_DEAD, rsi_oversold: SIGNAL.RSI_OVERSOLD,
@@ -56,10 +63,10 @@ const SIGNAL_KO: Record<string, string> = {
   bb_squeeze_breakout: SIGNAL.BB_SQUEEZE_BREAKOUT,
   near_52w_low_bounce: SIGNAL.NEAR_52W_LOW_BOUNCE,
   volume_profile_resistance: SIGNAL.VOLUME_PROFILE_RESISTANCE,
-};
+} satisfies Record<string, string>;
 
 export function signalKo(id: string): string {
-  return SIGNAL_KO[id] ?? id.replace(/_/g, " ");
+  return lookup(SIGNAL_KO, id) ?? id.replace(/_/g, " ");
 }
 
 export function formatPrice(price: number | null, isKr: boolean): string {

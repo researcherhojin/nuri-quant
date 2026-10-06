@@ -12,7 +12,10 @@
 
 import { isPlainObject, isString, type JsonValue } from "@/lib/types";
 
-export type AckMap = Record<string, string>;
+/** actionKey → ack 시점의 판정일(as_of) */
+export interface AckMap {
+  [actionKey: string]: string;
+}
 
 const STORAGE_KEY = "nuri.actions.ack.v1";
 

@@ -9,6 +9,7 @@ import { Metric } from "@/components/ui/metric";
 import { Rate } from "@/components/ui/rate";
 import { formatMoney } from "@/lib/format";
 import { DECISIONS, COMMON } from "@/lib/strings";
+import { lookup } from "@/lib/utils";
 import {
   type ActionFilter,
   type OutcomeFilter,
@@ -181,7 +182,7 @@ function PnlCell({ value }: { value: number | null }) {
 
 // === 판정 셀 (#1216) — outcome intent 태그 + 판정일/D-n. 성공→BUY 배지 오매핑 제거 ===
 function OutcomeCell({ date, outcome, today }: { date: string; outcome: string; today: string }) {
-  const tag = OUTCOME_TAG[outcome] ?? OUTCOME_TAG.pending;
+  const tag = lookup(OUTCOME_TAG, outcome) ?? OUTCOME_TAG.pending;
   const adj = adjudicationInfo(date, outcome, today);
 
   return (

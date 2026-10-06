@@ -5,19 +5,25 @@
  */
 import { VERDICT, TREND, VIX_ZONE, FEAR_GREED, MACRO_LEVEL, SECTION } from "@/lib/strings";
 
-export const verdictLabels: Record<string, string> = {
+export const verdictLabels = {
   aggressive: VERDICT.AGGRESSIVE, neutral: VERDICT.NEUTRAL, cautious: VERDICT.CAUTIOUS, defensive: VERDICT.DEFENSIVE,
   stale: VERDICT.STALE,
-};
+} satisfies Record<string, string>;
 
 // levelStyles 는 U2b-1 (#1206) 에서 VerdictBanner 의 BANNER_STYLES 로 대체·삭제됨.
-export const pipelineStatusColors: Record<string, string> = {
+export const pipelineStatusColors = {
   idle: "bg-zinc-500", running: "bg-blue-500 animate-pulse", done: "bg-emerald-500", error: "bg-red-500",
-};
+} satisfies Record<string, string>;
 
 export function trendKo(t: string) { return t === "bull" ? TREND.BULL : t === "bear" ? TREND.BEAR : TREND.SIDEWAYS; }
 
-export function vixZone(v: number | null): { label: string; color: string } {
+/** 라벨 + Tailwind 텍스트 색 클래스 */
+export interface ToneLabel {
+  label: string;
+  color: string;
+}
+
+export function vixZone(v: number | null): ToneLabel {
   if (v == null) return { label: "—", color: "text-zinc-500" };
 
   if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
@@ -59,7 +65,7 @@ export function fgColor(fg: number | null): string {
   return "bg-emerald-500/20 text-emerald-400";
 }
 
-export function macroLevel(s: number): { label: string; color: string } {
+export function macroLevel(s: number): ToneLabel {
   if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
 
   if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };

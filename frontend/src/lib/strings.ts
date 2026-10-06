@@ -464,11 +464,11 @@ export const EXPLORE = {
   COLLECT_HINT: "make scan-extended로 전체 종목 수집",
 } as const;
 
-export const REGIME_GUIDE: Record<string, string> = {
+export const REGIME_GUIDE = {
   bull: "추세 매수 유리 — 시그널 매수 진입 가능",
   bear: "방어 자세 — 신규 매수 자제, 손절 엄수",
   sideways: "방향성 불명확 — 소량 분할 매수 또는 관망",
-};
+} satisfies Record<string, string>;
 
 /* ── Common ─────────────────────────────────────────────────── */
 export const COMMON = {
@@ -634,23 +634,23 @@ export const NAV = {
 
 /* ── 백엔드 분류 → 한국어 라벨 (대시보드 · Overview Preview 공용) ──────────── */
 // macro_score.py 의 interpretation 그대로가 키다. 점수로 라벨을 다시 지어내지 않는다 (#1652 Codex r1-r3).
-export const MACRO_INTERPRETATION: Record<string, string> = {
+export const MACRO_INTERPRETATION = {
   Favorable: MACRO_LEVEL.GOOD,
   Neutral: MACRO_LEVEL.NORMAL,
   Cautious: MACRO_LEVEL.WEAK,
   Adverse: MACRO_LEVEL.FRAGILE,
   Insufficient: "입력 부족",
   Unavailable: "산출 불가",
-};
+} satisfies Record<string, string>;
 
-export const REGIME_LABEL: Record<string, string> = {
+export const REGIME_LABEL = {
   bull_low_vol: "상승 · 저변동",
   bull_high_vol: "상승 · 고변동",
   bear_low_vol: "하락 · 저변동",
   bear_high_vol: "하락 · 고변동",
   sideways_low_vol: "횡보 · 저변동",
   sideways_high_vol: "횡보 · 고변동",
-};
+} satisfies Record<string, string>;
 
 /* ── Overview Preview (/dashboard-next, #1658) ──────────────────────────────── */
 // 화면의 모든 사용자 노출 문구. 컴포넌트와 테스트는 여기서 읽는다 (#1252 — 리터럴은 e2e 무신호 회귀의 경로).
@@ -669,7 +669,7 @@ export const DASHBOARD_NEXT = {
   EMPTY: "현재 표시할 항목이 없습니다.",
   LOADING: "시장 환경과 시스템 판단을 불러오는 중입니다…",
   // 공통 상태 라벨 (파이프라인 이벤트 · 신선도)
-  STATUS: { done: "완료", success: "완료", running: "실행 중", error: "오류", idle: "대기", PASS: "정상", WARN: "주의", FAIL: "지연" } as Record<string, string>,
+  STATUS: { done: "완료", success: "완료", running: "실행 중", error: "오류", idle: "대기", PASS: "정상", WARN: "주의", FAIL: "지연" } satisfies Record<string, string>,
   SUMMARY: {
     ARIA: "오늘의 확인 순서",
     LABEL: "시스템 의견",
@@ -795,9 +795,9 @@ export const DASHBOARD_NEXT = {
     DETAIL: "상세",
     RELOAD_ARIA: "파이프라인 상태 새로고침",
     RELOAD_TITLE: "상태만 조회 · 작업 재실행 아님",
-    STAGES: { collect: "데이터 수집", analyze: "지표 분석", consensus: "의견 종합", decide: "판정 기록", track: "결과 추적" } as Record<string, string>,
-    EVENTS: { done: "성공 기록", success: "성공 기록", running: "실행 중", error: "오류", idle: "대기" } as Record<string, string>,
-    SCHEDULER: { ok: "스케줄러 정상", stale: "스케줄러 응답 지연", unknown: "스케줄러 확인 불가", error: "스케줄러 조회 오류", unavailable: "스케줄러 연결 실패" } as Record<string, string>,
+    STAGES: { collect: "데이터 수집", analyze: "지표 분석", consensus: "의견 종합", decide: "판정 기록", track: "결과 추적" } satisfies Record<string, string>,
+    EVENTS: { done: "성공 기록", success: "성공 기록", running: "실행 중", error: "오류", idle: "대기" } satisfies Record<string, string>,
+    SCHEDULER: { ok: "스케줄러 정상", stale: "스케줄러 응답 지연", unknown: "스케줄러 확인 불가", error: "스케줄러 조회 오류", unavailable: "스케줄러 연결 실패" } satisfies Record<string, string>,
     SCHEDULER_OTHER: (status: string) => `스케줄러 ${status}`,
     SCHEDULER_PENDING: "스케줄러 확인 중",
     NO_LEDGER_DATE: "원장 미확인",
@@ -825,7 +825,7 @@ export const DASHBOARD_NEXT = {
     INTRO: "수집 또는 재계산할 작업을 선택하세요. 주가 → 지표 → 종합 분석 순서로 실행합니다. 기술 지표가 오래되었다면 주가도 함께 수집하세요.",
     SCOPE: "합의·판정·성과 기록은 예약 작업과 운영 원장에서 관리합니다. 이 갱신으로 새 투자 판단이 생성되지는 않습니다.",
     LOADING: "갱신 가능한 작업을 불러오는 중입니다.",
-    JOB_STATUS: { queued: "대기", running: "진행 중", completed: "작업 완료", failed: "실패", skipped: "실행하지 않음" } as Record<string, string>,
+    JOB_STATUS: { queued: "대기", running: "진행 중", completed: "작업 완료", failed: "실패", skipped: "실행하지 않음" } satisfies Record<string, string>,
     UNSUPPORTED: "일부 지연 소스는 이 화면에서 직접 갱신하지 않습니다. 파이프라인 상세에서 예약 작업과 원본 소스를 확인하세요.",
     START: "선택한 데이터 갱신",
     SENDING: "요청 중…",

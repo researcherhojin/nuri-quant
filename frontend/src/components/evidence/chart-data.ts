@@ -88,10 +88,10 @@ export const VIOLATION_COLORS: Record<"stop_loss" | "overweight", string> = {
   overweight: "#ffd54f",
 };
 
-export const DRIFT_COLORS: Record<string, string> = {
+export const DRIFT_COLORS = {
   critical: "#ef5350",
   degrading: "#ff9800",
-};
+} satisfies Record<string, string>;
 
 /** 손익% → 히트맵 셀 색 (Plotly colorscale 의 5-구간 근사) */
 export function pnlColor(pnl: number): string {

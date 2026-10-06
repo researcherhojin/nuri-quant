@@ -28,6 +28,7 @@ import {
 import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import type { JsonValue } from "@/lib/types";
 import { summarizePayload } from "./helpers";
+import { isKeyOf, lookup } from "@/lib/utils";
 
 // design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
 // 0.46배로 축소돼 기본 줌에서 노드 텍스트가 판독 불가였다 — 피치 축소로 fit 배율 회복.
@@ -89,19 +90,19 @@ type PipelineNodeData = {
 };
 
 // === 상태 색상 매핑 ===
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLORS = {
   ok: "bg-emerald-500",
   warning: "bg-amber-500",
   error: "bg-red-500",
   running: "bg-blue-500",
-};
+} satisfies Record<string, string>;
 
-const STATUS_BORDER: Record<string, string> = {
+const STATUS_BORDER = {
   ok: "border-emerald-500/30",
   warning: "border-amber-500/30",
   error: "border-red-500/30",
   running: "border-blue-500/30",
-};
+} satisfies Record<string, string>;
 
 // F-003 (#1237): 이모지 → lucide — 디자인 시스템의 유일한 아이콘 체계 (사이드바와 동일).
 // lucide 의 LucideIcon 별칭은 TS6 JSX 에서 붕괴 사례가 있어 구체 타입(typeof Search)으로.
@@ -111,7 +112,7 @@ type IconComponent = typeof Search;
 // (analyze/consensus/decide — README 스테이지 표). 구 이모지 맵은 후자가 없어 라이브
 // 노드가 무아이콘이었다. 아이콘은 사이드바 아이덴티티와 일치 (Signals=BarChart3,
 // Agents=Users, Decision Engine=Cog).
-const STEP_ICONS: Record<string, IconComponent> = {
+const STEP_ICONS = {
   collect: Search,
   validate: CheckCircle2,
   classify: BarChart3,
@@ -121,23 +122,23 @@ const STEP_ICONS: Record<string, IconComponent> = {
   consensus: Users,
   decide: Cog,
   track: MapPin,
-};
+} satisfies Record<string, IconComponent>;
 
-const STEP_HREFS: Record<string, string> = {
+const STEP_HREFS = {
   collect: "/engine",
   validate: "/signals",
   classify: "/strategy",
   diagnose: "/consensus",
   recommend: "/targets",
   track: "/targets",
-};
+} satisfies Record<string, string>;
 
 // 타임라인 이벤트 아이콘
-const EVENT_ICONS: Record<string, IconComponent> = {
+const EVENT_ICONS = {
   start: Play,
   success: Check,
   error: X,
-};
+} satisfies Record<string, IconComponent>;
 
 function formatAge(dateStr: string | null): string {
   if (!dateStr) return "N/A";
@@ -160,7 +161,9 @@ function formatAge(dateStr: string | null): string {
 
 // F-003: 이벤트 아이콘 — 뱃지와 같은 intent 색 (success=emerald, error=red, start=blue)
 export function EventIcon({ type }: { type: string }) {
-  const Icon = EVENT_ICONS[type] ?? Circle;
+  // 아이콘은 JSX 로 렌더되므로 lookup() 호출이 아니라 가드 + 멤버 접근으로 꺼낸다 —
+  // 함수가 돌려준 컴포넌트는 react-hooks/static-components 가 렌더 중 생성으로 본다.
+  const Icon = isKeyOf(EVENT_ICONS, type) ? EVENT_ICONS[type] : Circle;
 
   const color =
     type === "success" ? "text-emerald-400" : type === "error" ? "text-red-400" : "text-blue-400";
@@ -180,7 +183,7 @@ function formatTimestamp(iso: string): string {
 
 // F-003: 미지의 step 은 중립 원 — 라이브 데이터가 새 step 을 내보내도 깨지지 않게
 export function StepIcon({ stepId }: { stepId: string }) {
-  const Icon = STEP_ICONS[stepId] ?? Circle;
+  const Icon = isKeyOf(STEP_ICONS, stepId) ? STEP_ICONS[stepId] : Circle;
 
   // aria-hidden 명시: lucide 기본값에 기대지 않는다 — 장식 아이콘 (codex #1238 P3, 잠금은 branchcov 테스트)
   return <Icon size={15} className="text-muted-foreground" aria-hidden="true" data-testid={`step-icon-${stepId}`} />;
@@ -462,7 +465,7 @@ export default function PipelinePage() {
           stepId: s.step,
           onRun: handleRunStep,
           isRunning: runningSteps.has(s.step),
-          href: STEP_HREFS[s.step],
+          href: lookup(STEP_HREFS, s.step),
         } satisfies PipelineNodeData,
       }))
     : DEFAULT_NODES.map((n) => ({

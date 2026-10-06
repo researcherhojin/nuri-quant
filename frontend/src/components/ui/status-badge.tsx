@@ -5,6 +5,8 @@
  * 이전의 30-엔트리 클래스 문자열 맵은 같은 스타일이 6번씩 복붙되어 있었고 purple 등
  * 예산 밖 색이 섞여 있었다 — 색 예산(스펙 §1): 인터랙션 blue + intent 4종 + neutral 뿐.
  */
+import { lookup } from "@/lib/utils";
+
 interface StatusBadgeProps {
   status: string;
   size?: "sm" | "md" | "lg";
@@ -20,7 +22,7 @@ const INTENT_STYLES: Record<Intent, string> = {
   neutral: "bg-zinc-500/15 text-muted-foreground border-zinc-500/20",
 };
 
-const STATUS_INTENT: Record<string, Intent> = {
+const STATUS_INTENT = {
   // 액션/방향
   BUY: "pos", 매수: "pos", LONG: "pos", 공격: "pos", AGGRESSIVE: "pos", READY: "pos",
   SELL: "neg", 매도: "neg", SHORT: "neg", 방어: "neg", DEFENSIVE: "neg", BLOCKED: "neg",
@@ -30,12 +32,12 @@ const STATUS_INTENT: Record<string, Intent> = {
   // 시그널 종류 — breakout 은 이전에 purple(예산 밖)이었음: info 로 수렴
   breakout: "info", momentum: "info",
   bounce: "pos", gap_up: "pos", gap_down: "neg", volume_spike: "warn",
-};
+} satisfies Record<string, Intent>;
 
 export function StatusBadge({ status, size = "sm" }: StatusBadgeProps) {
-  const intent = STATUS_INTENT[status] ?? "neutral";
+  const intent = lookup(STATUS_INTENT, status);
 
-  const style = STATUS_INTENT[status]
+  const style = intent
     ? INTENT_STYLES[intent]
     : "bg-muted/50 text-muted-foreground border-zinc-600/20";
 

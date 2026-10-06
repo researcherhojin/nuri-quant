@@ -10,10 +10,11 @@
  * 사용법:
  *   <ClientTable variant="scorecard" data={data} />
  */
-import { DataTable } from "./data-table";
+import { DataTable, type Column } from "./data-table";
 import { StatusBadge } from "./status-badge";
 import { formatMoney } from "@/lib/format";
 import { isNumber } from "@/lib/types";
+import { lookup } from "@/lib/utils";
 
 interface Props {
   variant: string;
@@ -50,7 +51,7 @@ const price = (v: number, row?: { ticker?: string }) => {
 };
 
 // === 변형별 컬럼 정의 ===
-const VARIANTS: Record<string, any[]> = {
+const VARIANTS = {
   scorecard: [
     { key: "signal_id", label: "Signal", render: (v: string) => <StatusBadge status={v} size="sm" /> },
     { key: "total_trades", label: "Trades", align: "right" },
@@ -147,10 +148,10 @@ const VARIANTS: Record<string, any[]> = {
     { key: "sell_value_usd", label: "회수", align: "right", render: money },
     { key: "reason", label: "사유", render: dim },
   ],
-};
+} satisfies Record<string, Column[]>;
 
 // === 변형별 행 스타일 ===
-const ROW_CLASSNAMES: Record<string, (row: any) => string> = {
+const ROW_CLASSNAMES = {
   targets: (row) => {
     if (row.trailing_stop_triggered) return "bg-red-500/8";
 
@@ -160,17 +161,17 @@ const ROW_CLASSNAMES: Record<string, (row: any) => string> = {
 
     return "";
   },
-};
+} satisfies Record<string, (row: any) => string>;
 
 export function ClientTable({ variant, data, compact, title }: Props) {
-  const columns = VARIANTS[variant];
+  const columns = lookup(VARIANTS, variant);
 
   if (!columns) return <p className="text-red-400 text-sm">Unknown variant: {variant}</p>;
 
   return (
     <>
       {title && <p className="text-xs text-muted-foreground mb-3">{title}</p>}
-      <DataTable columns={columns} data={data} compact={compact} rowClassName={ROW_CLASSNAMES[variant]} />
+      <DataTable columns={columns} data={data} compact={compact} rowClassName={lookup(ROW_CLASSNAMES, variant)} />
     </>
   );
 }

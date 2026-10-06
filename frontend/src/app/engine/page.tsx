@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Metric } from "@/components/ui/metric";
+import { lookup } from "@/lib/utils";
 
 // === Types ===
 interface GateCondition {
@@ -52,12 +53,12 @@ interface Drift {
 // steps = collect/validate/classify/diagnose/recommend/track (nuri/api/routes/pipeline.py
 // VALID_STEPS). regime 게이트(spy/prices 신선도)가 막는 실행 단계는 classify 다.
 // 미지 phase 는 실행 불가능한 이름을 광고하지 않고 일반 카피로 폴백.
-const GATE_PHASE_TO_STEP: Record<string, string> = {
+const GATE_PHASE_TO_STEP = {
   collect: "collect",
   validate: "validate",
   regime: "classify",
   recommend: "recommend",
-};
+} satisfies Record<string, string>;
 
 // === Gate Section ===
 export async function GateSection() {
@@ -83,8 +84,8 @@ export async function GateSection() {
                 className="inline-block mb-2 text-[11px] text-primary hover:underline"
                 data-testid={`gate-next-action-${phase}`}
               >
-                {GATE_PHASE_TO_STEP[phase]
-                  ? `${ENGINE.NEXT_ACTION_PREFIX} ${GATE_PHASE_TO_STEP[phase]} ${ENGINE.NEXT_ACTION_RUN}`
+                {lookup(GATE_PHASE_TO_STEP, phase)
+                  ? `${ENGINE.NEXT_ACTION_PREFIX} ${lookup(GATE_PHASE_TO_STEP, phase)} ${ENGINE.NEXT_ACTION_RUN}`
                   : `${ENGINE.NEXT_ACTION_PREFIX} ${ENGINE.NEXT_ACTION_GENERIC}`}
               </Link>
             )}

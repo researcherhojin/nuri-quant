@@ -285,7 +285,12 @@ export function formatPrice(price: number | null, currency: "USD" | "KRW"): stri
   return formatMoney(price, { currency });
 }
 
-function statusVisual(s: HoldingStatus): { text: string; className: string } {
+interface StatusVisual {
+  text: string;
+  className: string;
+}
+
+function statusVisual(s: HoldingStatus): StatusVisual {
   switch (s.kind) {
     case "stop_loss":
       return { text: HOLDING_STATUS.STOP_LOSS, className: "bg-red-500/15 text-red-400 border-red-500/30" };

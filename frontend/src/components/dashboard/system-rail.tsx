@@ -13,6 +13,7 @@ import {
   shouldPinCard, sparklinePath, categoryStyles, healthColor, regimeStripe, isRegimeShifting,
 } from "@/components/ui/market-context";
 import { trendKo, vixZone, fgLabel, fgColor } from "./helpers";
+import { lookup } from "@/lib/utils";
 
 export interface Allocation { long: number; short: number; cash: number }
 
@@ -42,12 +43,12 @@ export interface MacroReading { score: number; interpretation: string; coverage?
  * 백엔드 4단계 → 한국어 라벨·색. 점수로 다시 분류하지 않는다(`macroLevel()` 금지): 백엔드는 반올림 전
  * 값으로 분류하고 API 는 반올림해 보내므로 49.6 → {50, "Cautious"} 를 점수로 다시 나누면 "보통" 이 된다 (Codex #1652 r3).
  */
-const MACRO_LEVELS: Record<string, { label: string; color: string }> = {
+const MACRO_LEVELS = {
   Favorable: { label: MACRO_INTERPRETATION.Favorable, color: "text-emerald-400" },
   Neutral: { label: MACRO_INTERPRETATION.Neutral, color: "text-zinc-300" },
   Cautious: { label: MACRO_INTERPRETATION.Cautious, color: "text-orange-400" },
   Adverse: { label: MACRO_INTERPRETATION.Adverse, color: "text-red-400" },
-};
+} satisfies Record<string, { label: string; color: string }>;
 
 export interface MarketFacts {
   trend: string;
@@ -107,9 +108,15 @@ export function formatAge(hours: number): string {
  * 붙인다. "Insufficient" 같은 한정 라벨은 그대로 보이게 두고 색을 죽인다 — 얇은 표본의 58 이 "보통" 으로
  * 읽히면 안 된다. coverage 0(산출 실패, 점수 50 placeholder) 이면 점수 대신 "—" (Codex #1652 P1 r1+r2).
  */
-export function macroRowFromDashboard(m: MacroReading): { value: string; sub: string; color: string } {
+export interface MacroRow {
+  value: string;
+  sub: string;
+  color: string;
+}
+
+export function macroRowFromDashboard(m: MacroReading): MacroRow {
   if ((m.coverage ?? 1) <= 0) return { value: "—", sub: m.interpretation || "—", color: "text-zinc-500" };
-  const level = MACRO_LEVELS[m.interpretation];
+  const level = lookup(MACRO_LEVELS, m.interpretation);
 
   if (!level) return { value: `${m.score}`, sub: m.interpretation || "—", color: "text-zinc-500" };
 
@@ -268,7 +275,7 @@ export function MacroEventsCard({ events, regimeTrend }: { events: MacroEvent[];
       </div>
       <div className="space-y-1">
         {events.map((ev, i) => {
-          const style = categoryStyles[ev.category] || { emoji: "📌", color: "text-zinc-400" };
+          const style = lookup(categoryStyles, ev.category) || { emoji: "📌", color: "text-zinc-400" };
           const date = ev.published_at?.slice(5, 10) ?? "";
           const isHighConf = (ev.confidence ?? 0) >= 0.8;
           const headlineCls = isHighConf ? "text-zinc-300 font-medium" : "text-zinc-500";

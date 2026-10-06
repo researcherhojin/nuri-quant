@@ -7,6 +7,7 @@
 import Link from "next/link";
 import { FOOTER } from "@/lib/strings";
 import { pipelineStatusColors } from "./helpers";
+import { lookup } from "@/lib/utils";
 
 interface DashboardFooterProps {
   advisorViolations: number;
@@ -24,7 +25,7 @@ export function DashboardFooter({ advisorViolations, pipelineSteps }: DashboardF
           {pipelineSteps.length > 0 && (
             <div className="flex items-center gap-0.5">
               {pipelineSteps.map((s) => (
-                <span key={s.step} className={`inline-flex size-1.5 rounded-full ${pipelineStatusColors[s.status] || "bg-zinc-500"}`} title={`${s.label}: ${s.record_count.toLocaleString()}건`} />
+                <span key={s.step} className={`inline-flex size-1.5 rounded-full ${lookup(pipelineStatusColors, s.status) || "bg-zinc-500"}`} title={`${s.label}: ${s.record_count.toLocaleString()}건`} />
               ))}
               <Link href="/pipeline" className="text-[9px] text-zinc-600 hover:text-zinc-400 ml-0.5">&rarr;</Link>
             </div>

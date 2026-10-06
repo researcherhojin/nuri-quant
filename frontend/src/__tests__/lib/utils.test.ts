@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cn } from "@/lib/utils";
+import { cn, isKeyOf, lookup } from "@/lib/utils";
 
 describe("cn (class name utility)", () => {
   it("returns a single class unchanged", () => {
@@ -81,5 +81,30 @@ describe("cn (class name utility)", () => {
     expect(
       cn("base", variant === "primary" && "bg-blue-500", variant === "secondary" && "bg-gray-500")
     ).toBe("base bg-blue-500");
+  });
+});
+
+describe("lookup", () => {
+  const table = { buy: "매수", sell: "매도" } satisfies Record<string, string>;
+
+  it("returns the entry for a known key", () => {
+    expect(lookup(table, "buy")).toBe("매수");
+  });
+
+  it("returns undefined for unknown, prototype, and missing keys", () => {
+    expect(lookup(table, "hold")).toBeUndefined();
+    expect(lookup(table, "constructor")).toBeUndefined();
+    expect(lookup(table, "toString")).toBeUndefined();
+    expect(lookup(table, null)).toBeUndefined();
+    expect(lookup(table, undefined)).toBeUndefined();
+  });
+});
+
+describe("isKeyOf", () => {
+  const table = { start: 1 };
+
+  it("accepts own keys and rejects prototype keys", () => {
+    expect(isKeyOf(table, "start")).toBe(true);
+    expect(isKeyOf(table, "constructor")).toBe(false);
   });
 });

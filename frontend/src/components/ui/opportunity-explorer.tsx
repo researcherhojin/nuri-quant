@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useId, useState } from "react";
 import { OPPORTUNITY } from "@/lib/strings";
+import { lookup } from "@/lib/utils";
 
 interface AgentVerdict {
   ticker: string;
@@ -32,12 +33,12 @@ interface OpportunityExplorerProps {
   opportunities: Opportunity[];
 }
 
-const verdictStyles: Record<string, { bg: string; text: string; label: string }> = {
+const verdictStyles = {
   positive: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: OPPORTUNITY.POSITIVE },
   neutral: { bg: "bg-amber-500/20", text: "text-amber-400", label: OPPORTUNITY.NEUTRAL },
   danger: { bg: "bg-red-500/20", text: "text-red-400", label: OPPORTUNITY.DANGER },
   muted: { bg: "bg-zinc-700/50", text: "text-zinc-500", label: OPPORTUNITY.MUTED },
-};
+} satisfies Record<string, { bg: string; text: string; label: string }>;
 
 function actionTagCls(action: string): string {
   if (action === "BUY") return "bg-emerald-500/20 text-emerald-400";
@@ -85,7 +86,7 @@ function OpportunityRow({ opp }: { opp: Opportunity }) {
     }
   };
 
-  const style = verdictStyles[opp.verdict_level] || verdictStyles.muted;
+  const style = lookup(verdictStyles, opp.verdict_level) || verdictStyles.muted;
   const change5d = opp.change_5d ?? 0;
   const change5dColor = change5d >= 0 ? "text-emerald-400" : "text-red-400";
   const rsiColor = opp.rsi == null ? "" : opp.rsi < 30 ? "text-emerald-400" : opp.rsi > 70 ? "text-red-400" : "text-zinc-500";

@@ -20,11 +20,12 @@ import {
 } from "recharts";
 
 import { DRIFT_COLORS, type SignalPerformanceData } from "@/components/evidence/chart-data";
+import { lookup } from "@/lib/utils";
 
 export const COIN_FLIP_WIN_RATE = 0.5;
 
 export function driftColor(status: string): string {
-  return DRIFT_COLORS[status] ?? "var(--chart-1)";
+  return lookup(DRIFT_COLORS, status) ?? "var(--chart-1)";
 }
 
 export function winRateTick(v: number): string {
