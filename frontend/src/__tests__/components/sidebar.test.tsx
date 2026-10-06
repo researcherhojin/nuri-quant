@@ -136,20 +136,14 @@ describe("Sidebar", () => {
     expect(screen.queryByText("오늘")).not.toBeInTheDocument();
   });
 
-  // Overview(`/`) 는 모바일에서 사이드바와 그 자리 확보용 spacer 를 모두 숨긴다 (#1658 · #1698)
-  it("hides the sidebar and its spacer below md only on the Overview route", () => {
-    mockPathname.mockReturnValue("/");
-    const { container, unmount } = render(<Sidebar />);
+  // 모바일(md 미만)에서는 어느 화면이든 사이드바와 spacer 를 숨긴다 — 390px 에서 본문이 166px 로 줄었다.
+  // 이동은 모든 화면 머리글의 ⌘K 팔레트 (#1658 · #1700)
+  it.each(["/", "/decisions", "/portfolio"])("hides the sidebar and its spacer below md on %s", (path) => {
+    mockPathname.mockReturnValue(path);
+    const { container } = render(<Sidebar />);
 
     expect(container.querySelector("aside")!.className).toContain("hidden md:flex");
     expect(container.querySelector("aside")!.nextElementSibling!.className).toContain("hidden md:block");
-    unmount();
-
-    mockPathname.mockReturnValue("/decisions");
-    const { container: other } = render(<Sidebar />);
-
-    expect(other.querySelector("aside")!.className).not.toContain("hidden");
-    expect(other.querySelector("aside")!.nextElementSibling!.className).not.toContain("hidden");
   });
 
   it("shows System Online indicator", () => {
