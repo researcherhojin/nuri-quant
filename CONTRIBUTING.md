@@ -16,7 +16,7 @@ brew install ta-lib                                      # macOS; CI builds it f
 cp config/portfolio.example.yaml config/portfolio.yaml   # make setup imports it into the DB
 make setup                      # .venv + dependencies, migrations, portfolio import, git hooks
 cd frontend && npm ci && cd ..  # frontend dependencies
-make verify-quick               # pre-commit smoke (84.9 s on an M5 Max, 2026-08-14)
+make verify-quick               # pre-commit smoke (84.9s on an M5 Max, 2026-08-14)
 ```
 
 `make setup` installs the repo-tracked `pre-commit` and `pre-push` hooks
