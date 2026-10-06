@@ -27,7 +27,6 @@ import {
   trendKo, vixZone, fgLabel, fgColor, macroLevel, accountKo,
   parseSparklinePeriod,
 } from "@/components/dashboard/helpers";
-import { MarketStrip } from "@/components/dashboard/market-strip";
 import { VerdictBanner } from "@/components/dashboard/verdict-banner";
 import { EventsStrip } from "@/components/dashboard/events-strip";
 import { HoldingsSection } from "@/components/dashboard/holdings-section";
@@ -292,24 +291,24 @@ async function Dashboard({
           />
         </div>
         <div className="flex flex-col gap-3 min-w-0">
-          <SystemHealthRail health={marketCtx?.system_health ?? {}} />
+          {/* #1652: 시장 사실(추세·VIX·심리·배분)과 WARN/FAIL 신선도를 레일 한 곳에 — 이전의
+              한 줄 스트립(MarketStrip)과 푸터 칩 벽은 같은 사실을 세 곳에 흩어 놓았다. */}
+          <SystemHealthRail
+            health={marketCtx?.system_health ?? {}}
+            market={{
+              trend, vix, fg, macroScore: d.macro?.score,
+              actualAllocation: d.actual_allocation,
+              targetAllocation: d.target_allocation,
+              fallbackAllocation: d.allocation,
+            }}
+            freshnessItems={showFreshness ? freshnessItems : []}
+          />
           <MacroEventsCard
             events={marketCtx?.macro_events ?? []}
             regimeTrend={marketCtx?.system_health?.regime?.trend}
           />
         </div>
       </div>
-
-      {/* ═══ #223 iter 7c: market + allocation compact strip (1 row) ═══ */}
-      <MarketStrip
-        trend={trend}
-        vix={vix}
-        fg={fg}
-        macroScore={d.macro?.score}
-        actualAllocation={d.actual_allocation}
-        targetAllocation={d.target_allocation}
-        fallbackAllocation={d.allocation}
-      />
 
       {/* ═══ Collapsible strips removed — replaced by Action-First sections above.
           Alerts → ActionItems 🔴 urgent, Candidates → ActionItems 🟡 check/✅ hold,
@@ -371,8 +370,6 @@ async function Dashboard({
       {/* ═══ 푸터: 규칙 위반 + freshness + 파이프라인 ═══ */}
       <DashboardFooter
         advisorViolations={advisor?.total_violations || 0}
-        showFreshness={showFreshness}
-        freshnessItems={freshnessItems}
         pipelineSteps={pipelineStatus.steps}
       />
     </div>

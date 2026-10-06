@@ -353,24 +353,27 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("renders market context inline strip in Korean", async () => {
+  it("renders market facts (trend, VIX) in the system rail (#1652)", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      // Inline strip shows trend, VIX value, and regime
-      expect(screen.getByText(/상승/)).toBeInTheDocument();
-      expect(screen.getByText("18.5")).toBeInTheDocument();
-      expect(screen.getByText("VIX")).toBeInTheDocument();
+      const rail = screen.getByTestId("system-rail");
+      expect(rail.textContent).toContain("상승");
+      expect(rail.textContent).toContain("18.5");
+      // 레일 VIX 행 + 신선도 목록의 "VIX" 항목(mock) 둘 다 있을 수 있다 — 개수가 아니라 존재를 본다
+      expect(screen.getAllByText("VIX").length).toBeGreaterThanOrEqual(1);
     });
   });
 
-  it("renders freshness bar", async () => {
+  it("lists WARN/FAIL freshness items under the rail's 데이터 row (#1652)", async () => {
     setupMocks();
     const Page = await import("@/app/page");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
-      expect(screen.getByTestId("freshness-bar")).toBeInTheDocument();
+      const list = screen.getByTestId("rail-freshness");
+      expect(list.textContent).toContain("VIX");      // WARN item is listed
+      expect(list.textContent).not.toContain("Prices"); // PASS item is not
     });
   });
 

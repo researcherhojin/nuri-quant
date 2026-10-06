@@ -147,6 +147,7 @@ export const STRIP = {
 
 /* ── Market Context Labels ──────────────────────────────────── */
 export const MARKET = {
+  ALLOCATION: "배분",
   SENTIMENT: "심리",
   ECONOMY: "경제",
   ACTUAL: "실제",
