@@ -565,13 +565,16 @@ class KISRealtimeCollector(BaseCollector):
         """
         if data.empty or not {"open", "high", "low"} <= set(data.columns):
             return data
+        data = data.reset_index(drop=True)  # 라벨 조회가 유일 인덱스를 전제한다
         incomplete = (data[["open", "high", "low"]].fillna(0) == 0).all(axis=1)
         if not incomplete.any():
             return data
         keep = []
         for idx, row in data.iterrows():
+            # 존재가 아니라 **완전성**을 본다 — 같은 날 이 수집기가 먼저 쓴 O/H/L 없는 행은 다음 관측이 갱신해야 한다
             if incomplete[idx] and query(
-                "SELECT 1 FROM prices WHERE ticker = ? AND date = ? LIMIT 1", (row["ticker"], row["date"])
+                "SELECT 1 FROM prices WHERE ticker = ? AND date = ? AND COALESCE(open, 0) != 0 LIMIT 1",
+                (row["ticker"], row["date"]),
             ):
                 logger.info("%s %s: 완전한 봉이 이미 있어 O/H/L 없는 현재가는 쓰지 않음", row["ticker"], row["date"])
                 continue

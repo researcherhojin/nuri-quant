@@ -99,6 +99,17 @@ class TestSaveNeverReplacesACompleteBar:
         assert collector.save(self._bar("SPY", "2026-10-06", 0.0, 0.0, 0.0, 775.1)) == 1
         assert query("SELECT close FROM prices WHERE ticker='SPY' AND date='2026-10-06'")[0]["close"] == 775.1
 
+    def test_second_incomplete_observation_refreshes_the_first(self):
+        """가드는 존재가 아니라 완전성을 본다 — 장중 두 번째 관측이 첫 관측을 갱신해야 한다 (Codex r2 P2)."""
+        from nuri.core.db import query
+
+        collector = mod.KISRealtimeCollector.__new__(mod.KISRealtimeCollector)
+        collector.logger = mod.logger
+
+        assert collector.save(self._bar("SPY", "2026-10-06", 0.0, 0.0, 0.0, 775.1)) == 1
+        assert collector.save(self._bar("SPY", "2026-10-06", 0.0, 0.0, 0.0, 776.4)) == 1
+        assert query("SELECT close FROM prices WHERE ticker='SPY' AND date='2026-10-06'")[0]["close"] == 776.4
+
     def test_complete_bar_still_replaces(self):
         """한국 현재가와 yfinance fallback 행은 O/H/L 을 갖고 오므로 같은 날 갱신이 계속 된다."""
         from nuri.core.db import query, upsert_prices
