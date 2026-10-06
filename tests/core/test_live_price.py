@@ -208,3 +208,55 @@ class TestCheckDivergence:
 
 
 pytest.importorskip("pytz")
+
+
+class TestFetchQuote:
+    """`fetch_quote` — 시장 시간으로 걸러내지 않고 사실만 (#1626). 네트워크는 mock."""
+
+    def _yf(self, **fast_info):
+        mock_ticker = MagicMock()
+        for k, v in fast_info.items():
+            setattr(mock_ticker.fast_info, k, v)
+        return MagicMock(Ticker=MagicMock(return_value=mock_ticker))
+
+    def test_returns_quote_outside_market_hours_with_flag(self):
+        from nuri.core import live_price as lp
+
+        yf = self._yf(last_price=775.74, regular_market_previous_close=769.86, currency="USD", exchange="PCX")
+        with (
+            patch.object(lp, "is_market_open_for", return_value=False),
+            patch.dict("sys.modules", {"yfinance": yf}),
+        ):
+            q = lp.fetch_quote("SPY")
+        assert q["price"] == 775.74 and q["previous_close"] == 769.86
+        assert q["change_pct"] == 0.76 and q["market_open"] is False
+        assert q["currency"] == "USD" and q["source"] == "yfinance"
+        assert set(q) == {
+            "ticker",
+            "price",
+            "previous_close",
+            "change_pct",
+            "currency",
+            "exchange",
+            "market_open",
+            "fetched_at",
+            "source",
+        }
+
+    def test_unknown_ticker_is_none(self):
+        """미상장 티커는 fast_info 가 KeyError 를 낸다 (2026-10-06 실측) → None."""
+        from nuri.core import live_price as lp
+
+        mock_ticker = MagicMock()
+        type(mock_ticker.fast_info).last_price = property(lambda self: (_ for _ in ()).throw(KeyError("last_price")))
+        yf = MagicMock(Ticker=MagicMock(return_value=mock_ticker))
+        with patch.dict("sys.modules", {"yfinance": yf}):
+            assert lp.fetch_quote("NOPE_XYZ") is None
+
+    def test_missing_previous_close_leaves_change_none(self):
+        from nuri.core import live_price as lp
+
+        yf = self._yf(last_price=10.0, regular_market_previous_close=None, currency="USD", exchange="X")
+        with patch.object(lp, "is_market_open_for", return_value=True), patch.dict("sys.modules", {"yfinance": yf}):
+            q = lp.fetch_quote("ABC")
+        assert q["change_pct"] is None and q["previous_close"] is None and q["market_open"] is True
