@@ -1249,6 +1249,10 @@ class TestRetroLessons:
 
     def test_ollama_host_local_guard(self, monkeypatch):
         """STRATEGY §4.4.3 — 비-localhost OLLAMA_HOST 는 거부 (egress 방어)."""
+        # 술어 모듈을 env 를 지우기 **전에** 올린다 (#1689). `_ollama_host_is_local()` 이 처음 부를 때
+        # `nuri.llm.report` 를 import 하는데, 그 import 가 레포 .env 를 읽어 지운 OLLAMA_HOST 를 되살린다 —
+        # .env 가 있는 로컬에서만, 그리고 다른 테스트가 먼저 import 하지 않았을 때만 FAIL 이었다.
+        import nuri.llm.report  # noqa: F401
         from nuri.alerts import postmarket_brief as pmb
 
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
