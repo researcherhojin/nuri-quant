@@ -87,6 +87,7 @@ describe("DataTable", () => {
         render: (value: number) => <span data-testid="custom-price">${value.toFixed(2)}</span>,
       },
     ];
+
     const data = [{ ticker: "AAPL", price: 185.5 }];
     render(<DataTable columns={columns} data={data} />);
     const customEl = screen.getByTestId("custom-price");
@@ -98,6 +99,7 @@ describe("DataTable", () => {
     const renderFn = vi.fn((_value: string, row: { ticker: string; sector: string }) => (
       <span>{row.ticker} ({row.sector})</span>
     ));
+
     const columns = [{ key: "ticker", label: "Ticker", render: renderFn }];
     const data = [{ ticker: "AAPL", sector: "Tech" }];
     render(<DataTable columns={columns} data={data} />);
@@ -140,9 +142,11 @@ describe("DataTable", () => {
 
   it("adds cursor-pointer class when onRowClick is set", () => {
     const handleClick = vi.fn();
+
     const { container } = render(
       <DataTable columns={basicColumns} data={basicData} onRowClick={handleClick} />
     );
+
     const rows = container.querySelectorAll("tbody tr");
     expect(rows[0].className).toContain("cursor-pointer");
   });
@@ -164,6 +168,7 @@ describe("DataTable", () => {
       { key: "ticker", label: "Ticker" },
       { key: "sector", label: "Sector", hideOnMobile: true },
     ];
+
     const data = [{ ticker: "AAPL", sector: "Tech" }];
     const { container } = render(<DataTable columns={columns} data={data} />);
 
@@ -189,6 +194,7 @@ describe("DataTable", () => {
     const columns = [
       { key: "ticker", label: "Ticker", hideOnMobile: false },
     ];
+
     const data = [{ ticker: "AAPL" }];
     const { container } = render(<DataTable columns={columns} data={data} />);
     const th = container.querySelector("th");
@@ -240,9 +246,11 @@ describe("DataTable", () => {
   // ─── rowClassName ──────────────────────────────────────
   it("applies rowClassName function to matching rows", () => {
     const rowClassName = (row: (typeof basicData)[number]) => row.ticker === "TSLA" ? "bg-red-500/10" : "";
+
     const { container } = render(
       <DataTable columns={basicColumns} data={basicData} rowClassName={rowClassName} />
     );
+
     const rows = container.querySelectorAll("tbody tr");
     expect(rows[0].className).not.toContain("bg-red-500/10");
     expect(rows[1].className).toContain("bg-red-500/10");

@@ -4,6 +4,7 @@ import { ExploreSearch } from "@/app/explore/search";
 
 // next/navigation mock — capture router.push calls
 const pushMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
@@ -39,6 +40,7 @@ describe("ExploreSearch (coverage)", () => {
       { ticker: "005930.KS", name: "Samsung", price: 71234.7, date: null }, // KR -> ₩ rounded
       { ticker: "035720.KQ", name: "KosdaqCo", price: null, date: null }, // KR, null price -> no priceStr
     ];
+
     const fetchMock = mockFetchOk(results);
     vi.stubGlobal("fetch", fetchMock);
 
@@ -61,6 +63,7 @@ describe("ExploreSearch (coverage)", () => {
     const fetchMock = mockFetchOk([
       { ticker: "AAPL", name: "Apple Inc", price: 250, date: null },
     ]);
+
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ExploreSearch />);
@@ -93,6 +96,7 @@ describe("ExploreSearch (coverage)", () => {
     const fetchMock = mockFetchOk([
       { ticker: "AAPL", name: "Apple Inc", price: 250, date: null },
     ]);
+
     vi.stubGlobal("fetch", fetchMock);
     render(<ExploreSearch />);
     const input = screen.getByTestId("explore-search-input");
@@ -109,6 +113,7 @@ describe("ExploreSearch (coverage)", () => {
     const fetchMock = mockFetchOk([
       { ticker: "AAPL", name: "Apple Inc", price: 250, date: null },
     ]);
+
     vi.stubGlobal("fetch", fetchMock);
     render(<ExploreSearch />);
     const input = screen.getByTestId("explore-search-input");
@@ -127,6 +132,7 @@ describe("ExploreSearch (coverage)", () => {
       ok: true,
       json: async () => ({}), // no results key -> ?? [] fallback
     });
+
     vi.stubGlobal("fetch", fetchMock);
     render(<ExploreSearch />);
     fireEvent.change(screen.getByTestId("explore-search-input"), {
@@ -146,6 +152,7 @@ describe("ExploreSearch (coverage)", () => {
         json: async () => ({ results: [{ ticker: "AAPL", name: "Apple Inc", price: 250, date: null }] }),
       })
       .mockRejectedValueOnce(new Error("network down"));
+
     vi.stubGlobal("fetch", fetchMock);
 
     render(<ExploreSearch />);
@@ -176,6 +183,7 @@ describe("ExploreSearch (coverage)", () => {
     const fetchMock = mockFetchOk([
       { ticker: "AAPL", name: "Apple Inc", price: 250, date: null },
     ]);
+
     vi.stubGlobal("fetch", fetchMock);
     render(<ExploreSearch />);
     const input = screen.getByTestId("explore-search-input");
@@ -197,6 +205,7 @@ describe("ExploreSearch (coverage)", () => {
     const fetchMock = mockFetchOk([
       { ticker: "AAPL", name: "Apple Inc", price: 250, date: null },
     ]);
+
     vi.stubGlobal("fetch", fetchMock);
     render(<ExploreSearch />);
     fireEvent.change(screen.getByTestId("explore-search-input"), {

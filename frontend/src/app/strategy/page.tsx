@@ -69,6 +69,7 @@ interface BacktestData {
 export async function StrategyDashboard() {
   let status: StrategyStatus;
   let bt: BacktestData;
+
   try {
     [status, bt] = await Promise.all([
       fetchAPI<StrategyStatus>("/api/strategy/status"),

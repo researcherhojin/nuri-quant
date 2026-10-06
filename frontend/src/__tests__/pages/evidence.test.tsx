@@ -63,9 +63,12 @@ function setupFetchAPI(overrides: Record<string, unknown> = {}) {
   mockFetchAPI = vi.fn().mockImplementation((path: string) => {
     if (path in overrides) {
       const v = overrides[path];
+
       if (v instanceof Error) return Promise.reject(v);
+
       return Promise.resolve(v);
     }
+
     return Promise.resolve(PAYLOADS[path]);
   });
 }
@@ -91,6 +94,7 @@ describe("EvidencePage (native charts)", () => {
 
   it("renders all 5 chart cards (testid + title)", async () => {
     await renderPage();
+
     for (const [testId, title] of [
       ["card-regime", E.TITLE_REGIME],
       ["card-portfolio_heatmap", E.TITLE_HEATMAP],

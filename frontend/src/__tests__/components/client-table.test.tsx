@@ -12,6 +12,7 @@ describe("ClientTable", () => {
       { signal_id: "rsi_oversold", total_trades: 50, win_rate: 0.65, profit_factor: 2.1, avg_return: 3.5 },
       { signal_id: "macd_golden", total_trades: 30, win_rate: 0.55, profit_factor: 1.5, avg_return: 2.0 },
     ];
+
     render(<ClientTable variant="scorecard" data={data} />);
     expect(screen.getByText("Signal")).toBeInTheDocument();
     expect(screen.getByText("Trades")).toBeInTheDocument();
@@ -25,6 +26,7 @@ describe("ClientTable", () => {
     const data = [
       { signal_id: "rsi_oversold", total_trades: 50, win_rate: 0.65, profit_factor: 2.1, avg_return: 3.5 },
     ];
+
     render(<ClientTable variant="scorecard" data={data} />);
     expect(screen.getByText("50")).toBeInTheDocument();
   });
@@ -34,6 +36,7 @@ describe("ClientTable", () => {
     const data = [
       { signal_id: "rsi_oversold", status: "stable", all_time_wr: 65, recent_wr: 60, drift_pct: -5 },
     ];
+
     render(<ClientTable variant="drift" data={data} />);
     expect(screen.getByText("Signal")).toBeInTheDocument();
     expect(screen.getByText("Status")).toBeInTheDocument();
@@ -46,6 +49,7 @@ describe("ClientTable", () => {
     const data = [
       { signal_id: "rsi_oversold", status: "degrading", all_time_wr: 65, recent_wr: 45, drift_pct: -20 },
     ];
+
     render(<ClientTable variant="drift" data={data} />);
     expect(screen.getByText("rsi_oversold")).toBeInTheDocument();
     expect(screen.getByText("degrading")).toBeInTheDocument();
@@ -57,6 +61,7 @@ describe("ClientTable", () => {
       { ticker: "TSLA", price: 250.0, change_1d: 2.5, change_5d: -1.3, rsi: 45, signal: "bounce", score: 85,
         agent_action: "BUY", agent_confidence: 72, approved: true, reason: null },
     ];
+
     render(<ClientTable variant="scanner" data={data} />);
     expect(screen.getByText("Ticker")).toBeInTheDocument();
     expect(screen.getByText("Price")).toBeInTheDocument();
@@ -83,6 +88,7 @@ describe("ClientTable", () => {
         take_profit_sell_pct: 0,
       },
     ];
+
     render(<ClientTable variant="targets" data={data} />);
     expect(screen.getByText("Ticker")).toBeInTheDocument();
     expect(screen.getByText("Type")).toBeInTheDocument();
@@ -107,6 +113,7 @@ describe("ClientTable", () => {
         reason: "Stop loss triggered",
       },
     ];
+
     render(<ClientTable variant="advisor" data={data} />);
     expect(screen.getByText("Ticker")).toBeInTheDocument();
     expect(screen.getByText(/심각도/)).toBeInTheDocument();
@@ -147,6 +154,7 @@ describe("ClientTable", () => {
     const data = [
       { signal_id: "rsi_oversold", total_trades: 50, win_rate: 0.65, profit_factor: 2.1, avg_return: 3.5 },
     ];
+
     const { container } = render(<ClientTable variant="scorecard" data={data} compact />);
     const table = container.querySelector("table");
     expect(table!.className).toContain("text-xs");
@@ -162,6 +170,7 @@ describe("ClientTable", () => {
       { ticker: "MSFT", price: 480.0, change_1d: 1.2, change_5d: 3.4, rsi: 52, signal: "momentum", score: 70,
         agent_action: null, agent_confidence: null, approved: null, reason: null },
     ];
+
     render(<ClientTable variant="scanner" data={data} />);
     const rejected = screen.getByText("미승인");
     expect(rejected).toHaveAttribute("title", "Low conf");
@@ -173,6 +182,7 @@ describe("ClientTable", () => {
       { ticker: "INTC", price: 30.0, change_1d: 0.5, change_5d: 1.0, rsi: 40, signal: "bounce", score: 50,
         agent_action: "HOLD", agent_confidence: 30, approved: false, reason: null },
     ];
+
     render(<ClientTable variant="scanner" data={data} />);
     expect(screen.getByText("미승인")).not.toHaveAttribute("title");
   });
@@ -184,6 +194,7 @@ describe("ClientTable", () => {
       target_2: 247, analyst_target: 220, take_profit_triggered: "target_1", take_profit_sell_pct: 50,
       trailing_stop_triggered: false,
     }];
+
     const { container } = render(<ClientTable variant="targets" data={data} />);
     expect(container.querySelector("tbody tr")!.className).toContain("bg-emerald-500/8");
   });
@@ -194,6 +205,7 @@ describe("ClientTable", () => {
       target_2: 235.2, analyst_target: 273, take_profit_triggered: "target_2", take_profit_sell_pct: 25,
       trailing_stop_triggered: false,
     }];
+
     const { container } = render(<ClientTable variant="targets" data={data} />);
     expect(container.querySelector("tbody tr")!.className).toContain("bg-amber-500/8");
   });
@@ -204,6 +216,7 @@ describe("ClientTable", () => {
       target_2: 392, analyst_target: null, take_profit_triggered: null, take_profit_sell_pct: 0,
       trailing_stop_triggered: true,
     }];
+
     const { container } = render(<ClientTable variant="targets" data={data} />);
     expect(container.querySelector("tbody tr")!.className).toContain("bg-red-500/8");
   });
@@ -214,6 +227,7 @@ describe("ClientTable", () => {
       target_2: 235.2, analyst_target: 273, take_profit_triggered: null, take_profit_sell_pct: 0,
       trailing_stop_triggered: false,
     }];
+
     const { container } = render(<ClientTable variant="targets" data={data} />);
     const cls = container.querySelector("tbody tr")!.className;
     expect(cls).not.toContain("bg-emerald");

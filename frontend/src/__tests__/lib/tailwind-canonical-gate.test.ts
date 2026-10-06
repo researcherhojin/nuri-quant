@@ -86,8 +86,10 @@ describe("tailwind canonical-class 게이트 (#1254)", { timeout: 60_000 }, () =
   it("레포 전체가 이 게이트를 이미 통과한 상태다", async () => {
     // 규칙을 켜 두고 위반이 남아 있으면 다음 사람이 무관한 PR 에서 빨간불을 만난다.
     const results = await eslint.lintFiles(["src/**/*.tsx", "src/**/*.ts"]);
+
     const offenders = results
       .flatMap((f) => f.messages.filter((m) => m.ruleId?.startsWith("better-tailwindcss/")).map((m) => `${f.filePath}:${m.line} ${m.ruleId}`));
+
     expect(offenders, `잔여 위반:\n${offenders.join("\n")}`).toHaveLength(0);
   });
 });

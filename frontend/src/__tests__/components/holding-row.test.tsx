@@ -91,6 +91,7 @@ describe("buildEnrichedHoldings status priority", () => {
     const action: RawAction = { action: "BUY", ticker: "AAPL", account: "Main", confidence: 78 };
     const result = buildEnrichedHoldings([baseHolding], [action], [], [], []);
     expect(result[0].status.kind).toBe("buy");
+
     if (result[0].status.kind === "buy") {
       expect(result[0].status.confidence).toBe(78);
     }
@@ -133,8 +134,10 @@ describe("buildEnrichedHoldings status priority", () => {
       current_value: 22,
       reason: "brokerage_alpha 비중 22.0% > 한도 15%",
     };
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
     expect(result[0].status.kind).toBe("violation");
+
     if (result[0].status.kind === "violation") {
       expect(result[0].status.weight).toBe(22);
     }
@@ -148,6 +151,7 @@ describe("buildEnrichedHoldings status priority", () => {
       current_value: 16,
       reason: "brokerage_alpha 비중 16.0%",
     };
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [advisor], []);
     expect(result[0].status.kind).toBe("hold");
   });
@@ -156,6 +160,7 @@ describe("buildEnrichedHoldings status priority", () => {
     const holding = { ...baseHolding, latest_price: 80 };
     const action: RawAction = { action: "SELL", ticker: "AAPL", account: "Main", confidence: 80 };
     const target: RawTarget = { ticker: "AAPL", stop_loss: 90 };
+
     const advisor: RawAdvisorAction = {
       ticker: "AAPL",
       violation_type: "position_limit_exceeded",
@@ -163,6 +168,7 @@ describe("buildEnrichedHoldings status priority", () => {
       current_value: 30,
       reason: "brokerage_alpha 비중 30%",
     };
+
     const result = buildEnrichedHoldings([holding], [action], [target], [advisor], []);
     expect(result[0].status.kind).toBe("stop_loss");
   });
@@ -178,6 +184,7 @@ function localDateOffset(daysOffset: number): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
+
   return `${yyyy}-${mm}-${dd}`;
 }
 
@@ -189,8 +196,10 @@ describe("buildEnrichedHoldings watch trigger", () => {
       ticker: "AAPL",
       description: "Apple Q1 earnings",
     };
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
     expect(result[0].watch.kind).toBe("earnings");
+
     if (result[0].watch.kind === "earnings") {
       expect(result[0].watch.daysUntil).toBe(9);
     }
@@ -202,6 +211,7 @@ describe("buildEnrichedHoldings watch trigger", () => {
       event_type: "earnings",
       ticker: "AAPL",
     };
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
     expect(result[0].watch.kind).toBe("none");
   });
@@ -212,6 +222,7 @@ describe("buildEnrichedHoldings watch trigger", () => {
       event_type: "fomc",
       ticker: "AAPL",
     };
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [], [event]);
     expect(result[0].watch.kind).toBe("none");
   });
@@ -223,8 +234,10 @@ describe("buildEnrichedHoldings watch trigger", () => {
       { date: localDateOffset(5), event_type: "earnings", ticker: "AAPL" },
       { date: localDateOffset(12), event_type: "earnings", ticker: "AAPL" },
     ];
+
     const result = buildEnrichedHoldings([baseHolding], [], [], [], events);
     expect(result[0].watch.kind).toBe("earnings");
+
     if (result[0].watch.kind === "earnings") {
       expect(result[0].watch.daysUntil).toBe(5);
     }
@@ -241,6 +254,7 @@ describe("buildEnrichedHoldings sorting", () => {
       { ticker: "BBB", accountLabel: "Main", quantity: 10, avg_price: 100, latest_price: 50, currency: "USD" },  // -50% pnl
       { ticker: "CCC", accountLabel: "Main", quantity: 10, avg_price: 100, latest_price: 102, currency: "USD" },
     ];
+
     const target: RawTarget = { ticker: "BBB", stop_loss: 80 };  // BBB triggers stop_loss (price 50 < 80)
     const result = buildEnrichedHoldings(holdings, [], [target], [], []);
     expect(result.map((h) => h.ticker)).toEqual(["BBB", "CCC", "AAA"]);
@@ -348,10 +362,12 @@ describe("HoldingRow", () => {
     // Both share the "sparkline" testid; CSS breakpoints show only one at a time.
     const sparks = screen.getAllByTestId("sparkline");
     expect(sparks).toHaveLength(2);
+
     for (const spark of sparks) {
       expect(spark.tagName.toLowerCase()).toBe("svg");
       expect(spark).toHaveAttribute("data-direction", "up");
     }
+
     const widths = sparks.map((s) => s.getAttribute("width"));
     expect(widths).toContain("80");
     expect(widths).toContain("240");
@@ -362,6 +378,7 @@ describe("HoldingRow", () => {
     // Both narrow + wide variants fall back to em dash
     const sparks = screen.getAllByTestId("sparkline");
     expect(sparks).toHaveLength(2);
+
     for (const spark of sparks) {
       expect(spark).toHaveTextContent("—");
     }
@@ -371,6 +388,7 @@ describe("HoldingRow", () => {
     render(<HoldingRow holding={holdingFixture({ sparkline: [100] })} />);
     const sparks = screen.getAllByTestId("sparkline");
     expect(sparks).toHaveLength(2);
+
     for (const spark of sparks) {
       expect(spark).toHaveTextContent("—");
     }
@@ -464,6 +482,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       [],
       { totalPortfolioUsd: 10_000, usdKrwRate: 1400 },
     );
+
     expect(result[0].positionPct).not.toBeNull();
     expect(result[0].positionPct).toBeCloseTo(11, 5);
   });
@@ -478,6 +497,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       latest_price: 1_400_000,
       currency: "KRW",
     };
+
     const result = buildEnrichedHoldings(
       [krHolding],
       [],
@@ -486,6 +506,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       [],
       { totalPortfolioUsd: 10_000, usdKrwRate: 1400 },
     );
+
     expect(result[0].positionPct).toBeCloseTo(20, 5);
   });
 
@@ -503,6 +524,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       latest_price: 1_400_000,
       currency: "KRW",
     };
+
     const result = buildEnrichedHoldings(
       [krHolding],
       [],
@@ -511,6 +533,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       [],
       { totalPortfolioUsd: 10_000 },  // usdKrwRate omitted
     );
+
     expect(result[0].positionPct).toBeNull();
   });
 
@@ -518,6 +541,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
     // Covers BRDA:203 — `const qty = h.quantity ?? 0` when quantity is undefined.
     // Without the fallback the multiplier would throw NaN; with it, positionPct is 0.
     const noQty: RawHolding = { ...baseHolding, quantity: undefined };
+
     const result = buildEnrichedHoldings(
       [noQty],
       [],
@@ -526,6 +550,7 @@ describe("buildEnrichedHoldings wide-viewport fields", () => {
       [],
       { totalPortfolioUsd: 10_000 },
     );
+
     expect(result[0].positionPct).toBe(0);
   });
 });

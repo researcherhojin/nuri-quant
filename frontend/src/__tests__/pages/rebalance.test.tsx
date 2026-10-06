@@ -53,6 +53,7 @@ const mockAdvisorEmpty = {
 function setupFetchAPI(overrides: { rebalance?: unknown; advisor?: unknown } = {}) {
   mockFetchAPI = vi.fn().mockImplementation((path: string) => {
     if (path.includes("rebalance-advisor")) return Promise.resolve(overrides.advisor ?? mockAdvisorEmpty);
+
     return Promise.resolve(overrides.rebalance ?? mockRebalance);
   });
 }
@@ -175,6 +176,7 @@ describe("RebalancePage", () => {
     setupFetchAPI();
     mockFetchAPI = vi.fn().mockImplementation((path: string) => {
       if (path.includes("rebalance-advisor")) return Promise.resolve(mockAdvisorEmpty);
+
       return Promise.reject(new Error("API /api/rebalance: 503"));
     });
     const { default: RebalancePage } = await import("@/app/rebalance/page");

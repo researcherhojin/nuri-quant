@@ -9,6 +9,7 @@ export interface StripEvent { date: string; description?: string; ticker: string
 
 export function EventsStrip({ events }: { events: StripEvent[] }) {
   if (events.length === 0) return null;
+
   return (
     <CollapsibleStrip
       id="events"
@@ -22,6 +23,7 @@ export function EventsStrip({ events }: { events: StripEvent[] }) {
         <div className="flex flex-wrap gap-x-3 gap-y-0.5 flex-1 min-w-0">
           {events.map((ev, i) => {
             const dday = eventDday(ev.date);
+
             return (
               <span key={`${ev.date}-${i}`} className="text-[10px] text-zinc-400 truncate">
                 <span className="text-zinc-600 tabular-nums">{fmtEventDate(ev.date)}</span>{" "}

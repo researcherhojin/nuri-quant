@@ -17,6 +17,7 @@ vi.mock("recharts", () => ({
 }));
 
 const mockReplace = vi.fn();
+
 let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({

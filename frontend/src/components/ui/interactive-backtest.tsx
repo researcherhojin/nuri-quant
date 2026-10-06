@@ -46,6 +46,7 @@ export function InteractiveBacktest({ initialData, initialMetrics }: Interactive
 
   const runBacktest = async (params: { smaPeriod: number; lookback: string; stopLoss: number; takeProfit: number }) => {
     setLoading(true);
+
     try {
       const query = new URLSearchParams({
         sma: String(params.smaPeriod),
@@ -53,9 +54,12 @@ export function InteractiveBacktest({ initialData, initialMetrics }: Interactive
         sl: String(params.stopLoss),
         tp: String(params.takeProfit),
       });
+
       const res = await fetch(`/api/backtest/equity?sma=${params.smaPeriod}&period=${params.lookback}&sl=${params.stopLoss}&tp=${params.takeProfit}`);
+
       if (res.ok) {
         const result = await res.json();
+
         if (result.equity?.length > 0) {
           setData(result.equity);
           setMetrics(result.metrics);

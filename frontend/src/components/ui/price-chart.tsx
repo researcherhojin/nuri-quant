@@ -50,13 +50,16 @@ export function sma(data: number[], period: number): (number | null)[] {
   return data.map((_, i) => {
     if (i < period - 1) return null;
     const slice = data.slice(i - period + 1, i + 1);
+
     return slice.reduce((a, b) => a + b, 0) / period;
   });
 }
 
 export function formatVolume(v: number): string {
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+
   if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
+
   return String(v);
 }
 
@@ -69,6 +72,7 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
   const sma50 = sma(closes, 50);
 
   const offset = data.length - sliced.length;
+
   const chartData = sliced.map((d, i) => ({
     date: d.date.slice(5), // MM-DD
     close: d.close,
@@ -131,9 +135,12 @@ export function PriceChart({ data, ticker }: PriceChartProps) {
               labelStyle={{ color: CHART_MUTED }}
               formatter={(value, name) => {
                 const v = Number(value);
+
                 if (name === "volume") return [formatVolume(v), "Vol"];
+
                 // 통화는 티커로 판정 (#1197 codex P2) — KR 종목 헤더는 ₩ 인데 툴팁만 $ 였다
                 if (name === "close") return [formatMoney(v, { ticker }), "Close"];
+
                 return [formatMoney(v, { ticker }), String(name).toUpperCase()];
               }}
             />

@@ -5,6 +5,7 @@ import { EXPLORE } from "@/lib/strings";
 
 // next/navigation mock — router.push 캡처
 const pushMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));

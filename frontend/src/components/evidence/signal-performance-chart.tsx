@@ -32,8 +32,11 @@ export function winRateTick(v: unknown): string {
 
 export function signalTooltipFormatter(value: unknown, name: unknown): [string, string] {
   const v = Number(value);
+
   if (name === "win_rate") return [`${(v * 100).toFixed(1)}%`, "승률"];
+
   if (name === "profit_factor") return [v.toFixed(2), "PF"];
+
   return [String(value), String(name)];
 }
 

@@ -123,6 +123,7 @@ export async function GateSection() {
 // === Conflicts Section ===
 export async function ConflictsSection() {
   let data: { conflicts: Conflict[]; count: number; high: number };
+
   try {
     data = await fetchAPI<{ conflicts: Conflict[]; count: number; high: number }>("/api/conflicts");
   } catch {

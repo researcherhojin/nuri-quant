@@ -16,6 +16,7 @@ vi.mock("recharts", () => ({
 }));
 
 const mockReplace = vi.fn();
+
 let mockSearchParams = new URLSearchParams();
 
 vi.mock("next/navigation", () => ({
@@ -66,6 +67,7 @@ describe("InteractiveBacktest branch coverage", () => {
     const { container } = render(
       <InteractiveBacktest initialData={mockEquity} initialMetrics={negMetrics} />,
     );
+
     const html = container.innerHTML;
     expect(html).toContain("text-red-400"); // L101 false arm
     expect(html).toContain("text-red-500"); // L107 false arm
@@ -77,6 +79,7 @@ describe("InteractiveBacktest branch coverage", () => {
     const { container } = render(
       <InteractiveBacktest initialData={mockEquity} initialMetrics={posMetrics} />,
     );
+
     const html = container.innerHTML;
     expect(html).toContain("text-emerald-400"); // L101 true arm
     expect(html).toContain("text-emerald-500"); // L107 true arm

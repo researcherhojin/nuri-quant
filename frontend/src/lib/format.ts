@@ -19,6 +19,7 @@ export function formatMoney(
 ): string {
   if (value == null || Number.isNaN(value)) return "—";
   const krw = opts.currency ? opts.currency.toUpperCase() === "KRW" : isKrwTicker(opts.ticker);
+
   return krw
     ? `₩${Math.round(value).toLocaleString("en-US")}`
     : `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -27,11 +28,13 @@ export function formatMoney(
 /** 퍼센트: 부호(+/−) 항상 병기 (색맹 대비 — 색만으로 방향 전달 금지, 스펙 §1) */
 export function formatPct(value: number | null | undefined, digits = 1): string {
   if (value == null || Number.isNaN(value)) return "—";
+
   return `${value > 0 ? "+" : ""}${value.toFixed(digits)}%`;
 }
 
 /** 일반 수치: raw float 노출 금지 (52.9428571... → 52.9) */
 export function formatNum(value: number | null | undefined, digits = 1): string {
   if (value == null || Number.isNaN(value)) return "—";
+
   return value.toFixed(digits);
 }

@@ -21,6 +21,7 @@ import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
 type FlowNode = { id: string; type?: string; data?: Record<string, unknown> };
+
 type NodeTypesMap = Record<string, ComponentType<{ data?: FlowNode["data"] }>>;
 
 // ReactFlow mock 이 실제 PipelineNode (nodeTypes.pipeline) 를 렌더하도록.
@@ -36,6 +37,7 @@ vi.mock("@xyflow/react", () => ({
   }) => {
     const types = typeof nodeTypes === "function" ? nodeTypes() : nodeTypes;
     const NodeComponent = types?.pipeline;
+
     return (
       <div data-testid="react-flow">
         {nodes?.map((n) =>
@@ -73,6 +75,7 @@ type NodeData = {
 
 async function loadNode() {
   vi.resetModules();
+
   return (await import("@/app/pipeline/page")).PipelineNode;
 }
 
@@ -141,9 +144,11 @@ describe("PipelineNode — node-body branch arms", () => {
     //  `if (!data.isRunning)` false-arm(implicit-else)을 정직하게 커버한다.
     const propsKey = Object.keys(btn).find((k) => k.startsWith("__reactProps$"));
     expect(propsKey).toBeTruthy();
+
     const handler = (btn as unknown as Record<string, { onClick?: (e: unknown) => void }>)[
       propsKey as string
     ].onClick;
+
     expect(handler).toBeTypeOf("function");
     handler!({ stopPropagation: () => {} });
     expect(onRun).not.toHaveBeenCalled();
@@ -221,24 +226,28 @@ function makeFetch(opts: {
     if (init?.method === "POST") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve(opts.postBody ?? { ok: true }) });
     }
+
     if (url.includes("/api/pipeline/status")) {
       return Promise.resolve({
         ok: opts.statusOk ?? true,
         json: () => Promise.resolve(opts.statusBody),
       });
     }
+
     if (url.includes("/api/pipeline/timeline")) {
       return Promise.resolve({
         ok: opts.timelineOk ?? true,
         json: () => Promise.resolve(opts.timelineBody),
       });
     }
+
     if (url.includes("/api/gate")) {
       return Promise.resolve({
         ok: opts.gateOk ?? true,
         json: () => Promise.resolve(opts.gateBody),
       });
     }
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
 }
@@ -358,6 +367,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
         error: null, // 335: STEP_ICONS["unknown_step"] undefined → "" fallback
       },
     ];
+
     global.fetch = makeFetch({ statusBody: { steps }, timelineBody: { events: [] }, gateBody: {} }) as unknown as typeof fetch;
     await renderPage();
     // 335 fallback: 아이콘 없는 라벨 "Mystery" 렌더
@@ -380,6 +390,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
         { timestamp: "2026-05-31T09:05:00Z", event_type: "success", step: "track", payload: null }, // 449 payload && false → no <p>
       ],
     };
+
     global.fetch = makeFetch({ statusBody: { steps: [] }, timelineBody, gateBody: {} }) as unknown as typeof fetch;
     await renderPage();
     // event row 렌더 확인 (stderr 텍스트)
@@ -393,10 +404,12 @@ describe("PipelinePage — fetch & render branch arms", () => {
   it("StepIcon: 라이브 어휘가 사이드바 아이덴티티와 동일 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
     const { StepIcon } = await import("@/app/pipeline/page");
     const { BarChart3, Users, Cog, Search, MapPin } = await import("lucide-react");
+
     // 패리티 잠금 (codex #1238 P3): 기대 아이콘을 직접 렌더해 lucide-* 클래스를 비교 —
     // 이름 하드코딩 없이 "사이드바와 같은 아이콘" 계약 자체를 검증한다.
     const lucideClass = (el: Element | null) =>
       el?.getAttribute("class")?.split(" ").find((c) => c.startsWith("lucide-") && c !== "lucide");
+
     const PARITY: Array<[string, React.ComponentType]> = [
       ["collect", Search],
       ["analyze", BarChart3], // 사이드바 Signals
@@ -404,6 +417,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
       ["decide", Cog], // 사이드바 Decision Engine
       ["track", MapPin],
     ];
+
     for (const [step, Expected] of PARITY) {
       const want = render(<Expected />);
       const got = render(<StepIcon stepId={step} />);
@@ -415,11 +429,13 @@ describe("PipelinePage — fetch & render branch arms", () => {
       want.unmount();
       got.unmount();
     }
+
     const { container } = render(<StepIcon stepId="unknown-step" />);
     expect(lucideClass(container.querySelector("svg"))).toBe("lucide-circle");
 
     // EventIcon 도 같은 장식 계약 — 전 타입 aria-hidden (codex #1238 R2)
     const { EventIcon } = await import("@/app/pipeline/page");
+
     for (const type of ["start", "success", "error", "weird"]) {
       const ev = render(<EventIcon type={type} />);
       expect(ev.container.querySelector("svg")?.getAttribute("aria-hidden"), `${type} aria-hidden 누락`).toBe("true");
@@ -431,6 +447,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
     const timelineBody = {
       events: [{ timestamp: throwingDate, event_type: "success", step: "collect", payload: { command: "c" } }],
     };
+
     global.fetch = makeFetch({ statusBody: { steps: [] }, timelineBody, gateBody: {} }) as unknown as typeof fetch;
     await renderPage();
     // catch 가 iso(="11") 를 그대로 반환 → "11" 이 타임스탬프 span 에 렌더
@@ -451,6 +468,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
         ],
       },
     };
+
     global.fetch = makeFetch({ statusBody: { steps: [] }, timelineBody: { events: [] }, gateBody }) as unknown as typeof fetch;
     await renderPage();
     // 481/491 passed=true arm + passed=false arm 둘 다
@@ -465,6 +483,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
 
   it("handleRunStep: POST returns error → alert + remove from running (298 true arm)", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+
     const steps: Step[] = [
       {
         step: "collect",
@@ -477,6 +496,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
         error: null,
       },
     ];
+
     global.fetch = makeFetch({
       statusBody: { steps },
       timelineBody: { events: [] },
@@ -510,12 +530,14 @@ describe("PipelinePage — fetch & render branch arms", () => {
         error: null,
       },
     ];
+
     const fetchMock = makeFetch({
       statusBody: { steps },
       timelineBody: { events: [] },
       gateBody: {},
       postBody: { ok: true }, // 298: data.error falsy
     });
+
     global.fetch = fetchMock as unknown as typeof fetch;
     await renderPage();
     await waitFor(() => expect(screen.getByText("Collect")).toBeInTheDocument());

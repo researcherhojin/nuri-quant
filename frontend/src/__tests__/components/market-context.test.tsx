@@ -160,11 +160,13 @@ describe("MarketContext", () => {
   // #503 Phase B — conditional pinning + regime banner
   it("pins card with ATTENTION badge when high-conf critical event in 24h", () => {
     const recent = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+
     const pinEvents = [{
       category: "geopolitical_escalation",
       headline: "Critical event",
       sentiment: -0.8, confidence: 0.85, published_at: recent, source: "reuters",
     }];
+
     const { container } = render(<MarketContext events={pinEvents} health={sampleHealth} />);
     expect(screen.getByText("ATTENTION")).toBeTruthy();
     expect(container.querySelector(".ring-amber-500\\/30")).toBeTruthy();
@@ -172,11 +174,13 @@ describe("MarketContext", () => {
 
   it("does NOT pin when critical event is > 24h old", () => {
     const stale = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
     const oldEvents = [{
       category: "geopolitical_escalation",
       headline: "Old event",
       sentiment: -0.8, confidence: 0.9, published_at: stale, source: "reuters",
     }];
+
     render(<MarketContext events={oldEvents} health={sampleHealth} />);
     expect(screen.queryByText("ATTENTION")).toBeNull();
   });
@@ -197,6 +201,7 @@ describe("MarketContext", () => {
       { ...sampleEvents[0], confidence: 0.85, published_at: "2026-04-12T17:18:00+00:00" },
       { ...sampleEvents[1], confidence: 0.6, published_at: "2026-04-11T06:10:00+00:00" },
     ];
+
     const { container } = render(<MarketContext events={highConfEvents} health={sampleHealth} />);
     const boldDates = container.querySelectorAll(".font-bold");
     expect(boldDates.length).toBeGreaterThan(0);

@@ -125,9 +125,11 @@ export async function RecentSignals() {
 
   // Deduplicate by ticker — show only latest signal per ticker
   const seen = new Set<string>();
+
   const unique = candidates.filter((c) => {
     if (seen.has(c.ticker)) return false;
     seen.add(c.ticker);
+
     return true;
   });
 
@@ -160,6 +162,7 @@ function StripSkeleton() {
 // ── Quicklinks section (single batch fetch for all 12 tickers) ──
 async function QuickLinksGrid() {
   const allTickers = [...POPULAR_US, ...POPULAR_KR].map((t) => t.ticker);
+
   const batch = await fetchAPI<BatchPriceData>(
     `/api/tickers/latest-prices?tickers=${allTickers.join(",")}`
   ).catch((): BatchPriceData => ({ prices: {} }));
@@ -174,6 +177,7 @@ async function QuickLinksGrid() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {POPULAR_US.map((t) => {
               const p = batch.prices[t.ticker];
+
               return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
             })}
           </div>
@@ -183,6 +187,7 @@ async function QuickLinksGrid() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {POPULAR_KR.map((t) => {
               const p = batch.prices[t.ticker];
+
               return <QuickLinkCard key={t.ticker} ticker={t.ticker} name={t.name} price={p?.price ?? null} prev={p?.prev ?? null} />;
             })}
           </div>

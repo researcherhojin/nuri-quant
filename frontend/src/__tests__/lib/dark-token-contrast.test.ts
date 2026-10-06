@@ -39,6 +39,7 @@ const CSS = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf-8");
 
 function rgb(hex: string): [number, number, number] {
   const h = hex.replace("#", "");
+
   return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
 }
 
@@ -46,12 +47,14 @@ function rgb(hex: string): [number, number, number] {
 function luminance(hex: string): number {
   const lin = (c: number) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
   const [r, g, b] = rgb(hex).map((c) => lin(c / 255));
+
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
 /** WCAG 대비비. 순서 무관. */
 function contrast(a: string, b: string): number {
   const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+
   return (hi + 0.05) / (lo + 0.05);
 }
 
@@ -62,6 +65,7 @@ function contrast(a: string, b: string): number {
 function over(fg: string, alpha: number, bg: string): string {
   const [f, b] = [rgb(fg), rgb(bg)];
   const mix = f.map((c, i) => Math.round(c * alpha + b[i] * (1 - alpha)));
+
   return `#${mix.map((c) => c.toString(16).padStart(2, "0")).join("")}`.toUpperCase();
 }
 
@@ -77,6 +81,7 @@ function ruleBlocks(css: string): Array<{ selector: string; body: string }> {
   const out: Array<{ selector: string; body: string }> = [];
   const stack: Array<{ selector: string; start: number }> = [];
   let cut = 0;
+
   for (let i = 0; i < clean.length; i++) {
     if (clean[i] === "{") {
       // 셀렉터는 직전 `;` 이후부터다. `@custom-variant dark (&:is(.dark *));` 처럼 세미콜론으로
@@ -87,10 +92,12 @@ function ruleBlocks(css: string): Array<{ selector: string; body: string }> {
       cut = i + 1;
     } else if (clean[i] === "}") {
       const frame = stack.pop();
+
       if (frame) out.push({ selector: frame.selector, body: clean.slice(frame.start, i) });
       cut = i + 1;
     }
   }
+
   return out;
 }
 
@@ -108,9 +115,11 @@ function darkTokens(): Record<string, string> {
   const declaring = ruleBlocks(CSS).filter(
     (b) => DARK_SELECTOR.test(b.selector) && /--[a-z0-9-]+\s*:/.test(b.body),
   );
+
   if (declaring.length === 0) {
     throw new Error("globals.css 에서 토큰을 선언하는 `.dark` 블록을 못 찾았다 — 검사 대상이 사라졌다");
   }
+
   if (declaring.length > 1) {
     throw new Error(
       `토큰을 선언하는 \`.dark\` 블록이 ${declaring.length}개다 (${declaring
@@ -118,8 +127,11 @@ function darkTokens(): Record<string, string> {
         .join(" / ")}) — 캐스케이드상 마지막이 이기므로 하나만 재는 이 게이트는 거짓이 된다`,
     );
   }
+
   const found = [...declaring[0].body.matchAll(/--([a-z0-9-]+):\s*(#[0-9A-Fa-f]{6})\b/g)];
+
   if (found.length === 0) throw new Error(".dark 블록에서 hex 토큰을 0개 파싱했다 — 정규식이 눈이 멀었다");
+
   return Object.fromEntries(found.map((m) => [m[1], m[2].toUpperCase()]));
 }
 
@@ -127,7 +139,9 @@ const T = darkTokens();
 
 function token(name: string): string {
   const v = T[name];
+
   if (!v) throw new Error(`--${name} 가 .dark 블록에 없다 (또는 hex 가 아니다)`);
+
   return v;
 }
 
@@ -249,9 +263,11 @@ function parseClaims(): Array<[fg: string, bg: string, claimed: number]> {
   const claims = [...CSS.matchAll(/@contrast\s+([a-z0-9-]+)\/([a-z0-9-]+)\s+([\d.]+)/g)].map(
     (m) => [m[1], m[2], Number(m[3])] as [string, string, number],
   );
+
   if (claims.length === 0) {
     throw new Error("globals.css 주석에서 `@contrast` 주장을 0건 파싱했다 — 주장이 지워졌거나 형식이 바뀌었다");
   }
+
   return claims;
 }
 
@@ -286,6 +302,7 @@ describe("다크 토큰 대비 (#1431)", () => {
         (t) => [t, Math.min(contrast(token(t), T.background), contrast(token(t), T.card))] as [string, number],
       ),
     ];
+
     for (const [name, actual] of all) {
       const floor = GUARDRAIL_MIN[name];
       expect(floor, `${name} 이 GUARDRAIL_MIN 에 없다 — 짝을 추가했으면 기준선도 기록할 것`).toBeDefined();
@@ -338,6 +355,7 @@ describe("다크 토큰 대비 (#1431)", () => {
       "primary/card",
       "primary-foreground/primary",
     ];
+
     const pairs = parseClaims().map(([f, b]) => `${f}/${b}`);
     expect(pairs.sort()).toEqual([...REQUIRED].sort());
   });
@@ -350,9 +368,11 @@ describe("다크 토큰 대비 (#1431)", () => {
     // 값을 물려받고, 이 배경(#111418)에서 20개 중 14개가 AA 미달이다. 아래 4개는 그 확인용
     // 표본이다. 실제 채택 시에는 그때 설치본으로 다시 재야 한다.
     const BP_LIGHT_INTENT_REST = { primary: "#2d72d2", success: "#238551", warning: "#c87619", danger: "#cd4246" };
+
     const failing = Object.entries(BP_LIGHT_INTENT_REST)
       .filter(([, hex]) => contrast(hex, T.background) < 4.5)
       .map(([name]) => name);
+
     expect(failing).toEqual(["primary", "success", "danger"]);
   });
 });

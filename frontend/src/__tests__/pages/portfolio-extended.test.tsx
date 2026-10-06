@@ -9,6 +9,7 @@ vi.mock("next/link", () => ({
 }));
 
 const mockSearchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
@@ -21,30 +22,38 @@ const mockHoldings = [
 function mockFetch(overrides: Record<string, unknown> = {}) {
   return vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
     const path = typeof url === "string" ? url : "";
+
     if (path.includes("/api/portfolio") && (!opts || opts.method === undefined || opts.method === "GET")) {
       if (path.includes("export")) {
         return Promise.resolve({ ok: true, text: () => Promise.resolve("account,ticker\n"), headers: new Headers({ "content-type": "text/csv" }) });
       }
+
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(overrides.holdings ?? { holdings: mockHoldings, count: mockHoldings.length }),
       });
     }
+
     if (path.includes("/api/portfolio") && opts?.method === "POST" && !path.includes("import")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, ticker: "AAPL" }) });
     }
+
     if (opts?.method === "PUT") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, ticker: "TSLA", updated: {} }) });
     }
+
     if (opts?.method === "DELETE") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
     }
+
     if (path.includes("import") && opts?.method === "POST") {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, imported: 2, errors: [] }) });
     }
+
     if (path.includes("sample")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, imported: 5 }) });
     }
+
     return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
   });
 }
@@ -129,9 +138,11 @@ describe("PortfolioPage — extended coverage", () => {
       if (url.includes("/api/portfolio") && (!opts || !opts.method || opts.method === "GET")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ holdings: mockHoldings, count: 2 }) });
       }
+
       if (url.includes("import") && opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true, imported: 1, errors: ["Row 2: invalid ticker"] }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 

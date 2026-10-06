@@ -9,6 +9,7 @@ export const RegimeSchema = z.object({
   confidence: z.number(),
   details: z.record(z.string(), z.unknown()),
 });
+
 export type Regime = z.infer<typeof RegimeSchema>;
 
 // === Macro ===
@@ -26,6 +27,7 @@ export const MacroSchema = z.object({
   monetary_score: z.number(),
   details: z.record(z.string(), z.unknown()),
 });
+
 export type Macro = z.infer<typeof MacroSchema>;
 
 // === Candidate ===
@@ -41,6 +43,7 @@ export const CandidateSchema = z.object({
   price: z.number(),
   notes: z.string(),
 });
+
 export type Candidate = z.infer<typeof CandidateSchema>;
 
 // === Scorecard ===
@@ -55,6 +58,7 @@ export const ScorecardSchema = z.object({
   max_loss: z.number(),
   avg_holding_days: z.number(),
 });
+
 export type Scorecard = z.infer<typeof ScorecardSchema>;
 
 // === Rebalance Action ===
@@ -68,6 +72,7 @@ export const RebalanceActionSchema = z.object({
   signals: z.array(z.string()),
   regime_note: z.string(),
 });
+
 export type RebalanceAction = z.infer<typeof RebalanceActionSchema>;
 
 // === Strategy ===
@@ -81,4 +86,5 @@ export const StrategySchema = z.object({
   signal_regime_stats: z.record(z.string(), z.unknown()),
   notes: z.string(),
 });
+
 export type Strategy = z.infer<typeof StrategySchema>;

@@ -127,6 +127,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
     surprise_pct: e.surprise_pct ? `${(e.surprise_pct * 100).toFixed(0)}%` : "—",
     _surprise_positive: (e.surprise_pct || 0) > 0,
   }));
+
   const earningsCols = [
     { key: "quarter", label: "Quarter" },
     { key: "eps_actual", label: "Actual", align: "right" as const },
@@ -140,6 +141,7 @@ export async function TickerDetail({ symbol }: { symbol: string }) {
   // API 는 최신 행을 통째로 반환하고 카드 내부는 필드별 truthy 가드라, 전부 NULL/0
   // 인 행은 빈 셸을 만든다).
   const fundHasContent = !!fund && [fund.pe_ratio, fund.roe, fund.revenue_growth, fund.debt_to_equity, fund.profit_margin, fund.beta].some(Boolean);
+
   const missingPanels = ([
     ratings.length === 0 ? TD.PANEL_RATINGS : null,
     earningsFormatted.length === 0 ? TD.PANEL_EARNINGS : null,
@@ -378,6 +380,7 @@ function Loading() {
 
 export default async function TickerPage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
+
   return (
     <Suspense fallback={<Loading />}>
       <TickerDetail symbol={symbol} />

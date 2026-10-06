@@ -199,6 +199,7 @@ describe("ConsensusTable", () => {
       divergence_flag: true,
       divergence_reason: "기술지표 반대: TechnicalAgent 가 SELL",
     }];
+
     render(<ConsensusTable data={withDivergence} vix={null} />);
     const badge = screen.getByTestId("divergence-badge");
     expect(badge).toBeInTheDocument();
@@ -217,6 +218,7 @@ describe("ConsensusTable", () => {
       divergence_flag: true,
       divergence_reason: "",
     }];
+
     render(<ConsensusTable data={withEmptyReason} vix={null} />);
     const badge = screen.getByTestId("divergence-badge");
     expect(badge).toHaveAttribute("title", "기술지표 반대");
@@ -261,6 +263,7 @@ describe("ConsensusTable", () => {
         ...mockData[0],
         scoring_detail: makeScoring({ final_action_source: "risk_veto", risk_veto_fired: true }),
       }];
+
       render(<ConsensusTable data={d} />);
       const badge = screen.getByTestId("action-source-badge");
       // F-003: 이모지 → lucide svg. 의미 잠금은 title 로
@@ -280,6 +283,7 @@ describe("ConsensusTable", () => {
           pre_penalty_action: "BUY",
         }),
       }];
+
       render(<ConsensusTable data={d} />);
       // F-003: divergence 아이콘도 svg — 배지 존재 + basis label 로 의미 검증
       expect(screen.getByTestId("action-source-badge").querySelector("svg")).not.toBeNull();

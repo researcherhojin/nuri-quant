@@ -34,6 +34,7 @@ vi.mock("next/navigation", () => ({
 describe("RootLayout", () => {
   it("renders layout with sidebar and children", async () => {
     const { default: RootLayout } = await import("@/app/layout");
+
     // RootLayout renders <html> which jsdom doesn't handle well
     // Test the inner structure by rendering just the body content
     const { container } = render(
@@ -41,6 +42,7 @@ describe("RootLayout", () => {
         <div data-testid="child">Hello</div>
       </RootLayout>
     );
+
     // Layout should render without crashing
     expect(container).toBeTruthy();
   });
@@ -66,12 +68,15 @@ describe("Portfolio form interactions", () => {
           }),
         });
       }
+
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (opts?.method === "DELETE") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     }) as unknown as typeof fetch;
   });
@@ -83,9 +88,11 @@ describe("Portfolio form interactions", () => {
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
     const addBtn = screen.queryByText("Add Holding");
+
     if (addBtn) {
       await act(async () => { fireEvent.click(addBtn); });
       const tickerInput = screen.queryByPlaceholderText(/Ticker/);
+
       if (tickerInput) {
         fireEvent.change(tickerInput, { target: { value: "NVDA" } });
       }

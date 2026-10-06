@@ -110,6 +110,7 @@ export function Sidebar() {
               {group.items.map((item) => {
                 const active = pathname === item.href;
                 const Icon = item.icon;
+
                 return (
                   <Link
                     key={item.href}

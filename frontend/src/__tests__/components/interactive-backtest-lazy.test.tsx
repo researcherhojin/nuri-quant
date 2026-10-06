@@ -15,6 +15,7 @@ vi.mock("next/dynamic", () => ({
         </span>
       </div>
     );
+
     return Stub;
   },
 }));

@@ -30,6 +30,7 @@ test.describe("Portfolio page", () => {
     await page.goto("/portfolio", { timeout: 15000 });
     await page.waitForTimeout(3000);
     const addBtn = page.locator("text=Add Holding").first();
+
     if ((await addBtn.count()) > 0) {
       await addBtn.click();
       await expect(page.locator('input[placeholder*="Ticker"]')).toBeVisible();
@@ -40,6 +41,7 @@ test.describe("Portfolio page", () => {
     await page.goto("/portfolio", { timeout: 15000 });
     await page.waitForTimeout(3000);
     const csv = page.locator("text=Upload CSV").first();
+
     if ((await csv.count()) > 0) {
       await expect(csv).toBeVisible();
     }

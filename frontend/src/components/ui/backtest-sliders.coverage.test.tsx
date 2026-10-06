@@ -15,10 +15,13 @@ describe("BacktestSliders coverage", () => {
   // 형제 input 을 찾아 change 를 발생시킨다 (line 79 Stop + line 80 Take onChange 커버).
   function rangeFor(label: string): HTMLInputElement {
     const labelSpan = screen.getByText(label);
+
     const input = labelSpan.parentElement?.querySelector<HTMLInputElement>(
       'input[type="range"]'
     );
+
     if (!input) throw new Error(`range input for ${label} not found`);
+
     return input;
   }
 

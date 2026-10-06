@@ -12,11 +12,13 @@ vi.mock("next/link", () => ({
 const mockRedirect = vi.fn().mockImplementation((path: string) => {
   throw new Error(`REDIRECT:${path}`);
 });
+
 vi.mock("next/navigation", () => ({
   redirect: (path: string) => mockRedirect(path),
 }));
 
 const mockFetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => mockFetchAPI(...args),
   API_BASE: "http://localhost:8001",
@@ -81,11 +83,17 @@ describe("DashboardPage", () => {
   function setupMocks(overrides: Record<string, unknown> = {}) {
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/dashboard")) return Promise.resolve(overrides.dashboard ?? mockDashboardData);
+
       if (path.includes("/api/freshness")) return Promise.resolve(overrides.freshness ?? mockFreshness);
+
       if (path.includes("/api/pipeline/status")) return Promise.resolve(overrides.pipeline ?? mockPipelineStatus);
+
       if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
+
       if (path.includes("/api/portfolio")) return Promise.resolve(overrides.portfolio ?? mockPortfolio);
+
       if (path.includes("/api/rebalance-advisor")) return Promise.resolve(overrides.advisor ?? mockAdvisor);
+
       return Promise.resolve({});
     });
   }
@@ -144,8 +152,10 @@ describe("DashboardPage", () => {
       // Content includes "투자 50%" / "현금 40%" but as fragments not a single text node.
       const candidates = screen.getAllByText((_, el) => {
         const txt = el?.textContent ?? "";
+
         return txt.includes("실제") && txt.includes("40%") && txt.includes("현금");
       });
+
       expect(candidates.length).toBeGreaterThan(0);
     });
   });
@@ -193,8 +203,10 @@ describe("DashboardPage", () => {
       // strip's container. The strip is the market context strip at the top.
       const stripsWithAllocation = screen.getAllByText((_, el) => {
         const t = el?.textContent ?? "";
+
         return t.includes("실제") && t.includes("46%") && t.includes("권장") && t.includes("20%");
       });
+
       expect(stripsWithAllocation.length).toBeGreaterThan(0);
     });
   });
@@ -247,8 +259,11 @@ describe("DashboardPage", () => {
     // Exercises the .catch() defaults on freshness/pipeline/advisor/targets.
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/dashboard")) return Promise.resolve(mockDashboardData);
+
       if (path.includes("/api/portfolio/history")) return Promise.resolve({ history: [] });
+
       if (path.includes("/api/portfolio")) return Promise.resolve(mockPortfolio);
+
       return Promise.reject(new Error("network"));
     });
     const Page = await import("@/app/page");
@@ -306,6 +321,7 @@ describe("DashboardPage", () => {
         { ticker: "AAPL", account: "broker_b", quantity: 4, avg_price: 160, latest_price: 165, currency: "USD" },
       ],
     };
+
     setupMocks({
       portfolio,
       dashboard: {
@@ -660,6 +676,7 @@ describe("DashboardPage", () => {
       const row = screen.getAllByTestId("holding-row").find((r) =>
         r.textContent?.includes("Apple Inc"),
       );
+
       expect(row).toBeTruthy();
     });
   });
@@ -683,6 +700,7 @@ describe("DashboardPage", () => {
       const row = screen.getAllByTestId("holding-row").find((r) =>
         r.textContent?.includes("005930"),
       );
+
       expect(row).toBeTruthy();
       expect(row?.textContent).not.toContain(".KS");
     });
@@ -801,6 +819,7 @@ describe("DashboardPage", () => {
     const impl = mockFetchAPI.getMockImplementation()!;
     mockFetchAPI.mockImplementation((path: string) => {
       if (path.includes("/api/dashboard")) return Promise.reject(new Error("API /api/dashboard: 503"));
+
       return impl(path);
     });
     const Page = await import("@/app/page");

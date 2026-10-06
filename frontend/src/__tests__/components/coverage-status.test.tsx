@@ -79,6 +79,7 @@ describe("CoverageStatus", () => {
       pass: 0, fail: 0, exit_code: 1, checks: [],
       error: "coverage computation failed",
     };
+
     render(<CoverageStatus data={data} />);
     // 카피는 한국어 안내, 원문 에러는 title 로 강등 (design-review F-002)
     const banner = screen.getByText(/Coverage 확인 실패/);

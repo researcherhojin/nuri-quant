@@ -44,6 +44,7 @@ export function useTraceStream() {
     isStreaming: false,
     error: null,
   });
+
   const esRef = useRef<EventSource | null>(null);
 
   const start = useCallback((ticker: string) => {
@@ -55,11 +56,13 @@ export function useTraceStream() {
     const es = new EventSource(
       `/api/consensus/${encodeURIComponent(ticker)}/stream`
     );
+
     esRef.current = es;
 
     es.onmessage = (event) => {
       try {
         const parsed = JSON.parse(event.data);
+
         if (parsed.type === "verdict") {
           setState((prev) => ({ ...prev, verdicts: [...prev.verdicts, parsed.data] }));
         } else if (parsed.type === "consensus") {

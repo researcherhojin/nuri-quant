@@ -6,6 +6,7 @@ import type { NextRequest } from "next/server";
 vi.mock("next/server", () => {
   const next = vi.fn(() => ({ type: "next" }));
   const redirect = vi.fn((url: URL) => ({ type: "redirect", url: url.toString() }));
+
   return {
     NextResponse: { next, redirect },
   };

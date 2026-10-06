@@ -25,6 +25,7 @@ test("evidence page renders native chart cards with zero iframes", async ({ page
   expect(resp?.status()).toBe(200);
 
   const main = page.locator("main");
+
   for (const card of CARDS) {
     // 카드 자체(제목+본문)는 데이터와 무관하게 항상 존재해야 한다
     const cardEl = main.getByTestId(`card-${card.id}`);
@@ -35,6 +36,7 @@ test("evidence page renders native chart cards with zero iframes", async ({ page
     const api = await request.get(`/api/evidence/data/${card.id}`);
     expect(api.ok()).toBe(true);
     const body = (await api.json()) as { count: number };
+
     if (body.count > 0) {
       await expect(cardEl.getByTestId(card.chartTestId)).toBeVisible({ timeout: 15000 });
     } else {

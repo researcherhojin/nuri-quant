@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, cleanup } from "@testing-library/react";
 
 const fetchAPI = vi.fn();
+
 vi.mock("@/lib/api", () => ({ fetchAPI: (...a: unknown[]) => fetchAPI(...a) }));
 
 // InteractiveBacktest is a client/lazy component; stub so the equity_curve branch renders deterministically.
@@ -22,7 +23,9 @@ function mockResponses(status: unknown, bt: unknown) {
   fetchAPI.mockReset();
   fetchAPI.mockImplementation((url: string) => {
     if (url === "/api/strategy/status") return Promise.resolve(status);
+
     if (url === "/api/backtest") return Promise.resolve(bt);
+
     return Promise.resolve({});
   });
 }

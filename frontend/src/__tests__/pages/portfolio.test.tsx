@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
 
 // next/navigation stub
 const mockSearchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useSearchParams: () => mockSearchParams,
 }));
@@ -30,6 +31,7 @@ function mockFetch(overrides: Record<string, unknown> = {}) {
       if (path.includes("export")) {
         return Promise.resolve({ ok: true, text: () => Promise.resolve("account,ticker\n"), headers: new Headers({ "content-type": "text/csv" }) });
       }
+
       return Promise.resolve({
         ok: true,
         json: () => Promise.resolve(overrides.holdings ?? { holdings: mockHoldings, count: mockHoldings.length }),

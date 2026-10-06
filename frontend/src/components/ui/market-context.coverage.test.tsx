@@ -40,6 +40,7 @@ describe("MarketContext — statement coverage", () => {
     const health: Partial<SystemHealth> = {
       macro: { score: 80, interpretation: "risk-on" },
     };
+
     render(<MarketContext events={[]} health={health} />);
 
     const value = screen.getByText("80");
@@ -52,6 +53,7 @@ describe("MarketContext — statement coverage", () => {
     const health: Partial<SystemHealth> = {
       macro: { score: 50, interpretation: "neutral" },
     };
+
     render(<MarketContext events={[]} health={health} />);
 
     const value = screen.getByText("50");
@@ -63,6 +65,7 @@ describe("MarketContext — statement coverage", () => {
     const health: Partial<SystemHealth> = {
       macro: { score: 10, interpretation: "risk-off" },
     };
+
     render(<MarketContext events={[]} health={health} />);
 
     const value = screen.getByText("10");
@@ -82,6 +85,7 @@ describe("MarketContext — statement coverage", () => {
         source: "wire",
       },
     ];
+
     // regime.trend 미지정 → regimeStripe(undefined) → default zinc
     const { container } = render(<MarketContext events={events} health={{}} />);
 
@@ -101,9 +105,11 @@ describe("MarketContext — statement coverage", () => {
         source: "wire",
       },
     ];
+
     const health: Partial<SystemHealth> = {
       regime: { regime: "expansion", trend: "bull", confidence: 75 },
     };
+
     const { container } = render(<MarketContext events={events} health={health} />);
 
     expect(container.querySelector(".border-l-emerald-500\\/60")).not.toBeNull();
@@ -147,6 +153,7 @@ describe("MarketContext — statement coverage", () => {
         source: "wire",
       },
     ];
+
     render(<MarketContext events={events} health={{}} />);
 
     // 2개의 유효 일자 버킷 → days.length >= 2 → sparkline svg 렌더됨
@@ -165,6 +172,7 @@ describe("MarketContext — statement coverage", () => {
         source: "wire",
       },
     ];
+
     render(<MarketContext events={events} health={{}} />);
 
     expect(screen.getByText("ATTENTION")).toBeInTheDocument();
@@ -176,6 +184,7 @@ describe("MarketContext — statement coverage", () => {
     const health: Partial<SystemHealth> = {
       regime: { regime: "transition", trend: "sideways", confidence: 45 },
     };
+
     render(<MarketContext events={[]} health={health} />);
 
     expect(screen.getByText("Regime 전환 신호")).toBeInTheDocument();
@@ -194,6 +203,7 @@ describe("MarketContext — statement coverage", () => {
         source: "wire",
       },
     ];
+
     expect(shouldPinCard(events)).toBe(false);
   });
 

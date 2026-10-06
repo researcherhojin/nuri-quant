@@ -18,6 +18,7 @@ import "@testing-library/jest-dom";
 import type { ComponentType, ReactNode } from "react";
 
 type FlowNode = { id: string; type?: string; data?: Record<string, unknown> };
+
 type NodeTypesMap = Record<string, ComponentType<{ data?: FlowNode["data"] }>>;
 
 // ReactFlow mock 이 실제 PipelineNode (nodeTypes.pipeline) 를 렌더하도록.
@@ -33,6 +34,7 @@ vi.mock("@xyflow/react", () => ({
   }) => {
     const types = typeof nodeTypes === "function" ? nodeTypes() : nodeTypes;
     const NodeComponent = types?.pipeline;
+
     return (
       <div data-testid="react-flow">
         {nodes?.map((n) =>
@@ -114,15 +116,19 @@ describe("Pipeline page — helper catch branches", () => {
       if (opts?.method === "POST") {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
       }
+
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps }) });
       }
+
       if (url.includes("/api/pipeline/timeline")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: timeline }) });
       }
+
       if (url.includes("/api/gate")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(gates) });
       }
+
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;

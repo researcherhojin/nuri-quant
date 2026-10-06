@@ -43,6 +43,7 @@ function krColumnText(c: CoverageCheck): string {
   // For non-US-only, the detail already includes the ticker count;
   // extract just the first "X/Y" fragment if present, else show detail.
   const match = c.detail.match(/(\d+\/\d+)/);
+
   return match ? match[1] : c.detail;
 }
 
@@ -91,6 +92,7 @@ export function CoverageStatus({ data }: { data: CoverageData }) {
           {data.checks.map((c) => {
             const statusStyle = c.status === "PASS" ? "text-emerald-400" : "text-red-400";
             const krStyle = c.us_only ? "text-faint italic" : "text-foreground";
+
             return (
               <tr key={c.name} className="border-b border-border/30 last:border-0">
                 <td className="py-1 font-mono">{displayName(c.name)}</td>

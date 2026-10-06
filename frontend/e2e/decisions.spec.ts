@@ -22,6 +22,7 @@ test.describe("Decisions Page", () => {
     const rows = page.locator('[data-testid="decisions-row"]');
     const empty = page.locator("text=make consensus");
     await expect(rows.first().or(empty.first())).toBeVisible({ timeout: 10000 });
+
     if ((await rows.count()) > 0) {
       await expect(page.locator('[data-testid="decisions-date-header"]').first()).toBeVisible();
     }

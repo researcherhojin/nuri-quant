@@ -18,6 +18,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 
 type DynamicLoader = () => Promise<unknown>;
+
 type DynamicOptions = {
   ssr?: boolean;
   loading?: () => React.ReactElement;
@@ -43,6 +44,7 @@ vi.mock("next/dynamic", () => ({
     captured.options = options;
     const Resolved = () => (options.loading ? options.loading() : null);
     Resolved.displayName = "MockDynamic";
+
     return Resolved;
   },
 }));
@@ -72,15 +74,18 @@ describe("InteractiveBacktestLazy", () => {
     const el = captured.options?.loading?.() as React.ReactElement<{
       "data-testid": string;
     }>;
+
     expect(el).toBeTruthy();
     expect(el.props["data-testid"]).toBe("interactive-backtest-loading");
   });
 
   it("dynamic loader resolves the InteractiveBacktest named export", async () => {
     expect(captured.loader).toBeDefined();
+
     const Comp = (await captured.loader!()) as React.ComponentType<
       Record<string, unknown>
     >;
+
     render(<Comp data-testid="loader-result" />);
     expect(screen.getByTestId("interactive-backtest-loaded")).toBeInTheDocument();
   });

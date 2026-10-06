@@ -49,6 +49,7 @@ export function CollapsibleStrip({
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_PREFIX + id);
+
       // eslint-disable-next-line react-hooks/set-state-in-effect
       if (saved === "true") setHidden(true);
     } catch {
@@ -59,11 +60,13 @@ export function CollapsibleStrip({
   const toggle = () => {
     setHidden((prev) => {
       const next = !prev;
+
       try {
         localStorage.setItem(STORAGE_PREFIX + id, String(next));
       } catch {
         // ignore
       }
+
       return next;
     });
   };
@@ -71,6 +74,7 @@ export function CollapsibleStrip({
   // Empty state — nothing to show, nothing to collapse
   if (count === 0) {
     if (!emptyText) return null;
+
     return (
       <div
         className={`text-[10px] text-zinc-500 px-2 py-0.5 ${className}`}

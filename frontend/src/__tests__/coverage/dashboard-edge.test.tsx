@@ -46,10 +46,15 @@ describe("Dashboard — error fallbacks and redirect", () => {
             actions: [], alerts: [], gate_score: 80, n_positions: 0,
           });
         }
+
         if (path === "/api/freshness") return Promise.reject(new Error("fail"));
+
         if (path === "/api/pipeline/status") return Promise.reject(new Error("fail"));
+
         if (path === "/api/portfolio") return Promise.resolve({ holdings: [], count: 0 });
+
         if (path === "/api/rebalance-advisor") return Promise.reject(new Error("fail"));
+
         return Promise.resolve({});
       }),
     }));
@@ -85,9 +90,12 @@ describe("Dashboard — error fallbacks and redirect", () => {
             gate_score: 90, n_positions: 5,
           });
         }
+
         // These catch() fallbacks at lines 62-64
         if (path === "/api/freshness") return Promise.reject(new Error("503 service unavailable"));
+
         if (path === "/api/pipeline/status") return Promise.reject(new Error("503 service unavailable"));
+
         // Portfolio with holdings (no redirect)
         if (path === "/api/portfolio") return Promise.resolve({
           holdings: [
@@ -96,13 +104,16 @@ describe("Dashboard — error fallbacks and redirect", () => {
           ],
           count: 2,
         });
+
         // Lines 69-70: catch(() => null)
         if (path === "/api/rebalance-advisor") return Promise.reject(new Error("fail"));
+
         return Promise.resolve({});
       }),
     }));
 
     const { default: OverviewPage } = await import("@/app/page");
+
     try {
       const pageElement = OverviewPage();
       await act(async () => { render(pageElement); });
@@ -148,11 +159,16 @@ describe("Dashboard — portfolio API failure (line 64)", () => {
             actions: [], alerts: [], gate_score: 80, n_positions: 0,
           });
         }
+
         if (path === "/api/freshness") return Promise.resolve({ items: [], overall: "PASS" });
+
         if (path === "/api/pipeline/status") return Promise.resolve({ steps: [] });
+
         // Portfolio API FAILS — triggers .catch(() => null) on line 64
         if (path === "/api/portfolio") return Promise.reject(new Error("portfolio API down"));
+
         if (path === "/api/rebalance-advisor") return Promise.resolve(null);
+
         return Promise.resolve({});
       }),
     }));

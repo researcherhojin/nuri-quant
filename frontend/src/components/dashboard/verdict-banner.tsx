@@ -19,6 +19,7 @@ const BANNER_STYLES: Record<string, { box: string; tag: string }> = {
 export function VerdictBanner({ verdict, level }: { verdict: string; level: string }) {
   const s = BANNER_STYLES[level] ?? BANNER_STYLES.neutral;
   const label = verdictLabels[level] ?? verdictLabels.neutral;
+
   return (
     <div
       data-testid="verdict-banner"

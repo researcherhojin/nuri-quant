@@ -32,15 +32,20 @@ export const categoryStyles: Record<string, { emoji: string; color: string }> = 
 
 export function healthColor(value: number, thresholds: [number, number]): string {
   if (value >= thresholds[1]) return "text-emerald-400";
+
   if (value >= thresholds[0]) return "text-amber-400";
+
   return "text-red-400";
 }
 
 // #503 Phase A — regime stripe color (events card 좌측 border)
 export function regimeStripe(trend: string | undefined): string {
   if (trend === "bull") return "border-l-emerald-500/60";
+
   if (trend === "bear") return "border-l-red-500/60";
+
   if (trend === "sideways") return "border-l-amber-500/60";
+
   return "border-l-zinc-700/60";
 }
 
@@ -58,10 +63,13 @@ const CRITICAL_CATEGORIES = new Set([
 export function shouldPinCard(events: MacroEvent[]): boolean {
   const now = Date.now();
   const cutoff = now - 24 * 60 * 60 * 1000;
+
   return events.some(ev => {
     if (!CRITICAL_CATEGORIES.has(ev.category)) return false;
+
     if ((ev.confidence ?? 0) < 0.8) return false;
     const ts = Date.parse(ev.published_at);
+
     return Number.isFinite(ts) && ts >= cutoff;
   });
 }
@@ -69,6 +77,7 @@ export function shouldPinCard(events: MacroEvent[]): boolean {
 // #503 Phase B — regime banner: regime confidence 가 60% 미만이면 전환 임박 신호.
 export function isRegimeShifting(regime: Partial<SystemHealth["regime"]>): boolean {
   const conf = regime.confidence ?? 100;
+
   return conf < 60 && conf > 0;
 }
 
@@ -77,23 +86,30 @@ export function isRegimeShifting(regime: Partial<SystemHealth["regime"]>): boole
 export function sparklinePath(events: MacroEvent[], width: number, height: number): { path: string; latest: number } | null {
   if (events.length === 0) return null;
   const buckets: Record<string, number[]> = {};
+
   for (const ev of events) {
     const day = ev.published_at?.slice(0, 10);
+
     if (!day) continue;
     (buckets[day] ||= []).push(ev.sentiment);
   }
+
   const days = Object.keys(buckets).sort();
+
   if (days.length < 2) return null;
   const means = days.map(d => buckets[d].reduce((a, b) => a + b, 0) / buckets[d].length);
   const min = Math.min(...means, -1);
   const max = Math.max(...means, 1);
   /* v8 ignore next */
   const range = max - min || 1; // min≤-1, max≥1 → range≥2, never falsy: `|| 1` unreachable
+
   const points = means.map((m, i) => {
     const x = (i / (means.length - 1)) * width;
     const y = height - ((m - min) / range) * height;
+
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   });
+
   return { path: `M ${points.join(" L ")}`, latest: means[means.length - 1] };
 }
 

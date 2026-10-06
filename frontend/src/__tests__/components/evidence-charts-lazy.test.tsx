@@ -17,6 +17,7 @@ vi.mock("next/dynamic", () => ({
   default: (loader: CapturedCall["loader"], opts?: CapturedCall["opts"]) => {
     captured.push({ loader, opts });
     const Stub = () => <div data-testid="lazy-stub" />;
+
     return Stub;
   },
 }));
@@ -59,8 +60,10 @@ describe("evidence-charts-lazy", () => {
       "fear-greed-loading",
       "sell-evidence-loading",
     ];
+
     captured.forEach((c, i) => {
       const Loading = c.opts?.loading;
+
       if (!Loading) throw new Error(`loading missing at ${i}`);
       render(<Loading />);
       expect(screen.getByTestId(testids[i])).toBeInTheDocument();

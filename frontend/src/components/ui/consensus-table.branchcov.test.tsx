@@ -54,6 +54,7 @@ describe("ConsensusTable — SOURCE_META fallback arms", () => {
     // final_action_source 가 SOURCE_META 에 없는 미지 값 (런타임 미지 enum 시뮬레이션).
     const unknownSource =
       "future_source" as ScoringDetail["final_action_source"];
+
     const data: ConsensusRow[] = [
       makeRow({ scoring_detail: makeScoringDetail(unknownSource) }),
     ];

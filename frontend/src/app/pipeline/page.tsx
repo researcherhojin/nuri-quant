@@ -139,13 +139,17 @@ const EVENT_ICONS: Record<string, IconComponent> = {
 
 function formatAge(dateStr: string | null): string {
   if (!dateStr) return "N/A";
+
   try {
     const dt = new Date(dateStr);
     const now = new Date();
     const hours = (now.getTime() - dt.getTime()) / (1000 * 60 * 60);
+
     if (hours < 1) return "<1h ago";
+
     if (hours < 24) return `${Math.round(hours)}h ago`;
     const days = Math.floor(hours / 24);
+
     return `${days}d ago`;
   } catch {
     return dateStr;
@@ -155,14 +159,17 @@ function formatAge(dateStr: string | null): string {
 // F-003: 이벤트 아이콘 — 뱃지와 같은 intent 색 (success=emerald, error=red, start=blue)
 export function EventIcon({ type }: { type: string }) {
   const Icon = EVENT_ICONS[type] ?? Circle;
+
   const color =
     type === "success" ? "text-emerald-400" : type === "error" ? "text-red-400" : "text-blue-400";
+
   return <Icon size={13} className={`shrink-0 mt-0.5 ${color}`} aria-hidden="true" data-testid={`event-icon-${type}`} />;
 }
 
 function formatTimestamp(iso: string): string {
   try {
     const dt = new Date(iso);
+
     return dt.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch {
     return iso;
@@ -172,6 +179,7 @@ function formatTimestamp(iso: string): string {
 // F-003: 미지의 step 은 중립 원 — 라이브 데이터가 새 step 을 내보내도 깨지지 않게
 export function StepIcon({ stepId }: { stepId: string }) {
   const Icon = STEP_ICONS[stepId] ?? Circle;
+
   // aria-hidden 명시: lucide 기본값에 기대지 않는다 — 장식 아이콘 (codex #1238 P3, 잠금은 branchcov 테스트)
   return <Icon size={15} className="text-muted-foreground" aria-hidden="true" data-testid={`step-icon-${stepId}`} />;
 }
@@ -225,6 +233,7 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <button
         onClick={(e) => {
           e.stopPropagation();
+
           if (!data.isRunning) data.onRun(data.stepId);
         }}
         disabled={data.isRunning}
@@ -268,6 +277,7 @@ PipelineNode.displayName = "PipelineNode";
 // 값을 hex 로 적지 않는 것도 의도다 — 잠금 테스트가 소스의 hex 리터럴을 스윕하는데,
 // 주석에 적힌 옛 값도 똑같이 잡힌다 (주석만 예외로 빼면 스윕이 눈이 멀 자리를 만든다).
 const EDGE_STROKE = "var(--input)";
+
 const CANVAS_DOT = "var(--border)";
 
 const EDGES: Edge[] = [
@@ -325,15 +335,19 @@ export default function PipelinePage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: PipelineStatusData | null) => {
         if (seq !== seqRef.current.status) return;
+
         if (data?.steps) {
           setSteps(data.steps);
           // 실행 중인 스텝 업데이트
           const running = new Set<string>();
+
           for (const s of data.steps) {
             if (s.status === "running") running.add(s.step);
           }
+
           setRunningSteps(running);
         }
+
         setStatusState("ok");
       })
       .catch(() => {
@@ -348,6 +362,7 @@ export default function PipelinePage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: { events: TimelineEvent[] } | null) => {
         if (seq !== seqRef.current.timeline) return;
+
         if (data?.events) setTimeline(data.events);
         setTimelineState("ok");
       })
@@ -363,6 +378,7 @@ export default function PipelinePage() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((data: Record<string, GateResult> | null) => {
         if (seq !== seqRef.current.gate) return;
+
         if (data) setGates(data);
         setGateState("ok");
       })
@@ -398,9 +414,11 @@ export default function PipelinePage() {
           setRunningSteps((prev) => {
             const next = new Set(prev);
             next.delete(stepId);
+
             return next;
           });
         }
+
         // 실행 시작 후 상태 새로고침
         setTimeout(fetchStatus, 1000);
         setTimeout(fetchTimeline, 1000);
@@ -409,6 +427,7 @@ export default function PipelinePage() {
         setRunningSteps((prev) => {
           const next = new Set(prev);
           next.delete(stepId);
+
           return next;
         });
       });
@@ -417,8 +436,11 @@ export default function PipelinePage() {
   // 스텝 상태 → 노드 status 변환
   const getNodeStatus = (step: PipelineStep): "ok" | "warning" | "error" | "running" => {
     if (step.status === "running" || runningSteps.has(step.step)) return "running";
+
     if (step.status === "error") return "error";
+
     if (step.status === "done") return "ok";
+
     // idle 상태에서 레코드가 있으면 ok, 없으면 warning
     return step.record_count > 0 ? "ok" : "warning";
   };

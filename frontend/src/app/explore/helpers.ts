@@ -10,26 +10,39 @@ export function trendKo(t: string) {
 
 export function vixZone(v: number | null): { label: string; color: string } {
   if (v == null) return { label: "—", color: "text-zinc-500" };
+
   if (v < 12) return { label: VIX_ZONE.CALM, color: "text-blue-400" };
+
   if (v < 17) return { label: VIX_ZONE.LOW, color: "text-emerald-400" };
+
   if (v < 23) return { label: VIX_ZONE.NORMAL, color: "text-zinc-300" };
+
   if (v < 33) return { label: VIX_ZONE.CAUTION, color: "text-orange-400" };
+
   return { label: VIX_ZONE.DANGER, color: "text-red-400" };
 }
 
 export function fgLabel(fg: number | null): string {
   if (fg == null) return "—";
+
   if (fg < 25) return FEAR_GREED.EXTREME_FEAR;
+
   if (fg < 45) return FEAR_GREED.FEAR;
+
   if (fg <= 55) return FEAR_GREED.NEUTRAL;
+
   if (fg <= 75) return FEAR_GREED.GREED;
+
   return FEAR_GREED.EXTREME_GREED;
 }
 
 export function macroLevel(s: number): { label: string; color: string } {
   if (s >= 70) return { label: MACRO_LEVEL.GOOD, color: "text-emerald-400" };
+
   if (s >= 50) return { label: MACRO_LEVEL.NORMAL, color: "text-zinc-300" };
+
   if (s >= 30) return { label: MACRO_LEVEL.WEAK, color: "text-orange-400" };
+
   return { label: MACRO_LEVEL.FRAGILE, color: "text-red-400" };
 }
 
@@ -51,6 +64,7 @@ export function signalKo(id: string): string {
 
 export function formatPrice(price: number | null, isKr: boolean): string {
   if (price == null) return EXPLORE.NO_PRICE;
+
   return isKr
     ? `₩${Math.round(price).toLocaleString()}`
     : price < 100 ? `$${price.toFixed(2)}` : `$${Math.round(price).toLocaleString()}`;
@@ -59,6 +73,7 @@ export function formatPrice(price: number | null, isKr: boolean): string {
 export function formatDelta(price: number | null, prev: number | null): { str: string; color: string } | null {
   if (price == null || prev == null || prev <= 0) return null;
   const delta = ((price - prev) / prev) * 100;
+
   return {
     str: `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}%`,
     color: delta >= 0 ? "text-emerald-400" : "text-red-400",

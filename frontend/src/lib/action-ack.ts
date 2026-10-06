@@ -30,7 +30,9 @@ export function actionKey(item: AckableItem): string {
 export function isNewItem(item: AckableItem, map: AckMap | null): boolean {
   if (map === null) return false;
   const acked = map[actionKey(item)];
+
   if (acked === undefined) return true;
+
   // ISO(YYYY-MM-DD) 문자열 비교 = 시간 순 비교. as_of 없는 항목은 ack 1회면 종결.
   return item.as_of != null && item.as_of > acked;
 }
@@ -38,13 +40,17 @@ export function isNewItem(item: AckableItem, map: AckMap | null): boolean {
 export function loadAckMap(): AckMap {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
+
     if (!raw) return {};
     const parsed: unknown = JSON.parse(raw);
+
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
     const map: AckMap = {};
+
     for (const [k, v] of Object.entries(parsed)) {
       if (typeof v === "string") map[k] = v;
     }
+
     return map;
   } catch {
     return {};
@@ -54,10 +60,12 @@ export function loadAckMap(): AckMap {
 /** ack 후의 새 맵을 반환하고 저장은 best-effort (실패해도 in-memory 는 동작) */
 export function ackItem(map: AckMap, item: AckableItem): AckMap {
   const next = { ...map, [actionKey(item)]: item.as_of ?? "" };
+
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   } catch {
     // 저장 불가 환경 — 세션 내 in-memory ack 만 유지
   }
+
   return next;
 }

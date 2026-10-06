@@ -11,6 +11,7 @@ export function VixBanner({ vix }: { vix: number | null }) {
   if (!vix || vix < 25) return null;
 
   const isBlocked = vix >= 30;
+
   return (
     <div className={`rounded-lg px-4 py-2.5 text-sm flex items-center gap-2 ${
       isBlocked ? "bg-red-500/10 border border-red-500/20 text-red-400"
@@ -33,12 +34,14 @@ interface ConsensusRegime {
 
 export async function ConsensusSection() {
   let data: { regime: ConsensusRegime; results: ConsensusRow[]; count: number };
+
   try {
     data = await fetchAPI<{ regime: ConsensusRegime; results: ConsensusRow[]; count: number }>("/api/consensus");
   } catch {
     // #1119 슬롯 shed(503) 포함 — 섹션만 강등, 페이지 shape 유지 (codex #1239 P2)
     return <p className="text-xs text-muted-foreground">{COMMON.DEGRADED}</p>;
   }
+
   const sorted = [...data.results].sort((a, b) => b.final_confidence - a.final_confidence);
 
   return (
@@ -58,13 +61,16 @@ export async function ConsensusSection() {
 
 export async function DissentSection() {
   let data: { results: ConsensusRow[] };
+
   try {
     data = await fetchAPI<{ results: ConsensusRow[] }>("/api/consensus");
   } catch {
     // #1119 슬롯 shed(503) 포함 — 위 ConsensusSection 이 이미 강등 문구를 띄우므로 조용히 생략
     return null;
   }
+
   const withDissent = data.results.filter((r) => r.dissent.length > 0).slice(0, 6);
+
   if (!withDissent.length) return null;
 
   return (

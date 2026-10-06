@@ -57,6 +57,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
         const { container, rerender } = render(
             <OpportunityExplorer opportunities={[]} />,
         );
+
         expect(container.querySelector("table")).toBeNull(); // empty arm
         rerender(
             <OpportunityExplorer opportunities={[make({ ticker: "BUYX" })]} />,
@@ -143,6 +144,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
             ok: false,
             json: async () => ({}),
         });
+
         vi.stubGlobal("fetch", fetchMock);
 
         render(
@@ -170,6 +172,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
             // agreement_rate falsy(0) -> `: 0` arm.
             json: async () => ({ agreement_rate: 0 }),
         });
+
         vi.stubGlobal("fetch", fetchMock);
 
         render(
@@ -183,6 +186,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 (el?.className ?? "").includes("bg-zinc-700") &&
                 (el?.textContent ?? "") === "HOLD",
         );
+
         expect(badge).toBeTruthy();
         // confidence 0 fallback
         expect(screen.getByText("판정 0")).toBeTruthy();
@@ -200,6 +204,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 agreement_rate: 0.6,
             }),
         });
+
         vi.stubGlobal("fetch", fetchMock);
 
         render(
@@ -213,6 +218,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 (el?.className ?? "").includes("bg-emerald-500/20") &&
                 (el?.textContent ?? "") === "BUY",
         );
+
         expect(badge).toBeTruthy();
         expect(screen.getByText("판정 42")).toBeTruthy();
         expect(screen.getByText("60% 합의")).toBeTruthy();
@@ -229,6 +235,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 divergence_reason: "", // empty -> `|| "기술지표 반대"` fallback
             }),
         });
+
         vi.stubGlobal("fetch", fetchMock);
 
         render(
@@ -242,6 +249,7 @@ describe("OpportunityExplorer / OpportunityCard branch coverage", () => {
                 (el?.className ?? "").includes("bg-red-500/20") &&
                 (el?.textContent ?? "") === "SELL",
         );
+
         expect(badge).toBeTruthy();
         // divergence badge with fallback title
         const div = screen.getByTestId("divergence-badge");

@@ -65,6 +65,7 @@ describe("RegimeSchema", () => {
       ...valid,
       details: { vix: 15.5, sma50: 550, nested: { a: 1 } },
     });
+
     expect(result.details).toHaveProperty("vix");
   });
 });
@@ -119,6 +120,7 @@ describe("MacroSchema", () => {
       inflation_score: 0,
       monetary_score: 0,
     };
+
     const result = MacroSchema.parse(zeros);
     expect(result.total_score).toBe(0);
   });
@@ -139,6 +141,7 @@ describe("MacroSchema", () => {
       "inflation_score",
       "monetary_score",
     ];
+
     for (const key of scoreKeys) {
       const copy = { ...valid };
       delete (copy as Record<string, unknown>)[key];
@@ -253,6 +256,7 @@ describe("ScorecardSchema", () => {
       "total_trades", "win_rate", "avg_return", "profit_factor",
       "median_return", "max_return", "max_loss", "avg_holding_days",
     ];
+
     for (const key of numericKeys) {
       const copy = { ...valid };
       delete (copy as Record<string, unknown>)[key];
@@ -310,6 +314,7 @@ describe("RebalanceActionSchema", () => {
       current_weight: 0,
       target_weight: 0,
     });
+
     expect(result.current_weight).toBe(0);
     expect(result.target_weight).toBe(0);
   });
@@ -341,6 +346,7 @@ describe("StrategySchema", () => {
       avoid_signals: [],
       sector_preference: [],
     });
+
     expect(result.recommended_signals).toEqual([]);
     expect(result.avoid_signals).toEqual([]);
     expect(result.sector_preference).toEqual([]);
@@ -372,6 +378,7 @@ describe("StrategySchema", () => {
         macd_golden: { win_rate: 0.7, pf: 2.1, trades: 80 },
       },
     });
+
     expect(Object.keys(result.signal_regime_stats)).toHaveLength(2);
   });
 

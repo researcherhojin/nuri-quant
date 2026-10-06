@@ -58,6 +58,7 @@ describe("holdings-summary branch coverage top-up", () => {
       mkHolding({ ticker: "WITHPCT", positionPct: 20, sector: "Tech" }),
       mkHolding({ ticker: "NULLPCT", positionPct: null, sector: "Energy" }),
     ];
+
     const summary = summarizeHoldings(holdings, baseOpts);
 
     // Only the non-null holding is visible → it owns 100% of visible weight.
@@ -88,6 +89,7 @@ describe("holdings-summary branch coverage top-up", () => {
       { account: "Acct-E", value: 20000 },
       { account: "Acct-F", value: 10000 }, // 6th → OTHER_COLOR
     ];
+
     const summary = summarizeHoldings([], { ...baseOpts, accountValues });
 
     expect(summary.byAccount).toHaveLength(6);
@@ -106,6 +108,7 @@ describe("holdings-summary branch coverage top-up", () => {
     const holdings: EnrichedHolding[] = [
       mkHolding({ ticker: "NODELTA", sector: "Energy", positionPct: 30, dailyDeltaPct: null }),
     ];
+
     const summary = summarizeHoldings(holdings, baseOpts);
 
     expect(summary.sectors).toHaveLength(1);
@@ -121,6 +124,7 @@ describe("holdings-summary branch coverage top-up", () => {
     const holdings: EnrichedHolding[] = [
       mkHolding({ ticker: "005930.KS", name: "", sector: "Tech", positionPct: 40 }),
     ];
+
     const summary = summarizeHoldings(holdings, baseOpts);
 
     const slice = summary.byTicker.find((t) => t.ticker === "005930.KS");

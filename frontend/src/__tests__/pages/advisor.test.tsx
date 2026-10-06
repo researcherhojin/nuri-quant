@@ -8,6 +8,7 @@ import { render, screen, act } from "@testing-library/react";
 import { COMMON } from "@/lib/strings";
 
 const redirectMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
   redirect: (...args: unknown[]) => redirectMock(...args),
 }));

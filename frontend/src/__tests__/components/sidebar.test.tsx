@@ -11,6 +11,7 @@ vi.mock("@/lib/api", () => ({
 
 // Mock next/navigation
 const mockPathname = vi.fn().mockReturnValue("/");
+
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
 }));
@@ -25,9 +26,11 @@ vi.mock("next/link", () => ({
 // Mock lucide-react icons
 vi.mock("lucide-react", () => {
   type IconProps = { size?: number; className?: string; [key: string]: unknown };
+
   const Icon = ({ className, ...props }: IconProps) => (
     <svg data-testid="icon" className={className} {...props} />
   );
+
   return {
     LayoutDashboard: Icon,
     Briefcase: Icon,

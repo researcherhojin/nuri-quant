@@ -16,6 +16,7 @@ const STORAGE_PREFIX = "nuri-dash-strip:";
 
 function makeStorage(initial: Record<string, string> = {}): Storage {
   const store = new Map<string, string>(Object.entries(initial));
+
   return {
     get length() {
       return store.size;
@@ -57,6 +58,7 @@ describe("CollapsibleStrip", () => {
         <div>hidden</div>
       </CollapsibleStrip>,
     );
+
     expect(container.firstChild).toBeNull();
   });
 
@@ -124,6 +126,7 @@ describe("CollapsibleStrip", () => {
         throw new Error("quota");
       },
     };
+
     vi.stubGlobal("localStorage", throwingStorage);
 
     expect(() => {
@@ -144,6 +147,7 @@ describe("CollapsibleStrip", () => {
         throw new Error("quota");
       },
     };
+
     vi.stubGlobal("localStorage", throwingStorage);
 
     render(

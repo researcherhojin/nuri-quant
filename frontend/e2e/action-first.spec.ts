@@ -58,10 +58,12 @@ test.describe("Action-First Dashboard", () => {
     const res = await request.get("/api/actions");
     expect(res.ok()).toBe(true);
     const data = await res.json();
+
     const items: { ticker: string; reasons?: string[] }[] = [
       ...(data.urgent ?? []),
       ...(data.check ?? []),
     ];
+
     test.skip(items.length === 0, "urgent/check 액션 0건 — 검증 대상 없음");
 
     for (const item of items) {
@@ -102,10 +104,12 @@ test.describe("Action-First Dashboard", () => {
     await page.goto("/", { timeout: 20000 });
     await page.waitForTimeout(5000);
     const body = await page.textContent("body");
+
     // Opportunities should show tickers NOT in portfolio (e.g., INTC, SNOW, PLTR)
     const hasOpportunity = body!.includes(OPPORTUNITY.SUBTITLE) || body!.includes(OPPORTUNITY.TITLE) ||
       body!.includes(OPPORTUNITY.POSITIVE) || body!.includes(OPPORTUNITY.NEUTRAL) ||
       body!.includes(OPPORTUNITY.DANGER);
+
     expect(hasOpportunity).toBe(true);
   });
 
@@ -123,6 +127,7 @@ test.describe("Action-First Dashboard", () => {
     await page.waitForTimeout(5000);
     // TSLA link should navigate to /ticker/TSLA
     const tslaLink = page.locator("a[href='/ticker/TSLA']").first();
+
     if (await tslaLink.count() > 0) {
       await tslaLink.click();
       await page.waitForURL("**/ticker/TSLA", { timeout: 10000 });
@@ -135,6 +140,7 @@ test.describe("Action-First Dashboard", () => {
     await page.waitForTimeout(5000);
     // "유지 종목" section with compact ticker chips
     const holdSection = page.locator("text=유지 종목");
+
     if (await holdSection.count() > 0) {
       await expect(holdSection.first()).toBeVisible();
       // Should have multiple ticker chips in hold section

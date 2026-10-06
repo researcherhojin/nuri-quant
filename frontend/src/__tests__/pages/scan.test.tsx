@@ -48,9 +48,11 @@ function setupFetchAPI(overrides: { scan?: unknown; swing?: unknown } = {}) {
     if (path.includes("/api/scan")) {
       return Promise.resolve(overrides.scan ?? mockScan);
     }
+
     if (path.includes("/api/swing/entries")) {
       return Promise.resolve(overrides.swing ?? mockSwing);
     }
+
     return Promise.resolve({});
   });
 }
@@ -159,7 +161,9 @@ describe("ScanPage", () => {
   it("renders scan rows with dashed agent fields when the swing API fails", async () => {
     mockFetchAPI = vi.fn().mockImplementation((path: string) => {
       if (path.includes("/api/scan")) return Promise.resolve(mockScan);
+
       if (path.includes("/api/swing/entries")) return Promise.reject(new Error("500"));
+
       return Promise.resolve({});
     });
     const { default: ScanPage } = await import("@/app/scan/page");
@@ -187,6 +191,7 @@ describe("ScanPage", () => {
   it("scan fetch 실패(503 shed 포함) → 빈 shape 강등, 페이지 생존 (#1119)", async () => {
     mockFetchAPI = vi.fn().mockImplementation((path: string) => {
       if (path.includes("/api/scan")) return Promise.reject(new Error("API /api/scan: 503"));
+
       return Promise.resolve({ entries: [], approved: 0, rejected: 0 });
     });
     const { default: ScanPage } = await import("@/app/scan/page");
