@@ -2,7 +2,7 @@
   "_comment": "MCP (Model Context Protocol) 서버 — Claude Code/Cursor가 사용할 도구. raw SQLite 접근(mcp-server-sqlite)은 커밋된 기본값에 두지 않는다 (#1306 codex P1): portfolio/trades 에 임의 SQL 이 닿아 Tier 1 privacy 경계가 로컬 설정에 의존하게 된다. ad-hoc 스키마 탐색이 필요하면 개인 설정(~/.claude.json 등)에 로컬로만 등록할 것",
   "mcpServers": {
     "nuri-read": {
-      "_comment": "Tier 1 비민감 read model (#1306) — buy candidates·macro fact·data freshness. stdio 전용(바인딩 없음), read-only(mode=ro + query_only)",
+      "_comment": "Tier 1 비민감 read model (#1306) — buy candidates·macro fact·data freshness·live quote(yfinance). stdio 전용(바인딩 없음), read-only(mode=ro + query_only)",
       "command": "uv",
       "args": [
         "run",
