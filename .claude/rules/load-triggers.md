@@ -16,7 +16,7 @@
 | `nuri/agents/` (actor fleet + discord bot) | `nuri/agents/CLAUDE.md` — actor contract (Layer A/B/C), `CANONICAL_ACTORS`/`DORMANT_ACTORS` 2-tier roster, single-writer Discord invariant, `SCHEDULES` wiring |
 | `nuri/api/` (FastAPI routes) | `nuri/api/CLAUDE.md` — router registration, no-`response_model` convention, error-handling split, cache TTL gotchas |
 | `scripts/` (shell automation, no scoped CLAUDE.md) | source docstring; `make lint-sh` (shellcheck); `scripts/verify/pre_push_check.sh` for safety contract |
-| `nuri/mcp/` (read-model MCP server, no scoped CLAUDE.md) | `nuri/mcp/server.py` + `readmodels.py` + `source.py` 모듈 독스트링 — 출처는 `NURI_DB_PATH` > 최신 `data/replicas/*.db` > 기본 DB, 신선도는 `data_freshness` (#1617) · stdio 전용 · 전 쿼리 `readonly=True` · `ALLOWED` 컬럼 dict 가 곧 SQL · `decisions` 전체 제외(보유 오라클). 잠금: `tests/mcp_server/test_readmodels_privacy.py` |
+| `nuri/mcp/` (read-model MCP server, no scoped CLAUDE.md) | `nuri/mcp/server.py` + `readmodels.py` + `source.py` 모듈 독스트링 — 출처는 `NURI_DB_PATH` > 최신 `data/replicas/*.db` > 기본 DB, 신선도는 `data_freshness` (#1617) · 현재가는 `live_quote`(yfinance, DB 미접근, #1626) · stdio 전용 · 전 쿼리 `readonly=True` · `ALLOWED` 컬럼 dict 가 곧 SQL · `decisions` 전체 제외(보유 오라클). 잠금: `tests/mcp_server/test_readmodels_privacy.py` |
 | `.github/**`, `uv.lock`, `frontend/package-lock.json`, `pyproject.toml`, lock 게이트 스크립트 | `.claude/rules/ci-deps.md` (path-scoped, 자동 로드) — override 하한·dependabot semver·venv 캐시 gotcha |
 | `.claude/settings.json`, `scripts/hooks/**` | `.claude/rules/hooks.md` (path-scoped, 자동 로드) — `printf` 만·POSIX sh 만, mutation 실측 |
 | DB migrations / schema changes | `nuri/core/CLAUDE.md` + `_MIGRATIONS` list in `nuri/core/db_migrations.py` (forward-only, never edit existing migration) |

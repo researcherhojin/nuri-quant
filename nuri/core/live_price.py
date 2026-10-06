@@ -107,6 +107,40 @@ def fetch_live_price(ticker: str) -> float | None:
         return None
 
 
+def fetch_quote(ticker: str) -> dict | None:
+    """yfinance fast_info 로 현재 호가 한 건을 사실 그대로 — 시장 시간으로 걸러내지 않는다 (#1626).
+
+    `fetch_live_price()` 는 divergence 검사용이라 장외에는 아예 조회하지 않지만, "지금 얼마인가" 를
+    묻는 소비자(MCP `live_quote`)에게는 장외의 마지막 체결가도 사실이다. 대신 `market_open` 을
+    같이 실어 소비자가 그 값을 실시간으로 오해하지 않게 한다. 미상장 티커·네트워크 실패는 None.
+    """
+    try:
+        import yfinance as yf
+
+        info = yf.Ticker(ticker).fast_info
+        price = info.last_price  # 미상장 티커는 여기서 KeyError
+        if price is None or price <= 0:
+            return None
+        # `previous_close` 는 장외 시간 봉까지 섞은 값이라 공식 일간 변동과 어긋난다 (Codex 리뷰) —
+        # 정규장 종가 기준을 쓴다.
+        prev = info.regular_market_previous_close
+        change_pct = round((float(price) - prev) / prev * 100, 2) if prev else None
+        return {
+            "ticker": ticker,
+            "price": float(price),
+            "previous_close": float(prev) if prev else None,
+            "change_pct": change_pct,
+            "currency": info.currency,
+            "exchange": info.exchange,
+            "market_open": is_market_open_for(ticker),
+            "fetched_at": kst_now().isoformat(timespec="seconds"),
+            "source": "yfinance",
+        }
+    except Exception as e:  # yfinance 이 다양한 내부 에러를 던짐
+        logger.debug("quote fetch 실패 ticker=%s err=%s", ticker, e)
+        return None
+
+
 def check_divergence(
     ticker: str,
     stored_price: float,

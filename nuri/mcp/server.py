@@ -1,4 +1,4 @@
-"""stdio MCP 서버 — Tier 1 read model 3종 노출 (#1306; `siege_status` 는 #1619 로 제거).
+"""stdio MCP 서버 — Tier 1 read model 4종 노출 (#1306; `siege_status` 는 #1619 로 제거, `live_quote` 는 #1626 추가).
 
 - **stdio 전용**: 네트워크 바인딩이 존재하지 않는다 — "외부 바인딩 부재" 수용 기준이
   설정이 아니라 구조로 성립한다. 클라이언트(Claude Code 등)가 `.mcp.json` 의
@@ -18,6 +18,7 @@ from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 
+from nuri.core.live_price import fetch_quote
 from nuri.mcp import readmodels, source
 
 server = MCPServer(
@@ -26,6 +27,7 @@ server = MCPServer(
         "nuri-quant 시스템 산출물의 비민감(Tier 1) read model. 매매 판단 질문에는 "
         "추측 대신 이 도구들을 조회할 것. 먼저 data_freshness 로 출처와 신선도를 확인하고, "
         "stale 이면 결과를 현재 상태로 제시하지 말고 그 사실과 최신 시각을 함께 밝힐 것. "
+        "현재가가 필요하면 저장된 T-1 가격 대신 live_quote 로 직접 조회할 것. "
         "보유 수량·평단·계좌 정보는 설계상 존재하지 않는다 (Tier 2 별도 이슈). 응답을 "
         "public 매체(이슈·PR 등)에 옮길 때는 레포 privacy 규칙(ticker+손익% 조합 금지)을 적용할 것."
     ),
@@ -42,6 +44,35 @@ def buy_candidates(run_date: str | None = None) -> dict[str, Any]:
 def macro_facts() -> dict[str, Any]:
     """VIX 최신값 + 최근 후보 run 의 regime (run_date 포함 — 신선도는 data_freshness 로 확인)."""
     return readmodels.macro_facts(db_path=source.resolve_source().path)
+
+
+#: 한 호출당 티커 상한 — yfinance 는 10 스레드까지 무난하지만(gotchas) 이 도구는 순차 호출이고,
+#: 상한이 없으면 유니버스 전체를 긁는 호출이 가능해진다.
+LIVE_QUOTE_MAX_TICKERS = 10
+
+
+@server.tool()
+def live_quote(tickers: list[str]) -> list[dict[str, Any]]:
+    """호출자가 지정한 티커의 현재 호가 (yfinance fast_info, #1626). DB 를 읽지 않는다.
+
+    티커당 {ticker, price, previous_close, change_pct, currency, exchange, market_open,
+    fetched_at, source} 또는 {ticker, error}. `market_open` 이 False 면 price 는 마지막
+    체결가(장외)다. 최대 10개 — 보유 종목 목록은 설계상 여기 없으며, 티커는 호출자가 댄다.
+    """
+    seen: list[str] = []
+    for raw in tickers:
+        t = str(raw).strip().upper()
+        if t and t not in seen:
+            seen.append(t)
+    if not seen:
+        return []
+    if len(seen) > LIVE_QUOTE_MAX_TICKERS:
+        return [{"ticker": t, "error": f"too many tickers (> {LIVE_QUOTE_MAX_TICKERS})"} for t in seen]
+    out: list[dict[str, Any]] = []
+    for t in seen:
+        quote = fetch_quote(t)
+        out.append(quote if quote is not None else {"ticker": t, "error": "no quote (unknown ticker or fetch failed)"})
+    return out
 
 
 @server.tool()

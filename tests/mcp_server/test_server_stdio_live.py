@@ -22,7 +22,7 @@ from nuri.core.db import get_db, init_db
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_TOOLS = {"buy_candidates", "macro_facts", "data_freshness"}
+EXPECTED_TOOLS = {"buy_candidates", "macro_facts", "data_freshness", "live_quote"}
 
 
 @pytest.fixture()
