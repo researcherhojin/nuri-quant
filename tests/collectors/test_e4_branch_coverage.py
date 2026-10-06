@@ -263,8 +263,8 @@ class TestFilingsMain:
     """L172-176: __main__ CLI dispatch."""
 
     def test_main_with_ticker_finds_data(self, monkeypatch, capsys):
-        """--ticker AAPL → print_filings([result])."""
-        import runpy
+        """--ticker AAPL → print_filings([result]). main() 을 직접 부르므로 모듈 속성 패치가 산다 (#1642)."""
+        from nuri.collectors import filings
 
         fake_result = {
             "ticker": "AAPL",
@@ -272,34 +272,47 @@ class TestFilingsMain:
             "form": "10-K",
             "revenue": 100e9,
         }
-        monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "AAPL"])
-        monkeypatch.setattr("nuri.collectors.filings.parse_10k", lambda t: fake_result)
-        runpy.run_module("nuri.collectors.filings", run_name="__main__")
+        calls: list[str] = []
+        monkeypatch.setattr(filings, "parse_10k", lambda t: calls.append(t) or fake_result)
+        assert filings.main(["--ticker", "AAPL"]) == 0
         out = capsys.readouterr().out
+        assert calls == ["AAPL"], "실제 parse_10k(EDGAR) 가 아니라 stub 이 불려야 한다"
         assert "AAPL" in out
 
     def test_main_with_ticker_no_data(self, monkeypatch, capsys):
         """--ticker FAKE → 'no 10-K' message."""
-        import runpy
+        from nuri.collectors import filings
 
-        monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "FAKE"])
-        monkeypatch.setattr("nuri.collectors.filings.parse_10k", lambda t: None)
-        runpy.run_module("nuri.collectors.filings", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "10-K" in out
+        monkeypatch.setattr(filings, "parse_10k", lambda t: None)
+        assert filings.main(["--ticker", "FAKE"]) == 0
+        assert "10-K 없음" in capsys.readouterr().out
 
     def test_main_no_ticker_uses_collect(self, monkeypatch, capsys, db_with_portfolio):
         """no --ticker → collect_filings() + print_filings."""
-        import runpy
+        from nuri.collectors import filings
 
-        monkeypatch.setattr(sys, "argv", ["filings"])
-        monkeypatch.setattr(
-            "nuri.collectors.filings.collect_filings",
-            lambda **kw: [],
-        )
-        runpy.run_module("nuri.collectors.filings", run_name="__main__")
-        out = capsys.readouterr().out
-        assert "10-K" in out or out  # smoke
+        called = []
+        monkeypatch.setattr(filings, "collect_filings", lambda **kw: called.append(kw) or [])
+        assert filings.main([]) == 0
+        assert called == [{}]
+
+    def test_module_guard_runs_main_without_touching_edgar(self, monkeypatch, capsys):
+        """`if __name__ == "__main__"` — runpy 는 모듈 소스를 다시 실행해 모듈 속성 패치를 버린다.
+        그래서 재실행된 코드가 **다른 모듈을 통해** 닿는 경계(edgar import)를 막고, 그 stub 이
+        불렸는지 단언한다. 이전 버전은 parse_10k 패치가 떨어져 매 실행마다 EDGAR 를 호출했다 (#1642)."""
+        import runpy
+        import sys
+        from unittest.mock import MagicMock
+
+        fake_edgar = MagicMock()
+        fake_edgar.Company.return_value.get_filings.return_value = []  # 10-K 없음 경로
+        monkeypatch.setitem(sys.modules, "edgar", fake_edgar)
+        monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "FAKE"])
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.collectors.filings", run_name="__main__")
+        assert exc.value.code == 0
+        fake_edgar.Company.assert_called_once_with("FAKE")
+        assert "10-K 없음" in capsys.readouterr().out
 
 
 # ─────────────────────────────────────────────────────────────────

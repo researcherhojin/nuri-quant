@@ -161,12 +161,13 @@ def print_filings(results: list[dict]) -> None:
     print()
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: `--ticker T` 면 그 종목의 최신 10-K, 없으면 보유 전체 (#1642: runpy 없이 테스트할 수 있게 분리)."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="SEC 10-K Parser")
     parser.add_argument("--ticker", help="특정 종목만")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.ticker:
         result = parse_10k(args.ticker)
@@ -177,3 +178,8 @@ if __name__ == "__main__":
     else:
         results = collect_filings()
         print_filings(results)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
