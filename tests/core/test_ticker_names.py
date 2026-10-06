@@ -53,10 +53,35 @@ class TestGetTickerName:
         ):
             assert ticker_names.get_ticker_name("448290.KS") == "TIGER 미국S&P500"
 
-    def test_kr_no_separator_truncates_to_24_chars(self) -> None:
-        long = "ABCDEFGHIJKLMNOPQRSTUVWXYZ extra long narrative"
-        with patch("nuri.core.db.query", return_value=_mock_meta({"note": long})):
-            assert ticker_names.get_ticker_name("123456.KS") == long[:24]
+    def test_kr_note_without_separator_is_not_used_as_a_name(self) -> None:
+        """#1685: 구분자 없는 note 는 매수 근거 같은 문장일 수 있다 — 잘라 쓰지 않고 다음 소스(pykrx)로 간다.
+        예전엔 앞 24자를 이름으로 냈고, /portfolio 가 그걸 종목 이름으로 보였다."""
+        narrative = "breakout retest entry after earnings beat"
+        with (
+            patch("nuri.core.db.query", return_value=_mock_meta({"note": narrative})),
+            patch("pykrx.stock.get_market_ticker_name", return_value="예시전자"),
+        ):
+            assert ticker_names.get_ticker_name("123456.KS") == "예시전자"
+        ticker_names.get_ticker_name.cache_clear()
+        ticker_names.get_ticker_name_local.cache_clear()
+        with patch("nuri.core.db.query", return_value=_mock_meta({"note": narrative})):
+            assert ticker_names.get_ticker_name_local("123456.KS") is None
+
+    def test_note_starting_with_a_separator_has_no_name_part(self) -> None:
+        """구분자가 맨 앞이면 이름 부분이 비어 있다 — 빈 문자열을 이름으로 내지 않고 다음 소스로 간다."""
+        for note in (" — stop X", "—stop X", " - stop X"):
+            ticker_names.get_ticker_name_local.cache_clear()
+            with patch("nuri.core.db.query", return_value=_mock_meta({"note": note})):
+                assert ticker_names.get_ticker_name_local("777777.KS") is None, note
+
+    def test_local_map_wins_over_a_note_prefix(self) -> None:
+        """#1685: 맵은 이름 소스이고 note 는 자유 메모다 — 둘 다 있으면 맵."""
+        ticker_names._load_kr_name_map.cache_clear()
+        with (
+            patch.object(ticker_names, "_load_kr_name_map", return_value={"654321.KS": "예시지주"}),
+            patch("nuri.core.db.query", return_value=_mock_meta({"note": "다른 문장 — 메모"})),
+        ):
+            assert ticker_names.get_ticker_name_local("654321.KS") == "예시지주"
 
     def test_kr_empty_metadata_falls_through(self) -> None:
         """metadata 가 비어있으면 pykrx fallback (mock 으로 None 반환).
