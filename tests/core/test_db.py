@@ -519,7 +519,7 @@ class TestMigration66PurgesHalfPriceRows:
 
 
 class TestMigration67PurgesZeroOpenBars:
-    """#1644 — 거래정지일에 KIS 현재가로 저장된 시가 0 봉은 마이그레이션이 지운다."""
+    """#1644 — pykrx 가 거래정지일에 준 시가 0·거래량 0 행(stock_kr 이 그대로 저장)은 마이그레이션이 지운다."""
 
     def test_zero_open_bars_are_deleted_and_real_bars_survive(self, db_path):
         with get_db(db_path) as conn:
@@ -533,6 +533,16 @@ class TestMigration67PurgesZeroOpenBars:
         init_db(db_path)
         rows = query("SELECT date FROM prices WHERE ticker = '000001.KS' ORDER BY date", db_path=db_path)
         assert [r["date"] for r in rows] == ["2025-12-15"]
+
+    def test_open_zero_with_volume_is_kept(self, db_path):
+        """시가 필드가 없는 KIS 미국 첫 관측 행(거래량은 있음)은 거래정지 모양이 아니다 — 지우지 않는다."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES ('SPY', '2026-10-06', 0, 0, 0, 775.1, 12345)"
+            )
+            conn.execute("DELETE FROM schema_version WHERE version = 67")
+        init_db(db_path)
+        assert query("SELECT COUNT(*) n FROM prices WHERE ticker = 'SPY'", db_path=db_path)[0]["n"] == 1
 
 
 class TestMigration23ShortHorizonOutcomes:

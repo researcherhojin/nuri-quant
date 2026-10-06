@@ -2134,6 +2134,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # 날은 봉이 아니므로 지운다. 재발은 stock_kr._collect_ticker 가 그 행을 걸러 막는다(일요일
         # 365일 백필이 다시 넣던 것도 그 필터가 막는다). KIS 한국 현재가는 같은 모양을 None 으로
         # 돌리고(방어), 미국 KIS 현재가(시가 필드 없음)는 save() 가드가 완전한 봉을 지킨다 (#1636).
-        "DELETE FROM prices WHERE close IS NOT NULL AND COALESCE(open, 0) = 0;",
+        # 거래량 조건을 함께 둬 stock_kr 의 필터와 같은 모양만 지운다 — 시가 필드가 없는 KIS 미국 첫 관측 행(거래량 있음)은 남는다.
+        "DELETE FROM prices WHERE close IS NOT NULL AND COALESCE(open, 0) = 0 AND COALESCE(volume, 0) = 0;",
     ),
 ]

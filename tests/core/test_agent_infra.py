@@ -60,7 +60,7 @@ class TestSchemaMigrations:
         의 타입. 복제는 2026-09-12 부터 534 회 연속 실패했는데 9 일간 아무 신호가 없었다 +
         prices close NULL 반쪽 행 제거 (#1630) — #1480 이전에 쓰인 행이 레짐 분류기와
         결정 추적기를 TypeError 로 죽였다 +
-        prices 시가 0 봉 제거 (#1644) — 거래정지일 KIS 현재가가 봉으로 저장돼 있었다"""
+        prices 시가 0·거래량 0 봉 제거 (#1644) — pykrx 거래정지일 행을 stock_kr 이 봉으로 저장했었다"""
         assert get_schema_version(db_path) == 67
 
     def test_block_type_allowlist_matches_sql_check(self, db_path):
