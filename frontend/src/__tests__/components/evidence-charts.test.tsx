@@ -56,6 +56,7 @@ import {
 import {
   PortfolioTreemap,
   TreemapCell,
+  cellPropsFromNode,
   buildTreemapData,
   cellStroke,
   valueTooltipFormatter,
@@ -192,6 +193,13 @@ describe("buildTreemapData / cellStroke / TreemapCell", () => {
     expect(cellStroke("overweight")).toBe(VIOLATION_COLORS.overweight);
     // 토큰이어야 한다 — hex 로 되돌리면 테마를 안 따라온다 (#1275).
     expect(cellStroke(null)).toBe("var(--muted)");
+  });
+
+  it("cellPropsFromNode: 숫자가 아닌 pnl_pct·모르는 violation 은 버린다", () => {
+    const node = { children: null, value: 1, depth: 1, index: 0, x: 0, y: 0, width: 10, height: 10, name: "AAA", tooltipIndex: "0" };
+
+    expect(cellPropsFromNode({ ...node, pnl_pct: 3.5, violation: "overweight" })).toMatchObject({ pnl_pct: 3.5, violation: "overweight" });
+    expect(cellPropsFromNode({ ...node, pnl_pct: "3.5", violation: "other" })).toMatchObject({ pnl_pct: undefined, violation: null });
   });
 
   it("TreemapCell: 넓은 셀은 티커+손익 라벨, depth 0 은 빈 그룹", () => {

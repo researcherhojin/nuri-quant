@@ -7,16 +7,27 @@ import { ClientTable } from "@/components/ui/client-table";
 import { SCAN } from "@/lib/strings";
 import { type ScanResult, type SwingEntry, mergeScanSwing } from "./helpers";
 
+interface ScanData {
+  results: ScanResult[];
+  count: number;
+}
+
+interface SwingData {
+  entries: SwingEntry[];
+  approved: number;
+  rejected: number;
+}
+
 // #1219 U4b: Market Scanner(top-15)와 Swing Entries(에이전트 합의 뷰)가 15/20 행을
 // 중복 렌더하던 두 테이블을 ticker union 단일 테이블로 병합. 미승인 사유는 접기 유지.
 async function ScannerSection() {
   const [scanData, swingData] = await Promise.all([
-    fetchAPI<{ results: ScanResult[]; count: number }>("/api/scan?market=us&top=15").catch(
+    fetchAPI<ScanData>("/api/scan?market=us&top=15").catch(
       // #1119 슬롯 shed(503) 포함 — 빈 shape 로 강등 (codex #1239 P2)
-      () => ({ results: [] as ScanResult[], count: 0 }),
+      (): ScanData => ({ results: [], count: 0 }),
     ),
-    fetchAPI<{ entries: SwingEntry[]; approved: number; rejected: number }>("/api/swing/entries").catch(
-      () => ({ entries: [] as SwingEntry[], approved: 0, rejected: 0 }),
+    fetchAPI<SwingData>("/api/swing/entries").catch(
+      (): SwingData => ({ entries: [], approved: 0, rejected: 0 }),
     ),
   ]);
 

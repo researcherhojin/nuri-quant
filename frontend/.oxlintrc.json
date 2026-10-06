@@ -20,7 +20,7 @@
     "anti-slop/no-runtime-typeof": ["error", { "allowInTypeGuards": true }],
     "anti-slop/no-unsafe-dictionary-type": "error",
     "anti-slop/no-known-value-widening": "error",
-    "anti-slop/require-safety-comment-for-type-assertion": "off",
+    "anti-slop/require-safety-comment-for-type-assertion": "error",
     "anti-slop/no-module-mocking": "off"
   },
   "overrides": [
@@ -32,7 +32,8 @@
         "anti-slop/no-unknown-parameters": "off",
         "anti-slop/no-runtime-typeof": "off",
         "anti-slop/no-unsafe-dictionary-type": "off",
-        "anti-slop/no-known-value-widening": "off"
+        "anti-slop/no-known-value-widening": "off",
+        "anti-slop/require-safety-comment-for-type-assertion": "off"
       }
     }
   ]

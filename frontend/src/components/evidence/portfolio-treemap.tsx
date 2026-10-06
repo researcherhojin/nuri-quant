@@ -8,7 +8,8 @@
 import { CHART_EMPTY_FILL, CHART_LABEL_STRONG, CHART_MUTED, CHART_TOOLTIP_BG, CHART_TOOLTIP_BORDER } from "@/lib/chart-theme";
 import type { ReactElement } from "react";
 import { EVIDENCE } from "@/lib/strings";
-import { ResponsiveContainer, Treemap, Tooltip, type TooltipValueType } from "recharts";
+import { ResponsiveContainer, Treemap, Tooltip, type TooltipValueType, type TreemapNode } from "recharts";
+import { isNumber } from "@/lib/types";
 
 import {
   pnlColor,
@@ -50,6 +51,25 @@ export interface CellProps {
   pnl_pct?: number;
   violation?: HeatmapItem["violation"];
   depth?: number;
+}
+
+/**
+ * recharts 노드는 TreemapDatum 필드를 `[k: string]: unknown` 으로만 싣는다 — 셀이 쓰는 필드만
+ * 검사해 좁힌다. 숫자가 아닌 pnl_pct 가 `toFixed` 까지 가지 않게 한다.
+ */
+export function cellPropsFromNode(node: TreemapNode): CellProps {
+  const { x, y, width, height, name, depth, pnl_pct, violation } = node;
+
+  return {
+    x,
+    y,
+    width,
+    height,
+    name,
+    depth,
+    pnl_pct: isNumber(pnl_pct) ? pnl_pct : undefined,
+    violation: violation === "stop_loss" || violation === "overweight" ? violation : null,
+  };
 }
 
 export function TreemapCell(props: CellProps): ReactElement {
@@ -100,7 +120,7 @@ export function PortfolioTreemap({ data }: { data: HeatmapData }) {
           dataKey="size"
           nameKey="name"
           isAnimationActive={false}
-          content={(props) => <TreemapCell {...(props as CellProps)} />}
+          content={(node) => <TreemapCell {...cellPropsFromNode(node)} />}
         >
           <Tooltip
             contentStyle={{

@@ -76,11 +76,11 @@ export const ACTION_FILTERS = ["BUY", "SELL", "HOLD"] as const;
 export type ActionFilter = (typeof ACTION_FILTERS)[number];
 
 export function parseOutcomeFilter(raw: string | undefined): OutcomeFilter | undefined {
-  return (OUTCOME_FILTERS as readonly string[]).includes(raw ?? "") ? (raw as OutcomeFilter) : undefined;
+  return OUTCOME_FILTERS.find((f) => f === raw);
 }
 
 export function parseActionFilter(raw: string | undefined): ActionFilter | undefined {
-  return (ACTION_FILTERS as readonly string[]).includes(raw ?? "") ? (raw as ActionFilter) : undefined;
+  return ACTION_FILTERS.find((f) => f === raw);
 }
 
 /** 필터 조합 → URL (기본값은 파라미터 생략 — 공유 가능한 최소 URL) */

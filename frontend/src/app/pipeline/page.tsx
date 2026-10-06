@@ -647,41 +647,44 @@ export default function PipelinePage() {
 }
 
 // === 기본 노드 (API 응답 전) ===
+// onRun·isRunning 은 렌더 시점에 붙는다 (아래 DEFAULT_NODES.map)
+type DefaultNodeData = Omit<PipelineNodeData, "onRun" | "isRunning">;
+
 const DEFAULT_NODES: Node[] = [
   {
     id: "collect",
     type: "pipeline",
     position: { x: 0, y: 80 },
-    data: { label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } as PipelineNodeData,
+    data: { label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } satisfies DefaultNodeData,
   },
   {
     id: "validate",
     type: "pipeline",
     position: { x: 1 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_VALIDATE, sub: PL.NODE_VALIDATE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } as PipelineNodeData,
+    data: { label: PL.NODE_VALIDATE, sub: PL.NODE_VALIDATE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } satisfies DefaultNodeData,
   },
   {
     id: "classify",
     type: "pipeline",
     position: { x: 2 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_CLASSIFY, sub: PL.NODE_CLASSIFY_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } as PipelineNodeData,
+    data: { label: PL.NODE_CLASSIFY, sub: PL.NODE_CLASSIFY_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } satisfies DefaultNodeData,
   },
   {
     id: "diagnose",
     type: "pipeline",
     position: { x: 3 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_DIAGNOSE, sub: PL.NODE_DIAGNOSE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } as PipelineNodeData,
+    data: { label: PL.NODE_DIAGNOSE, sub: PL.NODE_DIAGNOSE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } satisfies DefaultNodeData,
   },
   {
     id: "recommend",
     type: "pipeline",
     position: { x: 4 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_RECOMMEND, sub: PL.NODE_RECOMMEND_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } as PipelineNodeData,
+    data: { label: PL.NODE_RECOMMEND, sub: PL.NODE_RECOMMEND_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } satisfies DefaultNodeData,
   },
   {
     id: "track",
     type: "pipeline",
     position: { x: 5 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_TRACK, sub: PL.NODE_TRACK_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } as PipelineNodeData,
+    data: { label: PL.NODE_TRACK, sub: PL.NODE_TRACK_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } satisfies DefaultNodeData,
   },
 ];
