@@ -92,6 +92,14 @@ describe("summarizePayload (#1219 raw JSON 폐지)", () => {
     expect(summarizePayload({ weird: circular })).toBe("weird [object Object]");
   });
 
+  it("non-object payloads are summarised as one value, not split into keys (#1661)", () => {
+    expect(summarizePayload("not json {")).toBe("not json {"); // 디코드 실패 원문
+    expect(summarizePayload("x".repeat(120))).toBe("x".repeat(80));
+    expect(summarizePayload([1, 2])).toBe("[1,2]");
+    expect(summarizePayload(42)).toBe("42");
+    expect(summarizePayload("")).toBe("");
+  });
+
   it("empty/missing payload → empty string (렌더 억제)", () => {
     expect(summarizePayload(null)).toBe("");
     expect(summarizePayload(undefined)).toBe("");

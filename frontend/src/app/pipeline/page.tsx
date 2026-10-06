@@ -55,7 +55,7 @@ interface TimelineEvent {
   timestamp: string;
   event_type: "start" | "success" | "error";
   step: string;
-  payload: Record<string, JsonValue>;
+  payload: JsonValue;
 }
 
 interface GateCondition {
@@ -589,7 +589,8 @@ export default function PipelinePage() {
                       </span>
                     </div>
                     {/* #1219: raw JSON.stringify 폴백 폐지 — 사람이 읽는 요약 한 줄 */}
-                    {ev.payload && summarizePayload(ev.payload) && (
+                    {/* 바깥 `ev.payload &&` 는 payload 가 0 이면 맨 숫자 0 을 그린다 (#1661) — 요약 문자열만 본다 */}
+                    {summarizePayload(ev.payload) && (
                       <p className="text-faint text-[10px] mt-0.5 line-clamp-1">
                         {summarizePayload(ev.payload)}
                       </p>
