@@ -275,34 +275,32 @@ class TestLoadDriftMapSwallow:
 class TestEvidenceChartsRunpy:
     """`__main__` block (lines 813-818): logging.basicConfig + generate_all_evidence."""
 
-    def test_main_invokes_generate_all_evidence(self, monkeypatch, capsys):
-        """runpy → __main__ block 실행 → generate_all_evidence 의 summary print 확인.
+    def test_main_invokes_generate_all_evidence(self, monkeypatch, capsys, tmp_path):
+        """runpy → `__main__` 가드 → main(argv) → generate_all_evidence.
 
-        runpy 가 모듈 소스를 재실행하므로 함수 monkeypatch 무효 (test illusion).
-        대신 chart-emitter 들을 raise 시켜 빠르게 통과 + 출력 print 검증.
+        runpy 는 모듈을 다시 실행하므로 이 모듈의 함수 패치는 버려진다 (#1650). 차트는 격리 DB 위에서
+        실제로 그려지고, `--output-root` 로 산출물이 tmp_path 에만 떨어지는지 잠근다 — 예전에는
+        단위 테스트가 data/reports/<오늘>/evidence 에 파일을 썼다.
         """
         import runpy
         import sys
 
-        # 모든 chart-emitter raise 시켜도 generate_all_evidence 는 try/except 로 graceful;
-        # 마지막 print 가 stdout 에 떠야 한다. _emit_* 함수들을 source-level 로 패치.
-        def _boom(*a, **kw):
-            raise RuntimeError("skip")
+        import nuri.analysis.evidence_data as ed
 
-        for name in (
-            "generate_regime_chart",
-            "generate_portfolio_heatmap",
-            "generate_signal_performance_chart",
-            "generate_fear_greed_chart",
-            "_detect_portfolio_violations",
-            "generate_sell_evidence_chart",
-        ):
-            monkeypatch.setattr(f"nuri.analysis.evidence_charts.{name}", _boom)
+        # 로더가 읽는 scorecard 디렉터리도 실제 data/reports 대신 빈 tmp 로 (다른 모듈이라 패치가 산다)
+        monkeypatch.setattr(ed, "REPORT_DIR", tmp_path / "reports-in")
+        out_root = tmp_path / "reports-out"
 
-        monkeypatch.setattr(sys, "argv", ["evidence_charts"])
-        runpy.run_module("nuri.analysis.evidence_charts", run_name="__main__")
+        monkeypatch.setattr(sys, "argv", ["evidence_charts", "--output-root", str(out_root)])
+        with pytest.raises(SystemExit) as exc_info:
+            runpy.run_module("nuri.analysis.evidence_charts", run_name="__main__")
+
+        assert exc_info.value.code == 0
         out = capsys.readouterr().out
         assert "증거 차트 생성 완료" in out
+        assert list(out_root.glob("*/evidence"))
+        # 실제 data/reports 트리를 통째로 비교하면 다른 워커·스케줄러 쓰기에 흔들린다 — 이 실행의 저장 경로만 본다
+        assert f"저장 경로: {out_root}" in out
 
 
 class TestRegimeChartSMABranches:

@@ -587,10 +587,10 @@ def generate_sell_evidence_chart(violations: list[dict], output_dir: Path) -> Pa
 # ═══════════════════════════════════════════════════════
 
 
-def generate_all_evidence(db_path=None) -> list[Path]:
-    """모든 증거 차트 생성 → 파일 경로 리스트 반환."""
+def generate_all_evidence(db_path=None, output_root: Path | None = None) -> list[Path]:
+    """모든 증거 차트 생성 → 파일 경로 리스트 반환. `output_root` 기본은 REPORT_DIR (호출 시점에 읽는다)."""
     today = today_kst()
-    output_dir = REPORT_DIR / today / "evidence"
+    output_dir = (output_root or REPORT_DIR) / today / "evidence"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     paths = []
@@ -672,9 +672,20 @@ def _save_empty_chart(message: str, output_path: Path) -> None:
 # ═══════════════════════════════════════════════════════
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    """CLI: 증거 차트 생성. `--output-root` 로 날짜 디렉터리를 만들 루트를 바꾼다 (#1650)."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="증거 차트 생성")
+    parser.add_argument("--output-root", type=Path, default=None, help="날짜 디렉터리를 만들 루트 (기본 data/reports)")
+    args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    generate_all_evidence()
+    generate_all_evidence(output_root=args.output_root)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

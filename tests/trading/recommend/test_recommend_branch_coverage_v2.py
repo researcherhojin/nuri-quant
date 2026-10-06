@@ -486,54 +486,19 @@ class TestBuyCandidateEmitterMain:
         assert calls == [emitted]
         assert "원장 기록: 3건" in capsys.readouterr().out
 
-    def test_module_main_invocation_via_runpy(self, monkeypatch):
-        """Line 506: `if __name__ == '__main__': raise SystemExit(main())`.
+    def test_module_main_invocation_via_runpy(self, monkeypatch, capsys):
+        """`if __name__ == "__main__": raise SystemExit(main())` 가 main 을 부른다.
 
-        runpy executes the module; we patch emit_buy_candidates at the source so the
-        re-executed main() picks up our stub. SystemExit(0) is the expected outcome.
+        runpy 는 모듈을 다시 실행하므로 같은 모듈의 함수를 패치해도 버려진다 (#1650).
+        `--help` 로 main 의 argparse 까지만 돌려 무거운 경로 없이 가드를 잠근다.
         """
         import runpy
-        import sys
-        import tempfile
-        from pathlib import Path as _P
 
-        import nuri.core.db as _db_mod
-        from nuri.core.db import init_db
-
-        # `__main__` 실행은 `main()` 을 인자 없이 부르고, argparse 는 그때 **pytest 의
-        # sys.argv** 를 읽는다 (#1078 `--persist` 도입 이후). 실제 CLI 호출 모양으로 고정한다.
-        monkeypatch.setattr(sys, "argv", ["buy_candidate_emitter"])
-
-        _tmp = _P(tempfile.mkdtemp()) / "rp.db"
-        init_db(_tmp)
-        monkeypatch.setattr(_db_mod, "DB_PATH", _tmp)
-
-        from nuri.trading.recommend.buy_candidate_emitter import EmitResult
-
-        # Stub the heavy emit_buy_candidates so module exec doesn't hit DB
-        fake = EmitResult(
-            candidates=[],
-            skipped={},
-            regime="sideways_low_vol",
-            vix=18.0,
-            blocked_reason="stub",
-            timestamp_kst="2026-05-04",
-        )
-
-        # Patch via sys.modules pre-injection: replace the function on the source module
-        import nuri.trading.recommend.buy_candidate_emitter as src_mod
-
-        monkeypatch.setattr(src_mod, "emit_buy_candidates", lambda: fake)
-
-        # Suppress stdout for cleanliness
-        import io as _io
-
-        monkeypatch.setattr(sys, "stdout", _io.StringIO())
-
+        monkeypatch.setattr(sys, "argv", ["buy_candidate_emitter", "--help"])
         with pytest.raises(SystemExit) as exc_info:
             runpy.run_module("nuri.trading.recommend.buy_candidate_emitter", run_name="__main__")
-        # Lock: SystemExit(0) — main returned 0 then `raise SystemExit(0)` propagated
         assert exc_info.value.code == 0
+        assert "BUY 후보 emit" in capsys.readouterr().out
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1591,42 +1556,19 @@ class TestHoldingsMonitorMainCli:
         # Lock: send_alerts called exactly once because alerts exist
         assert send_count["n"] == 1
 
-    def test_main_module_invocation_via_runpy(self, monkeypatch):
-        """Line 408: `if __name__ == '__main__': raise SystemExit(main())`."""
+    def test_main_module_invocation_via_runpy(self, monkeypatch, capsys):
+        """`if __name__ == "__main__": raise SystemExit(main())` 가 main 을 부른다.
+
+        runpy 는 모듈을 다시 실행하므로 같은 모듈의 함수를 패치해도 버려진다 (#1650).
+        `--help` 로 main 의 argparse 까지만 돌려 무거운 경로 없이 가드를 잠근다.
+        """
         import runpy
-        import tempfile
-        from pathlib import Path as _P
 
-        import nuri.core.db as _db_mod
-        from nuri.core.db import init_db
-
-        _tmp = _P(tempfile.mkdtemp()) / "rp.db"
-        init_db(_tmp)
-        monkeypatch.setattr(_db_mod, "DB_PATH", _tmp)
-
-        from nuri.trading.recommend import holdings_monitor as hm
-        from nuri.trading.recommend.holdings_monitor import RunSummary
-
-        monkeypatch.setattr(
-            hm,
-            "run_monitor",
-            lambda **kw: RunSummary(
-                run_at_kst="2026-05-04",
-                n_holdings=0,
-                n_alerted=0,
-                n_skipped_dedup=0,
-                n_skipped_data_gap=0,
-                n_skipped_scope=0,
-            ),
-        )
-        monkeypatch.setattr(sys, "argv", ["holdings_monitor.py", "--dry-run"])
-        import io as _io
-
-        monkeypatch.setattr(sys, "stdout", _io.StringIO())
-
+        monkeypatch.setattr(sys, "argv", ["holdings_monitor.py", "--help"])
         with pytest.raises(SystemExit) as exc_info:
             runpy.run_module("nuri.trading.recommend.holdings_monitor", run_name="__main__")
         assert exc_info.value.code == 0
+        assert "Holdings technical-divergence monitor" in capsys.readouterr().out
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1847,18 +1789,16 @@ class TestPriceTargetsMainModule:
     """Lines 540-547: __main__ guard."""
 
     def test_module_main_invocation_via_runpy(self, monkeypatch, fresh_db):
-        """`python -m nuri.trading.recommend.price_targets` flow."""
+        """`python -m nuri.trading.recommend.price_targets` flow.
+
+        runpy 재실행은 같은 모듈의 함수 패치를 버린다 (#1650) — stub 없이 실제
+        calculate_portfolio_targets 가 빈 격리 DB 를 읽고 '없음' 을 출력하는 경로를 잠근다.
+        """
         import runpy
 
         import nuri.core.db as db_mod
 
         monkeypatch.setattr(db_mod, "DB_PATH", fresh_db)
-
-        from nuri.trading.recommend import price_targets as pt
-
-        # Stub heavy fns
-        monkeypatch.setattr(pt, "calculate_portfolio_targets", lambda **kw: [])
-        # print_portfolio_targets is real — empty list prints '없음' message
         monkeypatch.setattr(sys, "argv", ["price_targets.py"])
         import io as _io
 
@@ -1866,9 +1806,7 @@ class TestPriceTargetsMainModule:
         monkeypatch.setattr(sys, "stdout", buf)
 
         runpy.run_module("nuri.trading.recommend.price_targets", run_name="__main__")
-        out = buf.getvalue()
-        # Lock: print_portfolio_targets ran via __main__ (line 547) and printed empty msg
-        assert "포트폴리오에 가격 목표 대상 종목 없음" in out
+        assert "포트폴리오에 가격 목표 대상 종목 없음" in buf.getvalue()
 
 
 # ════════════════════════════════════════════════════════════════════

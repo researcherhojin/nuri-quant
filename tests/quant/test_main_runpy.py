@@ -134,15 +134,13 @@ class TestBacktestMainRunpy:
         assert exc.value.code == 2  # FX 부재 graceful error
 
     def test_optimizer_main(self, monkeypatch, db_path_mp):
-        """optimizer main without --signal: optimize_all branch."""
-        # Patch optimize_all to a no-op (it iterates many signals)
-        import nuri.quant.backtest.optimizer as opt
+        """optimizer `__main__` 가드 → main().
 
-        called: list[str] = []
-        monkeypatch.setattr(opt, "optimize_all", lambda: called.append("optimize_all"))
-        _run_module("nuri.quant.backtest.optimizer", monkeypatch, argv=["optimizer"])
-        # Patch may be invalidated by runpy reload — if invalidated, optimize_all runs for real;
-        # accept either path: verify module ran (SystemExit 0 already)
+        runpy 재실행은 같은 모듈의 optimize_all 패치를 버린다 (#1650) — 전체 그리드를 실제로 돌리지
+        않도록 `--help` 로 argparse 까지만 실행한다. optimize_all 분기는 main 직접 호출 테스트 몫이다.
+        """
+        out = _run_module("nuri.quant.backtest.optimizer", monkeypatch, argv=["optimizer", "--help"])
+        assert "--signal" in out
 
     def test_leverage_study_main(self, monkeypatch, db_path_mp):
         """leverage_study main with default args: TSLL/TSLA — patch run_leverage_study."""

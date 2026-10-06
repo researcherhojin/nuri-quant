@@ -9,8 +9,8 @@
 속성 패치는 산다. 레포의 runpy 래퍼(`_run_module*`)도 run_module 로 본다.
 
 `ALLOWED` 는 양방향이다: 등재된 위반이 사라지면(고쳐지면) 그 항목을 지워야 하고, 새 위반은 등재 이유
-없이 통과하지 않는다. 등재된 5건은 이 잠금을 넣기 전부터 있던 것으로, 전부 `nuri.core.db` 격리 덕에
-네트워크·운영 DB 에는 닿지 않지만 stub 이 죽은 채 실제 함수가 돈다 — 수리는 #1650.
+없이 통과하지 않는다. 잠금 이전부터 있던 5건은 #1650 에서 고쳐 지금은 비어 있다 — 가드만 실행할 때는
+`--help`, 산출물이 있으면 `main(argv)` 의 출력 경로 인자, 그 외엔 다른 모듈의 경계를 패치한다.
 """
 
 from __future__ import annotations
@@ -26,26 +26,7 @@ TESTS = Path(__file__).parent
 _RUNNER = re.compile(r"run_module\w*$")  # runpy.run_module · _run_module · _run_module_capture · _run_module_with_argv
 
 # (파일, Class::test) -> 등재 이유
-_PRE_EXISTING = "이 잠금 이전부터 있던 죽은 stub — 실제 함수가 격리 DB 위에서 돈다. 수리: #1650"
-ALLOWED: dict[tuple[str, str], str] = {
-    (
-        "tests/analysis/test_evidence_charts_branches.py",
-        "TestEvidenceChartsRunpy::test_main_invokes_generate_all_evidence",
-    ): _PRE_EXISTING + " (REPORT_DIR 에 차트 파일도 쓴다)",
-    ("tests/quant/test_main_runpy.py", "TestBacktestMainRunpy::test_optimizer_main"): _PRE_EXISTING,
-    (
-        "tests/trading/recommend/test_recommend_branch_coverage_v2.py",
-        "TestBuyCandidateEmitterMain::test_module_main_invocation_via_runpy",
-    ): _PRE_EXISTING,
-    (
-        "tests/trading/recommend/test_recommend_branch_coverage_v2.py",
-        "TestHoldingsMonitorMainCli::test_main_module_invocation_via_runpy",
-    ): _PRE_EXISTING,
-    (
-        "tests/trading/recommend/test_recommend_branch_coverage_v2.py",
-        "TestPriceTargetsMainModule::test_module_main_invocation_via_runpy",
-    ): _PRE_EXISTING,
-}
+ALLOWED: dict[tuple[str, str], str] = {}
 
 
 def _is_plain_module(dotted: str) -> bool:
