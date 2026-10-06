@@ -162,6 +162,16 @@ class StockKRCollector(BaseCollector):
                 }
             )
 
+            # 거래정지일: pykrx 는 시가=고가=저가=0, 거래량=0, 종가=직전 종가 인 행을 준다 — 체결이 없었으니
+            # 봉이 아니다. 저장하면 ATR·저가 리더가 0 을 본다 (#1644: 운영에 3종목 27행, 일요일 365일
+            # 백필이 매주 다시 넣는다). 2026-07 한 종목 13행을 pykrx 로 재조회해 그 모양을 확인했다.
+            halted = (df["open"] == 0) & (df["volume"] == 0)
+            if halted.any():
+                self.logger.debug("%s: 거래정지 %d일 제외", ticker_full, int(halted.sum()))
+                df = df.loc[~halted].reset_index(drop=True)
+            if df.empty:
+                return None
+
             return df
 
         except Exception as e:

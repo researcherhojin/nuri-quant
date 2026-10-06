@@ -350,7 +350,7 @@ def inquire_price_kr(creds: KISCredentials, token: str, ticker: str) -> dict | N
         return None
     if not float(data.get("stck_oprc", 0) or 0):
         # 시가 0 = 오늘 아직 체결이 없다(개장 전) 또는 거래정지. 현재가는 전일 종가일 뿐이라 봉이 아니다.
-        # 이걸 저장하면 O/H/L=0 봉이 남아 ATR·저가 리더가 0 을 본다 (#1644: 운영에 거래정지 27행).
+        # 방어적 가드다 — #1644 의 운영 27행은 이 경로가 아니라 pykrx(stock_kr.py) 가 썼다 (Codex 리뷰).
         logger.debug("KIS 한국 %s 시가 없음(개장 전/거래정지) — 봉으로 저장하지 않음", ticker)
         return None
     return {
