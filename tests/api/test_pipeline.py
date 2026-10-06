@@ -434,6 +434,26 @@ class TestPipelineStatus:
         assert by_step["collect"]["record_count"] == 1500  # seed record_count 컬럼 반영
         assert by_step["decide"]["status"] == "error"
 
+    def test_pipeline_times_leave_the_api_as_kst_with_offset(self, client, db_path):
+        """#1675: pipeline_events·decisions 의 UTC 텍스트가 오프셋 없이 나가면 화면이 9시간 어긋난다."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO pipeline_events (event_type, step, timestamp) VALUES ('step_completed', 'collect', ?)",
+                ("2026-10-06 20:45:00",),
+            )
+            conn.execute(
+                "INSERT INTO decisions (date, ticker, action, created_at) VALUES ('2026-10-06', 'AAA', 'HOLD', ?)",
+                ("2026-10-05 22:05:04",),
+            )
+
+        by_step = {s["step"]: s for s in client.get("/api/pipeline/status").json()["steps"]}
+        assert by_step["collect"]["last_updated"] == "2026-10-07T05:45:00+09:00"
+        assert by_step["decide"]["artifact"]["recorded_at"] == "2026-10-06T07:05:04+09:00"
+        assert by_step["decide"]["artifact"]["date"] == "2026-10-06"  # 판정일은 그대로
+
+        events = client.get("/api/pipeline/timeline?step=collect").json()["events"]
+        assert events[0]["timestamp"] == "2026-10-07T05:45:00+09:00"
+
 
 class TestPipelineTimeline:
     def test_pipeline_timeline_endpoint(self, client, db_path):

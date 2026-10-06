@@ -9,6 +9,7 @@ from slowapi.util import get_remote_address
 
 from nuri.api.limits import heavy_slot
 from nuri.core.db import DatabaseError, query
+from nuri.core.timezone import sqlite_utc_to_kst_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
@@ -110,9 +111,9 @@ def get_pipeline_status():
                 "label": _STEP_LABELS.get(name, name.title()),
                 "description": _STEP_DESCRIPTIONS.get(name, ""),
                 "record_count": st.get("record_count", 0) or 0,
-                "last_updated": st.get("timestamp"),
+                "last_updated": sqlite_utc_to_kst_iso(st.get("timestamp")),
                 "status": _UI_STATUS.get(raw, "idle"),
-                "started_at": st.get("timestamp") if raw == "running" else None,
+                "started_at": sqlite_utc_to_kst_iso(st.get("timestamp")) if raw == "running" else None,
                 "error": payload.get("error") if isinstance(payload, dict) else None,
             }
         )
@@ -127,15 +128,22 @@ def get_pipeline_status():
 def _decision_artifact():
     """기록 존재는 판정의 최신성/품질이나 실행 성공을 뜻하지 않는다."""
     try:
-        rows = query("SELECT date, COUNT(*) AS count FROM decisions GROUP BY date ORDER BY date DESC LIMIT 1")
+        rows = query(
+            "SELECT date, COUNT(*) AS count, MAX(created_at) AS recorded_at FROM decisions "
+            "GROUP BY date ORDER BY date DESC LIMIT 1"
+        )
         return {
             "status": "available" if rows else "empty",
             "date": rows[0]["date"] if rows else None,
             "count": rows[0]["count"] if rows else 0,
+            # 다른 스테이지와 같은 시각 축(KST ISO)으로 — date 는 판정일, recorded_at 은 그 판정일 행이
+            # **처음** 기록된 시각이다. upsert 는 created_at 을 건드리지 않으므로 같은 날 재실행은
+            # 반영되지 않는다 (updated_at 은 추적기가 KST 텍스트로 써서 축이 섞여 쓰지 않는다).
+            "recorded_at": sqlite_utc_to_kst_iso(rows[0]["recorded_at"]) if rows else None,
         }
     except DatabaseError:
         logger.exception("decision artifact lookup failed")
-        return {"status": "unavailable", "date": None, "count": None}
+        return {"status": "unavailable", "date": None, "count": None, "recorded_at": None}
 
 
 @router.get("/pipeline/timeline")
@@ -149,6 +157,8 @@ def get_pipeline_timeline(
     if step and step not in VALID_STEPS:
         raise HTTPException(status_code=400, detail=f"Invalid step: {step}. Valid: {', '.join(VALID_STEPS)}")
     events = get_timeline(limit=limit, step=step)
+    for event in events:
+        event["timestamp"] = sqlite_utc_to_kst_iso(event.get("timestamp"))
     return {"events": events}
 
 
