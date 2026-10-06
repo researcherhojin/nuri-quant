@@ -1,4 +1,5 @@
 {
+  "outputStyle": "nuri-attention-kind",
   "permissions": {
     "allow": [
       "Read(**)",
