@@ -1471,6 +1471,29 @@ class TestBuildOpportunitiesLogic:
         result = self._run([self._scan("BAD", signal="volume_spike", change_5d=-12)])
         assert any("원인 확인" in c for c in result[0]["observations"])
 
+    @pytest.mark.parametrize(
+        ("key", "scan", "keyword", "stricter"),
+        [
+            ("breakout_min_score", {"signal": "breakout", "score": 55}, "breakout", 60),
+            ("momentum_min_5d", {"signal": "momentum", "change_5d": 15}, "모멘텀", 16),
+            ("rsi_oversold", {"rsi": 30}, "과매도", 25),
+            ("rsi_overbought", {"rsi": 85}, "과매수", 90),
+            ("volume_surge_ratio", {"vol": 2.5}, "거래량", 3.0),
+            ("plunge_5d", {"signal": "breakout", "change_5d": -18}, "급락", -20),
+            ("surge_5d", {"signal": "breakout", "change_5d": 25}, "급등", 30),
+            ("volume_spike_drop_5d", {"signal": "volume_spike", "change_5d": -12}, "원인 확인", -13),
+        ],
+    )
+    def test_cutoffs_come_from_rules_yaml(self, key, scan, keyword, stricter):
+        """관측 기준 8개는 모두 `rules.yaml scanner_observations` 를 따른다 (#1691) — 어느 하나라도 코드 숫자로 되돌리면 실패."""
+        from nuri.core.rules import SCANNER_OBSERVATIONS
+
+        row = self._scan("CFG", **scan)
+        assert any(keyword in o for o in self._run([row])[0]["observations"])
+
+        with patch("nuri.api.routes.actions.SCANNER_OBSERVATIONS", {**SCANNER_OBSERVATIONS, key: stricter}):
+            assert not any(keyword in o for o in self._run([row])[0]["observations"])
+
     def test_sorted_by_score(self):
         result = self._run([self._scan("LOW", score=10), self._scan("HIGH", score=70)])
         assert result[0]["ticker"] == "HIGH"

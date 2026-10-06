@@ -113,8 +113,12 @@ _chk = RULES.get("buy_checklist", {})
 MIN_TIPRANKS_CONSENSUS = _chk.get("min_tipranks_consensus", "moderate_buy")
 MIN_SUPERINVESTORS = _chk.get("min_superinvestors", 3)
 MAX_PE_RATIO = _chk.get("max_pe_ratio", 100)
+
 MIN_REVENUE_GROWTH = _chk.get("min_revenue_growth", 0)
 REQUIRE_FACTOR_TOP50 = _chk.get("require_factor_top50pct", True)
+
+# 시장 탐색 스캐너 관측 문구 기준 (#1691) — 판정이 아니라 화면 텍스트용
+SCANNER_OBSERVATIONS = RULES["scanner_observations"]
 
 # ─── 매도 우선순위 ───
 SELL_PRIORITY = RULES.get(

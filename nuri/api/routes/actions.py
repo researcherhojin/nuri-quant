@@ -22,7 +22,7 @@ from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
 from nuri.core.fx import latest_usd_krw_value
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
-from nuri.core.rules import get_stop_loss_for_account
+from nuri.core.rules import SCANNER_OBSERVATIONS, get_stop_loss_for_account
 from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
@@ -385,24 +385,25 @@ def _build_opportunities() -> list[dict]:
 def _scanner_observations(s: dict, improving_signals: set[str]) -> list[str]:
     """스캐너가 본 사실 — 판정이 아니다. 화면에는 "스캐너 관측" 으로만 나간다."""
     obs: list[str] = []
-    if s.get("signal") == "breakout" and s.get("score", 0) >= 50:
+    cut = SCANNER_OBSERVATIONS
+    if s.get("signal") == "breakout" and s.get("score", 0) >= cut["breakout_min_score"]:
         obs.append(f"breakout 시그널 (Score {s['score']})")
-    if s.get("signal") == "momentum" and s.get("change_5d", 0) > 10:
+    if s.get("signal") == "momentum" and s.get("change_5d", 0) > cut["momentum_min_5d"]:
         obs.append(f"강한 모멘텀 5D +{s['change_5d']:.1f}%")
-    if s.get("rsi") and s["rsi"] < 35:
+    if s.get("rsi") and s["rsi"] < cut["rsi_oversold"]:
         if "rsi_oversold" in improving_signals:
             obs.append(f"RSI {s['rsi']:.0f} 과매도 (rsi_oversold 승률 상승 중)")
         else:
             obs.append(f"RSI {s['rsi']:.0f} 과매도")
-    if s.get("volume_ratio", 0) >= 2.0:
+    if s.get("volume_ratio", 0) >= cut["volume_surge_ratio"]:
         obs.append(f"거래량 {s['volume_ratio']:.1f}x 폭증")
-    if s.get("rsi") and s["rsi"] > 80:
+    if s.get("rsi") and s["rsi"] > cut["rsi_overbought"]:
         obs.append(f"RSI {s['rsi']:.0f} 과매수")
-    if s.get("change_5d", 0) < -15:
+    if s.get("change_5d", 0) < cut["plunge_5d"]:
         obs.append(f"5D {s['change_5d']:+.1f}% 급락")
-    if s.get("change_5d", 0) > 20:
+    if s.get("change_5d", 0) > cut["surge_5d"]:
         obs.append(f"5D +{s['change_5d']:.1f}% 급등")
-    if s.get("signal") == "volume_spike" and s.get("change_5d", 0) < -10:
+    if s.get("signal") == "volume_spike" and s.get("change_5d", 0) < cut["volume_spike_drop_5d"]:
         obs.append("급락 + volume_spike — 원인 확인 필요")
     return obs
 

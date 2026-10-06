@@ -526,3 +526,18 @@ outcome_tracking:
     7: [0.05, -0.05]
     14: [0.07, -0.07]
     30: [0.10, -0.10]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 시장 탐색 "스캐너 관측" 문구 기준 (#1691) — 판정이 아니라 화면 관측 텍스트다.
+# BUY 후보 채점·게이트는 `buy_signals.yaml` 이 정하고 이 값은 보지 않는다
+# (`nuri/api/routes/actions.py` `_scanner_observations`).
+# ─────────────────────────────────────────────────────────────────────────────
+scanner_observations:
+  breakout_min_score: 50       # breakout 시그널 + 스캔 점수 이상
+  momentum_min_5d: 10          # momentum 시그널 + 5일 수익률(%) 초과
+  rsi_oversold: 35             # RSI 미만 → 과매도
+  rsi_overbought: 80           # RSI 초과 → 과매수
+  volume_surge_ratio: 2.0      # 거래량 배수 이상 → 폭증
+  plunge_5d: -15               # 5일 수익률(%) 미만 → 급락
+  surge_5d: 20                 # 5일 수익률(%) 초과 → 급등
+  volume_spike_drop_5d: -10    # volume_spike 시그널 + 5일 수익률(%) 미만 → 원인 확인
