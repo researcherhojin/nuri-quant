@@ -266,6 +266,9 @@ frontend/test-results/
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/*.md
+!.claude/output-styles/
+.claude/output-styles/*
+!.claude/output-styles/nuri-*.md
 !.claude/commands/nuri-*.md
 
 # ─── OS ────────────────────────────────────────────────────────
