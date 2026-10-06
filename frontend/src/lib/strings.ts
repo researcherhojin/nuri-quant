@@ -709,11 +709,56 @@ export const DASHBOARD_NEXT = {
     MACRO_DENOMINATOR: " / 100",
     MACRO_UNAVAILABLE: "경제 지표 확인 필요",
     VIX: "변동성 지수",
-    VIX_SUB: "VIX · 최근 관측값",
+    VIX_SUB: "VIX",
+    VIX_GUIDE_TITLE: "변동성 지수(VIX)의 의미",
+    VIX_GUIDE: [
+      "S&P 500 옵션 가격에서 산출한 향후 30일 기대 변동성입니다. 높을수록 시장이 큰 가격 변동을 예상한다는 뜻이며, 방향(상승·하락)을 말해 주지는 않습니다.",
+      "아래 출처와 기준일은 저장된 값 그대로입니다. 장중에는 확정 종가가 아닐 수 있습니다.",
+    ],
     ACTIONS: "우선 점검 항목",
     ACTIONS_UNIT: " 우선 확인",
-    ACTIONS_SUB: (check: string, portfolio: string) => `검토 ${check} · 포트폴리오 규칙 ${portfolio}`,
+    ACTIONS_SUB: (check: string, portfolio: string) => `검토 ${check} · 규칙 ${portfolio}`,
+    ACTIONS_GUIDE_TITLE: "우선 점검 항목의 의미",
+    ACTIONS_GUIDE: [
+      "보유 종목 점검에서 우선 확인으로 분류된 개수입니다. 검토와 포트폴리오 규칙 개수를 함께 표시합니다.",
+      "시스템 판정 원장(에이전트 합의와 포트폴리오 규칙 점검)에서 만든 목록입니다. 매수·매도 지시가 아니라 점검 순서입니다.",
+    ],
+    ACTIONS_SOURCE: "시스템 판정",
+    ACTIONS_JUDGED: "판정 기준일 (가장 최근)",
+    ACTIONS_JUDGED_SHORT: (date: string) => `판정 ${date}`,
+    // 카드 머리글·출처 (#1682) — 하단 패널과 같은 "아이콘 + 이름 + 읽는 법" 형식
+    GUIDE: "읽는 법",
+    SOURCE_HEADING: "출처와 기준일",
+    SOURCE_COLUMNS: ["항목", "출처", "기준일"],
+    SOURCE_UNKNOWN: "출처 미제공",
+    SOURCE_EVENT_NOTE: "경제 이벤트 점수는 뉴스·경제 일정에서 따로 계산되어 이 목록에 없습니다. 기준금리 값이 없으면 2년물 금리로 대신 계산합니다.",
+    SOURCE_LIST_GENERATED: (time: string) => `목록 생성 ${time}`,
+    // 카드 우측 하단은 좁다 — 첫 출처 + 나머지 개수, 전체 목록은 모달에
+    SOURCE_MORE: (first: string, rest: number) => (rest > 0 ? `${first} 외 ${rest}곳` : first),
   },
+  // 저장된 source 코드 → 표시 이름. 모르는 코드는 그대로 보인다 (출처를 지어내지 않는다, #1682)
+  SOURCE_NAME: {
+    FRED: "FRED",
+    yfinance: "Yahoo Finance",
+    yfinance_SPY: "Yahoo Finance (SPY 옵션)",
+    CNN: "CNN",
+  } satisfies Record<string, string>,
+  // 출처가 대용치일 때의 이름 — "키:source" (macro.py YFINANCE_SYMBOLS 의 대용 매핑)
+  MACRO_INPUT_PROXY_LABEL: {
+    "us_2y_yield:yfinance": "미국 13주물 금리 (2년물 대용)",
+  } satisfies Record<string, string>,
+  // 경제 여건 점수 입력 지표 (백엔드 MACRO_INPUTS 와 같은 키)
+  MACRO_INPUT_LABEL: {
+    us_10y_yield: "미국 10년물 금리",
+    us_2y_yield: "미국 2년물 금리",
+    us_3m_yield: "미국 3개월물 금리",
+    vix: "VIX",
+    put_call_ratio: "풋/콜 비율",
+    fear_greed: "공포·탐욕 지수",
+    unemployment: "실업률",
+    cpi_yoy: "CPI 상승률",
+    fed_funds_rate: "기준금리",
+  } satisfies Record<string, string>,
   INBOX_PANEL: {
     GUIDE: "읽는 법",
     GUIDE_TITLE: "보유 종목 점검을 읽는 법",

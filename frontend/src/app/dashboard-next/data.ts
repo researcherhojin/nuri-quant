@@ -6,10 +6,18 @@ const number = z.number().nullable();
 const allocation = z.object({ long: number, short: number, cash: number });
 
 // 공식 지수 (#1676). 값이 없으면 백엔드가 null 을 보낸다 — 화면은 0 으로 바꾸지 않는다.
-const marketIndex = z.object({ key: z.string(), label: z.string(), close: number, prev_close: number, change_pct: number, date: z.string().nullable() });
+const marketIndex = z.object({
+  key: z.string(), label: z.string(), close: number, prev_close: number, change_pct: number, date: z.string().nullable(),
+  // 저장된 출처와 원천 심볼 (#1682)
+  source: z.string().nullable().optional(), symbol: z.string().optional(),
+});
+
+// 경제 여건 점수 입력 지표별 저장 출처·기준일 (#1682)
+const macroInput = z.object({ key: z.string(), date: z.string().nullable(), source: z.string().nullable() });
 
 export const dashboardSchema = z.object({
   market_indices: z.array(marketIndex).optional(),
+  macro_inputs: z.array(macroInput).optional(),
   exchange_rate: number.optional(),
   verdict: z.string(),
   verdict_level: z.string(),
