@@ -16,6 +16,7 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 | `price_targets.py` | entry / stop / TP1 / TP2 / trailing per holding, pulling from `config/rules.yaml` ladders (growth / value / swing). | upstream of every BUY/SELL alert | core |
 | `rebalance.py` | E-2 regime-adapted MVO/RP rebalance (defensive vs offensive sector tilt by regime). | `python -m ...rebalance` | E-2 |
 | `tracker.py` | E-3 store recommendations + 7/14/21/30/60/90d outcome backfill into `recommendations` table. | scheduler daily + `--save` | E-3 |
+| `adherence.py` | 합의 BUY/SELL 이행 여부 진단 — `portfolio_changes` 순변화로 4분류, 읽기 전용·저장 없음. | `python -m nuri.trading.recommend.adherence` | #1722 |
 
 ## Invariants
 
@@ -44,6 +45,11 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 3. Tests under `tests/trading/recommend/` with `tmp_path` DB isolation (see `tests/CLAUDE.md`).
 4. Discord alert path: route through `nuri/alerts/` — do not write Discord SDK calls here.
 5. Confirm `python -m nuri.trading.recommend.buy_candidate_emitter` (or equivalent) finishes < 60s on a cold cache; longer means cache the upstream computation.
+
+## 추천 이행 여부 진단 (`adherence.py`, #1722)
+
+합의 BUY/SELL 을 운영자가 따랐는지 보유 변경 원장(`portfolio_changes`, 트리거 기록 #1720)의 순변화로 `followed` / `contrary` / `not_followed` / `unknown` 으로 나눈다. 같은 종목·같은 행동의 연속은 한 에피소드(HOLD 제외), 창은 시작일 **다음 날**부터 `config/rules.yaml adherence.window_days`. 그 창에 원장 흔적이 없으면 `unknown` — 가져오기를 안 한 것과 안 따른 것을 구분하지 못하므로 지어내지 않는다. **진단 전용**: §3.11 판정은 읽지 않으며 결과를 저장하지 않는다(`python -m nuri.trading.recommend.adherence`, 집계만 출력). 액면분할·병합은 BUY/SELL 로 보인다(기업행동 피드 없음).
+**Test:** `tests/trading/recommend/test_adherence.py` — 창 시작을 당일로, 빈 창을 `not_followed` 로, HOLD 를 건너뛰게 바꾸면 각각 FAIL.
 
 ## References
 
