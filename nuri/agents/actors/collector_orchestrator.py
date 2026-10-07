@@ -1,7 +1,7 @@
 """CollectorOrchestrator — Layer B actor (#529 Phase 2 — canonical #1).
 
 Responsibilities:
-- 21+ collectors (kis_prices, yfinance, pykrx, fred, finviz, etc.) 의 oversight.
+- 21+ collectors (kis_prices, yfinance, pykrx, fred, etc.) 의 oversight.
 - 단일 collector 실행 → status (started/finished/failed/timeout/rate_limited) audit.
 - Retry + exponential backoff (1s → 2s → 4s) — 외부 API 일시적 실패 회복.
 - Health scan: 최근 N 시간 collector_runs GROUP BY → pass_rate / unhealthy 분류.

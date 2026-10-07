@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -1046,22 +1046,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e8/8b/8f516b366f5aa465bfdcb0456b0f7ae38f4496fde882b85798998f706f1b/finance_datareader-0.9.202.tar.gz", hash = "sha256:16e734dc3f3f51962d92c2cdc9b707b27650115f0990b25f6ffdad3318197070", size = 39406, upload-time = "2026-05-13T20:10:05.883Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3a/e8/57ac4d122c5e2b3c2b54bcd7069ee0ce735a174695f0b45407319d7728e5/finance_datareader-0.9.202-py3-none-any.whl", hash = "sha256:8d166865c1537c2b9fe0243ab67aea7eb057d7e25ff0366f8eeabda6dccdfbac", size = 53934, upload-time = "2026-05-13T20:10:07.073Z" },
-]
-
-[[package]]
-name = "finvizfinance"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "beautifulsoup4" },
-    { name = "lxml" },
-    { name = "pandas" },
-    { name = "requests" },
-    { name = "xlsxwriter" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/eb/3b/b6e086eca1a616bf7b7b060845ff15fa9f1be049532d5808b1ce29e38f82/finvizfinance-1.5.0.tar.gz", hash = "sha256:d2ef8000cc281d36e9eccf524cac89f5bf0f41a9d1f38c51ae43defbda3c8858", size = 39565, upload-time = "2026-08-29T07:03:55.257Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/f0/de6ebf7bc863c4b83119195e4368cf822939430d6f8d3efdc7d359ed6031/finvizfinance-1.5.0-py3-none-any.whl", hash = "sha256:5d30f4fabdc27f660b6f4865321e4e261822e983bee0f75e4722e45d4e239f1f", size = 52053, upload-time = "2026-08-29T07:03:53.693Z" },
 ]
 
 [[package]]
@@ -2320,7 +2304,6 @@ dependencies = [
     { name = "edgartools" },
     { name = "fastapi" },
     { name = "finance-datareader" },
-    { name = "finvizfinance" },
     { name = "fredapi" },
     { name = "hmmlearn" },
     { name = "httpx" },
@@ -2373,7 +2356,6 @@ requires-dist = [
     { name = "edgartools", specifier = ">=5.0.0" },
     { name = "fastapi", specifier = ">=0.133.0" },
     { name = "finance-datareader", specifier = ">=0.9.110" },
-    { name = "finvizfinance", specifier = ">=1.3.0" },
     { name = "fredapi", specifier = ">=0.5.2" },
     { name = "hmmlearn", specifier = ">=0.3.0" },
     { name = "httpx", specifier = ">=0.27.0" },

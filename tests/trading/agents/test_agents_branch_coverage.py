@@ -555,7 +555,7 @@ class TestSmartMoneyArkSells:
         assert "ARK 최근 매도 4건" in v.reasoning
 
 
-# ─── technical: yfinance fallback / chart 예외 / FINVIZ 예외 ───────────
+# ─── technical: yfinance fallback / chart 예외 ───────────
 
 
 class TestTechnicalDefensivePaths:
@@ -653,27 +653,6 @@ class TestTechnicalDefensivePaths:
         v = TechnicalAgent().analyze("AAPL", db_path=db_path)
         # chart 예외 시 chart=None, raise 안 함 → 정상 verdict
         assert v is not None
-
-    def test_finviz_fetch_exception_returns_empty(self, monkeypatch, db_path):
-        """`_get_finviz_signals` query exception → except → [] (lines 208-210).
-
-        주의: technical.py 의 `query` 는 module-level import — 모듈 namespace 의
-        query 자체를 패치해야 함.
-        """
-        from nuri.trading.agents.technical import TechnicalAgent
-
-        agent = TechnicalAgent()
-
-        def _boom(*a, **kw):
-            raise RuntimeError("DB outage")
-
-        # module namespace 의 query 객체 직접 패치
-        monkeypatch.setattr("nuri.trading.agents.technical.query", _boom)
-        result = agent._get_finviz_signals("AAPL", db_path=db_path)
-        assert result == []
-
-
-# ─── wallstreet: cached_layer 빈 reasons → None (line 258) ──────────────
 
 
 class TestWallStreetCachedNoReasons:

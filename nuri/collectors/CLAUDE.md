@@ -1,4 +1,4 @@
-# nuri/collectors/ — 27 Data Collectors
+# nuri/collectors/ — 26 Data Collectors
 
 ## BaseCollector Contract
 
@@ -41,7 +41,7 @@ CLI: `--source` flag is the standard way to switch (stock, stock_kr, fundamental
 |-----------|--------|-------------|-----|
 | stock, fundamental, wallstreet, estimates | yfinance | **10 threads** | API tolerates concurrency |
 | stock_kr | pykrx (KRX) | **sequential + 0.1s sleep** | First ~60 fast then server hangs |
-| ark, finviz | ark-funds.com CSV / finviz | small loop | <20 items, no benefit |
+| ark | ark-funds.com CSV | small loop | <20 items, no benefit |
 
 Standard parallel pattern (consistent across yfinance collectors):
 
@@ -119,13 +119,10 @@ CBOE CDN 전면 403 + 죽은 FRED 티어 + yfinance 티어의 미가드 None 크
 **Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
 — 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
 
-**`finviz` 는 이 규약 밖에 있다가 50일을 조용히 죽어 있었다 (#1723/#1724).** 시그널 6개가 전부
-실패해도(`finvizfinance` 파싱 실패 + 직접 스크래핑 403) `[]` 를 돌려 2026-08-17 부터 매일
-finished·0행으로 남았다. 조건은 `failed and not succeeded` — 보유 종목이 어느 시그널에도 없으면
-시그널이 살아 있어도 0건이므로 `not records` 로 쓰면 정상일을 실패로 만든다. `CollectionFailureError`
-라 재시도 없이 실패로 기록된다(막힌 사이트를 세 번 더 두드리지 않는다).
-**Test:** `tests/collectors/test_finviz.py::TestAllSignalsFailedIsAFailure` — raise 를 지우면 3개 FAIL,
-`test_no_match_with_working_signals_is_still_an_empty_success` 가 과잉 차단을 막는다.
+**`finviz` 는 이 규약 밖에 있다가 2026-08-17 부터 50일을 finished·0행으로 조용히 죽어 있었다** —
+시그널 6개 전부 실패(`finvizfinance` 파싱 실패 + 직접 스크래핑 403)를 `[]` 로 돌렸다. #1724 로 전면 실패를
+raise 하게 고친 뒤 #1723 으로 수집기 자체를 은퇴시켰다: 판정 반영은 2026-04-14 가 마지막이었고, 쓰던 시그널
+4개(RSI 과매도·과매수, 52주 고저)는 `technical` 에이전트가 직접 계산하는 조건의 이중 집계였다. *(history)*
 
 ## ARK: 보유 스냅샷이지 매매 내역이 아니다 (`ark.py`, #1143)
 

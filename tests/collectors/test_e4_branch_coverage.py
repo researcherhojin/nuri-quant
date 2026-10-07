@@ -574,7 +574,7 @@ class TestExternalMain:
 
 
 # ─────────────────────────────────────────────────────────────────
-# events.py / news.py / finviz.py / stock_kr.py — small branch fills
+# events.py / news.py / stock_kr.py — small branch fills
 # ─────────────────────────────────────────────────────────────────
 
 
@@ -646,45 +646,6 @@ class TestNewsBranches:
             c.collect()
         # Either summary or fall-through
         assert len(caplog.records) > 0
-
-
-class TestFinvizBranches:
-    """finviz.py L70 (small list info log) + L96-100 (finvizfinance fallback)."""
-
-    def test_small_list_logs_matches(self, db_with_portfolio, monkeypatch, caplog):
-        """L70: signals_list <5 + matched portfolio tickers → INFO log."""
-        from nuri.collectors import finviz as fv_mod
-        from nuri.collectors.finviz import FINVIZCollector
-
-        # Force small SIGNALS list (<5)
-        monkeypatch.setattr(fv_mod, "FINVIZ_SIGNALS", {"Oversold": "Oversold"})
-        c = FINVIZCollector()
-        # signal returns AAPL → matches portfolio (AAPL is in db_with_portfolio)
-        monkeypatch.setattr(c, "_fetch_signal_tickers", lambda sig: {"AAPL"})
-        with caplog.at_level("INFO"):
-            c.collect()
-        assert any("Oversold" in r.message or "FINVIZ" in r.message for r in caplog.records)
-
-    def test_finvizfinance_exception_falls_back_to_scrape(self, monkeypatch):
-        """L96-100: finvizfinance raises → fall-through to _scrape_signal_fallback."""
-        from nuri.collectors.finviz import FINVIZCollector
-
-        # Make import of finvizfinance fail (raises ImportError or its Ticker class fails)
-        original_import = __import__
-
-        def _no_finviz(name, *args, **kwargs):
-            if "finvizfinance" in name:
-                raise ImportError("no finvizfinance")
-            return original_import(name, *args, **kwargs)
-
-        c = FINVIZCollector()
-        with (
-            patch("builtins.__import__", side_effect=_no_finviz),
-            patch.object(c, "_scrape_signal_fallback", return_value={"FALLBACK"}) as fb,
-        ):
-            result = c._fetch_signal_tickers("Oversold")
-        assert result == {"FALLBACK"}
-        fb.assert_called_once()
 
 
 class TestStockKrBranches:
