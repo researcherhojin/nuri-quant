@@ -27,6 +27,7 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
     중복 방지: (date, ticker) 같은 날 재실행 시 INSERT OR REPLACE.
     """
     from nuri.core.db import get_db, query
+    from nuri.core.db.provenance import binding
     from nuri.core.timezone import today_kst
 
     if not results:
@@ -132,9 +133,11 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
         conn.executemany(
             """INSERT INTO recommendations
                (date, ticker, action, confidence, regime, signals, entry_price,
-                agent_verdicts, scoring_detail, alpha_action, portfolio_action)
+                agent_verdicts, scoring_detail, alpha_action, portfolio_action,
+                code_rev, execution_config_sha_v1)
                VALUES (:date, :ticker, :action, :confidence, :regime, :signals, :entry_price,
-                       :agent_verdicts, :scoring_detail, :alpha_action, :portfolio_action)
+                       :agent_verdicts, :scoring_detail, :alpha_action, :portfolio_action,
+                       :code_rev, :execution_config_sha_v1)
                ON CONFLICT(date, ticker) DO UPDATE SET
                    action = excluded.action,
                    confidence = excluded.confidence,
@@ -145,10 +148,14 @@ def save_to_recommendations(results: list[ConsensusResult], db_path=None) -> int
                    scoring_detail = excluded.scoring_detail,
                    alpha_action = excluded.alpha_action,
                    portfolio_action = excluded.portfolio_action,
+                   -- 같은 날 재실행은 행 내용을 새로 계산한다 — 지문도 그 실행의 것 (#1714)
+                   code_rev = excluded.code_rev,
+                   execution_config_sha_v1 = excluded.execution_config_sha_v1,
                    -- 내용을 합의가 덮었으면 라벨도 합의 것이다. emitter 가 먼저 앉은
                    -- `(date, ticker)` 를 덮을 때 `source` 만 남겨두면 그 행이 `source IS
                    -- NULL` 읽기 경로 전체에서 사라진다 — §3.11 판정 표본 포함 (#1078).
                    source = NULL""",
-            records,
+            # 방법론 지문은 self-measured (#1714) — 레코드 뒤에 섞어 호출자 값을 덮는다
+            [{**r, **binding()} for r in records],
         )
         return len(records)

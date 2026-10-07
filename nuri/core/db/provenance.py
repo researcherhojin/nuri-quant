@@ -137,3 +137,8 @@ def execution_config_sha_v1() -> str | None:
         h.update(b"\x00")
     _CONFIG_SHA_CACHE = h.hexdigest()[:32]
     return _CONFIG_SHA_CACHE
+
+
+def binding() -> dict[str, str | None]:
+    """writer 가 행에 섞어 넣을 두 컬럼 (#1714). 호출자 값 위에 덮어쓰도록 dict 뒤쪽에 둔다."""
+    return {"code_rev": code_rev(), "execution_config_sha_v1": execution_config_sha_v1()}
