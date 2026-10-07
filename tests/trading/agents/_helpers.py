@@ -2,6 +2,7 @@
 
 Imported explicitly by test files (conftest.py only auto-loads fixtures).
 """
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,9 +17,11 @@ from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert
 
 def _seed_portfolio(db_path, tickers=None):
     """Insert sample portfolio rows."""
-    tickers = tickers or [("test", "AAPL", 10, 150.0, "USD", "Technology"),
-                          ("test", "MSFT", 5, 300.0, "USD", "Technology"),
-                          ("test", "JNJ", 20, 160.0, "USD", "Health")]
+    tickers = tickers or [
+        ("test", "AAPL", 10, 150.0, "USD", "Technology"),
+        ("test", "MSFT", 5, 300.0, "USD", "Technology"),
+        ("test", "JNJ", 20, 160.0, "USD", "Health"),
+    ]
     with get_db(db_path) as conn:
         for account, ticker, qty, avg_price, currency, sector in tickers:
             conn.execute(
@@ -47,7 +50,7 @@ def _seed_macro(db_path, indicator="vix", value=20.0, days=1):
             date_str = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             conn.execute(
                 "INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
-                (indicator, date_str, value, "test"),
+                (indicator, date_str, value, "CBOE" if indicator == "put_call_ratio" else "test"),
             )
 
 
@@ -56,8 +59,7 @@ def _seed_ticker(db_path, ticker, n=70, base_price=50.0):
     dates = pd.bdate_range(end="2025-03-28", periods=n).strftime("%Y-%m-%d").tolist()
     with get_db(db_path) as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO portfolio (account, ticker, quantity, avg_price) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO portfolio (account, ticker, quantity, avg_price) VALUES (?, ?, ?, ?)",
             ("test", ticker, 10, base_price),
         )
         for i, d in enumerate(dates):

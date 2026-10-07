@@ -1,3 +1,7 @@
+from datetime import timedelta
+
+from nuri.core.timezone import kst_now
+
 """Tests for base agent — split from test_trading_agents_all.py."""
 import json
 from dataclasses import dataclass
@@ -17,6 +21,7 @@ class TestNormalizeConfidence:
 
     def test_normalization_enabled(self):
         from nuri.trading.agents.technical import TechnicalAgent
+
         agent = TechnicalAgent()
         assert agent.normalize_confidence(90) == 100.0
         assert agent.normalize_confidence(0) == 0.0
@@ -25,6 +30,7 @@ class TestNormalizeConfidence:
     def test_korean_market_identity(self):
         """Korean market (0-100 → 0-100) 변환 없음."""
         from nuri.trading.agents.korean_market import KoreanMarketAgent
+
         agent = KoreanMarketAgent()
         assert agent.normalize_confidence(50) == 50.0
         assert agent.normalize_confidence(100) == 100.0
@@ -32,6 +38,7 @@ class TestNormalizeConfidence:
     def test_clamp_bounds(self):
         """범위 밖 값은 0-100으로 클램핑."""
         from nuri.trading.agents.fundamental import FundamentalAgent
+
         agent = FundamentalAgent()
         assert agent.normalize_confidence(100) == 100.0
         assert agent.normalize_confidence(-10) == 0.0
@@ -41,8 +48,11 @@ class TestNormalizeConfidence:
         from nuri.trading.agents import base as base_mod
         from nuri.trading.agents.technical import TechnicalAgent
 
-        monkeypatch.setattr(base_mod, "_load_norm_config",
-                            lambda: {"enabled": False, "scales": {"technical": {"raw_min": 0, "raw_max": 90}}})
+        monkeypatch.setattr(
+            base_mod,
+            "_load_norm_config",
+            lambda: {"enabled": False, "scales": {"technical": {"raw_min": 0, "raw_max": 90}}},
+        )
         agent = TechnicalAgent()
         assert agent.normalize_confidence(45) == 45
 
@@ -51,8 +61,7 @@ class TestNormalizeConfidence:
         from nuri.trading.agents import base as base_mod
         from nuri.trading.agents.technical import TechnicalAgent
 
-        monkeypatch.setattr(base_mod, "_load_norm_config",
-                            lambda: {"enabled": True, "scales": {}})
+        monkeypatch.setattr(base_mod, "_load_norm_config", lambda: {"enabled": True, "scales": {}})
         agent = TechnicalAgent()
         assert agent.normalize_confidence(70) == 70
 
@@ -61,8 +70,11 @@ class TestNormalizeConfidence:
         from nuri.trading.agents import base as base_mod
         from nuri.trading.agents.technical import TechnicalAgent
 
-        monkeypatch.setattr(base_mod, "_load_norm_config",
-                            lambda: {"enabled": True, "scales": {"technical": {"raw_min": 50, "raw_max": 50}}})
+        monkeypatch.setattr(
+            base_mod,
+            "_load_norm_config",
+            lambda: {"enabled": True, "scales": {"technical": {"raw_min": 50, "raw_max": 50}}},
+        )
         agent = TechnicalAgent()
         assert agent.normalize_confidence(50) == 50
 
@@ -73,6 +85,7 @@ class TestNewAgentNullData:
     def test_options_null_pcr_value(self, db_path):
         """PCR 값이 NULL인 경우 graceful HOLD."""
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
@@ -84,6 +97,7 @@ class TestNewAgentNullData:
     def test_crypto_null_change_value(self, db_path):
         """BTC 변화율이 NULL인 경우 graceful HOLD."""
         from nuri.trading.agents.crypto_agent import CryptoAgent
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
@@ -95,6 +109,7 @@ class TestNewAgentNullData:
     def test_retail_null_mentions(self, db_path):
         """WSB 언급 값이 NULL인 경우 graceful HOLD."""
         from nuri.trading.agents.retail_agent import RetailAgent
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
@@ -109,11 +124,12 @@ class TestNewAgentDataPoints:
 
     def test_options_data_points(self, db_path):
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{20+i:02d}", "put_call_ratio", 1.0),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=i)).date().isoformat(), "put_call_ratio", 1.0),
                 )
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert "pcr_avg" in v.data_points
@@ -122,6 +138,7 @@ class TestNewAgentDataPoints:
 
     def test_crypto_data_points(self, db_path):
         from nuri.trading.agents.crypto_agent import CryptoAgent
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
@@ -137,6 +154,7 @@ class TestNewAgentDataPoints:
 
     def test_retail_data_points(self, db_path):
         from nuri.trading.agents.retail_agent import RetailAgent
+
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
@@ -149,9 +167,11 @@ class TestNewAgentDataPoints:
 class TestBaseAgent:
     def test_safe_query_exception(self, db_path, monkeypatch):
         from nuri.trading.agents.base import BaseAgent
+
         class DummyAgent(BaseAgent):
             def analyze(self, ticker, db_path=None):
                 return None
+
         agent = DummyAgent("test")
         monkeypatch.setattr("nuri.core.db.query", MagicMock(side_effect=Exception("db error")))
         result = agent._safe_query("SELECT 1")
@@ -163,9 +183,11 @@ class TestBaseAgent:
             lambda: {"enabled": False},
         )
         from nuri.trading.agents.base import BaseAgent
+
         class DummyAgent(BaseAgent):
             def analyze(self, ticker, db_path=None):
                 return None
+
         agent = DummyAgent("test")
         assert agent.normalize_confidence(75.0) == 75.0
 
@@ -175,9 +197,11 @@ class TestBaseAgent:
             lambda: {"enabled": True, "scales": {}},
         )
         from nuri.trading.agents.base import BaseAgent
+
         class DummyAgent(BaseAgent):
             def analyze(self, ticker, db_path=None):
                 return None
+
         agent = DummyAgent("test")
         assert agent.normalize_confidence(75.0) == 75.0
 
@@ -188,8 +212,10 @@ class TestBaseAgent:
             lambda: {"enabled": True, "scales": {"test": {"raw_min": 50, "raw_max": 50}}},
         )
         from nuri.trading.agents.base import BaseAgent
+
         class DummyAgent(BaseAgent):
             def analyze(self, ticker, db_path=None):
                 return None
+
         agent = DummyAgent("test")
         assert agent.normalize_confidence(75.0) == 75.0

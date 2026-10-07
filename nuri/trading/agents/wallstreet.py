@@ -59,13 +59,28 @@ SKIP_TICKERS = {
 }
 
 
+def _recent_dated(frame, max_age_days, date_column=None):
+    """날짜를 확인할 수 있는 행만 사용한다. 시간대는 KST로 통일한다."""
+    import pandas as pd
+
+    if date_column and date_column in frame.columns:
+        raw = frame[date_column]
+    elif isinstance(frame.index, pd.DatetimeIndex):
+        raw = frame.index
+    else:
+        return frame.iloc[:0]
+    dates = pd.DatetimeIndex(pd.to_datetime(raw, errors="coerce", utc=True)).normalize()
+    today = pd.Timestamp(kst_now().date(), tz="UTC")
+    return frame[(dates >= today - timedelta(days=max_age_days)) & (dates <= today)]
+
+
 class WallStreetAgent(BaseAgent):
     def __init__(self):
         super().__init__("wallstreet")
 
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         # ETF, 한국주, 레버리지 종목은 yfinance Wall Street 데이터 없음 → 즉시 스킵
-        if ticker in SKIP_TICKERS or ticker.endswith(".KS") or self._unsupported_by_data(ticker, db_path):
+        if ticker in SKIP_TICKERS or ticker.endswith((".KS", ".KQ")) or self._unsupported_by_data(ticker, db_path):
             return AgentVerdict(self.name, ticker, "HOLD", 20, "Wall Street 데이터 미지원 종목", abstained=True)
 
         # DB에 캐시된 데이터 먼저 확인 (yfinance 호출 최소화). 그 조회들의 실패 여부를 같이
@@ -94,8 +109,7 @@ class WallStreetAgent(BaseAgent):
         try:
             ud = t.upgrades_downgrades
             if ud is not None and not ud.empty:
-                cutoff = kst_now().replace(tzinfo=None) - timedelta(days=90)
-                recent = ud[ud.index >= cutoff] if hasattr(ud.index[0], "year") else ud.tail(10)
+                recent = _recent_dated(ud, _CFG.get("ratings_max_age_days", 90))
 
                 upgrades = 0
                 downgrades = 0
@@ -136,6 +150,8 @@ class WallStreetAgent(BaseAgent):
         # ── 2. Earnings Surprise ──
         try:
             eh = t.earnings_history
+            if eh is not None:
+                eh = _recent_dated(eh, _CFG.get("earnings_max_age_days", 200))
             if eh is not None and not eh.empty:
                 latest = eh.iloc[-1]
                 # NaN 서프라이즈는 '모름' 이지 '0% 부합' 이 아니다 — `or 0` 은 NaN 을 못 거른다 (#1481)
@@ -162,6 +178,8 @@ class WallStreetAgent(BaseAgent):
         # ── 3. Insider 매매 ──
         try:
             ins = t.insider_transactions
+            if ins is not None:
+                ins = _recent_dated(ins, _CFG.get("insiders_max_age_days", 90), "Start Date")
             if ins is not None and not ins.empty:
                 # 최근 10건
                 recent_ins = ins.head(10)
@@ -285,19 +303,24 @@ class WallStreetAgent(BaseAgent):
         과 "캐시 조회 실패" 를 갈라야 하는데 반환값 `None` 이 둘을 뭉갠다. 반환형 대신
         out-param 인 이유는 위 호출부 주석 참조.
         """
+        today = kst_now().date().isoformat()
+
+        def cutoff(key, fallback):
+            return (kst_now() - timedelta(days=_CFG.get(key, fallback))).date().isoformat()
+
         ratings = self._safe_query(
-            "SELECT action, target_price FROM analyst_ratings WHERE ticker=? ORDER BY date DESC LIMIT 10",
-            (ticker,),
+            "SELECT action, target_price, date FROM analyst_ratings WHERE ticker=? AND date BETWEEN ? AND ? ORDER BY date DESC LIMIT 10",
+            (ticker, cutoff("ratings_max_age_days", 90), today),
             db_path,
         )
         earnings = self._safe_query(
-            "SELECT surprise_pct FROM earnings_surprises WHERE ticker=? ORDER BY quarter DESC LIMIT 1",
-            (ticker,),
+            "SELECT surprise_pct, quarter FROM earnings_surprises WHERE ticker=? AND quarter BETWEEN ? AND ? ORDER BY quarter DESC LIMIT 1",
+            (ticker, cutoff("earnings_max_age_days", 200), today),
             db_path,
         )
         insiders = self._safe_query(
-            "SELECT transaction_type FROM insider_trades WHERE ticker=? ORDER BY date DESC LIMIT 10",
-            (ticker,),
+            "SELECT transaction_type, date FROM insider_trades WHERE ticker=? AND date BETWEEN ? AND ? ORDER BY date DESC LIMIT 10",
+            (ticker, cutoff("insiders_max_age_days", 90), today),
             db_path,
         )
 
@@ -342,7 +365,7 @@ class WallStreetAgent(BaseAgent):
 
         if insiders:
             sells = sum(1 for i in insiders if i.get("transaction_type") == "sale")
-            buys = len(insiders) - sells
+            buys = sum(1 for i in insiders if i.get("transaction_type") in ("purchase", "buy"))
             if sells > buys + ins_sell_margin:
                 score -= 1
                 reasons.append(f"내부자매도({sells}S, cached)")
@@ -358,5 +381,17 @@ class WallStreetAgent(BaseAgent):
             action, conf = "HOLD", _CONF.get("cached_hold", 40)
 
         return AgentVerdict(
-            self.name, ticker, action, round(self.normalize_confidence(conf), 1), "; ".join(reasons), {"cached": True}
+            self.name,
+            ticker,
+            action,
+            round(self.normalize_confidence(conf), 1),
+            "; ".join(reasons),
+            {
+                "cached": True,
+                "source_dates": {
+                    "ratings": ratings[0].get("date") if ratings else None,
+                    "earnings": earnings[0].get("quarter") if earnings else None,
+                    "insiders": insiders[0].get("date") if insiders else None,
+                },
+            },
         )

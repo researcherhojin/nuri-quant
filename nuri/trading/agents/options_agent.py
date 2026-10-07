@@ -6,7 +6,10 @@ PCR 낮음(≤0.7) = 과도한 낙관 → 경계 신호.
 데이터 없으면 graceful HOLD 반환.
 """
 
+from datetime import datetime
+
 from nuri.core.agent_config import AGENT_CONFIG
+from nuri.core.timezone import kst_now, today_kst
 from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_values
 
 _CFG = AGENT_CONFIG.get("options", {})
@@ -20,8 +23,8 @@ class OptionsAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         lookback = _CFG.get("lookback_days", 5)
         rows = self._safe_query(
-            "SELECT value FROM macro WHERE indicator='put_call_ratio' ORDER BY date DESC LIMIT ?",
-            (lookback,),
+            "SELECT value, source, date FROM macro WHERE indicator='put_call_ratio' AND date <= ? ORDER BY date DESC LIMIT ?",
+            (today_kst(), lookback),
             db_path,
         )
         if not rows:
@@ -33,10 +36,29 @@ class OptionsAgent(BaseAgent):
                 failed_reason="PCR 조회 실패",
             )
 
-        values = finite_values(r["value"] for r in rows)  # NULL 뿐 아니라 NaN/±inf 도 부재 (#1485)
+        source = rows[0].get("source")
+        as_of = rows[0].get("date")
+        metadata = {"scope": "us_market", "source": source, "as_of": as_of}
+        try:
+            age = (kst_now().date() - datetime.strptime(as_of, "%Y-%m-%d").date()).days * 24
+        except (TypeError, ValueError):
+            age = float("inf")
+        if age > _CFG.get("max_age_hours", 132):
+            return AgentVerdict(
+                self.name, ticker, "HOLD", 0, "미국 시장 PCR — 자료 유효 기간 초과", metadata, abstained=True
+            )
+        # 최신 소스와 다른 시계열은 평균/추세에서 섞지 않는다.
+        same_source = []
+        for row in rows:
+            if row.get("source") != source:
+                break
+            same_source.append(row)
+        values = finite_values(r["value"] for r in same_source)
         if not values:
             # 조회는 성공했고 행도 있는데 값이 전부 NULL — 실패가 아니라 부재다.
-            return AgentVerdict(self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 값 없음", abstained=True)
+            return AgentVerdict(
+                self.name, ticker, "HOLD", _CONF.get("no_data", 0), "PCR 값 없음", metadata, abstained=True
+            )
 
         pcr = sum(values) / len(values)
 
@@ -103,10 +125,11 @@ class OptionsAgent(BaseAgent):
             ticker,
             action,
             round(self.normalize_confidence(confidence), 1),
-            "; ".join(reasons),
+            f"미국 시장 PCR ({source}, {as_of}): " + "; ".join(reasons),
             {
                 "pcr_avg": round(pcr, 3),
                 "pcr_latest": round(values[0], 3) if values else None,
                 "lookback_count": len(values),
+                **metadata,
             },
         )

@@ -27,7 +27,9 @@ class FundamentalAgent(BaseAgent):
         pe = finite_or_none(f.get("pe_ratio"))
         roe = finite_or_none(f.get("roe"))
         growth = finite_or_none(f.get("revenue_growth"))
-        debt = finite_or_none(f.get("debt_to_equity"))
+        # Yahoo 원자료 및 DB 단위는 percent. 규칙 debt_high는 배수다.
+        debt_pct = finite_or_none(f.get("debt_to_equity"))
+        debt = debt_pct / 100 if debt_pct is not None else None
 
         # 행은 있는데 소비하는 네 필드가 **전부 NULL** 이면 읽은 게 없다 (#1436, codex R8).
         # 앞 게이트(`if not rows`)는 행이 있으면 통과시키므로 여기서 한 번 더 본다. 전에는
@@ -99,7 +101,7 @@ class FundamentalAgent(BaseAgent):
         # 부채
         if debt and debt > _CFG.get("debt_high", 2.0):
             score -= 1
-            reasons.append(f"부채비율 {debt:.1f}x (과다)")
+            reasons.append(f"부채비율 {debt_pct:.1f}% ({debt:.2f}배, 기준 초과)")
 
         score_buy = _CFG.get("score_buy", 2)
         score_sell = _CFG.get("score_sell", -2)
@@ -126,5 +128,5 @@ class FundamentalAgent(BaseAgent):
             # 값은 읽었는데 전부 중립 구간이면 근거 문구가 빈다 — 그건 **판단**이다
             # (`risk` 의 "리스크 정상" 과 같은 부류). 위 게이트가 부재를 이미 걸렀다.
             "; ".join(reasons) or "펀더멘탈 중립",
-            {"pe": pe, "roe": roe, "growth": growth, "debt": debt},
+            {"pe": pe, "roe": roe, "growth": growth, "debt": debt, "debt_pct": debt_pct, "as_of": f.get("date")},
         )

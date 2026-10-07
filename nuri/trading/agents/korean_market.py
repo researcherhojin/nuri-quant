@@ -1,5 +1,5 @@
 """
-한국 시장 에이전트 — .KS 종목 전용 분석.
+한국 시장 에이전트 — .KS/.KQ 종목 전용 분석.
 
 KOSPI/KOSDAQ 구분, 환율 영향, 외국인/기관 수급,
 한국 시장 특성 (공매도 제한, 배당락 등)을 반영한다.
@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from nuri.core.agent_config import AGENT_CONFIG
+from nuri.core.db import DatabaseError, OperationalError, query_df
 from nuri.trading.agents.base import AgentVerdict, BaseAgent, QueryRows, finite_or_none
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 _CFG = AGENT_CONFIG.get("korean_market", {})
 
 
-def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
+def _calibrate_fx_thresholds(db_path=None, failures: list | None = None) -> tuple[float, float]:
     """90일 환율 데이터로 동적 FX 임계값 계산.
 
     약세: 90일 평균 + 1 표준편차
@@ -30,17 +31,20 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
     fx_weak_default = _CFG.get("fx_weak_default", 1400)
     fx_strong_default = _CFG.get("fx_strong_default", 1250)
 
-    from nuri.core.db import query_df
-
     # #1278: 미래 날짜 행이 90일 창에 섞이면 평균·표준편차가 오염된다 — 최신 1건뿐
     # 아니라 **시계열도** 상한이 필요하다.
     from nuri.core.timezone import today_kst
 
-    df = query_df(
-        "SELECT value FROM macro WHERE indicator='usd_krw' AND date <= ? ORDER BY date DESC LIMIT 90",
-        (today_kst(),),
-        db_path=db_path,
-    )
+    try:
+        df = query_df(
+            "SELECT value FROM macro WHERE indicator='usd_krw' AND date <= ? ORDER BY date DESC LIMIT 90",
+            (today_kst(),),
+            db_path=db_path,
+        )
+    except (OperationalError, DatabaseError):
+        if failures is not None:
+            failures.append("fx_calibration")
+        return fx_weak_default, fx_strong_default
     # NULL/NaN 값 행은 행 수에 넣지 않는다 — 30행이 전부 NULL 이면 예전엔 임계가 NaN 으로 data_points 에 실렸다 (#1481)
     values = np.asarray(pd.to_numeric(df["value"], errors="coerce"), dtype=float) if not df.empty else np.array([])
     values = values[np.isfinite(values)]
@@ -53,17 +57,6 @@ def _calibrate_fx_thresholds(db_path=None) -> tuple[float, float]:
     strong = round(mean - std, 0)
     return max(weak, _CFG.get("fx_weak_floor", 1300)), min(strong, _CFG.get("fx_strong_ceil", 1350))
 
-
-# KOSPI/KOSDAQ 구분
-KOSDAQ_TICKERS = {
-    "247540.KS",
-    "068270.KS",
-    "035720.KS",
-    "035420.KS",
-    "263750.KS",
-    "293490.KS",
-    "112040.KS",
-}
 
 # 수출 비중 높은 섹터
 EXPORT_SECTORS = {"Semiconductor", "Automobile", "Shipbuilding", "Steel", "Tech"}
@@ -78,7 +71,7 @@ class KoreanMarketAgent(BaseAgent):
     def analyze(self, ticker: str, db_path=None) -> AgentVerdict:
         """한국 종목 분석. US 종목은 중립 반환."""
         # US 종목은 패스
-        if not ticker.endswith(".KS"):
+        if not ticker.endswith((".KS", ".KQ")):
             return AgentVerdict(
                 agent_name=self.name,
                 ticker=ticker,
@@ -95,7 +88,7 @@ class KoreanMarketAgent(BaseAgent):
 
         score = float(_CFG.get("score_base", 50))
         reasons = []
-        data = {"is_korean": True, "market": "KOSDAQ" if ticker in KOSDAQ_TICKERS else "KOSPI"}
+        data = {"is_korean": True, "market": "KOSDAQ" if ticker.endswith(".KQ") else "KOSPI"}
 
         # 조회 실패를 누적한다 (#1446). 헬퍼 5 개가 각자 예외를 삼켜 반환값만 보면 "값이
         # 없다" 와 "조회가 실패했다" 가 구분되지 않았고, 그래서 DB 장애가 상시 부재로
@@ -108,7 +101,7 @@ class KoreanMarketAgent(BaseAgent):
         data["fx_rate"] = fx_rate
         sector = self._get_sector(ticker, db_path, failures=db_failures)
         data["sector"] = sector
-        fx_weak, fx_strong = _calibrate_fx_thresholds(db_path)
+        fx_weak, fx_strong = _calibrate_fx_thresholds(db_path, failures=db_failures)
         data["fx_weak_threshold"] = fx_weak
         data["fx_strong_threshold"] = fx_strong
 
@@ -146,7 +139,7 @@ class KoreanMarketAgent(BaseAgent):
                 reasons.append(f"20일 모멘텀 {momentum:.1f}%")
 
         # 4. KOSDAQ 변동성 프리미엄
-        if ticker in KOSDAQ_TICKERS:
+        if ticker.endswith(".KQ"):
             score += _CFG.get("kosdaq_discount", -3)
             reasons.append("KOSDAQ 변동성 할인")
 
@@ -186,6 +179,8 @@ class KoreanMarketAgent(BaseAgent):
                 failed_reason="한국 시장 조회 실패",
                 data_points={**data, "read_failures": db_failures},
             )
+
+        data["read_failures"] = db_failures
 
         # 판정
         score_base = _CFG.get("score_base", 50)
@@ -304,8 +299,8 @@ class KoreanMarketAgent(BaseAgent):
             failures.append("momentum")
         if len(rows) < 21:
             return None
-        latest = rows[0]["close"]
-        past = rows[-1]["close"]
-        if past and past > 0:
+        latest = finite_or_none(rows[0]["close"])
+        past = finite_or_none(rows[-1]["close"])
+        if latest is not None and past is not None and past > 0:
             return (latest - past) / past * 100
         return None

@@ -13,12 +13,13 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import timedelta
 
 import pandas as pd
 import pytest
 
 from nuri.core.db import init_db
+from nuri.core.timezone import kst_now
 
 
 @pytest.fixture()
@@ -58,7 +59,7 @@ class TestWallStreetBranches:
                 {"Action": "init", "priceTargetAction": "main", "currentPriceTarget": 100.0},
                 {"Action": "reit", "priceTargetAction": "main", "currentPriceTarget": 105.0},
             ],
-            index=[datetime.now()] * 2,
+            index=[kst_now().replace(tzinfo=None)] * 2,
         )
         _patch_ticker(monkeypatch, ud=ud)
 
@@ -78,7 +79,7 @@ class TestWallStreetBranches:
                 {"Action": "main", "priceTargetAction": "", "currentPriceTarget": float("nan")},
                 {"Action": "main", "priceTargetAction": "", "currentPriceTarget": float("nan")},
             ],
-            index=[datetime.now()] * 2,
+            index=[kst_now().replace(tzinfo=None)] * 2,
         )
         _patch_ticker(monkeypatch, ud=ud)
 
@@ -93,6 +94,7 @@ class TestWallStreetBranches:
         → 119 (data_points 진행).
         """
         eh = pd.DataFrame([{"surprisePercent": float("nan"), "epsActual": 0.0, "epsEstimate": 0.0}])
+        eh.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh))
         _patch_ticker(monkeypatch, eh=eh)
 
         from nuri.trading.agents.wallstreet import WallStreetAgent
@@ -114,6 +116,8 @@ class TestWallStreetBranches:
                 {"Text": "Quarterly report"},  # 키워드 없음 → continue
             ]
         )
+        ins.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ins))
+        ins["Start Date"] = ins.index
         _patch_ticker(monkeypatch, ins=ins)
 
         from nuri.trading.agents.wallstreet import WallStreetAgent
@@ -130,6 +134,8 @@ class TestWallStreetBranches:
                 {"Text": "Sale of 100 shares"},
             ]
         )
+        ins.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ins))
+        ins["Start Date"] = ins.index
         _patch_ticker(monkeypatch, ins=ins)
 
         from nuri.trading.agents.wallstreet import WallStreetAgent
@@ -162,7 +168,7 @@ class TestWallStreetBranches:
                 {"Action": "up", "priceTargetAction": "", "currentPriceTarget": float("nan")},
                 {"Action": "down", "priceTargetAction": "", "currentPriceTarget": float("nan")},
             ],
-            index=[datetime.now()] * 2,
+            index=[kst_now().replace(tzinfo=None)] * 2,
         )
         _patch_ticker(monkeypatch, ud=ud)
 
@@ -182,9 +188,10 @@ class TestWallStreetBranches:
         """
         ud = pd.DataFrame(
             [{"Action": "up", "priceTargetAction": "raises", "currentPriceTarget": float("nan")}] * 2,
-            index=[datetime.now()] * 2,
+            index=[kst_now().replace(tzinfo=None)] * 2,
         )
         eh = pd.DataFrame([{"surprisePercent": 0.20, "epsActual": 1.2, "epsEstimate": 1.0}])
+        eh.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh))
         _patch_ticker(monkeypatch, ud=ud, eh=eh)
 
         from nuri.trading.agents.wallstreet import WallStreetAgent
