@@ -13,7 +13,7 @@ FINVIZ에서 시장 전반 기술적 지표를 수집하여 market-wide 스캔�
 
 import logging
 
-from nuri.collectors.base import BaseCollector, today_str
+from nuri.collectors.base import BaseCollector, CollectionFailureError, today_str
 from nuri.core.db import get_db
 
 # finvizfinance 시그널 이름 → 내부 시그널 ID 매핑
@@ -73,6 +73,12 @@ class FINVIZCollector(BaseCollector):
                 self.logger.debug("FINVIZ %s 수집 실패: %s", signal_name, e)
 
         sample = ", ".join(failed[:3]) + (f" 외 {len(failed) - 3}개" if len(failed) > 3 else "")
+        # 시그널이 **전부** 실패하면 "매칭 0건" 이 아니라 수집 실패다 (#1724). 빈 목록을 돌려주면
+        # collector_runs 에 finished·0행으로 남아 실패율 점검(collector_health)이 못 본다 — 2026-08-17
+        # 부터 50일간 그 상태였다(#1723). CollectionFailureError 는 재시도 없이 실패로 기록된다
+        # (막힌 사이트를 세 번 더 두드리지 않는다). 일부만 실패하면 받은 만큼 저장한다.
+        if failed and not succeeded:
+            raise CollectionFailureError(f"FINVIZ: 시그널 {len(failed)}개 전부 실패 — {sample}")
         self.logger.info(
             "📊 FINVIZ 시그널: ✅ %d 성공 / ❌ %d 실패 — %d matches in portfolio — failed: %s",
             len(succeeded),
