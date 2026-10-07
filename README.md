@@ -5,9 +5,6 @@
 [![CI/CD](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml/badge.svg)](https://github.com/researcherhojin/nuri-quant/actions/workflows/main-ci-cd.yml)
 [![codecov](https://codecov.io/gh/researcherhojin/nuri-quant/graph/badge.svg)](https://codecov.io/gh/researcherhojin/nuri-quant)
 [![License](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.12-3776AB.svg?logo=python&logoColor=white)](pyproject.toml)
-[![Next.js](https://img.shields.io/badge/Next.js-16-000000.svg?logo=nextdotjs&logoColor=white)](frontend/package.json)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 **A quantitative decision-support platform that records and scores the evidence behind each investment recommendation.**
 
@@ -22,6 +19,7 @@ Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-base
 
 - [Security](#security)
 - [Background](#background)
+- [Tech Stack](#tech-stack)
 - [Install](#install)
 - [Usage](#usage)
 - [Project Stats](#project-stats)
@@ -81,6 +79,52 @@ A read-only MCP server (`nuri-read`, stdio) exposes BUY candidates, macro facts,
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime topology and scoring model.
 
+## Tech Stack
+
+<!-- 버전은 메이저(0.x 는 메이저.마이너)만 적는다 — 실제 설치 버전과의 대조는 tests/verify/test_readme_badges.py (#1704) -->
+
+**Frontend**<br/>
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Recharts](https://img.shields.io/badge/Recharts-3-22B5BF)
+![React Flow](https://img.shields.io/badge/React_Flow-12-FF0072)
+![Zod](https://img.shields.io/badge/Zod-4-3E67B1?logo=zod&logoColor=white)
+
+**Backend**<br/>
+![FastAPI](https://img.shields.io/badge/FastAPI-0.142-009688?logo=fastapi&logoColor=white)
+![Uvicorn](https://img.shields.io/badge/Uvicorn-0.54-2094F3)
+![APScheduler](https://img.shields.io/badge/APScheduler-3-4B8BBE)
+![MCP](https://img.shields.io/badge/MCP-2-000000?logo=modelcontextprotocol&logoColor=white)
+![discord.py](https://img.shields.io/badge/discord.py-2-5865F2?logo=discord&logoColor=white)
+
+**Data & Quant**<br/>
+![pandas](https://img.shields.io/badge/pandas-2-150458?logo=pandas&logoColor=white)
+![NumPy](https://img.shields.io/badge/NumPy-2-013243?logo=numpy&logoColor=white)
+![TA-Lib](https://img.shields.io/badge/TA--Lib-0.8-0B3D91)
+![yfinance](https://img.shields.io/badge/yfinance-1-720E9E)
+![pykrx](https://img.shields.io/badge/pykrx-1-0046FF)
+
+**Testing & Lint**<br/>
+![pytest](https://img.shields.io/badge/pytest-9-0A9EDC?logo=pytest&logoColor=white)
+![Vitest](https://img.shields.io/badge/Vitest-5-6E9F18?logo=vitest&logoColor=white)
+![Testing Library](https://img.shields.io/badge/Testing_Library-16-E33332?logo=testinglibrary&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-1-2EAD33)
+![Ruff](https://img.shields.io/badge/Ruff-0.15-D7FF64?logo=ruff&logoColor=white)
+![ESLint](https://img.shields.io/badge/ESLint-9-4B32C3?logo=eslint&logoColor=white)
+![oxlint](https://img.shields.io/badge/oxlint-1-32F3E9)
+
+**Infra**<br/>
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Node](https://img.shields.io/badge/Node-22-5FA04E?logo=nodedotjs&logoColor=white)
+![uv](https://img.shields.io/badge/uv-Package_Manager-DE5FE9?logo=uv&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-CI/CD-2088FF?logo=githubactions&logoColor=white)
+![Dependabot](https://img.shields.io/badge/Dependabot-Enabled-025E8C?logo=dependabot&logoColor=white)
+![Trivy](https://img.shields.io/badge/Trivy-Security_Scan-1904DA?logo=aqua&logoColor=white)
+![Codecov](https://img.shields.io/badge/Codecov-Coverage-F01F7A?logo=codecov&logoColor=white)
+
 ## Install
 
 Requirements: Python 3.12 or later, [uv](https://docs.astral.sh/uv/), TA-Lib and Node.js 22. On macOS: `brew install uv ta-lib fnm && fnm install 22`.
@@ -114,7 +158,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,339 collected across 392 files |
+| Backend tests | 8,343 collected across 393 files |
 | Frontend test files | 109 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 60 cron entries |
