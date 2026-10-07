@@ -2137,4 +2137,17 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         # 거래량 조건을 함께 둬 stock_kr 의 필터와 같은 모양만 지운다 — 시가 필드가 없는 KIS 미국 첫 관측 행(거래량 있음)은 남는다.
         "DELETE FROM prices WHERE close IS NOT NULL AND COALESCE(open, 0) = 0 AND COALESCE(volume, 0) = 0;",
     ),
+    (
+        68,
+        "decisions 에 방법론 지문 — code_rev · execution_config_sha_v1 (#1714)",
+        # 결과 원장(decision_outcomes)에는 57 이 두 컬럼을 박았지만, 그 결과가 매기는 **추천 자체**
+        # 에는 없었다. 측정 기간 중 rules/agents/signals 가 바뀌면 바뀌기 전·후의 추천이 같은 표본에
+        # 섞여도 구분할 수 없다 (2026-10-07 Vibe-Trading 비교 제안 1 — run manifest 해시).
+        # 같은 이름·같은 동결 closure 를 쓴다 — 두 원장을 같은 축으로 조인할 수 있어야 하므로 새 해시를
+        # 만들지 않는다. 기존 행은 NULL = "바인딩 이전" 으로 둔다 (57 과 같은 이유로 backfill 하지 않는다).
+        """
+        ALTER TABLE decisions ADD COLUMN code_rev TEXT;
+        ALTER TABLE decisions ADD COLUMN execution_config_sha_v1 TEXT;
+    """,
+    ),
 ]

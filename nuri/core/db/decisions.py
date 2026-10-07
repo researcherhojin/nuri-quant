@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Optional
 
 from .connection import get_db
+from .provenance import code_rev, execution_config_sha_v1
 
 
 def upsert_decision(data: dict, db_path: Optional[Path] = None) -> int:
@@ -21,7 +22,12 @@ def upsert_decision(data: dict, db_path: Optional[Path] = None) -> int:
 
     같은 날 같은 종목에 대해 재실행하면 최신 데이터로 UPDATE.
     Returns: decision id (신규 삽입 시 lastrowid, 기존 갱신 시 기존 id).
+
+    `code_rev` · `execution_config_sha_v1` 은 호출자가 아니라 여기서 self-measured 로 붙인다
+    (#1714, `decision_outcomes` 의 #1305 와 같은 규칙) — 호출자가 넘긴 값은 덮어쓴다. 같은 날
+    재실행은 행 내용을 새로 계산하므로 지문도 그 실행의 것으로 바뀐다.
     """
+    data = {**data, "code_rev": code_rev(), "execution_config_sha_v1": execution_config_sha_v1()}
     with get_db(db_path) as conn:
         cols = ", ".join(data.keys())
         placeholders = ", ".join(f":{k}" for k in data.keys())
