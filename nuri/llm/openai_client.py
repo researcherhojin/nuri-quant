@@ -16,19 +16,18 @@ module. Direct `import openai` elsewhere in `nuri/` is forbidden so that:
 4. Provider/model substitution — when a future PR adds another provider
    (Anthropic, Gemini, local Ollama as secondary, ...) it slots in here.
 
-The current §4.4.3 whitelist permits **three** purposes (`gpt-6-luna` and `gpt-5.4`; luna replaced `gpt-5.4-nano` 2026-10-08):
+The current §4.4.3 whitelist permits **Tier 0 (public data) only**, for two purposes
+(`gpt-6-luna` and `gpt-5.4`; luna replaced `gpt-5.4-nano` 2026-10-08):
 
-1. **Tier 0** — public RSS headline classification (`event_classifier`). ZDR 권장.
+1. **Tier 0** — public RSS headline classification (`event_classifier`).
 2. **Tier 0** — source-backed public company briefing (`research_briefing`),
    2026-10-07 사용자 요청. No holdings, accounts or user narrative.
-3. **Tier 2** — 일간 포트폴리오 리포트 (`report.py`), 2026-04-14 사용자 승인.
-   ZDR **필수**: `OPENAI_ZDR_APPROVED=1` 미설정 시 `chat_text(data_tier="tier2")`
-   가 `ExternalLLMPolicyViolation` 을 raise 한다 (fail loud).
 
-**Tier 1** (user narrative) 은 여전히 금지 — 활성화하려면 별도 STRATEGY PR.
+**Tier 1** (user narrative) 와 **Tier 2** (portfolio) 는 외부로 보내지 않는다. Tier 2 OpenAI
+경로(일간 포트폴리오 리포트)는 2026-10-08 폐지 — 조직에 ZDR 이 없음이 실측됐고(store=true 응답이
+재조회됨), 보호가 환경변수 하나뿐이었다. 포트폴리오 리포트는 로컬 생성만 한다 (`report.py`).
 
-Tier 판별은 caller 가 `data_tier=` 로 선언하고 이 wrapper 가 ZDR attestation
-만 강제한다. 어떤 데이터가 어느 Tier 인지는 `docs/STRATEGY.md` §4.4.3 표가
+Tier 판별은 caller 가 `data_tier=` 로 선언하고 이 wrapper 는 `tier0` 외에는 SDK 생성 전에 거부한다. 어떤 데이터가 어느 Tier 인지는 `docs/STRATEGY.md` §4.4.3 표가
 source of truth — 이 docstring 은 그 사본이므로 표가 바뀌면 같이 고칠 것.
 
 Usage:
@@ -158,10 +157,10 @@ class ExternalLLMResponseError(ExternalLLMError):
 class ExternalLLMPolicyViolation(ExternalLLMError):
     """Raised when a caller tries to send a data tier not permitted by policy.
 
-    STRATEGY.md §4.4.3 whitelists data classes per endpoint. Tier 2
-    (portfolio) requires `OPENAI_ZDR_APPROVED=1` as a runtime attestation
-    that the user obtained ZDR from OpenAI. Without that flag, the wrapper
-    refuses to send. This is an explicit safety gate — not a network error.
+    STRATEGY.md §4.4.3 whitelists data classes per endpoint — only Tier 0
+    (public data) may leave the machine. Any other declared tier is refused
+    before the SDK is constructed. This is an explicit safety gate — not a
+    network error.
     """
 
 
@@ -174,16 +173,6 @@ def is_disabled() -> bool:
 def has_credentials() -> bool:
     """True if OPENAI_API_KEY is present (not necessarily valid)."""
     return bool(os.getenv("OPENAI_API_KEY", "").strip())
-
-
-def zdr_approved() -> bool:
-    """True if user has attested OpenAI ZDR approval (Tier 2 prerequisite).
-
-    Set `OPENAI_ZDR_APPROVED=1` after obtaining ZDR from OpenAI. Required
-    for any call declaring `data_tier='tier2'`. See STRATEGY.md §4.4.3.
-    """
-    val = os.getenv("OPENAI_ZDR_APPROVED", "").strip().lower()
-    return val in ("1", "true", "yes", "on")
 
 
 class OpenAIClient:
@@ -361,28 +350,22 @@ class OpenAIClient:
     ) -> str:
         """Plain-text chat completion (no JSON mode).
 
-        Used for narrative outputs like the LLM daily report. Follows the
-        same audit-log + opt-out contract as `chat_json`, plus an extra
-        `data_tier` gate: `data_tier='tier2'` requires `OPENAI_ZDR_APPROVED=1`
-        (STRATEGY.md §4.4.3 precondition).
+        Follows the same audit-log + opt-out contract as `chat_json`, plus a
+        `data_tier` gate (STRATEGY.md §4.4.3).
 
         Args:
-            data_tier: 'tier0' (public) or 'tier2' (portfolio). Tier 2
-                requires ZDR attestation. Tier 1 is not currently permitted.
+            data_tier: must be 'tier0' (public data). Tier 1 (narrative) and
+                Tier 2 (portfolio) never leave the machine.
 
         Raises:
-            ExternalLLMPolicyViolation: data_tier='tier2' without ZDR, or
-                data_tier not in the whitelist.
+            ExternalLLMPolicyViolation: data_tier is anything but 'tier0'.
             ExternalLLMDisabled: opt-out via NURI_DISABLE_EXTERNAL_LLM=1
             ExternalLLMUnavailable: network/auth/SDK install failure
         """
-        if data_tier not in ("tier0", "tier2"):
-            raise ExternalLLMPolicyViolation(f"data_tier={data_tier!r} not permitted. See STRATEGY.md §4.4.3.")
-        if data_tier == "tier2" and not zdr_approved():
+        if data_tier != "tier0":
             raise ExternalLLMPolicyViolation(
-                "Tier 2 (portfolio) calls require OPENAI_ZDR_APPROVED=1 — set "
-                "this env var after obtaining ZDR from OpenAI. See "
-                "STRATEGY.md §4.4.3 Tier 2 precondition (1)."
+                f"data_tier={data_tier!r} not permitted — only public data (tier0) leaves the machine. "
+                "See STRATEGY.md §4.4.3."
             )
 
         sdk = self._ensure_sdk()

@@ -2238,57 +2238,12 @@ class TestLLMReport_FinalPush:
 
 
 # ═══════════════════════════════════════════════════════
-# _generate_openai + fallback chain (2026-04-14 STRATEGY §4.4.3 Tier 2)
+# local-only fallback chain (STRATEGY §4.4.3 — Tier 2 OpenAI path removed 2026-10-08)
 # ═══════════════════════════════════════════════════════
 
 
-class TestGenerateOpenAI:
-    """_generate_openai wraps openai_client.chat_text with Tier 2 gating."""
-
-    def test_returns_text_on_success(self, monkeypatch):
-        fake_client = MagicMock()
-        fake_client.chat_text.return_value = "## 1. 리포트 본문"
-        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
-        from nuri.llm.report import _generate_openai
-
-        result = _generate_openai("sys", "user")
-        assert result == "## 1. 리포트 본문"
-        kwargs = fake_client.chat_text.call_args.kwargs
-        assert kwargs["data_tier"] == "tier2"
-
-    def test_disabled_returns_empty(self, monkeypatch):
-        from nuri.llm.openai_client import ExternalLLMDisabled
-
-        fake_client = MagicMock()
-        fake_client.chat_text.side_effect = ExternalLLMDisabled("opt-out")
-        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
-        from nuri.llm.report import _generate_openai
-
-        assert _generate_openai("sys", "user") == ""
-
-    def test_zdr_not_approved_returns_empty(self, monkeypatch):
-        from nuri.llm.openai_client import ExternalLLMPolicyViolation
-
-        fake_client = MagicMock()
-        fake_client.chat_text.side_effect = ExternalLLMPolicyViolation("no ZDR")
-        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
-        from nuri.llm.report import _generate_openai
-
-        assert _generate_openai("sys", "user") == ""
-
-    def test_network_failure_returns_empty(self, monkeypatch):
-        from nuri.llm.openai_client import ExternalLLMUnavailable
-
-        fake_client = MagicMock()
-        fake_client.chat_text.side_effect = ExternalLLMUnavailable("503")
-        monkeypatch.setattr("nuri.llm.openai_client.get_client", lambda: fake_client)
-        from nuri.llm.report import _generate_openai
-
-        assert _generate_openai("sys", "user") == ""
-
-
 class TestGenerateLLMReportFallbackChain:
-    """generate_llm_report: OpenAI → llama.cpp → Ollama → help-text."""
+    """generate_llm_report: llama.cpp → Ollama → help-text. 외부 LLM 경로는 없다."""
 
     def _make_context(self, monkeypatch):
         from nuri.llm.report import ReportContext
@@ -2307,46 +2262,50 @@ class TestGenerateLLMReportFallbackChain:
         )
         monkeypatch.setattr("nuri.llm.report.gather_context", lambda db_path=None: ctx)
 
-    def test_openai_success_stops_chain(self, monkeypatch):
+    def test_portfolio_report_never_reaches_the_external_gateway(self, monkeypatch):
+        """리포트 입력은 종목별 손익·매도 금액(Tier 2)이다 — 게이트웨이를 부르면 그 자체가 위반이다.
+        예전에는 환경변수 하나(`OPENAI_ZDR_APPROVED`)로 ZDR 없는 조직에 보냈다 (2026-10-08 폐지)."""
         self._make_context(monkeypatch)
-        llamacpp_mock = MagicMock(return_value="SHOULD NOT SEE")
-        ollama_mock = MagicMock(return_value="SHOULD NOT SEE")
+        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
+
+        def forbidden():
+            raise AssertionError("portfolio report called the external LLM gateway")
+
+        monkeypatch.setattr("nuri.llm.openai_client.get_client", forbidden)
+        monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
+        monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "http://localhost:11434")
         monkeypatch.setattr(
-            "nuri.llm.report._generate_openai", lambda s, u: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 정상 응답"
+            "nuri.llm.report._generate_ollama", lambda p: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 local"
         )
-        monkeypatch.setattr("nuri.llm.report._generate_llamacpp", llamacpp_mock)
+        from nuri.llm.report import generate_llm_report
+
+        assert "local" in generate_llm_report()["report"]
+
+    def test_llamacpp_success_stops_chain(self, monkeypatch):
+        self._make_context(monkeypatch)
+        monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "/fake/model.gguf")
+        monkeypatch.setattr(
+            "nuri.llm.report._generate_llamacpp", lambda p: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 local"
+        )
+        ollama_mock = MagicMock(return_value="SHOULD NOT SEE")
         monkeypatch.setattr("nuri.llm.report._generate_ollama", ollama_mock)
         from nuri.llm.report import generate_llm_report
 
         result = generate_llm_report()
-        assert "정상 응답" in result["report"]
-        llamacpp_mock.assert_not_called()
-        ollama_mock.assert_not_called()
-
-    def test_openai_empty_falls_to_llamacpp(self, monkeypatch):
-        self._make_context(monkeypatch)
-        monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "/fake/model.gguf")
-        monkeypatch.setattr("nuri.llm.report._generate_openai", lambda s, u: "")
-        monkeypatch.setattr(
-            "nuri.llm.report._generate_llamacpp", lambda p: "## 1. 완성도 시장 리스크 시그널 후보 전략 주의 local"
-        )
-        monkeypatch.setattr("nuri.llm.report._generate_ollama", lambda p: "SHOULD NOT SEE")
-        from nuri.llm.report import generate_llm_report
-
-        result = generate_llm_report()
         assert "local" in result["report"]
+        ollama_mock.assert_not_called()
 
     def test_all_fail_yields_help_text(self, monkeypatch):
         """When every path returns empty, user sees concrete setup guidance."""
         self._make_context(monkeypatch)
         monkeypatch.setattr("nuri.llm.report.OLLAMA_HOST", "")
         monkeypatch.setattr("nuri.llm.report.LLAMA_MODEL_PATH", "")
-        monkeypatch.setattr("nuri.llm.report._generate_openai", lambda s, u: "")
         monkeypatch.setattr("nuri.llm.report._generate_llamacpp", lambda p: "")
         monkeypatch.setattr("nuri.llm.report._generate_ollama", lambda p: "")
         from nuri.llm.report import generate_llm_report
 
         result = generate_llm_report()
-        assert "OPENAI_API_KEY" in result["report"]
+        # 외부 LLM 을 켜는 법을 안내하지 않는다 — 예전 안내문이 ZDR 플래그 설정을 가르쳤다
+        assert "OPENAI" not in result["report"] and "ZDR" not in result["report"]
         assert "LLAMA_MODEL_PATH" in result["report"]
         assert "OLLAMA_HOST" in result["report"]

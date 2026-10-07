@@ -2,7 +2,7 @@
 
 Context
 -------
-After the 2026-04-14 OpenAI-primary refactor (§4.4.3 Tier 2), `_generate_ollama`
+`_generate_ollama`
 returns "" immediately when `OLLAMA_HOST` is empty. Most pre-existing Ollama
 success-path tests were written assuming the helper would always contact the
 mocked `requests.post`, so on CI (where `.env` has no OLLAMA_HOST) those tests

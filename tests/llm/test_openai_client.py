@@ -355,7 +355,7 @@ class TestCostEstimation:
 
 
 # ═══════════════════════════════════════════════════════
-# chat_text (plain text completion + ZDR / tier gate)
+# chat_text (plain text completion + tier gate)
 # ═══════════════════════════════════════════════════════
 
 
@@ -386,23 +386,8 @@ def fake_openai_text_success(monkeypatch):
     return fake_sdk
 
 
-class TestZdrApproved:
-    def test_zdr_approved_default_false(self, monkeypatch):
-        from nuri.llm.openai_client import zdr_approved
-
-        monkeypatch.delenv("OPENAI_ZDR_APPROVED", raising=False)
-        assert zdr_approved() is False
-
-    @pytest.mark.parametrize("value", ["1", "true", "YES"])
-    def test_zdr_approved_truthy(self, monkeypatch, value):
-        from nuri.llm.openai_client import zdr_approved
-
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", value)
-        assert zdr_approved() is True
-
-
 class TestChatTextTierGate:
-    """STRATEGY §4.4.3 enforcement — ZDR/tier checks happen BEFORE SDK call."""
+    """STRATEGY §4.4.3 enforcement — only tier0 leaves the machine; checked BEFORE the SDK call."""
 
     def test_unknown_tier_raises_policy_violation(self, fake_openai_text_success, db_path):
         from nuri.llm.openai_client import ExternalLLMPolicyViolation, OpenAIClient
@@ -417,45 +402,40 @@ class TestChatTextTierGate:
         with pytest.raises(ExternalLLMPolicyViolation):
             OpenAIClient().chat_text(system="s", user="u", data_tier="tier1", db_path=db_path)
 
-    def test_tier2_without_zdr_raises(self, fake_openai_text_success, db_path, monkeypatch):
+    @pytest.mark.parametrize("flag", [None, "1"])
+    def test_tier2_is_refused_even_with_the_old_zdr_flag(self, fake_openai_text_success, db_path, monkeypatch, flag):
+        """Tier 2 (portfolio) OpenAI 경로는 2026-10-08 폐지 — 예전 attestation 변수가 남아 있어도 보내지 않는다.
+        그 변수 하나가 종목별 손익을 ZDR 없는 조직으로 보내는 유일한 장치였다."""
         from nuri.llm.openai_client import ExternalLLMPolicyViolation, OpenAIClient
 
-        monkeypatch.delenv("OPENAI_ZDR_APPROVED", raising=False)
-        with pytest.raises(ExternalLLMPolicyViolation, match="OPENAI_ZDR_APPROVED"):
+        if flag:
+            monkeypatch.setenv("OPENAI_ZDR_APPROVED", flag)
+        with pytest.raises(ExternalLLMPolicyViolation, match="tier2"):
             OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+        fake_openai_text_success.chat.completions.create.assert_not_called()
 
-    def test_tier2_with_zdr_succeeds(self, fake_openai_text_success, db_path, monkeypatch):
+    def test_tier0_is_sent(self, fake_openai_text_success, db_path):
+        """Public data (Tier 0) is sendable."""
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
-        result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
-        assert "데이터 완성도" in result
-
-    def test_tier0_needs_no_zdr(self, fake_openai_text_success, db_path, monkeypatch):
-        """Public data (Tier 0) is freely sendable without ZDR."""
-        from nuri.llm.openai_client import OpenAIClient
-
-        monkeypatch.delenv("OPENAI_ZDR_APPROVED", raising=False)
         result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
         assert "리포트" in result
 
-    def test_tier2_call_logs_endpoint_with_tier(self, fake_openai_text_success, db_path, monkeypatch):
+    def test_call_logs_endpoint_with_tier(self, fake_openai_text_success, db_path):
         """Audit log endpoint should mark the tier so we can filter in monitoring."""
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
-        OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+        OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
         rows = query(
             "SELECT endpoint FROM external_llm_calls ORDER BY id DESC LIMIT 1",
             db_path=db_path,
         )
-        assert rows[0]["endpoint"] == "chat.completions(tier2)"
+        assert rows[0]["endpoint"] == "chat.completions(tier0)"
 
-    def test_tier_gate_runs_before_sdk_construction(self, fake_openai_text_success, db_path, monkeypatch):
-        """ZDR check must fail-fast without contacting the SDK (no audit row)."""
+    def test_tier_gate_runs_before_sdk_construction(self, fake_openai_text_success, db_path):
+        """The tier check must fail fast without contacting the SDK (no audit row)."""
         from nuri.llm.openai_client import ExternalLLMPolicyViolation, OpenAIClient
 
-        monkeypatch.delenv("OPENAI_ZDR_APPROVED", raising=False)
         with pytest.raises(ExternalLLMPolicyViolation):
             OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
         # No audit row written — the gate ran before `_ensure_sdk`
@@ -467,8 +447,7 @@ class TestChatTextContent:
     def test_returns_plain_content(self, fake_openai_text_success, db_path, monkeypatch):
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
-        out = OpenAIClient().chat_text(system="sys", user="body", data_tier="tier2", db_path=db_path)
+        out = OpenAIClient().chat_text(system="sys", user="body", data_tier="tier0", db_path=db_path)
         assert out == "## 1. 데이터 완성도\n리포트 본문"
 
     def test_empty_content_returns_empty_string(self, fake_openai_text_success, db_path, monkeypatch):
@@ -476,8 +455,7 @@ class TestChatTextContent:
         fake_openai_text_success.chat.completions.create.return_value.choices[0].message.content = None
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
-        out = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+        out = OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
         assert out == ""
 
 
@@ -495,12 +473,11 @@ class TestChatTextErrorPaths:
         fake_module.OpenAI = MagicMock(return_value=fake_sdk)
         monkeypatch.setitem(__import__("sys").modules, "openai", fake_module)
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
         monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
         mod._singleton = None
 
         with pytest.raises(ExternalLLMUnavailable, match="RuntimeError"):
-            OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+            OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
 
         # Audit row must record the failure (error_type, success=False)
         rows = query("SELECT * FROM external_llm_calls", db_path=db_path)
@@ -508,7 +485,7 @@ class TestChatTextErrorPaths:
         row = dict(rows[0])
         assert row["success"] == 0
         assert row["error_type"] == "RuntimeError"
-        assert row["endpoint"] == "chat.completions(tier2)"
+        assert row["endpoint"] == "chat.completions(tier0)"
         # Content never written
         assert "boom" not in json.dumps(row)
 
@@ -523,7 +500,6 @@ class TestChatTextErrorPaths:
         fake_module.OpenAI = MagicMock(return_value=fake_sdk)
         monkeypatch.setitem(__import__("sys").modules, "openai", fake_module)
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
         monkeypatch.delenv("NURI_DISABLE_EXTERNAL_LLM", raising=False)
         mod._singleton = None
 
@@ -534,21 +510,19 @@ class TestChatTextErrorPaths:
         monkeypatch.setattr(mod, "log_external_llm_call", boom)
 
         with pytest.raises(ExternalLLMUnavailable, match="RuntimeError"):
-            OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+            OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
 
     def test_success_path_audit_failure_does_not_mask_result(self, fake_openai_text_success, db_path, monkeypatch):
         """If SDK succeeds but audit log write fails, the response still reaches the caller."""
         import nuri.llm.openai_client as mod
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
-
         def boom(*a, **kw):
             raise OSError("readonly fs")
 
         monkeypatch.setattr(mod, "log_external_llm_call", boom)
 
-        result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+        result = OpenAIClient().chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
         # Content returned despite audit log failure — observable contract upheld.
         assert "데이터 완성도" in result
 
@@ -694,7 +668,6 @@ class TestRealSdkWireContract:
         분류는 regex 로, 리포트는 로컬 폴백으로 조용히 떨어진다. 두 엔드포인트 모두 끈 채로 나가야 한다."""
         from nuri.llm.openai_client import OpenAIClient
 
-        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
         for call in ("json", "text"):
             captured: dict = {}
             client = OpenAIClient()
@@ -702,7 +675,7 @@ class TestRealSdkWireContract:
             if call == "json":
                 client.chat_json(system="s", user="u", db_path=db_path)
             else:
-                client.chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+                client.chat_text(system="s", user="u", data_tier="tier0", db_path=db_path)
             assert captured["body"]["reasoning_effort"] == "none", call
 
     def test_response_shape_the_gateway_depends_on(self, db_path):
