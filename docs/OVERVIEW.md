@@ -187,6 +187,19 @@ E2E는 실제 로컬 API를 사용한다. 개인 보유값을 고정한 기대�
 - **근거 영역**: 선택 종목의 지표는 근거 아래에 자연스럽게 이어진다(초안은 패널 바닥에 붙여 큰 빈칸이 생겼다).
 - **백엔드**: `POST /api/pipeline/refresh` 의 접수는 감사 로그 `REFRESH` / `pipeline_refresh` 만 남긴다. `pipeline_events` 행은 백그라운드 실행이 남긴다 — 스테이지 lifecycle 은 `run_step`, 작업 단위 `refresh_job_started/completed/failed` 는 `_mark()`(`emit_event` 경유, 유일한 writer). heavy slot 은 접수 때 잡고 실행이 끝나면 놓되, 백그라운드가 `QUEUE_GRACE_SECONDS`(60초) 안에 시작하지 못한 queued 실행은 다음 조회·요청에서 `abandoned` 로 닫고 slot 을 돌려준다(응답 전송이 예외로 끝나면 Starlette 가 BackgroundTasks 를 돌리지 않는 경로). `tests/api/test_routes.py` 가 라우터 mount 를 스모크로 잠근다.
 
+## 종목 상세와 포트폴리오 동기화
+
+보유 점검에서 이동하는 `/ticker-next/[symbol]`은 기업·펀드 공통 본문과 목차를 사용한다.
+공개 브리핑과 저장된 매매 판단은 별도 입력이다. 자료 수집이나 브리핑 생성만으로 판정이
+최신화되지는 않는다. 구현·검증·한계는 [종목 리서치 안내](RESEARCH_BRIEFING.md)를 따른다.
+
+포트폴리오 신선도는 보유 내역 동기화 상태이며 주가 신선도와 별개다.
+스크린샷을 반영할 때는 계좌 매핑·수량·평단·합계를 대조하고, 비용 포함 평가금을 시장 가격으로
+덮어쓰지 않는다. 역산 평단은 체결 평단과 구분해 근거를 남긴다. 화면에 없는 현금은 확인된 값으로
+갱신했다고 표시하지 않는다. 현금은 `config/portfolio.yaml`에서 읽는다.
+운영 원본과 로컬 복제본을 구분하고, 로컬만 수정한 내용을 운영 동기화 완료로 기록하지 않는다.
+수정 전 백업, 저장 후 API·화면 재조회와 캐시 갱신을 확인한다. 개인 금융 자료는 Git에 남기지 않는다.
+
 ## 디자인 참고
 
 [IBKR PortfolioAnalyst](https://portal.interactivebrokers.com/en/portfolioanalyst/features.php)와
