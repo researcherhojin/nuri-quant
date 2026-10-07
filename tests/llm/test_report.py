@@ -349,6 +349,47 @@ class TestOutputValidation:
         assert "AAPL" in result.hallucinated_tickers
         assert "META" in result.hallucinated_tickers
 
+    def _ctx(self, **sections):
+        from nuri.llm.report import ReportContext
+
+        base = dict(
+            gate_summary="",
+            gate_score=0.7,
+            regime_section="",
+            macro_section="",
+            risk_section="",
+            candidates_section="",
+            conflicts_section="",
+            drift_section="",
+            consensus_section="",
+            strategy_section="",
+            known_tickers={"005930.KS", "0167Z0.KS", "TSLA"},
+            known_numbers=set(),
+        )
+        return ReportContext(**{**base, **sections})
+
+    def test_suffix_and_input_abbreviation_are_not_hallucinations(self):
+        """2026-10-08 로컬 생성의 두 경고는 검증기 오탐이었다 — `005930.KS` 의 `KS`, 입력에 있던 `FFR`."""
+        from nuri.llm.report import validate_output
+
+        ctx = self._ctx(macro_section="FFR 4.25%")
+        text = "**005930.KS** 와 0167Z0.KS, TSLA. 정책금리(FFR)는 4.25%."
+        assert validate_output(text, ctx).hallucinated_tickers == []
+
+    def test_tickers_absent_from_the_input_are_still_flagged(self):
+        """오탐을 줄이려고 감지를 끄면 안 된다 — 입력에 없는 미국·한국 종목은 그대로 잡는다."""
+        from nuri.llm.report import validate_output
+
+        ctx = self._ctx(macro_section="FFR 4.25%")
+        result = validate_output("NVDA 와 999999.KS 를 보라. 005930.KS 는 유지.", ctx)
+        assert result.hallucinated_tickers == ["999999.KS", "NVDA"]
+
+    def test_prompt_pins_ticker_spelling_and_forbids_new_abbreviations(self):
+        from nuri.llm.report import SYSTEM_PROMPT
+
+        assert "[DATA]에 적힌 표기 그대로" in SYSTEM_PROMPT
+        assert "[DATA]에 없는 종목·티커·약어를 새로 쓰지 않는다" in SYSTEM_PROMPT
+
     def test_low_gate_score_warning(self):
         """게이트 점수 낮으면 경고."""
         from nuri.llm.report import ReportContext, validate_output
@@ -506,6 +547,15 @@ class TestLLMDeep:
         with patch("requests.post", return_value=mock_resp):
             result = _generate_ollama("테스트 프롬프트")
         assert "시장 분석" in result or "테스트" in result
+
+    def test_ollama_request_turns_thinking_off(self, rich_db):
+        from nuri.llm.report import _generate_ollama
+
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"response": "## 1. 데이터 완성도\n본문"}
+        with patch("requests.post", return_value=mock_resp) as post:
+            _generate_ollama("프롬프트")
+        assert post.call_args.kwargs["json"]["think"] is False
 
     def test_generate_llm_report_full(self, rich_db):
         """전체 리포트 생성 (Ollama mock)."""

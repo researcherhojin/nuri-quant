@@ -54,6 +54,8 @@ SYSTEM_PROMPT = """당신은 Nuri-Quant 투자 분석 리포트 작성 전문가
 2. "~할 것으로 보입니다" 같은 예측 표현 금지. 사실 기반만.
 3. drift: critical/degrading 시그널은 ⚠️ 경고.
 4. 충돌(conflict) 종목은 "관망 권장".
+5. 종목은 [DATA]에 적힌 표기 그대로 쓴다 (예: 005930.KS, TSLA). 접미사(.KS)를 떼거나 회사명으로 바꾸지 않는다.
+6. [DATA]에 없는 종목·티커·약어를 새로 쓰지 않는다. 지표 약어는 [DATA]에 나온 것만 쓰고, 없으면 한국어 이름으로 풀어 쓴다.
 
 리포트 구조 (이 구조를 정확히 따르세요):
 
@@ -435,6 +437,11 @@ class ValidationResult:
     warnings: list[str]
 
 
+#: 종목·약어 토큰 — 한국 종목(`005930.KS`, `0167Z0.KS`)은 접미사까지 한 토큰, 그 외 대문자 2~5자.
+#: 앞뒤가 영숫자·점이면 단어 조각이라 잡지 않는다.
+_SYMBOL_RE = re.compile(r"(?<![A-Za-z0-9.])([0-9][0-9A-Z]{5}\.K[SQ]|[A-Z]{2,5}(?:\.K[SQ])?)(?![A-Za-z0-9])")
+
+
 def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
     """LLM 출력을 입력 데이터 대비 검증.
 
@@ -448,7 +455,12 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
     hallucinated = []
 
     # ── 1. 티커 환각 검증 ──
-    mentioned_tickers = set(re.findall(r"(?<![A-Za-z])([A-Z]{2,5})(?![A-Za-z])", text))
+    # 종목 표기를 통째로 뽑는다 — 예전 `(?<![A-Za-z])[A-Z]{2,5}` 는 `005930.KS` 의 점 뒤 `KS` 를
+    # 따로 잡아 매 실행 환각 경고를 냈다. 입력 [DATA] 에 나온 토큰(지표 약어 `FFR` 등)은 모델이
+    # 옮겨 적은 것이지 지어낸 것이 아니므로 허용한다. 입력에 없는 종목만 환각이다.
+    # **Test:** tests/llm/test_report.py::TestOutputValidation::test_suffix_and_input_abbreviation_are_not_hallucinations
+    mentioned_tickers = set(_SYMBOL_RE.findall(text))
+    input_tokens = set(_SYMBOL_RE.findall(_build_user_payload(ctx)))
     common_words = {
         "BUY",
         "SELL",
@@ -496,8 +508,7 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
         "CVaR",
         "VaR",
     }
-    # mentioned_tickers 는 regex `[A-Z]{2,5}` 매칭이라 len ≤ 5 + isalpha 보장 → 추가 guard 불필요.
-    hallucinated.extend(mentioned_tickers - ctx.known_tickers - common_words)
+    hallucinated.extend(sorted(mentioned_tickers - ctx.known_tickers - input_tokens - common_words))
     if hallucinated:
         warnings.append(f"입력 데이터에 없는 티커 언급: {', '.join(hallucinated)}. LLM 환각 가능성.")
 
@@ -644,6 +655,10 @@ def _generate_ollama(prompt: str) -> str:
                 "model": OLLAMA_MODEL,
                 "prompt": prompt,
                 "stream": False,
+                # 추론을 끈다 — 프롬프트의 `/no_think` 만으로는 qwen3.8 이 추론 텍스트를 먼저 써서
+                # num_predict 2000 을 다 쓰고 8개 섹션 중 4개에서 잘렸다(done_reason=length, 2026-10-08).
+                # **Test:** tests/llm/test_report.py::TestLLMDeep::test_ollama_request_turns_thinking_off
+                "think": False,
                 "options": {"temperature": 0.3, "num_predict": 2000},
             },
             timeout=300,
