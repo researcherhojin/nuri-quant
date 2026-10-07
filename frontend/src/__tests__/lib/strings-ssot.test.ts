@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { NAV, PIPELINE, ACTION, CONTEXT, OPPORTUNITY } from "@/lib/strings";
+import { NAV, PIPELINE } from "@/lib/strings";
 
 /** 이관 대상 (#1252 이 지목한 파일). */
 /** 라우트 라벨을 헤딩으로 쓰는 페이지 (#1300) — 리터럴 복귀를 여기서 막는다. */
@@ -122,9 +122,6 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     for (const [group, keys] of [
       [NAV, ["ROUTE_DASHBOARD", "ROUTE_REPORT", "SYSTEM_ONLINE"]],
       [PIPELINE, ["TITLE", "RUN", "RUNNING", "NODE_COLLECT", "NODE_TRACK_SUB"]],
-      [ACTION, ["PEEK_CURRENT", "PEEK_STOP", "PEEK_TP1", "PEEK_TP2", "PEEK_AS_OF"]],
-      [CONTEXT, ["REGIME_SHIFT", "ATTENTION", "FAIL_SUFFIX"]],
-      [OPPORTUNITY, ["ALL_PREFIX", "ALL_SUFFIX"]],
     ] as [Record<string, string>, string[]][]) {
       for (const k of keys) {
         expect(group[k], `${k} 키 부재`).toBeTruthy();

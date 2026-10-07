@@ -367,68 +367,6 @@ export const ERRORS = {
   PIPELINE_GATE_FAILED: "게이트 조건을 불러오지 못했습니다 — 조건이 없는 것과 다릅니다.",
 } as const;
 
-/* ── Action-First Dashboard ────────────────────────────────── */
-export const ACTION = {
-  TITLE: "오늘의 액션",
-  URGENT: "즉시 실행",
-  CHECK: "오늘 확인",
-  HOLD: "유지",
-  HOLD_SUMMARY: "유지 종목",
-  PORTFOLIO: "포트폴리오 리밸런스",
-  EMPTY: "오늘 실행할 액션이 없습니다.",
-  EVIDENCE: "증거 체인", // #1182: 카드 → /decisions/[id]
-  NEW: "NEW", // #1212: 미확인 행 배지 (localStorage seen-state)
-  ACK: "확인", // #1212: quick-peek ack 버튼 — NEW 해제, 판정일 갱신 시 재표시
-  // #1251: 행 자체가 disclosure 였는데 시맨틱은 테이블 행이라 스크린리더가
-  // 컨트롤로 announce 하지 못했다. 실제 버튼의 접근명 — 종목명을 붙여 행마다 구분된다.
-  PEEK_EXPAND: "상세 펼치기",
-  PEEK_COLLAPSE: "상세 접기",
-  // design-review F-001: 숫자 3개(수익률/비중/확신도)가 무라벨이라 추측을 요구했다
-  COL_TICKER: "종목",
-  COL_ACCOUNT: "계좌",
-  COL_ACTION: "액션",
-  COL_REASON: "근거",
-  COL_PNL: "수익률",
-  COL_WEIGHT: "비중",
-  COL_CONF: "확신도",
-  // #1279: 시세 없는 보유(비상장)의 손익은 측정 불가다. 0.0% 로 렌더하면 "보합" 으로
-  // 읽힌다 — 지어낸 숫자를 사용자 카피로 내보내지 않는다 (STRATEGY §2.6 과 같은 원칙).
-  PNL_UNKNOWN: "미상",
-  // #1252: quick-peek 라벨. 계좌는 COL_ACCOUNT 를 재사용한다 — 같은 뜻에 키를 둘 두지 않는다.
-  PEEK_CURRENT: "현재가",
-  PEEK_STOP: "손절",
-  PEEK_TP1: "1차익절",
-  PEEK_TP2: "2차익절",
-  PEEK_AS_OF: "판정",
-  // DETAIL/CONF/AGREE/PNL/WEIGHT/DISMISS 는 U2b-2 (#1208) 카드→행 전환으로 제거
-} as const;
-
-export const OPPORTUNITY = {
-  TITLE: "기회 탐색",
-  SUBTITLE: "뉴스·이슈 종목",
-  // #1683: 판정은 API 가 아니라 파이프라인(BUY 후보 emitter)의 분류다. 스캐너가 본 사실은 "관측" 일 뿐이다.
-  SYSTEM: "시스템 판단",
-  OBSERVATIONS: "스캐너 관측",
-  // 10-Agent 분석 결과(신뢰도) 앞에 붙는 라벨
-  VERDICT: "판정",
-  ANALYZE: "10-Agent 분석",
-  CHART: "차트 보기",
-  EMPTY: "현재 감지된 기회가 없습니다.",
-  // #1252: "전체 {n}건 →" — 숫자를 사이에 끼우므로 접두/접미로 나눈다
-  // (`PIPELINE.RUNNING_SUFFIX` 와 같은 관례).
-  ALL_PREFIX: "전체",
-  ALL_SUFFIX: "건 →",
-  // #1652: 카드 → 32px 행 + quick-peek. 열 머리글과 펼침 접근명.
-  COL_TICKER: "종목",
-  COL_PRICE: "가격",
-  COL_SIGNAL: "시그널",
-  COL_METRICS: "지표",
-  PEEK_EXPAND: "상세 펼치기",
-  PEEK_COLLAPSE: "상세 접기",
-  AGREEMENT_SUFFIX: "% 합의",
-  ANALYZING: "분석 중...",
-} as const;
-
 /**
  * #1683: 탐색 후보에 붙는 파이프라인 분류 문구. 점수·임계·차단 사유는 전부 API 값이다 —
  * 여기에는 숫자 임계를 두지 않는다. 매매 지시가 아니라 시스템의 분류다.
@@ -448,24 +386,6 @@ export const SYSTEM_STANCE = {
     evaluation_failed: "평가 실패",
   },
   NOTE: "BUY 후보 emitter 의 채점·게이트 분류입니다. 매매 지시가 아닙니다.",
-} as const;
-
-export const CONTEXT = {
-  TITLE: "시장 컨텍스트",
-  SYSTEM_HEALTH: "시스템 건강",
-  RAIL_TITLE: "시스템 상태",
-  REGIME: "레짐",
-  MACRO: "매크로",
-  FRESHNESS: "데이터",
-  // #1212: FAIL 행의 다음 행동 카피 (레일 sub — 상태만 말하지 말 것)
-  CHECK_PIPELINE: "파이프라인 확인 →",
-  // #1252: 레짐 전환 배너 카피
-  REGIME_SHIFT: "Regime 전환 신호",
-  REGIME_SHIFT_NOW: "현재",
-  REGIME_SHIFT_CONF: "신뢰도",
-  REGIME_SHIFT_ADVICE: "% — 다음 행동 보류 권고",
-  ATTENTION: "ATTENTION",
-  FAIL_SUFFIX: "건 실패",
 } as const;
 
 /* ── StatusBadge Korean keys ────────────────────────────────── */
