@@ -218,7 +218,7 @@ class StockCollector(BaseCollector):
         """수집된 주가를 DB에 저장."""
         if data.empty:
             return 0
-        return upsert_prices(data)
+        return upsert_prices(data, source="yfinance")
 
 
 if __name__ == "__main__":

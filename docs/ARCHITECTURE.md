@@ -258,11 +258,11 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 
 ## DB Schema (SQLite, WAL mode)
 
-61 tables total (71 migrations as of 2026-10-06). Key tables:
+61 tables total (72 migrations as of 2026-10-06). Key tables:
 
 | Table | Purpose |
 |-------|---------|
-| `prices` | OHLCV 5Y daily bars per ticker. `close` is never NULL: `upsert_prices` drops yfinance's unsettled half rows (#1480) and migration 66 purged the rows written before that (#1630) |
+| `prices` | OHLCV 5Y daily bars per ticker; `source` names the writer (`yfinance` / `pykrx` / `kis`, #1727 — a later writer of the same (ticker, date) replaces it). `close` is never NULL: `upsert_prices` drops yfinance's unsettled half rows (#1480) and migration 66 purged the rows written before that (#1630) |
 | `portfolio` | Holdings (account, ticker, qty, avg_price) |
 | `portfolio_changes` | #1720 append-only holdings quantity log, written by SQLite triggers on every `portfolio` INSERT/UPDATE/DELETE (any writer), KST wall-clock `changed_at`. An account import (DELETE+INSERT) leaves −q/+q pairs that net to zero. Holdings data: production DB only, not in MCP `ALLOWED` |
 | `macro` | FRED indicators + Fear&Greed |
@@ -357,7 +357,7 @@ data/
 
 ## Testing
 
-8,391 backend tests across 396 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,396 backend tests across 397 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 
