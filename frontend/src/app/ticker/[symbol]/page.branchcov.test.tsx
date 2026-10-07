@@ -13,7 +13,7 @@ vi.mock("@/components/ui/price-chart-lazy", () => ({
 }));
 
 import { fetchAPI } from "@/lib/api";
-import { TickerDetail } from "./page";
+import { TickerDetail } from "./page-view";
 
 const mockFetchAPI = vi.mocked(fetchAPI);
 

@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));
 
-import ExplorePage, { QuickLinkCard } from "./page";
+import ExplorePage, { QuickLinkCard } from "./page-view";
 
 // 엔드포인트별 응답 라우터. reject 시 page.tsx 의 .catch() 분기를 실행.
 function routeFetch(

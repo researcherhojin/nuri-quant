@@ -54,7 +54,7 @@ describe("DecisionsPage", () => {
   });
 
   it("renders page heading and description", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("Decision Intelligence")).toBeInTheDocument();
     expect(screen.getByText(/의사결정 저널/)).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("DecisionsPage", () => {
 
     it("증거 행 없는 regime 에 표식을 붙인다", async () => {
       setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime_has_evidence: 0 })]));
-      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      const { default: DecisionsPage } = await import("@/app/decisions/page-view");
       await act(async () => { render(await DecisionsPage()); });
       expect(screen.getByText(DECISIONS.REGIME_NO_EVIDENCE_TAG)).toBeInTheDocument();
       // 축약 태그만으로는 뜻이 안 통한다 — 전체 문구가 title 로 붙어 있어야 한다.
@@ -81,21 +81,21 @@ describe("DecisionsPage", () => {
 
     it("증거 행이 있으면 붙이지 않는다", async () => {
       setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime_has_evidence: 1 })]));
-      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      const { default: DecisionsPage } = await import("@/app/decisions/page-view");
       await act(async () => { render(await DecisionsPage()); });
       expect(screen.queryByText(DECISIONS.REGIME_NO_EVIDENCE_TAG)).toBeNull();
     });
 
     it("regime 자체가 없으면 표식도 없다", async () => {
       setupFetchAPI(resp([row({ id: 1, ticker: "AAA", regime: null, regime_has_evidence: 0 })]));
-      const { default: DecisionsPage } = await import("@/app/decisions/page");
+      const { default: DecisionsPage } = await import("@/app/decisions/page-view");
       await act(async () => { render(await DecisionsPage()); });
       expect(screen.queryByText(DECISIONS.REGIME_NO_EVIDENCE_TAG)).toBeNull();
     });
   });
 
   it("renders summary cards with correct labels", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("Total")).toBeInTheDocument();
     expect(screen.getByText("Pending")).toBeInTheDocument();
@@ -105,28 +105,28 @@ describe("DecisionsPage", () => {
   });
 
   it("renders decision table with tickers", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("AAA")).toBeInTheDocument();
     expect(screen.getByText("BBB")).toBeInTheDocument();
   });
 
   it("renders PnL values with formatting", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("+5.2%")).toBeInTheDocument();
     expect(screen.getByText("-8.5%")).toBeInTheDocument();
   });
 
   it("renders ticker links to the frozen decision provenance page", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     const link = screen.getByRole("link", { name: "AAA" });
     expect(link).toHaveAttribute("href", "/decisions/1");
   });
 
   it("renders action badges in rows (filter chips also carry BUY/SELL)", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     // #1216: 필터 칩에도 BUY/SELL 텍스트가 있으므로 행 범위로 좁혀 단정한다
     const rows = screen.getAllByTestId("decisions-row");
@@ -136,7 +136,7 @@ describe("DecisionsPage", () => {
 
   // #1216: 필터 바 — outcome/action 칩과 초기화 링크가 URL 기반으로 렌더된다.
   it("renders URL-driven filter chips", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     const bar = screen.getByTestId("decisions-filters");
     expect(bar.textContent).toContain("대기");
@@ -148,7 +148,7 @@ describe("DecisionsPage", () => {
 
   // #1216: 날짜 그룹 헤더 — 서로 다른 두 날짜의 행이 각자의 헤더 아래 묶인다.
   it("groups rows under date headers with counts", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     const headers = screen.getAllByTestId("decisions-date-header");
     expect(headers).toHaveLength(2);
@@ -158,7 +158,7 @@ describe("DecisionsPage", () => {
 
   // #1216: 판정일 명시 — 판정일이 지난 pending 은 "판정일 도래 · 미판정"으로 드러난다.
   it("marks past-due pending rows as 판정일 도래", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     // fixture date 2026-04-10/09 + 90d < 오늘 → due 라벨 (달력 진행에 무관하게 유지)
     expect(screen.getAllByText("판정일 도래 · 미판정").length).toBe(2);
@@ -172,7 +172,7 @@ describe("DecisionsPage", () => {
       count: 1,
       summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
     });
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     const row = screen.getByTestId("decisions-row");
     expect(row.textContent).toMatch(/D-\d+/);
@@ -185,14 +185,14 @@ describe("DecisionsPage", () => {
       count: 1,
       summary: { total: 1, pending: 1, success: 0, failure: 0, neutral: 0 },
     });
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByTestId("decisions-row").textContent).toContain("대기");
   });
 
   // searchParams 경로: outcome 은 API 로, action 은 RSC 로 — 필터 노트 병기 (codex R1 P2).
   it("applies searchParams filters and shows the global-summary note", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => {
       render(await DecisionsPage({ searchParams: Promise.resolve({ outcome: "pending", action: "SELL" }) }));
     });
@@ -205,13 +205,13 @@ describe("DecisionsPage", () => {
 
   it("shows empty state when no decisions", async () => {
     setupFetchAPI(mockEmptyResponse);
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText(/make consensus/)).toBeInTheDocument();
   });
 
   it("shows hit rate dash when no completed decisions", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     // summary: 0 success, 0 failure → hit rate = "—"
     const hitRateCard = screen.getByText("Hit Rate").closest("div");
@@ -220,7 +220,7 @@ describe("DecisionsPage", () => {
 
   it("handles API failure gracefully", async () => {
     mockFetchAPI = vi.fn().mockRejectedValue(new Error("API error"));
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText(/API 연결에 실패했습니다/)).toBeInTheDocument();
   });
@@ -239,7 +239,7 @@ describe("DecisionsPage", () => {
       count: 1,
       summary: { total: 1, pending: 0, success: 1, failure: 0, neutral: 0 },
     });
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     expect(screen.getByText("100%")).toBeInTheDocument();
   });
@@ -263,7 +263,7 @@ describe("DecisionsPage", () => {
       count: 2,
       summary: { total: 3, pending: 1, success: 1, failure: 1, neutral: 0 },
     });
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     await act(async () => { render(await DecisionsPage()); });
     // 1 success / 2 completed = 50%
     expect(screen.getByText("50%")).toBeInTheDocument();
@@ -277,7 +277,7 @@ describe("DecisionsPage", () => {
   });
 
   it("renders loading skeleton", async () => {
-    const { default: DecisionsPage } = await import("@/app/decisions/page");
+    const { default: DecisionsPage } = await import("@/app/decisions/page-view");
     // 페이지 JSX 는 await, Suspense 자식 promise 는 미해결 상태로 렌더 → fallback
     const { container } = render(await DecisionsPage());
     const pulses = container.querySelectorAll(".animate-pulse");

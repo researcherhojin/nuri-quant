@@ -20,7 +20,7 @@ vi.mock("@/lib/api", () => ({
   fetchAPI: (...args: unknown[]) => fetchAPIMock(...args),
 }));
 
-import { RecentSignals } from "./page";
+import { RecentSignals } from "./page-view";
 import { signalKo } from "./helpers";
 
 beforeEach(() => {

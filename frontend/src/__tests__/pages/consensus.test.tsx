@@ -70,7 +70,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders the page heading", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -79,7 +79,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders consensus verdict count summary", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -89,7 +89,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders ticker names in consensus table", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -101,7 +101,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders action badges (BUY, SELL, HOLD)", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -113,7 +113,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders confidence values", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -123,7 +123,7 @@ describe("ConsensusPage", () => {
   });
 
   it("renders dissent section for tickers with disagreements", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -136,7 +136,7 @@ describe("ConsensusPage", () => {
   });
 
   it("does not show VIX banner when VIX is low", async () => {
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -150,7 +150,7 @@ describe("ConsensusPage", () => {
       consensus: { ...mockConsensus, regime: { vix: 27.5, regime: "bear_high_vol" } },
     });
 
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -164,7 +164,7 @@ describe("ConsensusPage", () => {
       consensus: { ...mockConsensus, regime: { vix: 35.2, regime: "bear_high_vol" } },
     });
 
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });
@@ -175,7 +175,7 @@ describe("ConsensusPage", () => {
 
   it("gated fetch 실패(503 shed 포함) → 섹션만 강등, 페이지 shape 유지 (#1119)", async () => {
     mockFetchAPI = vi.fn().mockRejectedValue(new Error("API /api/consensus: 503"));
-    const { default: ConsensusPage } = await import("@/app/consensus/page");
+    const { default: ConsensusPage } = await import("@/app/consensus/page-view");
     await act(async () => {
       render(<ConsensusPage />);
     });

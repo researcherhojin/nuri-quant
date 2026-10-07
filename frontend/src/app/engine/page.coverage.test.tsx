@@ -1,5 +1,5 @@
 /**
- * Statement-coverage push for src/app/engine/page.tsx (#coverage/full-push).
+ * Statement-coverage push for src/app/engine/page-view.tsx (#coverage/full-push).
  *
  * 모든 async Server Component (GateSection / ConflictsSection / MemorySection)
  * 를 직접 await 해 반환 JSX 만 렌더한다.
@@ -31,8 +31,8 @@ import {
   GateSection,
   ConflictsSection,
   MemorySection,
-} from "./page";
-import EnginePage from "./page";
+} from "./page-view";
+import EnginePage from "./page-view";
 import { fetchAPI } from "@/lib/api";
 import { NAV } from "@/lib/strings";
 

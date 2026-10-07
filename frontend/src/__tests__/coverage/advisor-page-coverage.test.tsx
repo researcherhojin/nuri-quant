@@ -103,7 +103,7 @@ describe("Ticker page branches", () => {
 
       return Promise.resolve({});
     });
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "ZZZZ" }) });
     await act(async () => { render(element); });
     expect(screen.getByText("ZZZZ")).toBeInTheDocument();
@@ -156,7 +156,7 @@ describe("Ticker page branches", () => {
 
       return Promise.resolve({});
     });
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
     expect(screen.getByText("AAPL")).toBeInTheDocument();

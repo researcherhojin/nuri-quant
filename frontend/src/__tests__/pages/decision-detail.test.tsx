@@ -59,7 +59,7 @@ describe("DecisionProvenance", () => {
   });
 
   it("renders frozen context + price ladder + outcome", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -72,7 +72,7 @@ describe("DecisionProvenance", () => {
   });
 
   it("renders parsed agent verdicts and evidence chain", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -91,7 +91,7 @@ describe("DecisionProvenance", () => {
     it("뒷받침 evidence 가 없으면 표시한다", async () => {
       // 원인은 백필일 수도, 기록 중단일 수도 있다 — 표식은 **관측한 사실만** 말한다.
       mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [] });
-      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
       await act(async () => {
         render(await DecisionProvenance({ id: "531" }));
       });
@@ -101,7 +101,7 @@ describe("DecisionProvenance", () => {
     it("증거 행이 있으면 표시하지 않는다", async () => {
       // 이쪽이 더 중요한 축이다 — 증거가 있는 행에 "증거 없음" 을 붙이면 표식이 거짓말이 된다.
       mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: "bull_low_vol", evidence: [regimeEv] });
-      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
       await act(async () => {
         render(await DecisionProvenance({ id: "531" }));
       });
@@ -124,7 +124,7 @@ describe("DecisionProvenance", () => {
     it("regime 자체가 없으면 표식도 없다", async () => {
       // 값이 없는 것과 값의 출처가 불분명한 것은 다른 상태다 — 둘을 같은 문구로 덮지 않는다.
       mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, regime: null, evidence: [] });
-      const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+      const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
       await act(async () => {
         render(await DecisionProvenance({ id: "531" }));
       });
@@ -134,14 +134,14 @@ describe("DecisionProvenance", () => {
 
   it("calls notFound when the decision fetch fails (404)", async () => {
     mockFetchAPI = vi.fn().mockRejectedValue(new Error("API /api/decisions/999: 404"));
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await expect(DecisionProvenance({ id: "999" })).rejects.toThrow();
     expect(notFoundMock).toHaveBeenCalled();
   });
 
   it("calls notFound when the API returns null", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(null);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await expect(DecisionProvenance({ id: "0" })).rejects.toThrow();
     expect(notFoundMock).toHaveBeenCalled();
   });
@@ -155,7 +155,7 @@ describe("DecisionProvenance", () => {
       pnl_7d: 0, pnl_30d: null, pnl_60d: null, pnl_90d: null,
       outcome: "", reasoning: null, evidence: [],
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "1" }));
     });
@@ -169,7 +169,7 @@ describe("DecisionProvenance", () => {
     // 기존 테스트는 항상 evidence 배열을 줘서 `d.evidence ?? []` 의 left 분기만 탐.
     // evidence=null → right(`[]`) fallback 분기 커버 (codecov partial 해소).
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, evidence: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -185,7 +185,7 @@ describe("DecisionProvenance", () => {
         { id: 9, decision_id: 531, source_type: "data", source_key: "vix", action: null, confidence: null, detail: null },
       ],
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -194,7 +194,7 @@ describe("DecisionProvenance", () => {
   });
 
   it("parseVerdicts handles null and non-array JSON gracefully", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
 
     for (const av of [null, "{}"]) {
       mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, agent_verdicts: av, evidence: [] });
@@ -219,7 +219,7 @@ describe("DecisionProvenance", () => {
       ]),
       evidence: [],
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -268,7 +268,7 @@ describe("DecisionProvenance", () => {
         ],
       },
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -325,7 +325,7 @@ describe("DecisionProvenance", () => {
         ],
       },
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -357,7 +357,7 @@ describe("DecisionProvenance", () => {
       ...mockDetail,
       thesis: { ...baseThesis, verdict: "unevaluable" },
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -371,7 +371,7 @@ describe("DecisionProvenance", () => {
       ...mockDetail,
       thesis: { ...baseThesis, verdict: null },
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -434,7 +434,7 @@ describe("DecisionProvenance", () => {
         ],
       },
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -455,7 +455,7 @@ describe("DecisionProvenance", () => {
   it("says the thesis is missing instead of hiding the card", async () => {
     // 논지가 비어 있다는 사실이 곧 판단 근거의 부재다 — 카드가 사라지면 그 부재가 안 보인다.
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, thesis: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -465,7 +465,7 @@ describe("DecisionProvenance", () => {
 
   it("default export awaits params; Loading skeleton shows while child suspends", async () => {
     mockFetchAPI = vi.fn(() => new Promise(() => {})); // never resolve → child suspends → fallback
-    const mod = await import("@/app/decisions/[id]/page");
+    const mod = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await mod.default({ params: Promise.resolve({ id: "531" }) }));
     });
@@ -482,7 +482,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
   });
 
   it("renders the 2-column skeleton: rail beside a 2/3 main column", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     let container!: HTMLElement;
     await act(async () => {
       ({ container } = render(await DecisionProvenance({ id: "531" })));
@@ -497,7 +497,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
   });
 
   it("renders evidence detail as key-value pairs, not raw JSON", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -513,7 +513,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
       ...mockDetail,
       evidence: [{ id: 1, decision_id: 531, source_type: "macro", source_key: "note", action: null, confidence: null, detail: "plain text detail" }],
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -530,7 +530,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
       pnl_7d: 5.2,
       pnl_30d: -3.1,
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -544,7 +544,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
 
   it("dashes a null confidence in the frozen context", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, confidence: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -555,7 +555,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
   it("shows 판정 D-n in the header for a recent pending decision", async () => {
     const recent = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, date: recent });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -563,7 +563,7 @@ describe("DecisionProvenance — U3 Evidence Terminal (#1216)", () => {
   });
 
   it("shows the outcome intent tag with adjudication status in the header", async () => {
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -607,7 +607,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("risk_veto: 대차대조 히어로 — 합의 참고 vs 판정을 확정한 규칙", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -622,7 +622,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("과거 행 fallback: scoring_detail 없이 reasoning 프리픽스만으로 veto 히어로", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({ ...vetoDetail, scoring_detail: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -631,7 +631,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("weighted_sum(기본): 단일 히어로 + 합의 분포", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(mockDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -648,7 +648,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
       reasoning: "의견 분산 페널티로 HOLD 강등",
       scoring_detail: JSON.stringify({ final_action_source: "divergence_penalty" }),
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -660,7 +660,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("SELL 은 매수 사다리를 렌더하지 않는다 — 결정 시점 가격 + Stop 만", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -673,7 +673,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("에이전트 2단: degraded 는 접힘 + 유효 의견만 본문 + 커버리지 표기", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -701,7 +701,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
         panel_coverage: 0.6,
       }),
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -716,7 +716,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("scoring_detail 없는 과거 행은 평면 리스트 유지 — degraded 를 지어내지 않는다", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({ ...vetoDetail, scoring_detail: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -726,7 +726,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("veto + 논지 없음 → 자동 논지 렌더 (채점 기준 공백 방지)", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(vetoDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -737,7 +737,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("비-veto + 논지 없음 → 기존 부재 문구 유지 (자동 논지 남발 금지)", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, thesis: null });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -747,7 +747,7 @@ describe("DecisionProvenance — 판정 경로 (#1257)", () => {
 
   it("판정 후 새 사실 + 재검토 체크가 항상 렌더 — 부재도 정직하게 표시", async () => {
     mockFetchAPI = vi.fn().mockResolvedValue(mockDetail);
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -820,7 +820,7 @@ describe("DecisionProvenance — codex ship-review 수정 잠금 (#1257)", () =>
       }),
       thesis: null,
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -834,7 +834,7 @@ describe("DecisionProvenance — codex ship-review 수정 잠금 (#1257)", () =>
       ...mockDetail,
       scoring_detail: JSON.stringify({ final_action_source: "quantum_override" }),
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -862,7 +862,7 @@ describe("DecisionProvenance — null-필드 분기 커버 (#1257 codecov patch)
       scoring_detail: JSON.stringify({ final_action_source: "risk_veto" }),
       thesis: null,
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => {
       render(await DecisionProvenance({ id: "531" }));
     });
@@ -895,7 +895,7 @@ describe("근거 사슬 — 자리표시자는 근거가 아니다 (#1436, codex
           action: "HOLD", confidence: 0, detail: '{"degraded": true, "abstained": false}' },
       ],
     });
-    const { DecisionProvenance } = await import("@/app/decisions/[id]/page");
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
     await act(async () => { render(await DecisionProvenance({ id: "531" })); });
 
     const kr = screen.getByText("agent/korean_market").parentElement!;

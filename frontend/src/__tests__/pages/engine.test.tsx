@@ -90,7 +90,7 @@ describe("EnginePage", () => {
 
   it("renders page title", async () => {
     mockFetchAPI.mockResolvedValue({});
-    const Page = await import("@/app/engine/page");
+    const Page = await import("@/app/engine/page-view");
     const element = await Page.default();
     render(element);
     expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
@@ -107,7 +107,7 @@ describe("EnginePage", () => {
       return Promise.resolve({});
     });
 
-    const mod = await import("@/app/engine/page");
+    const mod = await import("@/app/engine/page-view");
     // GateSection is not exported, test through the page's inner async components
     // We render the full page which uses Suspense — the server components resolve inline
     const element = await mod.default();
@@ -118,7 +118,7 @@ describe("EnginePage", () => {
   // #1218: BLOCKED 페이즈만 다음 행동 링크(/pipeline) — READY 는 없다
   it("renders the next-action link only for blocked gate phases", async () => {
     mockFetchAPI.mockResolvedValue(mockGateData);
-    const mod = await import("@/app/engine/page");
+    const mod = await import("@/app/engine/page-view");
     const element = await mod.GateSection();
     render(element);
     const next = screen.getByTestId("gate-next-action-validate"); // ready:false 픽스처
@@ -137,7 +137,7 @@ describe("EnginePage", () => {
     });
 
     mockFetchAPI.mockResolvedValue({ regime: blocked("regime"), mystery: blocked("mystery") });
-    const mod = await import("@/app/engine/page");
+    const mod = await import("@/app/engine/page-view");
     render(await mod.GateSection());
     // codex R2: 부분 일치·리터럴 부정은 잠금이 아니다 — 카피 전문을 정확 일치로 잠근다
     // (regime 광고 회귀는 어떤 형태든 여기서 깨진다)
@@ -152,7 +152,7 @@ describe("EnginePage", () => {
     // Dynamically test the GateSection by importing the module
     // The page exports default (EnginePage) which wraps GateSection in Suspense
     // For direct testing, we reach into the module's inner components
-    const mod = await import("@/app/engine/page");
+    const mod = await import("@/app/engine/page-view");
     const element = await mod.default();
     render(element);
     expect(screen.getByText(NAV.ROUTE_ENGINE)).toBeInTheDocument();
@@ -246,7 +246,7 @@ describe("EnginePage", () => {
 
       return Promise.resolve({});
     });
-    const { ConflictsSection } = await import("@/app/engine/page");
+    const { ConflictsSection } = await import("@/app/engine/page-view");
     const ui = await ConflictsSection();
     render(ui);
     expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();
@@ -259,7 +259,7 @@ describe("EnginePage", () => {
  * 실물 export 를 직접 렌더한다.
  */
 async function getInternalComponents() {
-  const mod = await import("@/app/engine/page");
+  const mod = await import("@/app/engine/page-view");
 
   return {
     GateSection: mod.GateSection,

@@ -98,7 +98,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders page title", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -106,7 +106,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders ReactFlow canvas", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -114,7 +114,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders 6 pipeline nodes from API data", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -125,7 +125,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders 5 edges connecting nodes", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -133,7 +133,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders status legend", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -144,7 +144,7 @@ describe("PipelinePage", () => {
   });
 
   it("shows auto-refresh indicator", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -168,7 +168,7 @@ describe("PipelinePage", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -179,7 +179,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders gate conditions section", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -190,7 +190,7 @@ describe("PipelinePage", () => {
   });
 
   it("shows gate condition descriptions", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -205,7 +205,7 @@ describe("PipelinePage", () => {
     // Delay fetch response so default nodes render first
     fetchMock.mockImplementation(() => new Promise(() => {})); // never resolves
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -215,7 +215,7 @@ describe("PipelinePage", () => {
   });
 
   it("fetches pipeline status on mount", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -227,7 +227,7 @@ describe("PipelinePage", () => {
 
   it("handles step run button click", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -245,7 +245,7 @@ describe("PipelinePage", () => {
 
   it("handles fetch error gracefully", async () => {
     fetchMock.mockRejectedValue(new Error("network error"));
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -282,7 +282,7 @@ describe("PipelinePage", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -307,7 +307,7 @@ describe("PipelinePage", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });

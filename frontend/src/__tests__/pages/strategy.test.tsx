@@ -95,7 +95,7 @@ describe("StrategyPage", () => {
 
   it("renders page title after data loads", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -107,7 +107,7 @@ describe("StrategyPage", () => {
 
   it("renders regime status badge", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -120,7 +120,7 @@ describe("StrategyPage", () => {
 
   it("renders allocation bar with long/short/cash percentages", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -134,7 +134,7 @@ describe("StrategyPage", () => {
 
   it("renders backtest metrics", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -150,7 +150,7 @@ describe("StrategyPage", () => {
 
   it("renders stress test scenarios", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -164,7 +164,7 @@ describe("StrategyPage", () => {
 
   it("renders open positions", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -184,7 +184,7 @@ describe("StrategyPage", () => {
 
   it("renders entry timing forward returns", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -203,7 +203,7 @@ describe("StrategyPage", () => {
     setupMocks({
       status: { ...mockStrategyStatus, positions: { positions: [] } },
     });
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -217,7 +217,7 @@ describe("StrategyPage", () => {
 
   it("renders positions count in header", async () => {
     setupMocks();
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => {
       render(<Page.default />);
     });
@@ -230,7 +230,7 @@ describe("StrategyPage", () => {
   it("renders loading skeleton initially", async () => {
     // Make fetchAPI never resolve to test the Suspense fallback
     mockFetchAPI.mockReturnValue(new Promise(() => {}));
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     const { container } = render(<Page.default />);
 
     // Suspense fallback shows animate-pulse skeletons
@@ -240,7 +240,7 @@ describe("StrategyPage", () => {
 
   it("gated fetch 실패(503 shed 포함) → 섹션만 강등 (#1119)", async () => {
     mockFetchAPI.mockImplementation(() => Promise.reject(new Error("API /api/backtest: 503")));
-    const { StrategyDashboard } = await import("@/app/strategy/page");
+    const { StrategyDashboard } = await import("@/app/strategy/page-view");
     const ui = await StrategyDashboard();
     render(ui);
     expect(screen.getByText("데이터를 불러오지 못했습니다 — 잠시 후 새로고침하세요.")).toBeInTheDocument();

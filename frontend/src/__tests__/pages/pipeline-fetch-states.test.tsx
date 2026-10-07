@@ -73,7 +73,7 @@ function makeFetch(opts: {
 }
 
 async function renderPage() {
-  const PipelinePage = (await import("@/app/pipeline/page")).default;
+  const PipelinePage = (await import("@/app/pipeline/page-view")).default;
   await act(async () => {
     render(<PipelinePage />);
   });

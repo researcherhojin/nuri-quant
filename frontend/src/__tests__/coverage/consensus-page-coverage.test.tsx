@@ -35,7 +35,7 @@ describe("Consensus page VIX branches", () => {
       count: 1,
     }));
 
-    const Page = await import("@/app/consensus/page");
+    const Page = await import("@/app/consensus/page-view");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => { expect(screen.getByText("AAPL")).toBeInTheDocument(); });
     expect(screen.queryByText(/신규 매수/)).not.toBeInTheDocument();
@@ -49,7 +49,7 @@ describe("Consensus page VIX branches", () => {
       count: 1,
     }));
 
-    const Page = await import("@/app/consensus/page");
+    const Page = await import("@/app/consensus/page-view");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => { expect(screen.getByText(/VIX/)).toBeInTheDocument(); });
   });
