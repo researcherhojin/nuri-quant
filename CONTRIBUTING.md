@@ -72,7 +72,7 @@ the others first.
   `scope-expand-approved`, also read from the API). Not a required check.
 - Codecov: project status allows a 1 % drop against the base commit; the patch
   status targets 100 % of changed lines. Not required.
-- `Frontend E2E` (Playwright, 88 specs against a seeded DB) runs on PRs that
+- `Frontend E2E` (Playwright, 78 tests in 9 spec files against a seeded DB) runs on PRs that
   touch the frontend or the backend. Not required.
 - Claude Code hooks (`.claude/settings.json`) block `import sqlite3` outside
   `nuri/core/db/connection.py`, `datetime.now()`, destructive git commands and

@@ -898,7 +898,7 @@ SCHEDULES = [
     # 멀티팩터 합성 스코어 (매일 08:10) — `buy_signals.yaml` 에서 가중치 0.40 인 최대 입력인데
     # 2026-04-14 이후 갱신이 끊겨 있었다. 잡이 없어서지 버그가 아니었다 (#1071).
     # 08:10 인 이유: 입력 셋이 모두 그 앞에 끝난다 — prices(`stock_us_dawn` ~06:00) ·
-    # signals(`technical` 07:00) · `macro.fear_greed`(08:00, 바로 위 줄). 소비자는
+    # signals(`technical` 07:00) · `macro.fear_greed`(06:07, #1677). 소비자는
     # `buy_candidate_emitter` 하나이고 `premarket_brief`(09:00 ET ≈ 22시 KST)에서 불리므로
     # 14시간 여유. 실측 1.1초 / 773종목이라 슬롯 압박은 없다.
     {"name": "factors", "func": _run_collector, "args": ("factors",), "cron": "10 8 * * *"},
@@ -1011,7 +1011,7 @@ SCHEDULES = [
     {"name": "premarket_brief", "func": _run_premarket_brief, "args": (), "cron": "0 9 * * 1-5", "tz": "US/Eastern"},
     # Post-market brief — KR session (KST 16:00, KOSPI close 15:30 + 30min, 평일).
     # holdings PnL + KOSPI200 시장 proxy + macro snapshot. pension 계좌 제외.
-    # 증거 차트 (#1128): 아침 수집(fear_greed 08:00 · factors 08:10) 뒤 매일 1회.
+    # 증거 차트 (#1128): 아침 수집(fear_greed 06:07 · factors 08:10) 뒤 매일 1회.
     # premarket 사용자 확인 전에 최신화된다. plotly 5종 렌더 수 초 — 부하 무시 가능.
     {"name": "evidence_charts", "func": _run_evidence_charts, "args": (), "cron": "20 8 * * *"},
     {"name": "postmarket_brief_kr", "func": _run_postmarket_brief_kr, "args": (), "cron": "0 16 * * 1-5"},

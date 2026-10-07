@@ -34,7 +34,7 @@ class TestEvidenceChartsWiring:
 
     def test_runs_daily_after_morning_collectors(self):
         """cron 은 매일이어야 한다 — 주중 한정이면 주말 공백이 stale 로 보인다.
-        시각은 아침 수집(fear_greed 08:00 · factors 08:10) 이후여야 한다."""
+        시각은 아침 수집(fear_greed 06:07 · factors 08:10) 이후여야 한다."""
         cron = _evidence_entry()["cron"]
         minute, hour, dom, month, dow = cron.split()
         assert dow == "*" and dom == "*" and month == "*", f"매일 실행이어야 한다: {cron}"

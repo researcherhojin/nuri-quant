@@ -224,7 +224,7 @@ universe-sync:       ## Dry-run sync (US + KR). For --market/--allow-removal fla
 universe-sync-us:    ## Dry-run US S&P 500 sync only
 	$(PYTHON) -m nuri.collectors.universe_sync --market us
 
-universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (requires: uv pip install finance-datareader)
+universe-sync-kr:    ## Dry-run KR KOSPI 200 sync only (finance-datareader is a core dependency)
 	$(PYTHON) -m nuri.collectors.universe_sync --market kr
 
 universe-sync-apply: ## Apply universe.yaml updates (additions only — manual ETFs preserved)

@@ -114,8 +114,8 @@ The following are intentionally not part of the threat model:
 
 - Multi-tenant isolation: this is a single-user platform.
 - Authenticated brokerage trading: order execution is out of scope
-  (`docs/STRATEGY.md` §7.1). The only broker adapter targets the Alpaca paper
-  endpoint, and credentials are read from `.env`, which is not committed.
+  (`docs/STRATEGY.md` §7.1). The only broker adapter defaults to the Alpaca paper
+  endpoint (`ALPACA_BASE_URL` can override it; nothing in the pipeline calls it), and credentials are read from `.env`, which is not committed.
 - Mobile clients: there is no first-party mobile app.
 - DDoS and rate-limit attacks on the FastAPI server. In production the API
   binds `127.0.0.1` (`scripts/launchd/com.nuri-quant.api.plist`) and is
