@@ -120,6 +120,9 @@ REQUIRE_FACTOR_TOP50 = _chk.get("require_factor_top50pct", True)
 # 시장 탐색 스캐너 관측 문구 기준 (#1691) — 판정이 아니라 화면 텍스트용
 SCANNER_OBSERVATIONS = RULES["scanner_observations"]
 
+# 추천 이행 여부 진단 창 (#1722) — 진단 전용, §3.11 판정은 읽지 않는다
+ADHERENCE = RULES["adherence"]
+
 # ─── 매도 우선순위 ───
 SELL_PRIORITY = RULES.get(
     "sell_priority",
