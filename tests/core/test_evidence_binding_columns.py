@@ -1,6 +1,6 @@
 """Evidence 바인딩 컬럼 잠금 (#1305) — Gotcha-Test Pair.
 
-세 원장(backtests · walkforward_runs · decision_outcomes)의 writer 가
+세 원장(backtests · walkforward_runs · decision_outcomes)과 추천 원장 `decisions`(#1714)의 writer 가
 `code_rev` / `execution_config_sha_v1` 을 self-measured 로 채우는지 **행을 읽어서**
 잠근다. writer 에서 채움 한 줄을 지우면 FAIL. backtests 쪽은
 `tests/core/test_research_ops.py::TestTheRevisionIsRecordedButNeverInvented` 가 잠근다.
@@ -13,7 +13,15 @@ from __future__ import annotations
 
 import pytest
 
-from nuri.core.db import init_db, log_decision, log_decision_outcome, log_walkforward_run, provenance, query
+from nuri.core.db import (
+    init_db,
+    log_decision,
+    log_decision_outcome,
+    log_walkforward_run,
+    provenance,
+    query,
+    upsert_decision,
+)
 
 
 @pytest.fixture
@@ -94,6 +102,39 @@ class TestDecisionOutcomeCarriesBinding:
         assert len(rows) == 1
         assert rows[0]["code_rev"] == "newrev-1305"
         assert rows[0]["hypothesis_validation"] == "reject"
+
+
+def _upsert_decision(db_path, **overrides):
+    data = {"date": "2026-10-07", "ticker": "TEST", "action": "BUY", "confidence": 70.0}
+    data.update(overrides)
+    return upsert_decision(data, db_path=db_path)
+
+
+class TestDecisionCarriesBinding:
+    """추천 행 자체의 방법론 지문 (#1714) — 결과 행(#1305)만 있으면 측정 기간 중 설정이 바뀐
+    전·후의 추천이 같은 표본에서 구분되지 않는다."""
+
+    def test_insert_fills_both_columns(self, db_path):
+        _upsert_decision(db_path)
+        row = query("SELECT code_rev, execution_config_sha_v1 FROM decisions", db_path=db_path)[0]
+        assert row["code_rev"], "추천 행이 산출 코드를 특정하지 못한다"
+        assert row["execution_config_sha_v1"], "추천 행이 산출 설정을 특정하지 못한다"
+
+    def test_same_day_rerun_refreshes_binding(self, db_path, monkeypatch):
+        """같은 날 재실행은 행 내용을 새로 계산한다 — 지문이 첫 실행에 얼어붙으면 새 판정이 옛 코드에 귀속된다."""
+        _upsert_decision(db_path)
+        monkeypatch.setattr(provenance, "_CODE_REV_CACHE", "newrev-1714")
+        _upsert_decision(db_path, action="SELL")
+        rows = query("SELECT code_rev, action FROM decisions", db_path=db_path)
+        assert rows == [{"code_rev": "newrev-1714", "action": "SELL"}]
+
+    def test_caller_cannot_supply_the_binding(self, db_path, monkeypatch):
+        """귀속은 자기신고가 아니다 (#1115) — 호출자가 넘긴 값은 writer 가 측정값으로 덮는다."""
+        monkeypatch.setattr(provenance, "_CODE_REV_CACHE", "measured-rev")
+        _upsert_decision(db_path, code_rev="claimed-rev", execution_config_sha_v1="claimed-sha")
+        row = query("SELECT code_rev, execution_config_sha_v1 FROM decisions", db_path=db_path)[0]
+        assert row["code_rev"] == "measured-rev"
+        assert row["execution_config_sha_v1"] != "claimed-sha"
 
 
 class TestExecutionConfigShaV1:
