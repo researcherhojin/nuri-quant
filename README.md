@@ -91,7 +91,7 @@ flowchart LR
 The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 60 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
 
 - Scheduling: 60 cron jobs · in-process
-- Storage: SQLite WAL · 62 tables
+- Storage: SQLite WAL · 63 tables
 - Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime topology, the daily schedule and the scoring model.
@@ -175,12 +175,12 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,368 collected across 394 files |
+| Backend tests | 8,376 collected across 395 files |
 | Frontend test files | 109 vitest files |
 | Data collectors | 27 collectors (BaseCollector pattern) |
 | Scheduler jobs | 60 cron entries |
 | API endpoints | 70 declared in `nuri/api/routes/` |
-| Database | SQLite WAL · 62 tables, 70 forward-only migrations |
+| Database | SQLite WAL · 63 tables, 71 forward-only migrations |
 
 ## Documentation
 

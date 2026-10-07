@@ -2180,4 +2180,45 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
     """,
     ),
+    (
+        71,
+        "portfolio_changes — 보유 수량 변경 원장, 트리거 기록 (#1720)",
+        # `portfolio` 는 가져올 때마다 계좌 단위로 지우고 다시 쓰고(replace_portfolio_account), API
+        # 편집기는 직접 SQL 로 고치며, `trades` 는 writer 가 없다 — 보유 이력이 어디에도 남지 않아
+        # "추천을 따랐는가" 를 잴 수 없었다 (Vibe-Trading 비교 제안 3). writer 가 여럿이고 앞으로도
+        # 늘 수 있어 호출 지점이 아니라 **테이블 트리거**로 남긴다 — 어떤 경로로 바뀌어도 기록된다.
+        # 시각은 KST 벽시계(`datetime('now', '+9 hours')`, 오프셋 없음) — `datetime('now')` 는 UTC 라
+        # KST 결정 날짜와 비교하면 하루가 밀린다 (#1675). replace 경로는 DELETE+INSERT 라 변하지 않은
+        # 종목도 −q/+q 두 행을 남긴다 — 순변화는 0 이고, 그 행들이 곧 "가져오기가 있었다" 는 흔적이다.
+        # append-only. 보유 데이터라 레포·MCP 로 나가지 않는다 (MCP ALLOWED 미등재).
+        """
+        CREATE TABLE IF NOT EXISTS portfolio_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            changed_at TEXT NOT NULL,
+            account TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            old_quantity REAL,
+            new_quantity REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_portfolio_changes_ticker ON portfolio_changes(ticker, changed_at);
+        CREATE TRIGGER IF NOT EXISTS trg_portfolio_insert AFTER INSERT ON portfolio
+        BEGIN
+            INSERT INTO portfolio_changes (changed_at, account, ticker, old_quantity, new_quantity)
+            VALUES (datetime('now', '+9 hours'), NEW.account, NEW.ticker, NULL, NEW.quantity);
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_portfolio_update AFTER UPDATE OF quantity, account, ticker ON portfolio
+        WHEN OLD.quantity IS NOT NEW.quantity OR OLD.account IS NOT NEW.account OR OLD.ticker IS NOT NEW.ticker
+        BEGIN
+            INSERT INTO portfolio_changes (changed_at, account, ticker, old_quantity, new_quantity)
+            VALUES (datetime('now', '+9 hours'), OLD.account, OLD.ticker, OLD.quantity, NULL);
+            INSERT INTO portfolio_changes (changed_at, account, ticker, old_quantity, new_quantity)
+            VALUES (datetime('now', '+9 hours'), NEW.account, NEW.ticker, NULL, NEW.quantity);
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_portfolio_delete AFTER DELETE ON portfolio
+        BEGIN
+            INSERT INTO portfolio_changes (changed_at, account, ticker, old_quantity, new_quantity)
+            VALUES (datetime('now', '+9 hours'), OLD.account, OLD.ticker, OLD.quantity, NULL);
+        END;
+    """,
+    ),
 ]
