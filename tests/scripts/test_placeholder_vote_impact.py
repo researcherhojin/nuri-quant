@@ -59,6 +59,7 @@ class TestClassifyMatchesProduction:
     def test_every_placeholder_exit_is_reconstructed(self, tmp_path):
         """문구가 바뀌면 여기서 FAIL 한다 — 측정이 조용히 틀리는 대신."""
         from nuri.core.db import init_db
+        from nuri.core.timezone import today_kst
         from nuri.trading.agents.base import QueryRows
         from nuri.trading.agents.crypto_agent import CryptoAgent
         from nuri.trading.agents.fundamental import FundamentalAgent
@@ -74,9 +75,17 @@ class TestClassifyMatchesProduction:
         init_db(empty)
 
         def pcr_rows_all_null(agent):
-            agent._safe_query = lambda sql, params=(), db_path=None: QueryRows([{"value": None}])
+            agent._safe_query = lambda sql, params=(), db_path=None: QueryRows(
+                [{"value": None, "source": "CBOE", "date": today_kst()}]
+            )
+
+        def pcr_rows_stale(agent):
+            agent._safe_query = lambda sql, params=(), db_path=None: QueryRows(
+                [{"value": 1.0, "source": "CBOE", "date": "2000-01-03"}]
+            )
 
         cases = [
+            ("options/PCR-stale", OptionsAgent(), "TESTTICKER", pcr_rows_stale),
             ("korean_market/US", KoreanMarketAgent(), "TESTTICKER", None),
             ("korean_market/KR-무데이터", KoreanMarketAgent(), "000000.KS", None),
             ("wallstreet/.KS", WallStreetAgent(), "000000.KS", None),
@@ -653,6 +662,7 @@ class TestDbBackedHelpers:
     @staticmethod
     def _seed(tmp_path):
         from nuri.core.db import init_db
+        from nuri.core.timezone import today_kst
 
         db = tmp_path / "impact.db"
         init_db(db)
