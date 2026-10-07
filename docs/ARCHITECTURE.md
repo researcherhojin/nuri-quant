@@ -8,7 +8,7 @@ The README shows the high-level flow. The table below gives one row per phase an
 
 | # | Phase | Inputs | Outputs | Key modules | Detail |
 |---|-------|--------|---------|-------------|--------|
-| 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · FINVIZ · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
+| 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" and "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
 | 4 | **Decide** | The consensus result handed over in memory (`record_decisions()`), plus `prices` · `macro` · current regime for the decision context. The portfolio-wide certifier that used to read `config/rules.yaml siege_gates` was retired (#1619). | `decisions` + `decision_evidence` rows per consensus decision | `nuri/trading/engine/decisions.py` | "Decision Engine" below |
@@ -22,10 +22,10 @@ The phase table above is the data model. At runtime there is no orchestrator: `n
 
 ```mermaid
 flowchart TB
-    CLOCK["APScheduler — 60 registered jobs<br/>no job calls another"]
+    CLOCK["APScheduler — 59 registered jobs<br/>no job calls another"]
 
-    subgraph JOBS["What those 60 jobs are"]
-        JC["collect · 29"]
+    subgraph JOBS["What those 59 jobs are"]
+        JC["collect · 28"]
         JA["analyze · 1"]
         JD["consensus · 1"]
         JT["track · 5"]
@@ -62,7 +62,7 @@ The thick arrow marks the one in-memory hand-off: the consensus job passes its r
 
 | Stage | Scheduled as | Reads | Writes |
 |-------|--------------|-------|--------|
-| **Collect** | 29 jobs, from every 5 minutes during market hours to weekly | External APIs | `prices`, `fundamentals`, `macro`, `news` |
+| **Collect** | 28 jobs, from every 5 minutes during market hours to weekly | External APIs | `prices`, `fundamentals`, `macro`, `news` |
 | **Analyze** | 1 job: `factors` at `10 8 * * *` | `prices`, `fundamentals`, `macro` | `factors` |
 | **Consensus** | 1 job: `consensus` at `5 7 * * *` | `recommendations.outcome_30d` (for weights), collector tables | `recommendations` with `agent_verdicts` |
 | **Decide** | No dedicated job; `record_decisions()` runs inside the consensus job (see above) | Consensus result, handed over in memory | `decisions`, `decision_evidence` |
@@ -235,7 +235,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 ## Scheduler
 
-`nuri/scheduler.py` defines 60 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
+`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are KST unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
 
 ## Environment Variables
 
@@ -357,7 +357,7 @@ data/
 
 ## Testing
 
-8,396 backend tests across 397 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,360 backend tests across 396 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 
