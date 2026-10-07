@@ -2161,4 +2161,23 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE recommendations ADD COLUMN execution_config_sha_v1 TEXT;
     """,
     ),
+    (
+        70,
+        "recommendation_seals — 판정 원장 날짜별 해시 체인 (#1718)",
+        # §3.11 판정 표본(recommendations)이 사후에 고쳐지지 않았음을 기계적으로 보이기 위한 봉인.
+        # 하루(KST)가 닫힌 날짜마다 한 행. 계산·검증은 `nuri/core/db/ledger_seal.py`, 필드 목록은
+        # 거기서 v1 로 동결. append-only — 이 테이블을 고치는 코드는 봉인 함수뿐이다.
+        """
+        CREATE TABLE IF NOT EXISTS recommendation_seals (
+            date TEXT PRIMARY KEY,
+            n_rows INTEGER NOT NULL,
+            digest TEXT NOT NULL,
+            prev_hash TEXT NOT NULL,
+            seal_hash TEXT NOT NULL,
+            field_set TEXT NOT NULL,
+            sealed_at TEXT DEFAULT (datetime('now')),
+            code_rev TEXT
+        );
+    """,
+    ),
 ]

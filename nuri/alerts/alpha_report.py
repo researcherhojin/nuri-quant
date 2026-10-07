@@ -115,6 +115,10 @@ def format_progress_reason(report: dict[str, Any]) -> str:
         else:
             parts.append(f"정산 {frontier}" + (f" (지연 {lag}d)" if lag is not None else ""))
 
+    seal = report.get("ledger_seal")
+    if seal:
+        parts.append(f"봉인 {seal['date']} · {seal['seal_hash'][:12]}")
+
     d = _days_until(report.get("evaluation_date"), report.get("as_of") or today_kst())
     if d is not None:
         parts.append(f"판정일까지 D-{d}" if d >= 0 else f"판정일 경과 +{-d}d")
@@ -216,6 +220,14 @@ def stage_alpha_progress_brief(
         return None
 
     report = build_progress_report(db_path=db_path, as_of=as_of, n_perm=n_perm)
+    # 판정 원장 봉인 머리를 DB 밖(Discord)에 남긴다 (#1718) — DB 를 고칠 수 있으면 체인도 다시
+    # 계산할 수 있으므로, 타임스탬프가 찍힌 외부 기록이 있어야 체인이 증거가 된다.
+    try:
+        from nuri.core.db.ledger_seal import latest_seal
+
+        report["ledger_seal"] = latest_seal(db_path=db_path)
+    except Exception:  # noqa: BLE001 — 앵커는 부가 정보, 리포트를 막지 않는다
+        logger.warning("alpha progress report: 봉인 머리 조회 실패", exc_info=True)
     outbox_id = stage_brief(
         payload=_build_payload(report),
         dedupe_key=_dedupe_key(month),

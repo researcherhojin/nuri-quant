@@ -552,10 +552,26 @@ def _run_alpha_report():
     already: bool | None = None
     outbox_id = None
     error = None
+    sealed: list[str] | None = None
+    seal_problems: int | None = None
     try:
         from nuri.alerts.alpha_report import already_emitted, is_production, stage_alpha_progress_brief
 
         role_ok = is_production()
+        # 판정 원장 봉인 (#1718) — 매일, production 원장에서만. 리포트는 월 1회지만 봉인은 하루가
+        # 닫힐 때마다 해야 한다. 자체 try: 봉인 실패가 진행 리포트를 막으면 안 된다 (#894).
+        if role_ok:
+            try:
+                from nuri.core.db.ledger_seal import seal_closed_days, verify
+
+                sealed = seal_closed_days(str(today_kst()))
+                seal_problems = len(verify())
+                if seal_problems:
+                    logger.warning(
+                        f"[alpha_report] 판정 원장 봉인 불일치 {seal_problems}건 — python -m nuri.core.db.ledger_seal"
+                    )
+            except Exception:  # noqa: BLE001 — 봉인은 Surface, 본 작업과 무관
+                logger.error("[alpha_report] 판정 원장 봉인 실패", exc_info=True)
         # stage **이전** 상태를 찍어야 skip 사유가 구분된다 (stage 후엔 항상 True).
         # ⚠️ 자체 try — 이건 관측용 부가 정보다. 여기서 실패했다고 본 작업(stage)까지
         # 막으면 observability 가 관측 대상을 죽인다. DB 가 없는 CI 에서 실제로 그랬고,
@@ -583,6 +599,8 @@ def _run_alpha_report():
                 "already_emitted": already,
                 "staged": outbox_id is not None,
                 "error": error,
+                "sealed_days": len(sealed) if sealed is not None else None,
+                "seal_problems": seal_problems,
             },
         )
     except Exception as e:
