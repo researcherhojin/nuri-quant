@@ -18,6 +18,7 @@ make re-runs safe. Existing rows updated in place.
 사용:
     .venv/bin/python scripts/e3_3_backfill.py [--dry-run] [--vix-only] [--prices-only]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,6 +59,7 @@ def backfill_vix(dry_run: bool = False) -> int:
     import warnings
 
     import yfinance as yf
+
     warnings.filterwarnings("ignore")
 
     LOG.info("📈 VIX 5Y backfill (^VIX)")
@@ -117,8 +119,9 @@ def backfill_prices(tickers: list[str], dry_run: bool = False) -> tuple[int, int
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
             futures = {ex.submit(_fetch_one, t): t for t in tickers}
-            for fut in tqdm(concurrent.futures.as_completed(futures), total=len(tickers),
-                            desc="  prices [e3_3]", unit="tk"):
+            for fut in tqdm(
+                concurrent.futures.as_completed(futures), total=len(tickers), desc="  prices [e3_3]", unit="tk"
+            ):
                 ticker = futures[fut]
                 try:
                     _, df = fut.result(timeout=60)
@@ -136,8 +139,10 @@ def backfill_prices(tickers: list[str], dry_run: bool = False) -> tuple[int, int
 
     LOG.info(f"  fetched {len(succeeded)}/{len(tickers)} tickers, {total_rows} rows total")
     if failed:
-        LOG.warning(f"  failed ({len(failed)}): {', '.join(failed[:10])}"
-                    + (f" ... +{len(failed)-10} more" if len(failed) > 10 else ""))
+        LOG.warning(
+            f"  failed ({len(failed)}): {', '.join(failed[:10])}"
+            + (f" ... +{len(failed) - 10} more" if len(failed) > 10 else "")
+        )
 
     if dry_run:
         LOG.info("  [dry-run] skipping upsert_prices")
@@ -145,7 +150,7 @@ def backfill_prices(tickers: list[str], dry_run: bool = False) -> tuple[int, int
 
     if frames:
         big = pd.concat(frames, ignore_index=True)
-        n = upsert_prices(big)
+        n = upsert_prices(big, source="yfinance")
         LOG.info(f"  ✅ upserted {n} price rows ({len(succeeded)} tickers)")
     return len(succeeded), len(failed), failed
 
@@ -154,16 +159,14 @@ def verify_post_backfill(tickers: list[str]) -> dict:
     """backfill 후 실제 DB coverage 재측정. CI / 다음 sub-task 의 input."""
     LOG.info("🔍 post-backfill verification")
     # VIX rows
-    r = query("SELECT MIN(date) min_d, MAX(date) max_d, COUNT(*) n "
-              "FROM macro WHERE indicator = 'vix'")
+    r = query("SELECT MIN(date) min_d, MAX(date) max_d, COUNT(*) n FROM macro WHERE indicator = 'vix'")
     vix_n, vix_min, vix_max = r[0]["n"], r[0]["min_d"], r[0]["max_d"]
     LOG.info(f"  VIX: {vix_n} rows, {vix_min} ~ {vix_max}")
 
     # 각 frozen ticker 의 row count + min_date
     placeholders = ",".join(["?"] * len(tickers))
     r = query(
-        f"SELECT ticker, MIN(date) min_d, COUNT(*) n FROM prices "
-        f"WHERE ticker IN ({placeholders}) GROUP BY ticker",
+        f"SELECT ticker, MIN(date) min_d, COUNT(*) n FROM prices WHERE ticker IN ({placeholders}) GROUP BY ticker",
         tuple(tickers),
     )
     coverage = {row["ticker"]: {"n": row["n"], "min_d": row["min_d"]} for row in r}
@@ -192,9 +195,7 @@ def main():
     parser.add_argument("--prices-only", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO,
-                        format="%(asctime)s %(levelname)s %(message)s",
-                        datefmt="%H:%M:%S")
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
 
     tickers = _load_frozen_universe()
     LOG.info(f"frozen universe ({UNIVERSE_KEY}): {len(tickers)} tickers")

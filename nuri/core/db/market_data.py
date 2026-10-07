@@ -14,8 +14,13 @@ import pandas as pd
 from .connection import get_db
 
 
-def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None) -> int:
-    """가격 데이터 DataFrame upsert. close 가 NaN/None 인 반쪽 행은 쓰지 않는다 (#1480)."""
+def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None, source: Optional[str] = None) -> int:
+    """가격 데이터 DataFrame upsert. close 가 NaN/None 인 반쪽 행은 쓰지 않는다 (#1480).
+
+    `source` 는 이 행을 쓴 공급자다 (#1727) — DataFrame 에 `source` 컬럼이 있으면 행마다 그 값이
+    이기고(KIS 수집기는 KIS 행과 yfinance 폴백 행을 한 프레임에 섞는다), 없으면 인자 값을 쓴다.
+    `INSERT OR REPLACE` 라 같은 (ticker, date) 를 다른 공급자가 덮으면 출처도 마지막 writer 로 바뀐다.
+    """
     if df.empty:
         return 0
     # yfinance 는 미확정 세션을 가격 NaN + volume 만 채운 행으로 준다. INSERT OR REPLACE 라 그대로 쓰면
@@ -23,11 +28,13 @@ def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None) -> int:
     df = df.loc[df["close"].notna().to_numpy()]  # close 는 필수 컬럼 — 아래 INSERT 도 :close 를 요구한다
     if df.empty:
         return 0
+    if "source" not in df.columns:
+        df = df.assign(source=source)
     with get_db(db_path) as conn:
         rows = df.to_dict("records")
         conn.executemany(
-            """INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume, adj_close)
-               VALUES (:ticker, :date, :open, :high, :low, :close, :volume, :adj_close)""",
+            """INSERT OR REPLACE INTO prices (ticker, date, open, high, low, close, volume, adj_close, source)
+               VALUES (:ticker, :date, :open, :high, :low, :close, :volume, :adj_close, :source)""",
             rows,
         )
         return len(rows)

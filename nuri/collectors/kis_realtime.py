@@ -473,7 +473,7 @@ class KISRealtimeCollector(BaseCollector):
             else:
                 row = inquire_price_us(self.creds, self.token, t)
             if row:
-                records.append(row)
+                records.append({**row, "source": "kis"})
             else:
                 kis_failures.append(t)
             time.sleep(interval)
@@ -485,7 +485,8 @@ class KISRealtimeCollector(BaseCollector):
                 "KIS 시세 실패 %d종목, yfinance fallback 시도: %s", len(kis_failures), ", ".join(kis_failures)
             )
             yf_recovered = self._yfinance_fallback(kis_failures)
-            records.extend(yf_recovered)
+            # 폴백 행은 KIS 가 아니다 — 출처를 행마다 남긴다 (#1727)
+            records.extend({**r, "source": "yfinance"} for r in yf_recovered)
 
         total = len(records)
         kis_count = total - len(yf_recovered)
@@ -564,7 +565,7 @@ class KISRealtimeCollector(BaseCollector):
         data = self._drop_incomplete_bars_that_would_replace(data)
         if data.empty:
             return 0
-        return upsert_prices(data)
+        return upsert_prices(data, source="kis")
 
 
 def main():

@@ -77,7 +77,7 @@ def seed(db: Path) -> dict[str, int]:
         f = _price_frame(t, 60, base, 0.002, rng)
         f.loc[f.index[-1], "volume"] = 3_000_000
         frames.append(f)
-    counts["prices"] = sum(upsert_prices(f, db_path=db) for f in frames)
+    counts["prices"] = sum(upsert_prices(f, db_path=db, source="seed") for f in frames)
 
     # ── 포트폴리오: 두 플레이스홀더 계좌, 라운드 값 ──
     counts["portfolio"] = upsert_portfolio(

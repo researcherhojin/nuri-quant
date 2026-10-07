@@ -447,14 +447,16 @@ class TestKISCollectorSave:
         df = pd.DataFrame([{"ticker": "AAA"}])
         called = {}
 
-        def stub_upsert(d):
+        def stub_upsert(d, source=None):
             called["df_len"] = len(d)
+            called["source"] = source
             return 7
 
         monkeypatch.setattr(mod, "upsert_prices", stub_upsert)
         c = mod.KISRealtimeCollector(mode="prod")
         assert c.save(df) == 7
         assert called["df_len"] == 1
+        assert called["source"] == "kis"  # 행별 source 컬럼이 없을 때의 기본 출처 (#1727)
 
 
 class TestKISMain:

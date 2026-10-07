@@ -2221,4 +2221,14 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         END;
     """,
     ),
+    (
+        72,
+        "prices.source — 행을 쓴 공급자 (#1727)",
+        # KIS 장중 · yfinance 일봉 · pykrx 일봉이 같은 (ticker, date) 를 INSERT OR REPLACE 로 서로 덮는데,
+        # 어느 공급자가 남긴 행인지 기록이 없었다 (Vibe-Trading 비교 제안 4 — 행별 출처). 쓰는 쪽은
+        # `upsert_prices(..., source=)` 하나. 기존 행은 NULL = 기록 이전 (backfill 하지 않는다).
+        """
+        ALTER TABLE prices ADD COLUMN source TEXT;
+    """,
+    ),
 ]
