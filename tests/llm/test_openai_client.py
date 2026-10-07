@@ -117,7 +117,7 @@ class TestChatJsonSuccess:
         assert len(rows) == 1
         row = dict(rows[0])
         assert row["provider"] == "openai"
-        assert row["model"] == "gpt-5.4-nano"
+        assert row["model"] == "gpt-6-luna"
         assert row["endpoint"] == "chat.completions"
         assert row["prompt_tokens"] == 42
         assert row["completion_tokens"] == 18
@@ -327,8 +327,8 @@ class TestCostEstimation:
         external_lines = [r for r in caplog.records if "[external_llm]" in r.getMessage()]
         assert len(external_lines) == 1, f"expected 1 external_llm log, got {len(external_lines)}"
         msg = external_lines[0].getMessage()
-        # Format: "[external_llm] openai/gpt-5.4-nano: 42→18 tokens, Nms, $0.xxxxxx"
-        assert "openai/gpt-5.4-nano" in msg
+        # Format: "[external_llm] openai/gpt-6-luna: 42→18 tokens, Nms, $0.xxxxxx"
+        assert "openai/gpt-6-luna" in msg
         assert "42" in msg  # prompt tokens from fixture
         assert "18" in msg  # completion tokens from fixture
         assert "tokens" in msg
@@ -688,6 +688,22 @@ class TestRealSdkWireContract:
         assert captured["body"]["max_completion_tokens"] == 256, "max_tokens 로 되돌아가면 gpt-5.x 가 거부한다"
         assert [m["role"] for m in captured["body"]["messages"]] == ["system", "user"]
         assert result == {"category": "fed_dovish"}
+
+    def test_reasoning_is_off_for_both_endpoints(self, db_path, monkeypatch):
+        """gpt-6-luna 는 추론이 켜지면(기본 medium) temperature 0/0.3 을 400 으로 거부한다 —
+        분류는 regex 로, 리포트는 로컬 폴백으로 조용히 떨어진다. 두 엔드포인트 모두 끈 채로 나가야 한다."""
+        from nuri.llm.openai_client import OpenAIClient
+
+        monkeypatch.setenv("OPENAI_ZDR_APPROVED", "1")
+        for call in ("json", "text"):
+            captured: dict = {}
+            client = OpenAIClient()
+            client._sdk_client = self._client_with_transport(captured)
+            if call == "json":
+                client.chat_json(system="s", user="u", db_path=db_path)
+            else:
+                client.chat_text(system="s", user="u", data_tier="tier2", db_path=db_path)
+            assert captured["body"]["reasoning_effort"] == "none", call
 
     def test_response_shape_the_gateway_depends_on(self, db_path):
         """`message.content` 는 str, usage 는 chat-completions 필드명이어야 한다.

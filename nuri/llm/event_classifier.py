@@ -1,5 +1,5 @@
 """
-매크로 이벤트 헤드라인 분류기 — OpenAI gpt-5.4-nano (primary) + keyword regex (fallback).
+매크로 이벤트 헤드라인 분류기 — OpenAI gpt-6-luna (primary) + keyword regex (fallback).
 
 Phase A 단독 모듈 — macro_score / classifier 의 의사결정 로직은 일절 안 건드림.
 출력만 produce, 사용은 Phase B에서.
@@ -109,7 +109,7 @@ _KEYWORD_PATTERNS: list[tuple[str, str, float]] = [
 def classify_event(headline: str, *, use_llm: bool = True) -> dict:
     """헤드라인 → 구조화된 분류 결과.
 
-    use_llm=True (기본): OpenAI gpt-5.4-nano 시도 → 실패 시 regex 폴백.
+    use_llm=True (기본): OpenAI gpt-6-luna 시도 → 실패 시 regex 폴백.
     use_llm=False: regex만 사용 (테스트/CI/오프라인용).
 
     LLM 경로는 wrapper(`nuri.llm.openai_client`)를 통해 호출되며 audit log
@@ -154,7 +154,7 @@ def _classify_with_regex(headline: str) -> dict:
 
 
 def _classify_with_openai(headline: str) -> dict:
-    """OpenAI gpt-5.4-nano 분류 — wrapper 경유.
+    """OpenAI gpt-6-luna 분류 — wrapper 경유.
 
     실패 시 wrapper가 ExternalLLMDisabled / ExternalLLMUnavailable /
     ExternalLLMResponseError 중 하나를 raise하며, 상위 classify_event가
