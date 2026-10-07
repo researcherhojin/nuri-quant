@@ -40,7 +40,6 @@ SOURCES = {
     "short_interest": "Short Interest (공매도 비율)",
     "cboe": "CBOE Put/Call Ratio",
     "coingecko": "CoinGecko BTC/Crypto 리스크",
-    "finviz": "FINVIZ 기술적 스크리너",
     "reddit": "Reddit/WSB 센티먼트 분석",
 }
 

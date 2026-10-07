@@ -111,7 +111,6 @@ _STAGE_OF_JOB = {
     "reddit": "collect",
     "fred_calendar": "collect",
     "institutional": "collect",
-    "finviz": "collect",
     "news": "collect",
     "macro_news": "collect",
     "fundamental": "collect",
@@ -242,10 +241,6 @@ def _dispatch_collector(name: str, **kwargs):
         from nuri.collectors.institutional import InstitutionalCollector
 
         return InstitutionalCollector().run()
-    elif name == "finviz":
-        from nuri.collectors.finviz import FINVIZCollector
-
-        return FINVIZCollector().run()
     elif name == "kis_analyst_opinion":
         from nuri.collectors.kis_analyst_opinion import KISAnalystOpinionCollector
 
@@ -942,11 +937,6 @@ SCHEDULES = [
     # 이후 갱신이 끊겼고, 10-agent 중 하나가 4 개월 묵은 수급으로 표를 던지고 있었다.
     # KIS rate limit 0.4s/종목, portfolio KR 11 종목 = 실측 6.1 초. consensus(07:05) 전.
     {"name": "institutional", "func": _run_collector, "args": ("institutional",), "cron": "50 6 * * *"},
-    # FINVIZ 스크리너 보조 시그널 — `technical` 에이전트(가중치 최대)가 읽는다
-    # (`technical.py:143` → `external_analysis` source='FINVIZ'). `make collect` 에만 있어
-    # 2026-04-14 이후 3 행에서 멈춰 있었고, config/agents.yaml 의 buy_boost/sell_boost 가
-    # 사실상 무효였다. consensus(07:05) 전.
-    {"name": "finviz", "func": _run_collector, "args": ("finviz",), "cron": "55 6 * * *"},
     # 뉴스 (1시간 — SaveTicker 대체)
     {"name": "news", "func": _run_collector, "args": ("news",), "cron": "0 * * * *"},
     # 매크로 뉴스 (KST 08:00, 14:00, 20:00 — 시장 영향 큰 이벤트만)

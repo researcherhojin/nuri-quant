@@ -618,7 +618,6 @@ class TestSchedulerLazy_R6:
             "estimates",
             "wallstreet",
             "cboe",
-            "finviz",
             "etf_flows",
         ]
         for name in names:
@@ -1302,8 +1301,6 @@ class TestOrphanCollectorsWired:
         # `make collect` 에도 없던 7 번째 — `korean_market` 에이전트가 읽는데
         # 갱신 job 이 아예 없었다 (institutional_flows 2026-04-14 정지).
         "institutional": "nuri.collectors.institutional.InstitutionalCollector",
-        # 8 번째 — `make collect` 에는 있으나 스케줄 없음. `technical` 에이전트(가중치 최대)가 소비.
-        "finviz": "nuri.collectors.finviz.FINVIZCollector",
     }
 
     @pytest.mark.parametrize("job_name", sorted(ORPHANS))

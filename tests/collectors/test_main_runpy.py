@@ -64,7 +64,6 @@ GROUP_A_MODULES = [
     "nuri.collectors.cboe",
     "nuri.collectors.coingecko",
     "nuri.collectors.fred_calendar",
-    "nuri.collectors.finviz",
     "nuri.collectors.etf_flows",
     "nuri.collectors.institutional",
     "nuri.collectors.estimates",
