@@ -1,10 +1,10 @@
 """
 LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
 
-생성 경로 (우선순위 순):
-1. OpenAI `gpt-6-luna` (Tier 2, ZDR 필수) — 기본값 (2026-04-14 STRATEGY 개정 후, 2026-10-08 nano→luna)
-2. llama.cpp GGUF 로컬 모델 — `LLAMA_MODEL_PATH` 설정 시 사용
-3. Ollama HTTP API — `OLLAMA_HOST` 설정 시 사용
+생성 경로 (우선순위 순) — **로컬 전용**. 리포트 입력은 종목별 손익·매도 금액을 담은 포트폴리오
+데이터(Tier 2)라 외부 LLM 으로 보내지 않는다 (STRATEGY §4.4.3, 2026-10-08 OpenAI 경로 폐지):
+1. llama.cpp GGUF 로컬 모델 — `LLAMA_MODEL_PATH` 설정 시 사용
+2. Ollama HTTP API — `OLLAMA_HOST`(localhost 만) 설정 시 사용
 
 모든 경로에서 동일한 파이프라인:
 1. Gate 검증 → 데이터 완성도 확인
@@ -12,8 +12,6 @@ LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
 3. LLM 생성 → 자연어 리포트
 4. Output Validation → 환각 검증 (입력에 없는 숫자/티커 감지)
 5. 면책 조항 + 데이터 완성도 경고 자동 첨부
-
-Opt-out: `NURI_DISABLE_EXTERNAL_LLM=1` → OpenAI 스킵, 로컬 경로만 시도.
 
 사용법:
     python -m nuri.llm.report
@@ -32,10 +30,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ─── External (OpenAI — primary per STRATEGY §4.4.3) ────────────
-OPENAI_REPORT_MODEL = os.getenv("OPENAI_REPORT_MODEL", "gpt-6-luna")
-
-# ─── Local fallbacks (optional) ─────────────────────────────────
+# ─── Local backends (portfolio data never leaves the machine) ───
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "")  # empty = disabled
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5")
 LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")  # GGUF path
@@ -562,41 +557,6 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
 # ═══════════════════════════════════════════════════════
 
 
-def _generate_openai(system: str, user: str) -> str:
-    """OpenAI gpt-6-luna로 리포트 생성 (Tier 2, ZDR 필수).
-
-    STRATEGY.md §4.4.3: `openai_client` wrapper 단일 관문을 거친다.
-    `data_tier='tier2'` → wrapper가 `OPENAI_ZDR_APPROVED=1` 미설정 시 raise.
-    `NURI_DISABLE_EXTERNAL_LLM=1` → wrapper가 Disabled raise → 로컬 폴백.
-    """
-    from nuri.llm.openai_client import (
-        ExternalLLMDisabled,
-        ExternalLLMPolicyViolation,
-        ExternalLLMUnavailable,
-        get_client,
-    )
-
-    try:
-        client = get_client()
-        return client.chat_text(
-            system=system,
-            user=user,
-            model=OPENAI_REPORT_MODEL,
-            temperature=0.3,
-            max_tokens=2000,
-            data_tier="tier2",
-        )
-    except ExternalLLMDisabled:
-        logger.info("OpenAI opt-out (NURI_DISABLE_EXTERNAL_LLM=1) — 로컬 폴백 시도")
-        return ""
-    except ExternalLLMPolicyViolation as e:
-        logger.warning("OpenAI 정책 차단: %s", e)
-        return ""
-    except ExternalLLMUnavailable as e:
-        logger.warning("OpenAI 호출 실패: %s — 로컬 폴백 시도", e)
-        return ""
-
-
 def _generate_llamacpp(prompt: str) -> str:
     """llama.cpp로 직접 생성 (GGUF 모델 필요)."""
     if not LLAMA_MODEL_PATH:
@@ -715,12 +675,9 @@ def generate_llm_report(db_path=None) -> dict:
 
     prompt = format_prompt(ctx)
 
-    # 생성 경로: OpenAI gpt-6-luna (primary) → llama.cpp → Ollama → error note.
-    # STRATEGY §4.4.3 Tier 2 허용 조건: `OPENAI_ZDR_APPROVED=1` 설정.
-    # `NURI_DISABLE_EXTERNAL_LLM=1` 시 OpenAI 스킵 → 로컬 경로만 시도.
-    raw_report = _generate_openai(SYSTEM_PROMPT, _build_user_payload(ctx))
-
-    if not raw_report and LLAMA_MODEL_PATH:
+    # 생성 경로: llama.cpp → Ollama → error note. 외부 LLM 경로는 없다 (STRATEGY §4.4.3).
+    raw_report = ""
+    if LLAMA_MODEL_PATH:
         raw_report = _generate_llamacpp(prompt)
 
     if not raw_report and OLLAMA_HOST:
@@ -729,11 +686,9 @@ def generate_llm_report(db_path=None) -> dict:
     if not raw_report:
         raw_report = (
             "[LLM 생성 실패]\n"
-            "설정 필요 (다음 중 하나):\n"
-            "  - OPENAI_API_KEY + OPENAI_ZDR_APPROVED=1  (primary, Tier 2)\n"
+            "로컬 모델이 필요합니다 (포트폴리오 데이터는 외부 LLM 으로 보내지 않습니다):\n"
             "  - LLAMA_MODEL_PATH=모델.gguf  (로컬 llama.cpp)\n"
-            "  - OLLAMA_HOST=http://localhost:11434  (로컬 Ollama)\n"
-            "오프라인 전용: NURI_DISABLE_EXTERNAL_LLM=1"
+            "  - OLLAMA_HOST=http://localhost:11434 + OLLAMA_MODEL=<설치된 모델>  (`ollama list` 로 확인)"
         )
 
     # Output Validation

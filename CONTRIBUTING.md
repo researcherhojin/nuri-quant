@@ -157,7 +157,7 @@ auto-merge off. Details and the gotchas behind the lock gates:
 | A new investment rule | `config/rules.yaml`; never hardcode |
 | A new API endpoint | `nuri/api/routes/` (see `nuri/api/CLAUDE.md` for router registration) |
 | A new dashboard page | `frontend/src/app/<route>/page.tsx` |
-| A new LLM call | `nuri/llm/`. External LLM calls go through `nuri/llm/openai_client.py` only; portfolio data may be sent only under the Tier 2 rule (`OPENAI_ZDR_APPROVED=1`). See `docs/STRATEGY.md` §4.4.3 |
+| A new LLM call | `nuri/llm/`. External LLM calls go through `nuri/llm/openai_client.py` only; only public data (Tier 0) may be sent; portfolio data stays on local models. See `docs/STRATEGY.md` §4.4.3 |
 | A new MCP read model | `nuri/mcp/readmodels.py`; every column must be in `ALLOWED`, every query `readonly=True` (#1306) |
 | A new shell script | `scripts/<category>/`, sourcing `scripts/_common.sh` (see [`scripts/README.md`](scripts/README.md)) |
 | A one-off analysis script | `scripts/analysis/` is gitignored by default; a reviewed script is tracked by adding a negation for it in `.gitignore` and a row in `scripts/README.md` |
