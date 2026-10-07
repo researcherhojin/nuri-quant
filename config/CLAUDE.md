@@ -11,7 +11,7 @@
 | `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | 214 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
 | `alerts.yaml` | 48 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
-| `freshness.yaml` | 32 | Data freshness SLA (per-source `warn_hours`/`fail_hours`) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
+| `freshness.yaml` | 31 | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
 | `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
 | `universe.yaml` | 761 | 752 tickers: `us_core` (91) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
 | `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |

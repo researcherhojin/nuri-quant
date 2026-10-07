@@ -43,7 +43,7 @@ cd frontend && npm ci && cd ..   # frontend deps
 
 # 2. Universe 동기화 (선택 — 기본 universe.yaml 이면 skip 가능)
 make universe-sync-us            # dry-run: Wikipedia S&P 500 diff 확인
-make universe-sync-kr            # dry-run: KOSPI 200 diff (FDR 필요 시 `uv pip install finance-datareader`)
+make universe-sync-kr            # dry-run: KOSPI 200 diff (finance-datareader 는 기본 의존성)
 make universe-sync-apply         # 실제 universe.yaml 에 적용 (additions only)
 
 # 3. 데이터 수집

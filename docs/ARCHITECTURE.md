@@ -34,7 +34,6 @@ flowchart TB
 
     DB[("SQLite WAL · 61 tables")]
     RD["record_decisions()<br/>inside the consensus job"]
-    CERT["record_decisions() · no job<br/>runs inside the consensus job"]
     OUT["Discord brief · dashboard"]
 
     CLOCK --> JOBS
@@ -46,14 +45,12 @@ flowchart TB
     DB --> JT
     JT --> DB
     DB --> JO --> OUT
-    JO --> CERT
-    CERT --> DB
 
     classDef step  stroke:#3b82f6,stroke-width:2px
     classDef store stroke:#64748b,stroke-width:2px
     classDef out   stroke:#14b8a6,stroke-width:2px
     classDef zone  fill:none,stroke:#94a3b8,stroke-width:1px
-    class CLOCK,JC,JA,JD,JT,JO,RD,CERT step
+    class CLOCK,JC,JA,JD,JT,JO,RD step
     class DB store
     class OUT out
     class JOBS zone
@@ -225,7 +222,7 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 ## API (70 endpoints)
 
-`nuri/api/routes/` — 70 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 22 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) feeds the Universe and Agent data coverage widget.
+`nuri/api/routes/` — 70 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 22 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) is still served, but its only frontend consumer (the old dashboard's coverage widget) was deleted in #1698.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -360,7 +357,7 @@ data/
 
 8,343 backend tests across 393 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
-Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov enforces a 1% relative regression gate.
+Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 
 Backend statement coverage was 99% on 2026-08-14 (`make ci-cov` on the `#1052` main run): 17 of 23,311 statements uncovered across 9 files, 81 partial branches. Full coverage (0 uncovered of 22,560) was reached on 2026-05-06 and again on 2026-07-29 (#926) and regressed both times, so 100% is a target to re-reach rather than a standing property. `make ci-cov` (which combines every coverage shard artifact of the latest main CI run; the shard count follows the workflow matrix, #1413) is the reference measurement, because a local run measures a different statement set.
 
@@ -401,7 +398,7 @@ If a count disagrees with this document, fix the document.
 On push and pull request to `main`:
 
 1. **Lint**: `ruff check nuri/ tests/ scripts/`
-2. **Test**: pytest with xdist in a fast-shard matrix, plus 2 slow shards that run on push only (shard counts are defined in `main-ci-cd.yml`). TA-Lib is cached. Dependencies are installed with `uv sync --frozen --extra dev`; the `local-llm` extra is excluded on purpose (#1406, sdist compile). A separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once, only when `pyproject.toml` or `uv.lock` changes. Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the latest runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
+2. **Test**: pytest with xdist in a fast-shard matrix, plus 2 slow shards that run on push only (shard counts are defined in `main-ci-cd.yml`). TA-Lib is cached. Dependencies are installed with `uv sync --frozen --extra dev`; the `local-llm` extra is excluded on purpose (#1406, sdist compile). A separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once — on a PR only when `pyproject.toml`, `uv.lock` or `main-ci-cd.yml` changes, and on every non-PR run (push to main, manual dispatch). Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the latest runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
 3. **Frontend**: `tsc --noEmit` + vitest with coverage; Playwright E2E runs in the `Frontend E2E` job, which is not a required check
 4. **Privacy**: `check_privacy_leak.py` on all files
 5. **Security**: Trivy CRITICAL vulnerability scan

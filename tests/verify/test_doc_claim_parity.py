@@ -297,7 +297,7 @@ class TestRoundTrip:
         assert sync.returncode == 0, sync.stdout + sync.stderr
 
         after = strategy.read_text()
-        assert "Codecov 1% relative" in after, "Backend 행의 1% 가 파괴됨"
+        assert "Codecov project 1%p threshold" in after, "Backend 행의 1% 가 파괴됨"
         # 이 테스트가 지키는 건 "이웃 숫자를 건드리지 않는가" 다 — Frontend 행의 **테스트
         # 수**가 옛 패턴이 백엔드 값으로 덮어쓰던 바로 그 자리다 (파일 수는 fixture 아티팩트로
         # 0 이 되므로 행 전체가 아니라 테스트 수까지만 본다).

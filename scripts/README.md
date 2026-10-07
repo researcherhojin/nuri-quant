@@ -30,7 +30,7 @@ scripts/
 | `verify_all.sh` | full verification (lint+test+gate) | `make verify-all` |
 | `verify.py` | full functional verification (analysis run + `data/reports/` save) | `make verify-fast` (`--skip-backtest`) / `make verify` (full) |
 | `verify_doc_counts.sh` | doc count drift check (CI-enforced) | `make verify-doc-counts` |
-| `check_drift.py` | universe / strategy drift detect | `.venv/bin/python scripts/verify/check_drift.py` (pre-push gate Section 1) |
+| `check_drift.py` | uncommitted working-tree changes vs committed files | `.venv/bin/python scripts/verify/check_drift.py` (pre-push gate Section 1) |
 | `check_atomic.sh` | commit atomicity (1 logical change/commit) | `bash scripts/verify/check_atomic.sh` |
 | `check_privacy_leak.py` | block personal financial data + personal-identifier shapes | pre-push hook + PreToolUse hook + CI `Privacy Leak Scan` |
 | `check_universe_coverage.py` | universe.yaml coverage validate | `.venv/bin/python scripts/verify/check_universe_coverage.py` |
@@ -60,7 +60,7 @@ scripts/
 | Script | Purpose | Use |
 |---|---|---|
 | `migrate.py` | schema migration runner | `make setup` 내부 (`$(PYTHON) scripts/db/migrate.py`) |
-| `maintenance.py` | VACUUM + ANALYZE periodic | apscheduler daily |
+| `maintenance.py` | old-data cleanup + WAL checkpoint + VACUUM | apscheduler weekly (Sun 03:00) |
 | `backup.sh` | SQLite backup → `data/backups/` | `make backup` |
 | `restore.sh` | restore from backup | `bash scripts/db/restore.sh <snapshot>` |
 | `pull_backup.sh` | 서버 최신 백업 1벌을 개발 머신으로 복사 + sha256 대조 | `bash scripts/db/pull_backup.sh` |
@@ -95,7 +95,7 @@ scripts/
 
 | Script | Purpose | Use |
 |---|---|---|
-| `setup.sh` | venv + deps + DB init | `make setup` |
+| `setup.sh` | TA-Lib, venv + deps, data dirs, `.env` template (DB init is a separate `make setup` step) | `make setup` |
 | `start.sh` | API + Dashboard start | `make start` |
 | `demo.sh` | demo workflow run | `bash scripts/dev/demo.sh` |
 | `ci_local.sh` | local CI parity (6.4s smoke / full) | `bash scripts/dev/ci_local.sh [--lint\|--quick]` |

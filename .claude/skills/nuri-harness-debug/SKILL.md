@@ -50,7 +50,7 @@ description: >-
 2. Cited test 는 fix 없을 때 실제 fail 해야 함 (PR 에서 fix revert 후 local 검증)
 3. 단순 facts/quirks 는 Test: 불필요, `*(facts, no fix)*` 마킹
 
-Enforcement: 1차 = 사람 규율 + STRATEGY §5.3.1 참조. 2차 (Tier 3) = `scripts/audit_phantom_fixes.py` CI lint.
+Enforcement: 1차 = 사람 규율 + STRATEGY §5.3.1 참조. 2차 (Tier 3) = `scripts/audit_phantom_fixes.py` CI lint — 계획만 있고 미구현(STRATEGY §5.3.1).
 
 ## Case Studies (git log)
 

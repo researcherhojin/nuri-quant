@@ -49,7 +49,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 - 손절 -7%(성장)/-10%(가치), 익절 +20%/+40%, 트레일링 -15% — 예외 없음
 - VIX > 30 신규 매수 차단 — "이번엔 다르다" 불허
 - 한도 위반은 `rebalance_advisor` 가 기계적으로 surface, 수동 오버라이드 없음 (옛 SIEGE gate 의 REJECTED 판정은 §6 폐기)
-- **execution_priority** (PR #200): 손절 → 익절 → 트레일링 설정 → 신규매수. 출혈 차단이 수익 확정보다 선행. 손절 내 손실률 큰 것부터, 익절 내 타겟 초과율 큰 것부터.
+- **execution_priority** (PR #200, ⚠️ 미배선 — 이 순서를 읽는 모듈이 없다, §3.4): 손절 → 익절 → 트레일링 설정 → 신규매수. 출혈 차단이 수익 확정보다 선행. 손절 내 손실률 큰 것부터, 익절 내 타겟 초과율 큰 것부터.
 - 규칙 변경은 YAML 수정 + 백테스트 검증. 코드에 예외 분기 금지.
 
 ### 2.3 느슨한 결합 (Loose coupling via data)
@@ -59,7 +59,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 - **이유**: 앞 스테이지 재실행 시 뒤 스테이지가 자동으로 새 데이터 사용. 직접 import 하면 실행 순서/상태 관리 복잡.
 - **스테이지 매핑** (검증 가능성의 전제): `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `decide`=`nuri/trading/engine`(2026-10 까지 `certify`) · `track`=`nuri/trading/recommend`. `nuri/quant`·`nuri/core` 는 공용 라이브러리이지 스테이지가 아니다.
 - **원칙**: 새 모듈은 다른 스테이지 함수를 직접 호출하지 않는다. DB 테이블/CSV 로 전달.
-- **실제로 강제되는 것**: 교차 import 는 **함수 본문 안(deferred)에만** 허용 — module-level 금지 — 이고 사유와 함께 allowlist 에 등재해야 한다. 실측 **17건 / 15 pair / module-level 0**. `engine/conflicts.py` ↔ `recommend/candidates.py` 상호 의존은 deferral 덕분에만 로드되며, 하나라도 hoist 하면 import 가 깨진다.
+- **실제로 강제되는 것**: 교차 import 는 **함수 본문 안(deferred)에만** 허용 — module-level 금지 — 이고 사유와 함께 allowlist 에 등재해야 한다. 실측 **13건 / 12 pair / module-level 0** (2026-10-07 — SIEGE 제거 #1624 로 3 pair 감소). `engine/conflicts.py` ↔ `recommend/candidates.py` 상호 의존은 deferral 덕분에만 로드되며, 하나라도 hoist 하면 import 가 깨진다.
 - **예외 2건**: 같은 스테이지 내부 import 허용. consensus→decide 핸드오프는 `scheduler.py` 가 객체를 **메모리로** 넘긴다 (DB 경유 아님). 받는 쪽은 `nuri/trading/engine/decisions.py` 의 `record_decisions()` 다(SIEGE 인증기는 #1619 로 제거).
 - **Test**: `tests/core/test_cross_stage_imports.py` — 신규 교차 의존과 사라진 allowlist 항목 **양방향** 모두 FAIL.
 
@@ -91,7 +91,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 |------|------|------|------|------|
 | **Surface** | — | 증거 노출만 (UI/reasoning/log). action·confidence 불변. | noisy, sparse, outcome-검증 부족. 판단 여지 유지. | PR #301 `divergence_flag`, PR #302 UI 배지 |
 | **Soft penalty** | down | 결정적 downgrade/reweight (HOLD 전환, confidence cap). 차단 아님. config tunable. | 같은 반대 시그널 반복 + downside skew 명확, universal fatal 은 아님. | PR #303 `divergence_technical_threshold` (default 80) |
-| **Hard veto** | down | action 강제 변경 또는 차단. config 건드리기 어렵게. | 정책 수준, risk-of-ruin 급. | Risk agent 거부권, execution_priority, VIX>30 차단 |
+| **Hard veto** | down | action 강제 변경 또는 차단. config 건드리기 어렵게. | 정책 수준, risk-of-ruin 급. | Risk agent 거부권, VIX>30 차단 |
 | **Symmetric amplifier** | up | Post-veto sizing — veto/penalty 통과한 eligible candidate 에 대해서만 다중 favorable 조건 동시 충족 시 size/confidence 상향. cap 강제 (baseline × 1.5). | regime + momentum + VIX 모두 favorable. 단일 조건 발동 금지. | E3 도착 예정 (§3.6) |
 
 **운용 원칙**:
@@ -112,7 +112,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 **2차 적용: `regime/macro_score` (2026-08-11, #1026)** — 같은 조항을 9성분 매크로 점수에 적용했다. 결측 성분에 `50.0` 을 채워 가중합하던 것을 **성분 제외 + 비례 재정규화**로 바꾸고 `coverage`(측정된 가중치 합)를 함께 내보낸다. 실측 여파가 크다: `FRED_API_KEY` 미설정으로 FRED 전용 지표 **8개 전부 0행**이라 3성분(3M-10Y · 실업 · CPI)이 결측이고, 총점 **64.4 "Neutral" → 71.3 "Favorable"** 로 **해석 경계를 넘는다**. 지어낸 중립이 우호적 판독을 눌러 온 것이다. 코드는 이미 결측을 감지해 `warnings` 에 담고 있었으나 **읽는 소비처가 0개**였다 — 감지는 어디에도 닿지 않으면 없는 것과 같다. 얇은 표본이 확신 라벨을 달지 않도록 `macro.min_coverage`(기본 0.6) 미만이면 `interpretation="Insufficient"`.
 
-**SIEGE 게이트에도 같은 원칙이 적용된다 (2026-08-10, #1022)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 적용 범위는 게이트의 **판정 입력**(primary)이다 — 보조 spillover 지표(secondary)는 값이 없으면 condition 을 아예 만들지 않아 "정상" 이라 주장하지도 score 를 부풀리지도 않으므로 그대로 둔다. 없는 참고 지표마다 경고를 띄우는 건 §2.6 이 경계하는 performative 경고 쪽이다. 영구 미수집 secondary 는 런타임이 아니라 PR 시점 계약 테스트가 잡는다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리할 것. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다. 후속: `kr_index` 는 #1032(2026-08-11)에서 `prices` 경유 조회를 연결했고, `bond` 는 #1067(2026-08-18)에서 bp 단위 지표(`us_10y_yield_3d_bp`)로 재정의했다. **2026-10-06 §6 폐기로 이 게이트와 score 시계열은 더 이상 생성되지 않는다** — 위 서술은 `certifications` 테이블에 남은 기록을 읽을 때의 주의사항으로만 유효하다 (#1619).
+**SIEGE 게이트에도 같은 원칙이 적용됐다 (2026-08-10, #1022 — SIEGE 인증은 #1619 로 제거, 원칙의 적용 사례로만 남긴다)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 적용 범위는 게이트의 **판정 입력**(primary)이다 — 보조 spillover 지표(secondary)는 값이 없으면 condition 을 아예 만들지 않아 "정상" 이라 주장하지도 score 를 부풀리지도 않으므로 그대로 둔다. 없는 참고 지표마다 경고를 띄우는 건 §2.6 이 경계하는 performative 경고 쪽이다. 영구 미수집 secondary 는 런타임이 아니라 PR 시점 계약 테스트가 잡는다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리할 것. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다. 후속: `kr_index` 는 #1032(2026-08-11)에서 `prices` 경유 조회를 연결했고, `bond` 는 #1067(2026-08-18)에서 bp 단위 지표(`us_10y_yield_3d_bp`)로 재정의했다. **2026-10-06 §6 폐기로 이 게이트와 score 시계열은 더 이상 생성되지 않는다** — 위 서술은 `certifications` 테이블에 남은 기록을 읽을 때의 주의사항으로만 유효하다 (#1619).
 
 이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정할 것.
 
@@ -151,7 +151,7 @@ Burst ship cadence (2026-04-22 실측, 48h 6 functional + 3 docs PR): 재현 조
 
 **이유**: 단일 모델 편향 감소. 손실 회피가 수익 추구보다 우선.
 
-**가중치**: `config/agents.yaml`. Learning Memory 가 과거 적중률로 ±30% 범위 동적 조정.
+**가중치**: 기본값은 `nuri/trading/agents/consensus/registry.py::DEFAULT_WEIGHTS`(코드), 조정 폭·하한은 `config/agents.yaml`(`adjustment_range` · `min_weight_floor`). Learning Memory 가 과거 적중률로 ±30% 범위 동적 조정.
 
 ### 3.3 Confidence 스코어링 파이프라인
 
@@ -200,7 +200,7 @@ base = regime_win_rate × 60% + profit_factor × 40%
 **선택**: Core 보수, Active 적극 컷+위너보호, Swing 진짜 단기, Long_term/Pension 장기 ETF. 규칙 변경은 YAML + 백테스트 + PR.
 
 > ⚠️ **위 표 중 실제로 강제되는 건 손절과 단일종목 한도뿐이다 (2026-08-02 감사).**
-> - **섹터 열은 장식이다.** `account_strategies.*.max_sector_exposure` 를 읽는 코드가 없고, 섹터 검사(certification · rebalance_advisor · execution_firewall)는 전부 전역 `position_limits.max_sector_exposure`(35%)를 쓴다. 즉 pension 계좌를 60%로 적어둬도 35%에서 걸린다.
+> - **섹터 열은 장식이다.** `account_strategies.*.max_sector_exposure` 를 읽는 코드가 없고, 섹터 검사(rebalance_advisor · execution_firewall)는 전부 전역 `position_limits.max_sector_exposure`(35%)를 쓴다. 즉 pension 계좌를 60%로 적어둬도 35%에서 걸린다.
 > - **`trailing_stop_arm: 15` 도 읽는 코드가 없다.** 트레일링은 존재하되 계좌별도 아니고 무장 조건도 없다 — `check_trailing_stop_signals()` 가 보유 전 종목에 대해 진입 후 고점(HWM) 대비 하락으로 판정한다(-15% growth/value, -20% volatile/swing). "+15%에 도달해야 켜진다"는 서술은 사실이 아니었다.
 >
 > 배선하는 건 매매 동작 변경이라 별도 STRATEGY PR 대상이다. 지금 이 문단은 **문서를 코드에 맞춘 것**이지 규칙을 약화시킨 게 아니다.
@@ -402,9 +402,9 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov 1% relative regression (목표 ≥ 95%) | 8,343 tests, 393 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,343 tests, 393 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,292 tests, 109 files (2026-10-07 전체 실행, #1698 후) |
-| E2E | 핵심 flow | 11 spec files (2026-10-06); 88 Playwright tests는 2026-09-29 전체 측정 기록 |
+| E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 | 금지 | conftest.py mock |
 
@@ -443,7 +443,7 @@ PR 전 확인.
 **권위 있는 차단 기준**: `scripts/verify/check_privacy_leak.py` 가 ground truth.
 
 | 카테고리 | 차단 대상 | 허용 placeholder |
-| Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권 | `Brokerage Alpha/Beta` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
+| Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권, 신영증권, 교보증권, 현대차증권, SK증권, DB금융투자, LS증권, 다올투자증권, iM증권, 부국증권, 유진투자증권, 한양증권, 케이프투자증권, 상상인증권, BNK투자증권, 하이투자증권, 한화투자증권 | `Brokerage Alpha/Beta` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
 <!-- cspell:disable-next-line -->
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
 | Suspect monetary literal | 7자리 이상 정수 + `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` 키 | round million (`1_000_000`...`100_000_000`) 자동 허용 |
@@ -775,7 +775,7 @@ Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHA
 | `sector_limit` (error) | 대체 | `rebalance_advisor` `sector_limit_exceeded`. 의미 동일 — 둘 다 포트폴리오 전체 `weight_pct` 를 섹터별로 합산해 `max_sector_exposure` 와 비교한다. 표출은 REBALANCE 만. |
 | `stop_loss` (error) | 대체 | Tier-1 손절 카드(`risk_signals.py`) + `rebalance_advisor` `stop_loss_exceeded`(계좌별 전략). 기계적 `alpha_action=FLAT` 경로(`nuri/core/axis.py`)는 그대로. |
 | `leverage_ban` (error) | 대체 | `rebalance_advisor` `leverage_etf`. advisor 행은 `SELL_ALL` 과 수량을 싣고 있으므로 violations 표면은 **집행 필드를 벗겨** REBALANCE 로만 낸다 — urgent SELL 금지(축 불변식). |
-| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 다만 `nuri/core/rules.py::_load_rules` 는 파일 부재 시 3-섹션 하드코딩 폴백으로 **조용히** 떨어진다 — 이 게이트가 잡던 것이 바로 그 폴백이다. 백엔드 PR 에서 폴백을 제거해 파일 부재를 기동 시 예외로 바꾼다. |
+| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 다만 `nuri/core/rules.py::_load_rules` 는 파일 부재 시 3-섹션 하드코딩 폴백으로 **조용히** 떨어진다 — 이 게이트가 잡던 것이 바로 그 폴백이다. 백엔드 PR 에서 폴백을 제거해 파일 부재를 기동 시 예외로 바꾼다 — 제거 완료(#1619, `_load_rules` 가 `FileNotFoundError`). |
 | `data_fresh` (warning) | 대체 | `nuri/core/freshness.py` SLA(`config/freshness.yaml`, 대시보드 verdict stale gate). 신선도 추적 티커 목록은 `siege_gates.asset_classes.*.freshness_*` 에서 중립 키로 이사. |
 | `volatility_gate` (warning) | 폐기 | 대체 없음. VIX 사실은 브리프 indicators 와 MCP `macro_facts` 가 계속 낸다. |
 | `external_data` (warning) | 폐기 | 대체 없음. |
@@ -829,7 +829,7 @@ Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHA
 
 | 출처 | 적용 | 위치 |
 |---|---|---|
-| [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution) | Gate-based certification, event journal (외부 v1, 본 프로젝트 v2 asset-class expansion) | `nuri/trading/engine/` |
+| SIEGE Engine (`nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution`) | Gate-based certification, event journal (외부 v1, 본 프로젝트 v2 asset-class expansion) — **#1619 로 제거**(처분표 §6, 원 레포는 404) | — |
 | [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` |
 | [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA | `nuri/core/freshness.py` |
 | [TradingAgents](https://github.com/TauricResearch/TradingAgents) | 멀티에이전트 합의 | `nuri/trading/agents/` |
