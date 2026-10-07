@@ -2150,4 +2150,15 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE decisions ADD COLUMN execution_config_sha_v1 TEXT;
     """,
     ),
+    (
+        69,
+        "recommendations 에 방법론 지문 — code_rev · execution_config_sha_v1 (#1716)",
+        # 68 은 연구용 `decisions` 에 붙였지만 §3.11 판정 표본의 모집단은 `recommendations`
+        # (`source IS NULL`, decision_alpha.py) 다 — 판정이 실제로 세는 행에 지문이 없었다.
+        # 같은 이름·같은 동결 closure. 기존 행은 NULL = 바인딩 이전 (57·68 과 같은 이유로 backfill 안 함).
+        """
+        ALTER TABLE recommendations ADD COLUMN code_rev TEXT;
+        ALTER TABLE recommendations ADD COLUMN execution_config_sha_v1 TEXT;
+    """,
+    ),
 ]

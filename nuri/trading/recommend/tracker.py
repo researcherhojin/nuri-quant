@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timedelta
 
 from nuri.core.db import get_db, query
+from nuri.core.db.provenance import binding
 from nuri.quant.regime.classifier import canonical_regime_or_none
 
 logger = logging.getLogger(__name__)
@@ -145,10 +146,12 @@ def save_buy_candidates(result, db_path=None) -> int:
         cur = conn.executemany(
             """INSERT OR IGNORE INTO recommendations
                (date, ticker, action, alpha_action, portfolio_action,
-                confidence, regime, signals, entry_price, source, scoring_detail)
+                confidence, regime, signals, entry_price, source, scoring_detail,
+                code_rev, execution_config_sha_v1)
                VALUES (:date, :ticker, :action, :alpha_action, :portfolio_action,
-                       :confidence, :regime, :signals, :entry_price, :source, :scoring_detail)""",
-            records,
+                       :confidence, :regime, :signals, :entry_price, :source, :scoring_detail,
+                       :code_rev, :execution_config_sha_v1)""",
+            [{**r, **binding()} for r in records],
         )
         inserted = cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0
 
@@ -298,12 +301,12 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
             """INSERT OR IGNORE INTO recommendations
                (date, ticker, action, alpha_action, portfolio_action,
                 confidence, regime, signals, entry_price,
-                agent_verdicts, scoring_detail)
+                agent_verdicts, scoring_detail, code_rev, execution_config_sha_v1)
                VALUES (:date, :ticker, :action, :alpha_action, :portfolio_action,
                        :confidence, :regime, :signals, :entry_price,
-                       :agent_verdicts, :scoring_detail)""",
-            # 누락된 키에 대해 기본값 None 보장
-            [{**{"agent_verdicts": None, "scoring_detail": None}, **r} for r in records],
+                       :agent_verdicts, :scoring_detail, :code_rev, :execution_config_sha_v1)""",
+            # 누락된 키에 대해 기본값 None 보장 · 방법론 지문은 self-measured (#1714)
+            [{**{"agent_verdicts": None, "scoring_detail": None}, **r, **binding()} for r in records],
         )
         return len(records)
 

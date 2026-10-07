@@ -11,6 +11,8 @@ mixed-sample 규칙은 `tests/quant/test_evidence_binding.py`.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from nuri.core.db import (
@@ -135,6 +137,78 @@ class TestDecisionCarriesBinding:
         row = query("SELECT code_rev, execution_config_sha_v1 FROM decisions", db_path=db_path)[0]
         assert row["code_rev"] == "measured-rev"
         assert row["execution_config_sha_v1"] != "claimed-sha"
+
+
+def _consensus_result(ticker="TEST", action="BUY"):
+    from types import SimpleNamespace
+
+    verdict = SimpleNamespace(
+        ticker=ticker,
+        agent_name="technical",
+        action=action,
+        confidence=70.0,
+        reasoning="r",
+        data_points={},
+        alpha_action=None,
+        portfolio_action=None,
+        degraded=False,
+        abstained=False,
+    )
+    return SimpleNamespace(
+        ticker=ticker,
+        final_action=action,
+        final_confidence=70.0,
+        verdicts=[verdict],
+        agreement_rate=1.0,
+        dissent=[],
+        reasoning="r",
+        scoring_detail=None,
+    )
+
+
+class TestRecommendationCarriesBinding:
+    """§3.11 판정 표본의 모집단은 `recommendations` 다 (#1716) — 68 은 연구용 `decisions` 에만 붙였다."""
+
+    def test_consensus_rows_carry_both_columns(self, db_path):
+        from nuri.trading.agents.consensus.persistence import save_to_recommendations
+
+        assert save_to_recommendations([_consensus_result()], db_path=db_path) == 1
+        row = query("SELECT code_rev, execution_config_sha_v1, source FROM recommendations", db_path=db_path)[0]
+        assert row["source"] is None, "합의 행이 판정 표본(source IS NULL)이 아니면 이 잠금의 의미가 없다"
+        assert row["code_rev"], "판정 표본 행이 산출 코드를 특정하지 못한다"
+        assert row["execution_config_sha_v1"], "판정 표본 행이 산출 설정을 특정하지 못한다"
+
+    def test_same_day_consensus_rerun_refreshes_binding(self, db_path, monkeypatch):
+        from nuri.trading.agents.consensus.persistence import save_to_recommendations
+
+        save_to_recommendations([_consensus_result(action="BUY")], db_path=db_path)
+        monkeypatch.setattr(provenance, "_CODE_REV_CACHE", "newrev-1716")
+        save_to_recommendations([_consensus_result(action="SELL")], db_path=db_path)
+        rows = query("SELECT code_rev, action FROM recommendations", db_path=db_path)
+        assert rows == [{"code_rev": "newrev-1716", "action": "SELL"}]
+
+    def test_every_insert_into_recommendations_writes_the_binding(self):
+        """writer 가 셋이라 한 곳만 고치면 나머지가 조용히 NULL 을 쓴다 — SQL 문자열을 전수 대조한다.
+        새 writer 를 추가하면서 두 컬럼을 빼면 FAIL."""
+        import ast
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[2] / "nuri"
+        sites, missing = [], []
+        for path in root.rglob("*.py"):
+            if path.name == "db_migrations.py":
+                continue
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                if (
+                    isinstance(node, ast.Constant)
+                    and isinstance(node.value, str)
+                    and re.search(r"INTO\s+recommendations\b", node.value)
+                ):
+                    sites.append(f"{path.relative_to(root.parent)}:{node.lineno}")
+                    if "code_rev" not in node.value or "execution_config_sha_v1" not in node.value:
+                        missing.append(sites[-1])
+        assert len(sites) >= 3, f"writer 를 못 찾았다 — 스윕이 눈이 멀었다: {sites}"
+        assert not missing, f"방법론 지문 없이 recommendations 에 쓰는 SQL: {missing}"
 
 
 class TestExecutionConfigShaV1:
