@@ -32,7 +32,7 @@ flowchart TB
         JO["operate · 24<br/>briefs · dispatchers · watchdogs · backup · retention"]
     end
 
-    DB[("SQLite WAL · 61 tables")]
+    DB[("SQLite WAL · 62 tables")]
     RD["record_decisions()<br/>inside the consensus job"]
     OUT["Discord brief · dashboard"]
 
@@ -258,7 +258,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 
 ## DB Schema (SQLite, WAL mode)
 
-61 tables total (69 migrations as of 2026-10-06). Key tables:
+61 tables total (70 migrations as of 2026-10-06). Key tables:
 
 | Table | Purpose |
 |-------|---------|
@@ -270,6 +270,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 | `superinvestors` | 13F holdings (Buffett, etc.) |
 | `estimates` | Analyst consensus + target prices |
 | `recommendations` | Daily recs + 30/60/90d outcome tracking (E-3, user-facing emit) |
+| `recommendation_seals` | #1718 per-day hash chain over closed `recommendations` dates (frozen field list v1, excludes `outcome_*` / `hit*` / `tracked_at` / `regime`). Sealed daily by the production `alpha_report` job; `python -m nuri.core.db.ledger_seal` verifies (read-only); the monthly alpha line carries the chain head off-machine |
 | `decisions` | #178 Decision Intelligence — rich record (regime/macro/event/agent_verdicts/scoring_detail/dissent/pnl_7/30/60/90d) |
 | `agent_decisions` | #33 + #529 Phase 2 actor #8 — production state machine (decision_id, action, conviction, inputs_json with run_id, status pending/emitted/blocked/superseded) |
 | `decision_evidence` | #178 lineage — per-decision evidence rows for audit reproducibility |
@@ -355,7 +356,7 @@ data/
 
 ## Testing
 
-8,349 backend tests across 393 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,368 backend tests across 394 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 
