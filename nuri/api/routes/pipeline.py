@@ -27,7 +27,7 @@ _STEP_LABELS = {
     "track": "Track",
 }
 _STEP_DESCRIPTIONS = {
-    "collect": "27 collectors + external sites",
+    "collect": "31 collectors + external sites",
     "analyze": "Signals, regimes, factor composite",
     "consensus": "10 agents weighted vote",
     "decide": "Decision record + veto gates",

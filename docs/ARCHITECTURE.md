@@ -8,7 +8,7 @@ The README shows the high-level flow. The table below gives one row per phase an
 
 | # | Phase | Inputs | Outputs | Key modules | Detail |
 |---|-------|--------|---------|-------------|--------|
-| 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (27 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
+| 1 | **Collect** | External APIs (yfinance · pykrx · KIS · Toss · FRED · Wikipedia · GoogleNews RSS · ARK · Reddit) | `prices` · `fundamentals` · `macro` · `superinvestors` · `estimates` · `analyst_ratings` · `insider_trades` · `news` · `events` tables | `nuri/collectors/` (31 collectors, BaseCollector pattern) | [KIS_INTEGRATION.md](KIS_INTEGRATION.md) · `nuri/collectors/CLAUDE.md` |
 | 2 | **Analyze** | Phase 1 tables | `signal_results.csv` + `signal_scorecard.csv` + `regime_transitions` + `factors` tables | `nuri/quant/regime/` · `nuri/quant/validation/` · `nuri/quant/factors/` · `nuri/llm/event_classifier.py` | "Signal System" and "Regime Classifier" below |
 | 3 | **Consensus** | Phase 2 outputs + `portfolio` + `macro_events` | `recommendations` table rows with per-agent verdicts + weighted final action | `nuri/trading/agents/` (10 specialists + consensus engine, risk veto) | `nuri/trading/agents/CLAUDE.md` |
 | 4 | **Decide** | The consensus result handed over in memory (`record_decisions()`), plus `prices` · `macro` · current regime for the decision context. The portfolio-wide certifier that used to read `config/rules.yaml siege_gates` was retired (#1619). | `decisions` + `decision_evidence` rows per consensus decision | `nuri/trading/engine/decisions.py` | "Decision Engine" below |
@@ -367,7 +367,7 @@ data/
 
 ## Testing
 
-8,463 backend tests across 401 files (collection) + frontend vitest (112 files) + Playwright E2E (10 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-08 1,339 tests(112 files). E2E 는 93 tests(10 files) — `playwright test --list` 수이며 전체 실행 기록이 아니다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,477 backend tests across 402 files (collection) + frontend vitest (112 files) + Playwright E2E (10 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-08 1,339 tests(112 files). E2E 는 93 tests(10 files) — `playwright test --list` 수이며 전체 실행 기록이 아니다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 
