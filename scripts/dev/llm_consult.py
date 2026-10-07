@@ -59,6 +59,9 @@ LOCAL_MODEL = os.environ.get("NURI_LLM_LOCAL_MODEL") or os.environ.get(
 )
 LOCAL_TIMEOUT_S = 600
 CODEX_TIMEOUT_S = 600
+# Codex 리뷰 모델은 여기서 명시한다. 예전에는 `-m` 없이 불러 머신의 `~/.codex/config.toml`
+# 기본값을 따랐고, 아카이브 머리말에는 "gpt-5.4" 가 고정 문자열로 박혀 실제 모델과 달랐다.
+CODEX_MODEL = os.environ.get("NURI_LLM_CODEX_MODEL", "gpt-6.1-sol")
 
 # LM Studio inlines reasoning into `content` (no separate `reasoning_content`
 # field). llama.cpp splits them. Strip <think>...</think> blocks if the model
@@ -75,7 +78,7 @@ DEFAULT_SYSTEM_PROMPT = (
 def consult_codex(prompt: str) -> dict:
     """Pipe prompt to `codex exec`, return verdict text + metadata."""
     proc = subprocess.run(
-        ["codex", "exec", "--skip-git-repo-check", "--color", "never"],
+        ["codex", "exec", "--skip-git-repo-check", "--color", "never", "-m", CODEX_MODEL],
         input=prompt,
         capture_output=True,
         text=True,
@@ -159,7 +162,7 @@ def render_markdown(slug: str, prompt: str, codex: dict | None, qwen: dict | Non
     if codex is not None:
         parts.extend(
             [
-                "## Codex (gpt-5.4)",
+                f"## Codex ({CODEX_MODEL})",
                 "",
                 f"**ok:** {codex['ok']}",
                 "",

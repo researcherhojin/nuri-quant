@@ -45,7 +45,8 @@ from nuri.core.timezone import kst_now  # noqa: E402
 DEFAULT_BUDGET_TOKENS = 100_000
 DEFAULT_BUDGET_USD = 1.00
 
-# Pricing (USD per 1M tokens). Codex CLI 는 gpt-5.4 기준.
+# Pricing (USD per 1M tokens). Codex 단가는 gpt-5.4 기준 근사치 — 실제 모델은
+# `llm_consult.CODEX_MODEL` 이며 단가를 따로 확인하지 않았다.
 # Source: https://openai.com/api/pricing/ (2026-05-03 confirmed).
 # 가격 정책 변경 시 본 상수만 갱신. Qwen 은 local LLM 이라 비용 0.
 CODEX_INPUT_USD_PER_M = 2.50

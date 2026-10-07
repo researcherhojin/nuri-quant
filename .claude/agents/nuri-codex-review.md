@@ -1,6 +1,6 @@
 ---
 name: nuri-codex-review
-description: Invoke OpenAI Codex (gpt-5.4) for an independent code/design review with binary verdict (PASS / NEEDS_REWORK / SHIP / SHELVE / etc). Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/dev/llm_consult.py` (dual-LLM codex + local model) — this agent is codex-only for fast verdict. Namespace: gstack `/codex review` 와 동등 의미, `nuri-` prefix 로 분리.
+description: Invoke OpenAI Codex (model: `CODEX_MODEL` in scripts/dev/llm_consult.py, default gpt-6.1-sol) for an independent code/design review with binary verdict (PASS / NEEDS_REWORK / SHIP / SHELVE / etc). Use when (a) main session is about to ship a non-trivial design choice and wants cross-model verification, (b) Round 1 LLM consult disagreement needs Round 2 synthesis, (c) #507/#508/#509 style harness expansion decisions. Output is archived to data/llm_consults/{date}_{slug}.md (gitignored). NOT a replacement for `scripts/dev/llm_consult.py` (dual-LLM codex + local model) — this agent is codex-only for fast verdict. Namespace: gstack `/codex review` 와 동등 의미, `nuri-` prefix 로 분리.
 tools: Bash, Read, Grep, Glob
 model: inherit
 ---
