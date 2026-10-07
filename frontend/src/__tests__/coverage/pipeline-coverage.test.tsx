@@ -92,7 +92,7 @@ describe("Pipeline — coverage branches", () => {
   });
 
   it("renders with running steps", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     // Pipeline renders with running node data
@@ -100,7 +100,7 @@ describe("Pipeline — coverage branches", () => {
   });
 
   it("handles run success + setTimeout refresh", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
 
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
@@ -137,7 +137,7 @@ describe("Pipeline — coverage branches", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
 
@@ -169,7 +169,7 @@ describe("Pipeline — coverage branches", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
 
@@ -185,7 +185,7 @@ describe("Pipeline — coverage branches", () => {
   });
 
   it("covers 10s interval auto-refresh", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
 
     const initialCalls = fetchMock.mock.calls.length;
@@ -197,7 +197,7 @@ describe("Pipeline — coverage branches", () => {
   });
 
   it("renders timeline events with payload data", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     // Timeline section should exist
@@ -221,7 +221,7 @@ describe("Pipeline — coverage branches", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });

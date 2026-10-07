@@ -175,11 +175,11 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,360 collected across 396 files |
-| Frontend test files | 109 vitest files |
-| Data collectors | 26 collectors (BaseCollector pattern) |
+| Backend tests | 8,463 collected across 401 files |
+| Frontend test files | 112 vitest files |
+| Data collectors | 31 collectors (BaseCollector pattern) |
 | Scheduler jobs | 59 cron entries |
-| API endpoints | 70 declared in `nuri/api/routes/` |
+| API endpoints | 73 declared in `nuri/api/routes/` |
 | Database | SQLite WAL · 63 tables, 72 forward-only migrations |
 
 ## Documentation
@@ -189,6 +189,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, decisions and investment rules (authoritative) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, database, configuration, CI/CD |
 | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | The Overview dashboard: panels, data refresh, responsive layout and verification |
+| [`docs/RESEARCH_BRIEFING.md`](docs/RESEARCH_BRIEFING.md) | Ticker research, public briefing prompts, validation and known limitations |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
 | [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | Pre-push checks and helper scripts for recurring development pitfalls |
 | [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) | Korea Investment & Securities Open API: real-time quotes, investor flows, analyst opinions |

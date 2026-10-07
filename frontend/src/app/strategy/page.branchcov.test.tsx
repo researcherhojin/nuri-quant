@@ -1,4 +1,4 @@
-// Branch-coverage harness for src/app/strategy/page.tsx (StrategyDashboard async Server Component).
+// Branch-coverage harness for src/app/strategy/page-view.tsx (StrategyDashboard async Server Component).
 // jsdom does not commit nested Suspense children when rendering <Page/>, so we render the
 // exported StrategyDashboard directly via `render(await StrategyDashboard())` (gotcha: async SC).
 // @/lib/api is mocked because the Server Component fetches via fetchAPI (not global fetch).
@@ -16,7 +16,7 @@ vi.mock("@/components/ui/interactive-backtest-lazy", () => ({
   ),
 }));
 
-import { StrategyDashboard } from "@/app/strategy/page";
+import { StrategyDashboard } from "@/app/strategy/page-view";
 
 // fetchAPI is called twice in order: [0] /api/strategy/status, [1] /api/backtest.
 function mockResponses(status: unknown, bt: unknown) {

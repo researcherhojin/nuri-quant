@@ -20,7 +20,7 @@ vi.mock("@/components/ui/consensus-table", () => ({
 
 // async Server Component 은 <Page/> 전체 렌더 시 jsdom 이 Suspense 자식을 commit 하지 않으므로
 // export 한 컴포넌트를 직접 호출/렌더한다 (jsdom-Suspense gotcha).
-import { VixBanner, ConsensusSection, DissentSection } from "@/app/consensus/page";
+import { VixBanner, ConsensusSection, DissentSection } from "@/app/consensus/page-view";
 
 const row = (over: Partial<{ ticker: string; dissent: string[] }> = {}) => ({
   ticker: over.ticker ?? "AAA",

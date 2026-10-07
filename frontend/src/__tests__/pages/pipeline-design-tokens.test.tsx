@@ -37,7 +37,7 @@ vi.mock("@xyflow/react", () => ({
 
 vi.mock("@/lib/api", () => ({ API_BASE: "http://localhost:8001", fetchAPI: vi.fn() }));
 
-const PAGE_PATH = join(process.cwd(), "src/app/pipeline/page.tsx");
+const PAGE_PATH = join(process.cwd(), "src/app/pipeline/page-view.tsx");
 
 /** `#fff` / `#3f3f46` 형태의 색 리터럴. 문자열 안이든 JSX 속성이든 잡는다. */
 const HEX_COLOR = /#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?\b/g;
@@ -53,7 +53,7 @@ describe("pipeline 캔버스는 다크 토큰을 쓴다 (#1253)", () => {
   afterEach(() => vi.restoreAllMocks());
 
   it("edge stroke 와 캔버스 점이 CSS 변수로 넘어간다", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -80,7 +80,7 @@ describe("pipeline 캔버스는 다크 토큰을 쓴다 (#1253)", () => {
   });
 
   it("노드는 그림자·상태 글로우 없이 테두리와 점으로만 상태를 말한다", async () => {
-    const { PipelineNode } = await import("@/app/pipeline/page");
+    const { PipelineNode } = await import("@/app/pipeline/page-view");
 
     const { container } = render(
       <PipelineNode

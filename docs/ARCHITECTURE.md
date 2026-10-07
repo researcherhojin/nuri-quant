@@ -220,9 +220,18 @@ Trade execution API (`nuri/api/routes/trades.py`):
 
 `/` is Overview (`frontend/src/app/(overview)/`). It began as the `/dashboard-next` preview (#1658) and replaced the original dashboard in #1698; the old address redirects to `/`. It combines market context, holding reviews, portfolio composition, freshness and pipeline observations. The portfolio donut includes every group, uses API-provided Korean names and preserves unknown valuation inputs. Its viewport-based layout is scoped to Overview; every other page keeps the 1,600px container cap. See [Overview implementation and operations](OVERVIEW.md) for data contracts, refresh behavior, responsive thresholds, tests and limitations.
 
-## API (70 endpoints)
+### Ticker research preview
 
-`nuri/api/routes/` — 70 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 22 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) is still served, but its only frontend consumer (the old dashboard's coverage widget) was deleted in #1698.
+`/ticker-next/[symbol]` separates public research from stored system judgments. Company, fund and
+fallback reports share `ReportFrame` / `ReportSection`; public briefing generation uses the central
+LLM gateway and never reruns consensus. Research routes live in `ticker_research.py`, public data
+and generated reports in `external_analysis`, and source registration in `config/research_sources.json`.
+See [Ticker research and public briefings](RESEARCH_BRIEFING.md) for the v9 prompt, evidence checks,
+cache states and known limitations.
+
+## API (73 endpoints)
+
+`nuri/api/routes/` — 73 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across 23 route modules. FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). `/api/coverage` (#297) is still served, but its only frontend consumer (the old dashboard's coverage widget) was deleted in #1698.
 
 ### Action-First Dashboard APIs (PR #264-#266)
 
@@ -321,6 +330,7 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
 ## Config Files (`config/`)
 
 - `portfolio.yaml`: accounts and holdings (gitignored; see `portfolio.example.yaml` for the shape)
+- `research_sources.json`: registered public document sources and issuer identity checks; output style lives in `nuri/llm/research_briefing.py`
 - `stock_types.yaml`: growth/value override per ticker; controls stop-loss and take-profit thresholds
 - `agents.yaml`: agent thresholds and confidence normalization scales (including `smart_money.freshness` per-source max age, #1187); loaded via `nuri/core/agent_config.py`
 - `alerts.yaml`: alert thresholds and report timing
@@ -357,7 +367,7 @@ data/
 
 ## Testing
 
-8,360 backend tests across 396 files (collection) + frontend vitest (109 files) + Playwright E2E (9 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-07 재측정 1,292 tests(109 files, #1698 기존 대시보드 삭제 후); E2E 78 tests(9 files)도 같은 날 측정이다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,463 backend tests across 401 files (collection) + frontend vitest (112 files) + Playwright E2E (10 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-08 1,339 tests(112 files). E2E 는 93 tests(10 files) — `playwright test --list` 수이며 전체 실행 기록이 아니다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 

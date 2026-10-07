@@ -52,7 +52,7 @@ describe("Pipeline handleRunStep", () => {
   });
 
   it("clicking run button triggers POST request", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
 
     // Wait for initial data load
@@ -80,7 +80,7 @@ describe("Pipeline handleRunStep", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 
@@ -110,7 +110,7 @@ describe("Pipeline handleRunStep", () => {
       return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
     });
 
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
 

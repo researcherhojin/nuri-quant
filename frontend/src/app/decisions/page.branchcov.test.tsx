@@ -6,7 +6,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 import { fetchAPI } from "@/lib/api";
-import { DecisionsSection } from "./page";
+import { DecisionsSection } from "./page-view";
 
 const mockFetchAPI = vi.mocked(fetchAPI);
 

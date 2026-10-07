@@ -1,5 +1,5 @@
 /**
- * Pipeline page — statement-coverage push for src/app/pipeline/page.tsx.
+ * Pipeline page — statement-coverage push for src/app/pipeline/page-view.tsx.
  *
  * 목표: 미커버 catch 분기 127/136줄 (formatAge / formatTimestamp) 커버.
  *
@@ -141,7 +141,7 @@ describe("Pipeline page — helper catch branches", () => {
 
   it("formatAge falls back to raw value when Date coercion throws (line 127)", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
@@ -158,7 +158,7 @@ describe("Pipeline page — helper catch branches", () => {
 
   it("formatTimestamp falls back to raw value when Date coercion throws (line 136)", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });

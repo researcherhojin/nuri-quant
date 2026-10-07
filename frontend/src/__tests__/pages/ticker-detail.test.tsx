@@ -107,7 +107,7 @@ describe("TickerPage", () => {
   });
 
   it("renders full ticker detail with all sections", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -126,7 +126,7 @@ describe("TickerPage", () => {
   });
 
   it("renders analyst ratings with upgrade/downgrade", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -138,7 +138,7 @@ describe("TickerPage", () => {
   });
 
   it("renders earnings with surprise percentages", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -147,7 +147,7 @@ describe("TickerPage", () => {
   });
 
   it("renders insider trades with value and shares", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -157,7 +157,7 @@ describe("TickerPage", () => {
   });
 
   it("renders fundamentals metrics", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -169,7 +169,7 @@ describe("TickerPage", () => {
   });
 
   it("renders superinvestors", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -179,7 +179,7 @@ describe("TickerPage", () => {
   });
 
   it("renders price targets", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -188,7 +188,7 @@ describe("TickerPage", () => {
   });
 
   it("renders external data", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -197,7 +197,7 @@ describe("TickerPage", () => {
   });
 
   it("renders price chart", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 
@@ -219,7 +219,7 @@ describe("TickerPage", () => {
       });
     });
 
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "NEW" }) });
     await act(async () => { render(element); });
 
@@ -247,7 +247,7 @@ describe("TickerPage", () => {
         fundamentals: { pe_ratio: null, roe: 0, revenue_growth: null, debt_to_equity: null, profit_margin: null, beta: null },
       });
     });
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "NEW" }) });
     await act(async () => { render(element); });
     expect(screen.queryByText("Fundamentals")).not.toBeInTheDocument();
@@ -269,7 +269,7 @@ describe("TickerPage", () => {
         superinvestors: [], fundamentals: null,
       });
     });
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "005930.KS" }) });
     await act(async () => { render(element); });
     expect(screen.getByTestId("ticker-missing-panels").textContent).toContain("KR 종목");
@@ -294,7 +294,7 @@ describe("TickerPage", () => {
       });
     });
 
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "NULL" }) });
     await act(async () => { render(element); });
 
@@ -318,7 +318,7 @@ describe("TickerPage", () => {
       });
     });
 
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "TEST" }) });
     await act(async () => { render(element); });
 
@@ -360,7 +360,7 @@ describe("TickerPage — 자리표시자는 의견이 아니다 (#1436)", () => 
   });
 
   it("기권 에이전트의 확신도를 숫자로 찍지 않는다", async () => {
-    const mod = await import("@/app/ticker/[symbol]/page");
+    const mod = await import("@/app/ticker/[symbol]/page-view");
     const element = await mod.default({ params: Promise.resolve({ symbol: "AAPL" }) });
     await act(async () => { render(element); });
 

@@ -168,6 +168,28 @@ class TestTicker:
         # dissent 는 final_action(BUY)과 다른 verdict 에서 재구성
         assert any("fundamental" in d for d in c["dissent"])
 
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            (
+                json.dumps({"final_action_source": "risk_veto", "risk_veto_fired": True}),
+                {"final_action_source": "risk_veto", "risk_veto_fired": True},
+            ),
+            ("broken", None),
+            ("[]", None),
+        ],
+    )
+    def test_saved_decision_mechanism_is_preserved(self, client, tmp_path, raw, expected):
+        from nuri.core.timezone import today_kst
+
+        with get_db(tmp_path / "test.db") as conn:
+            conn.execute(
+                "INSERT INTO recommendations(date,ticker,action,confidence,signals,agent_verdicts,scoring_detail) VALUES(?, 'DEMO', 'SELL',100,'{}','[]',?)",
+                (today_kst(), raw),
+            )
+        consensus = client.get("/api/ticker/DEMO?stored_only=true").json()["consensus"]
+        assert consensus["scoring_detail"] == expected
+
     def test_ticker_consensus_stale_row_falls_back_to_live(self, client, tmp_path, monkeypatch):
         """오래된 행(>7일)은 stale → live analyze_ticker 재계산.
 

@@ -47,6 +47,7 @@ from nuri.api.routes import (
     swing,
     targets,
     ticker,
+    ticker_research,
     trades,
 )
 
@@ -123,6 +124,7 @@ app.include_router(pipeline_refresh.router, prefix="/api")
 app.include_router(agents.router, prefix="/api")
 app.include_router(swing.router, prefix="/api")
 app.include_router(ticker.router, prefix="/api")
+app.include_router(ticker_research.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(evidence.router, prefix="/api")

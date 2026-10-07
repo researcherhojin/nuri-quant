@@ -402,8 +402,8 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,360 tests, 396 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
-| Frontend tests | 목표 ≥ 90% | 1,292 tests, 109 files (2026-10-07 전체 실행, #1698 후) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,463 tests, 401 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Frontend tests | 목표 ≥ 90% | 1,339 tests, 112 files (2026-10-08 전체 실행, 종목 상세 미리보기 반영) |
 | E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 | 금지 | conftest.py mock |
@@ -504,7 +504,15 @@ Commit message 스캔 (PR #202 방지):
 | Provider | Model | 허용 Tier | 단가 (in/out per 1M) | ZDR | 비고 |
 |---|---|---|---|---|---|
 | OpenAI | `gpt-5.4-nano` | Tier 0 (RSS 분류) | $0.20 / $1.25 | 권장 | 일 100 헤드라인 연 ~$3.51 |
+| OpenAI | `gpt-5.4` | Tier 0 (공개 기업 브리핑) | $2.50 / $15.00 | 권장 | 2026-10-07 사용자 요청. 명시적 생성 버튼, 공식 자료·확인된 기사만; 계좌·보유·손익·사용자 narrative 송신 금지. 매매 판정 생성 금지. 단, **어떤 종목을 요청하는지**가 관심·보유 종목의 표본이 된다 — 내용은 공개 자료여도 요청 목록은 사용자 신호다. |
 | OpenAI | `gpt-5.4-nano` | Tier 2 (LLM 일간 리포트) | $0.20 / $1.25 | **필수** | 일 1회, 연 ~$0.10. 2026-04-14 사용자 승인 (프로토타입; local 전환 예정) |
+
+**공개 기업 브리핑 구현 기록 (2026-10-08)**: 프롬프트 `public-briefing-v9`는 가상의
+설명 예시를 문체 참고로만 사용하고 실제 근거 ID·법인·날짜·숫자 검증을 유지한다.
+저장된 시스템 판정은 애플리케이션이 별도로 표시한다. 실제 API의 엄격 JSON 스키마 수용과
+보고서 생성은 확인했지만 모든 종목의 품질이나 에이전트 판정 영향 검증을 뜻하지 않는다.
+이는 송신 허용 범위·투자 규칙·측정 기준의 변경이 아니다. 구현과 미해결 머지 조건은
+[종목 리서치 안내](RESEARCH_BRIEFING.md)를 참조한다.
 
 **Tier 2 전제조건**:
 

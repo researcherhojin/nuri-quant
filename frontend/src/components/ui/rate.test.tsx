@@ -132,7 +132,7 @@ describe("decisions 페이지 배선 — 실제 요약값으로 렌더한다 (#1
   });
 
   async function renderPage() {
-    const { DecisionsSection } = await import("@/app/decisions/page");
+    const { DecisionsSection } = await import("@/app/decisions/page-view");
 
     return render(await DecisionsSection());
   }

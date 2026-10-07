@@ -1,5 +1,7 @@
 """외부 분석 데이터 API — TipRanks, Dataroma, Macrotrends 등 저장/조회."""
 
+import json
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -28,9 +30,19 @@ def get_external_summary():
 @router.get("/external/{ticker}")
 def get_ticker_external(ticker: str):
     """종목별 외부 데이터 조회."""
+    from nuri.api.routes.ticker_research import _public_dossier
     from nuri.collectors.external import get_external
 
     data = get_external(ticker.upper())
+    for item in data:
+        if item.get("data_type") == "company_research":
+            try:
+                dossier = json.loads(item.get("details") or "{}")
+                item["details"] = json.dumps(
+                    _public_dossier(dossier) if isinstance(dossier, dict) else {}, ensure_ascii=False
+                )
+            except (ValueError, TypeError):
+                item["details"] = "{}"
     return {"ticker": ticker.upper(), "data": data, "count": len(data)}
 
 

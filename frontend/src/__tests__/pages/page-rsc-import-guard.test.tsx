@@ -28,7 +28,7 @@ function pages(dir: string): string[] {
 
     if (statSync(path).isDirectory()) return pages(path);
 
-    return name === "page.tsx" ? [path] : [];
+    return name === "page.tsx" || name === "page-view.tsx" ? [path] : [];
   });
 }
 
@@ -70,6 +70,7 @@ describe("server page RSC import boundary", () => {
 
   it("finds the server pages it guards", () => {
     expect(serverPages.map((file) => file.slice(APP.length))).toContain("/(overview)/page.tsx");
+    expect(serverPages.map((file) => file.slice(APP.length))).toContain("/engine/page-view.tsx");
   });
 
   it.each(serverPages.map((file) => [file.slice(APP.length), file]))("%s takes only components or types from client modules", (_, file) => {

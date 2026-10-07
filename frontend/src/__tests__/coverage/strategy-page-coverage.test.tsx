@@ -67,7 +67,7 @@ describe("Strategy page branches", () => {
       return {};
     });
 
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => { expect(screen.getByText(NAV.ROUTE_STRATEGY)).toBeInTheDocument(); });
     expect(screen.queryByText(/confidence/)).not.toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("Strategy page branches", () => {
       return {};
     });
 
-    const Page = await import("@/app/strategy/page");
+    const Page = await import("@/app/strategy/page-view");
     await act(async () => { render(<Page.default />); });
     await waitFor(() => {
       expect(screen.getByText("Long 30%")).toBeInTheDocument();

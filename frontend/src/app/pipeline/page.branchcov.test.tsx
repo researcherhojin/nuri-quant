@@ -1,5 +1,5 @@
 /**
- * Pipeline page — BRANCH coverage (isolated 100%) for src/app/pipeline/page.tsx.
+ * Pipeline page — BRANCH coverage (isolated 100%) for src/app/pipeline/page-view.tsx.
  *
  * 이 파일 단독 실행으로 page.tsx 의 모든 branch arm 을 커버한다.
  * (full-suite 기준 4개 미커버였으나, 단독 실행 시 기존 page.coverage.test.tsx 가
@@ -76,7 +76,7 @@ type NodeData = {
 async function loadNode() {
   vi.resetModules();
 
-  return (await import("@/app/pipeline/page")).PipelineNode;
+  return (await import("@/app/pipeline/page-view")).PipelineNode;
 }
 
 describe("PipelineNode — node-body branch arms", () => {
@@ -254,7 +254,7 @@ function makeFetch(opts: {
 
 async function renderPage() {
   vi.resetModules();
-  const PipelinePage = (await import("@/app/pipeline/page")).default;
+  const PipelinePage = (await import("@/app/pipeline/page-view")).default;
   await act(async () => {
     render(<PipelinePage />);
   });
@@ -405,7 +405,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
   });
 
   it("StepIcon: 라이브 어휘가 사이드바 아이덴티티와 동일 아이콘 — Circle 폴백은 미지 스텝만 (F-003 #1237)", async () => {
-    const { StepIcon } = await import("@/app/pipeline/page");
+    const { StepIcon } = await import("@/app/pipeline/page-view");
     const { BarChart3, Users, Cog, Search, MapPin } = await import("lucide-react");
 
     // 패리티 잠금 (codex #1238 P3): 기대 아이콘을 직접 렌더해 lucide-* 클래스를 비교 —
@@ -437,7 +437,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
     expect(lucideClass(container.querySelector("svg"))).toBe("lucide-circle");
 
     // EventIcon 도 같은 장식 계약 — 전 타입 aria-hidden (codex #1238 R2)
-    const { EventIcon } = await import("@/app/pipeline/page");
+    const { EventIcon } = await import("@/app/pipeline/page-view");
 
     for (const type of ["start", "success", "error", "weird"]) {
       const ev = render(<EventIcon type={type} />);

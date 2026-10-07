@@ -124,7 +124,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   it("renders PipelineNode with all status types", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
@@ -136,7 +136,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   it("renders running node with animation + error node with message", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
@@ -149,7 +149,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   it("clicking run button on node triggers POST", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
@@ -168,7 +168,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   it("renders timeline with stderr, command, error, and JSON payloads", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
@@ -179,7 +179,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   it("renders gate conditions with pass/fail icons", async () => {
     vi.resetModules();
-    const PipelinePage = (await import("@/app/pipeline/page")).default;
+    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 

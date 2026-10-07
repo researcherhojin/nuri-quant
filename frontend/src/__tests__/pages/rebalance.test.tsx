@@ -65,7 +65,7 @@ describe("RebalancePage", () => {
   });
 
   it("renders the page heading", async () => {
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -84,7 +84,7 @@ describe("RebalancePage", () => {
         violations_by_type: { stop_loss: 3 }, violations_by_severity: { critical: 1, high: 2 }, has_critical: true,
       },
     });
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -93,7 +93,7 @@ describe("RebalancePage", () => {
   });
 
   it("renders Risk Parity method description with action count", async () => {
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -102,7 +102,7 @@ describe("RebalancePage", () => {
   });
 
   it("renders HOLD tickers in footnote", async () => {
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -111,7 +111,7 @@ describe("RebalancePage", () => {
   });
 
   it("calls fetchAPI with correct path", async () => {
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -124,7 +124,7 @@ describe("RebalancePage", () => {
       rebalance: { error: "No portfolio data" },
     });
 
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -143,7 +143,7 @@ describe("RebalancePage", () => {
       },
     });
 
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -163,7 +163,7 @@ describe("RebalancePage", () => {
       },
     });
 
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
@@ -179,7 +179,7 @@ describe("RebalancePage", () => {
 
       return Promise.reject(new Error("API /api/rebalance: 503"));
     });
-    const { default: RebalancePage } = await import("@/app/rebalance/page");
+    const { default: RebalancePage } = await import("@/app/rebalance/page-view");
     await act(async () => {
       render(<RebalancePage />);
     });
