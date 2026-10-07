@@ -86,7 +86,7 @@ PLACEHOLDER_REASONS: dict[str, set[str]] = {
     # `"레짐/매크로 조회 실패"`(degraded)로 가르지만 원장에서는 둘을 구분할 수 없다. 확신도가
     # 양쪽 다 0.0 이라 어느 축에 놓든 채점에 기여하지 않으므로 기권으로 둔다.
     "macro": {"SPY 데이터 부족", "레짐/매크로 데이터 부족"},
-    "options": {"PCR 데이터 없음", "PCR 값 없음"},
+    "options": {"PCR 데이터 없음", "PCR 값 없음", "미국 시장 PCR — 자료 유효 기간 초과"},
     "retail": {"리테일 센티먼트 데이터 없음", "리테일 데이터 부족"},
     "smart_money": {"스마트머니 데이터 없음"},
     "technical": {"데이터 부족"},
@@ -114,6 +114,7 @@ DEGRADED_REASONS = {
     "yfinance 로드 실패",
     "PCR 조회 실패",
     "Wall Street 조회 실패",
+    "보유 종목 가격 확인 불가 — 손절 점검 미실행",
 }
 DEGRADED_PREFIX = "에러:"
 

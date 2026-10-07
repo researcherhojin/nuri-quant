@@ -1,7 +1,8 @@
 """리스크 관리 에이전트 — VaR, 손절선, 포지션 집중도 기반 판정."""
 
 from nuri.core.agent_config import AGENT_CONFIG
-from nuri.core.rules import MAX_SINGLE_POSITION, get_stop_loss_for_account
+from nuri.core.db import DatabaseError, OperationalError, query_df
+from nuri.core.rules import MAX_SINGLE_POSITION, get_real_accounts, get_stop_loss_for_account
 from nuri.trading.agents.base import AgentVerdict, BaseAgent, finite_or_none
 
 _CFG = AGENT_CONFIG.get("risk", {})
@@ -17,6 +18,7 @@ class RiskAgent(BaseAgent):
         score = 0  # 양수=안전, 음수=위험 (alpha axis 에만 기여)
         stop_loss_fired = False
         concentration_breach = False
+        accounts = get_real_accounts() if db_path is None else set()
 
         loss_threshold = _CFG.get("loss_threshold", -10)
         profit_threshold = _CFG.get("profit_threshold", 20)
@@ -37,12 +39,23 @@ class RiskAgent(BaseAgent):
 
         # -inf 가격은 truthy 라 100 확신 손절 거부권을 발동시켰다 — finite 만 가격이다 (Codex P1, #1485)
         current = finite_or_none(price_row[0]["close"]) if price_row else None
-        if holding and current:
+        holding[:] = [row for row in holding if not accounts or row.get("account") in accounts]
+        active_holding = any(
+            isinstance(finite_or_none(row.get("quantity")), (int, float)) and row["quantity"] > 0 for row in holding
+        )
+        if active_holding and (not isinstance(current, (int, float)) or current <= 0):
+            return AgentVerdict(
+                self.name, ticker, "HOLD", 0, "보유 종목 가격 확인 불가 — 손절 점검 미실행", degraded=True
+            )
+        if holding and isinstance(current, (int, float)) and current > 0:
             worst_breach: tuple[float, int] | None = None  # (pnl_pct, threshold)
             worst_loss_pct: float | None = None  # breach 없을 때만 사용
             for row in holding:
                 avg = finite_or_none(row["avg_price"])
-                if not avg:
+                quantity = finite_or_none(row.get("quantity"))
+                if not isinstance(quantity, (int, float)) or quantity <= 0:
+                    continue
+                if not isinstance(avg, (int, float)) or avg <= 0:
                     continue
                 row_pnl = (current - avg) / avg * 100
                 row_threshold = get_stop_loss_for_account(row["account"])
@@ -68,15 +81,24 @@ class RiskAgent(BaseAgent):
         vol_high = _CFG.get("volatility_high", 5)
         vol_low = _CFG.get("volatility_low", 2)
 
-        from nuri.core.db import query_df
+        import numpy as np
+        import pandas as pd
 
-        recent = query_df(
-            "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 30",
-            (ticker,),
-            db_path=db_path,
-        )
+        volatility_failed = False
+        try:
+            recent = query_df(
+                "SELECT close FROM prices WHERE ticker = ? ORDER BY date DESC LIMIT 30",
+                (ticker,),
+                db_path=db_path,
+            )
+        except (OperationalError, DatabaseError):
+            recent = pd.DataFrame()
+            volatility_failed = True
+        if not recent.empty:
+            recent["close"] = pd.to_numeric(recent["close"], errors="coerce")
+            recent = recent.loc[np.isfinite(recent["close"]) & (recent["close"] > 0)]
         if len(recent) >= 10:
-            vol = recent["close"].pct_change(fill_method=None).std() * 100
+            vol = recent["close"].iloc[::-1].pct_change(fill_method=None).std() * 100
             if vol > vol_high:
                 score -= 1
                 reasons.append(f"고변동성 (일간σ {vol:.1f}%)")
@@ -90,16 +112,42 @@ class RiskAgent(BaseAgent):
         # REBALANCE` 만 emit. § STRATEGY 2.6 Soft-penalty, not Hard veto.
         # A-4 codex Round 2 P2: 여러 계좌 합산은 유지 (undercount 방지).
         total_rows = self._safe_query(
-            "SELECT SUM(quantity * avg_price) as total FROM portfolio",
+            "SELECT p.ticker, p.account, p.currency, p.quantity, p.avg_price, "
+            "(SELECT close FROM prices WHERE ticker=p.ticker ORDER BY date DESC LIMIT 1) AS current_price "
+            "FROM portfolio p",
             db_path=db_path,
         )
-        db_failed = any(r.failed for r in (holding, price_row, total_rows))
-        if holding and total_rows and total_rows[0]["total"]:
-            ticker_exposure = sum((row["quantity"] or 0) * (row["avg_price"] or 0) for row in holding)
-            weight = ticker_exposure / total_rows[0]["total"]
+        db_failed = volatility_failed or any(r.failed for r in (holding, price_row, total_rows))
+        from nuri.core.fx import latest_usd_krw_value
+        from nuri.core.valuation import holding_value_usd
+
+        rows = [row for row in total_rows if not accounts or row.get("account") in accounts]
+        try:
+            rate = latest_usd_krw_value(db_path=db_path)
+        except Exception:
+            rate = None
+        values = [
+            holding_value_usd(
+                row.get("ticker"),
+                row.get("currency"),
+                row.get("quantity"),
+                row.get("current_price") if row.get("current_price") is not None else row.get("avg_price"),
+                rate,
+            )
+            for row in rows
+        ]
+        weight = None
+        known_values = [value for value in values if value is not None]
+        if rows and len(known_values) == len(values) and sum(known_values) > 0:
+            ticker_exposure = sum(
+                value for row, value in zip(rows, values) if row.get("ticker") == ticker and value is not None
+            )
+            weight = ticker_exposure / sum(known_values)
             if weight > MAX_SINGLE_POSITION:
                 concentration_breach = True
                 reasons.append(f"비중 초과 ({weight * 100:.1f}% > {MAX_SINGLE_POSITION * 100:.0f}%) — 리밸런스 권고")
+        elif rows:
+            reasons.append("비중 평가 불가 — 가격·수량·환율 또는 통화 확인 필요")
 
         # 조회 실패는 판단이 아니다 (#1436). "리스크 정상" 은 평가해서 위험 없음을 확인한
         # **진짜 판단**이라 기권으로 돌리지 않는다 (codex R1 이 잡은 회귀) — 그러나 조회가
@@ -117,13 +165,9 @@ class RiskAgent(BaseAgent):
 
         # 판정 — legacy action 은 alpha score 만으로 derive. concentration 은
         # 여기 영향 주지 않음 (SELL 경로 분리).
-        score_sell = _CFG.get("score_sell", -2)
         score_buy = _CFG.get("score_buy", 2)
 
-        if score <= score_sell:
-            # score ≤ -2 는 stop_loss(-3) breach 만 trigger — concentration 은 portfolio
-            # 전용으로 분리됐고 vol_high(-1) 단독으로 -2 도달 불가 (PR A 이후). 따라서
-            # 이 분기 진입 시 stop_loss_fired 항상 True → override confidence 직접 사용.
+        if stop_loss_fired:
             action = "SELL"
             confidence = _CONF.get("stop_loss_override", 90)
         elif score >= score_buy:
@@ -134,7 +178,7 @@ class RiskAgent(BaseAgent):
         # Alpha axis — negative alpha 신호 (SELL 이거나 stop_loss breach) → FLAT,
         # 긍정은 LONG, 중립은 None. Veto 는 consensus.py 가 alpha_action="FLAT" 을
         # 요구하므로 concentration 단독 (action=HOLD 유지) 은 veto 못 건다.
-        if action == "SELL" or stop_loss_fired:
+        if stop_loss_fired:
             alpha_action: str | None = "FLAT"
         elif action == "BUY":
             alpha_action = "LONG"
@@ -151,7 +195,13 @@ class RiskAgent(BaseAgent):
             action,
             round(self.normalize_confidence(confidence), 1),
             "; ".join(reasons) or "리스크 정상",
-            {"score": score, "concentration_breach": concentration_breach},
+            {
+                "score": score,
+                "concentration_breach": concentration_breach,
+                "position_pct": weight * 100 if weight is not None else None,
+                "position_basis": "market_value_usd_with_cost_fallback",
+                "stop_loss_fired": stop_loss_fired,
+            },
             alpha_action=alpha_action,
             portfolio_action=portfolio_action,
         )

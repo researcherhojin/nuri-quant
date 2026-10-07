@@ -128,7 +128,7 @@ class TechnicalAgent(BaseAgent):
         if macd > signal:
             buy_signals += 1
             reasons.append("MACD>Signal")
-        else:
+        elif macd < signal:
             sell_signals += 1
             reasons.append("MACD<Signal")
 
@@ -188,7 +188,7 @@ class TechnicalAgent(BaseAgent):
             "macd": round(macd, 4),
             "price": round(latest, 2),
         }
-        if chart is not None and chart.price > 0:
+        if chart is not None and finite_or_none(chart.price) and chart.price > 0:
             # analyze_chart 는 DB 를 직접 읽어 위 정제를 거치지 않는다 — 파생값의 non-finite 는 None 으로 (#1479)
             data_points.update(
                 {

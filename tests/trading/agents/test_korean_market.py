@@ -277,7 +277,7 @@ class TestKoreanMarketAgent_R26:
         """Cover KOSDAQ discount."""
         from nuri.trading.agents.korean_market import KoreanMarketAgent
 
-        result = KoreanMarketAgent().analyze("247540.KS", db_path=db_path)
+        result = KoreanMarketAgent().analyze("247540.KQ", db_path=db_path)
         assert "KOSDAQ" in result.data_points.get("market", "")
 
     def test_momentum_none(self, db_path):

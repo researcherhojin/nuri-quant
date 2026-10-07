@@ -32,7 +32,7 @@ class TestCryptoMidCrash:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
                 ("2025-03-25", "btc_24h_change_pct", -7.0),
             )
         v = CryptoAgent().analyze("AAA", db_path=db_path)
@@ -168,8 +168,8 @@ class TestOptionsNeutralLow:
         with get_db(db_path) as conn:
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{20 + i:02d}", "put_call_ratio", 0.75),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=4 - i)).date().isoformat(), "put_call_ratio", 0.75),
                 )
         v = OptionsAgent().analyze("AAA", db_path=db_path)
         assert "낙관적" in v.reasoning
@@ -185,7 +185,7 @@ class TestRetailBranches:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
+                "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
                 ("2025-03-25", "wsb_mention_AAA", 15.0),
             )
         v = RetailAgent().analyze("AAA", db_path=db_path)

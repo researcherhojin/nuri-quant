@@ -9,17 +9,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from datetime import timedelta
 
 import pytest
 
 from nuri.core.db import get_db
+from nuri.core.timezone import kst_now
 
 
 def _macro(db_path, indicator, value, date="2026-09-01"):
     with get_db(db_path) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
-            (indicator, date, value, "test"),
+            (indicator, date, value, "CBOE" if indicator == "put_call_ratio" else "test"),
         )
 
 
@@ -77,7 +79,7 @@ class TestOptionsAgent:
         from nuri.trading.agents.options_agent import OptionsAgent
 
         for i, val in enumerate([NAN, INF, 1.5, NAN, 1.3]):
-            _macro(db_path, "put_call_ratio", val, date=f"2026-09-0{i + 1}")
+            _macro(db_path, "put_call_ratio", val, date=(kst_now() - timedelta(days=i)).date().isoformat())
         v = OptionsAgent().analyze("SPY", db_path=db_path)
         json.dumps(asdict(v), allow_nan=False)
         assert v.data_points["pcr_avg"] == pytest.approx(1.4)  # (1.5 + 1.3) / 2 — NaN/inf 가 섞이면 NaN
@@ -88,7 +90,7 @@ class TestOptionsAgent:
         from nuri.trading.agents.options_agent import OptionsAgent
 
         for i in range(3):
-            _macro(db_path, "put_call_ratio", NAN, date=f"2026-09-0{i + 1}")
+            _macro(db_path, "put_call_ratio", NAN, date=(kst_now() - timedelta(days=i)).date().isoformat())
         v = OptionsAgent().analyze("SPY", db_path=db_path)
         json.dumps(asdict(v), allow_nan=False)
         assert v.abstained and v.action == "HOLD"

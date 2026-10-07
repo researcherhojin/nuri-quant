@@ -153,6 +153,8 @@ Burst ship cadence (2026-04-22 실측, 48h 6 functional + 3 docs PR): 재현 조
 
 **가중치**: 기본값은 `nuri/trading/agents/consensus/registry.py::DEFAULT_WEIGHTS`(코드), 조정 폭·하한은 `config/agents.yaml`(`adjustment_range` · `min_weight_floor`). Learning Memory 가 과거 적중률로 ±30% 범위 동적 조정.
 
+**에이전트 입력 정합화 (2026-10-08)** — 판정 규칙이 아니라 입력 해석의 오류를 고친 변경이다. 부채비율을 퍼센트로 읽기(DB·yfinance 단위, 이전에는 배수로 읽어 664종목 중 634종목이 감점), 내부자 `other` 거래를 매수로 세지 않기, 13F 는 운용사별 최신 보고만, 등급·내부자·실적 캐시에 날짜 창, PCR 은 132시간이 지나면 기권하고 출처가 바뀐 시계열은 섞지 않기, 리스크 거부권은 손절 이탈에서만(불변식 — 손실·변동성 합산만으로 FLAT 이 나던 경로 제거), 비중은 USD 평가액·실계좌 기준, KOSDAQ 판별은 `.KQ` 접미사. **영향 측정**: 같은 운영 원장 사본(2026-10-08 수신)에서 보유 17종목 합의를 변경 전후 코드로 재계산 — 최종 판정 변화 **0건**, 에이전트 표 변화 2건(fundamental), 확신도 +1.3·+3.6 두 건, 기권·yfinance 실시간 호출 증가 0건. 하루 스냅샷이며 과거 판정의 재연이 아니다. CBOE 전용 PCR 출처 조건은 운영 PCR 이 `yfinance_SPY` 뿐이라 옵션 표를 매일 전 종목 기권시켜 넣지 않았다 — SPY 단일 만기 값의 스케일 문제는 별도 이슈. **Test:** `tests/trading/agents/test_audit_regressions.py` (입력별 회귀), `tests/scripts/test_placeholder_vote_impact.py` (새 기권 출구의 원장 재구성).
+
 ### 3.3 Confidence 스코어링 파이프라인
 
 ```
@@ -402,7 +404,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,478 tests, 402 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,503 tests, 403 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,339 tests, 112 files (2026-10-08 전체 실행, 종목 상세 미리보기 반영) |
 | E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |

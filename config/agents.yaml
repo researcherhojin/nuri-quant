@@ -115,6 +115,9 @@ smart_money:
     no_data: 30
 
 wallstreet:
+  ratings_max_age_days: 90  # 원격 등급 변경의 기존 90일 창과 캐시 정렬
+  insiders_max_age_days: 90 # 최근 분기 거래만 사용
+  earnings_max_age_days: 200 # 반기 이상 지난 실적은 현재 근거에서 제외
   upgrade_margin: 2         # up > down + margin → +2점
   earnings_surprise: 0.05   # 5% 이상 → ±2점
   insider_buy_margin: 1     # buy > sell + margin → +1점
@@ -160,6 +163,7 @@ korean_market:
   us_confidence: 50
 
 options:
+  max_age_hours: 132        # macro_market의 기존 FAIL SLA와 정렬
   pcr_bearish: 1.2          # PCR ≥ 1.2 → 극도 공포 (역발상 매수 신호)
   pcr_bullish: 0.7          # PCR ≤ 0.7 → 과도한 낙관 (경계 신호)
   pcr_neutral_low: 0.8

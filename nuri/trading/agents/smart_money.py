@@ -71,7 +71,10 @@ class SmartMoneyAgent(BaseAgent):
         # 1. 슈퍼투자자 보유 여부
         si_all = self._safe_query(
             "SELECT investor, portfolio_pct, filing_date FROM superinvestors "
-            "WHERE ticker = ? AND investor_class = 'conviction' ORDER BY portfolio_pct DESC",
+            "WHERE ticker = ? AND investor_class = 'conviction' "
+            "AND filing_date = (SELECT MAX(s.filing_date) FROM superinvestors s "
+            "WHERE s.investor=superinvestors.investor AND s.investor_class='conviction') "
+            "ORDER BY portfolio_pct DESC",
             (ticker,),
             db_path,
         )
@@ -96,7 +99,7 @@ class SmartMoneyAgent(BaseAgent):
             max_pct = finite_or_none(si_rows[0]["portfolio_pct"])
             score += min(2, len(si_rows))
             reasons.append(f"슈퍼투자자 {len(si_rows)}명 보유 ({', '.join(investors[:2])})")
-            if max_pct > pct_high:
+            if max_pct is not None and max_pct > pct_high:
                 score += 1
                 reasons.append(f"최대 비중 {max_pct:.1f}%")
 
@@ -105,11 +108,12 @@ class SmartMoneyAgent(BaseAgent):
         change_rows = self._safe_query(
             "SELECT DISTINCT investor FROM superinvestors s1 "
             "WHERE ticker = ? AND investor_class = 'conviction' AND filing_date >= ? AND filing_date = ("
-            "  SELECT MAX(filing_date) FROM superinvestors WHERE investor = s1.investor"
-            ") AND NOT EXISTS ("
+            "  SELECT MAX(filing_date) FROM superinvestors WHERE investor = s1.investor AND investor_class='conviction'"
+            ") AND EXISTS (SELECT 1 FROM superinvestors prev WHERE prev.investor=s1.investor "
+            "AND prev.investor_class='conviction' AND prev.filing_date < s1.filing_date) AND NOT EXISTS ("
             "  SELECT 1 FROM superinvestors s2 "
             "  WHERE s2.investor = s1.investor AND s2.ticker = s1.ticker "
-            "  AND s2.filing_date < s1.filing_date"
+            "  AND s2.investor_class='conviction' AND s2.filing_date < s1.filing_date"
             ")",
             (ticker, si_cutoff),
             db_path,

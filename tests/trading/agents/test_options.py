@@ -1,4 +1,5 @@
 """Tests for options agent — split from test_trading_agents_all.py."""
+
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert_prices
+from nuri.core.timezone import kst_now
 from tests.trading.agents._helpers import _seed_macro, _seed_portfolio, _seed_prices, _seed_ticker  # noqa: F401
 
 
@@ -17,6 +19,7 @@ class TestOptionsAgent:
 
     def test_no_data_returns_hold(self, db_path):
         from nuri.trading.agents.options_agent import OptionsAgent
+
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert v.action == "HOLD"
         assert v.confidence == 0
@@ -24,11 +27,12 @@ class TestOptionsAgent:
     def test_high_pcr_returns_buy(self, db_path):
         """PCR 1.3 (극도 공포) → 역발상 BUY."""
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{20+i:02d}", "put_call_ratio", 1.3),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "put_call_ratio", 1.3),
                 )
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert v.action == "BUY"
@@ -37,11 +41,12 @@ class TestOptionsAgent:
     def test_low_pcr_returns_sell(self, db_path):
         """PCR 0.5 (과도한 낙관) → 경계 SELL."""
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{20+i:02d}", "put_call_ratio", 0.5),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "put_call_ratio", 0.5),
                 )
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert v.action == "SELL"
@@ -53,11 +58,12 @@ class TestOptionsBranches:
 
     def test_neutral_pcr(self, db_path):
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             for i in range(5):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{20+i:02d}", "put_call_ratio", 0.9),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "put_call_ratio", 0.9),
                 )
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert v.action == "HOLD"
@@ -66,11 +72,12 @@ class TestOptionsBranches:
     def test_pcr_trend(self, db_path):
         """PCR 상승 추세 감지."""
         from nuri.trading.agents.options_agent import OptionsAgent
+
         with get_db(db_path) as conn:
             for i, val in enumerate([1.5, 0.9, 0.9, 0.9, 0.9]):
                 conn.execute(
-                    "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
-                    (f"2025-03-{25-i:02d}", "put_call_ratio", val),
+                    "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
+                    ((kst_now() - timedelta(days=28 - (25 - i))).date().isoformat(), "put_call_ratio", val),
                 )
         v = OptionsAgent().analyze("TEST", db_path=db_path)
         assert "상승 추세" in v.reasoning or "공포" in v.reasoning
@@ -79,24 +86,33 @@ class TestOptionsBranches:
 class TestOptionsAgent_R26:
     def test_no_data(self, db_path):
         from nuri.trading.agents.options_agent import OptionsAgent
+
         result = OptionsAgent().analyze("AAPL", db_path=db_path)
         assert result.action == "HOLD"
 
     def test_high_pcr_buy(self, db_path):
         with get_db(db_path) as conn:
             for i in range(5):
-                d = f"2025-03-{24 + i}"
-                conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('put_call_ratio', ?, ?)", (d, 1.3))
+                d = (kst_now() - timedelta(days=28 - (24 + i))).date().isoformat()
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value, source) VALUES ('put_call_ratio', ?, ?, 'CBOE')",
+                    (d, 1.3),
+                )
         from nuri.trading.agents.options_agent import OptionsAgent
+
         result = OptionsAgent().analyze("AAPL", db_path=db_path)
         assert result.action == "BUY"
 
     def test_low_pcr_sell(self, db_path):
         with get_db(db_path) as conn:
             for i in range(5):
-                d = f"2025-03-{24 + i}"
-                conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('put_call_ratio', ?, ?)", (d, 0.6))
+                d = (kst_now() - timedelta(days=28 - (24 + i))).date().isoformat()
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value, source) VALUES ('put_call_ratio', ?, ?, 'CBOE')",
+                    (d, 0.6),
+                )
         from nuri.trading.agents.options_agent import OptionsAgent
+
         result = OptionsAgent().analyze("AAPL", db_path=db_path)
         assert result.action == "SELL"
 
@@ -105,9 +121,13 @@ class TestOptionsAgent_R26:
         with get_db(db_path) as conn:
             values = [1.0, 0.9, 0.85, 1.2, 1.4]
             for i, val in enumerate(values):
-                d = f"2025-03-{24 + i}"
-                conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('put_call_ratio', ?, ?)", (d, val))
+                d = (kst_now() - timedelta(days=28 - (24 + i))).date().isoformat()
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value, source) VALUES ('put_call_ratio', ?, ?, 'CBOE')",
+                    (d, val),
+                )
         from nuri.trading.agents.options_agent import OptionsAgent
+
         result = OptionsAgent().analyze("AAPL", db_path=db_path)
         assert result.action in ("BUY", "HOLD")
 
@@ -116,7 +136,11 @@ class TestOptionsAgent_R26:
         with get_db(db_path) as conn:
             values = [0.85, 0.9, 0.92, 0.88, 0.7]
             for i, val in enumerate(values):
-                d = f"2025-03-{24 + i}"
-                conn.execute("INSERT INTO macro (indicator, date, value) VALUES ('put_call_ratio', ?, ?)", (d, val))
+                d = (kst_now() - timedelta(days=28 - (24 + i))).date().isoformat()
+                conn.execute(
+                    "INSERT INTO macro (indicator, date, value, source) VALUES ('put_call_ratio', ?, ?, 'CBOE')",
+                    (d, val),
+                )
         from nuri.trading.agents.options_agent import OptionsAgent
+
         OptionsAgent().analyze("AAPL", db_path=db_path)

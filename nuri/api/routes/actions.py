@@ -728,19 +728,16 @@ def _get_portfolio_map() -> dict[str, dict]:
         # 원화 보유인데 환율이 없으면 이 행의 USD 값은 미상이다.
         # 삼항 대신 분기로 쓴다 — 타입체커가 `rate` 를 좁힐 수 있어야 "도달 불가" 가
         # 조용히 도달 가능해지는 순간을 잡아준다 (#1283 에서 같은 형태를 밟았다).
-        if not is_kr:
-            val = price * qty
-        elif rate is None:
-            val = None
-        else:
-            val = price * qty / rate
+        from nuri.core.valuation import holding_value_usd
+
+        val = holding_value_usd(r["ticker"], r["currency"], qty, price, rate)
         if val is not None:
             total_value += val
         items.append((r, val, market_price, is_kr))
 
     # 분모가 미상이면 **모든** 비중이 미상이다 — 달러 종목도 마찬가지다.
     # 부분합을 분모로 쓰면 남은 종목들의 비중이 조용히 부풀려진다.
-    if weights_unavailable:
+    if weights_unavailable or any(value is None for _, value, _, _ in items):
         total_value = None
 
     labels = _get_account_labels()

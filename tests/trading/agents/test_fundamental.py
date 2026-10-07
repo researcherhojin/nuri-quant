@@ -155,7 +155,7 @@ class TestFundamentalAgentBranches:
             conn.execute(
                 "INSERT INTO fundamentals (ticker, date, pe_ratio, revenue_growth, debt_to_equity) "
                 "VALUES (?, ?, ?, ?, ?)",
-                ("NOGROWTH", "2026-05-06", 15.0, None, 3.0),
+                ("NOGROWTH", "2026-05-06", 15.0, None, 300.0),
             )
         v = FundamentalAgent().analyze("NOGROWTH", db_path=db_path)
         assert "매출" not in v.reasoning  # growth 분기 skip

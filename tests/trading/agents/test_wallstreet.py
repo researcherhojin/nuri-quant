@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert_prices
+from nuri.core.timezone import kst_now
 from tests.trading.agents._helpers import _seed_macro, _seed_portfolio, _seed_prices, _seed_ticker  # noqa: F401
 
 
@@ -23,11 +24,11 @@ class TestWallStreetCachedBranches:
             for i in range(5):
                 conn.execute(
                     "INSERT INTO analyst_ratings (ticker, date, action, target_price) VALUES (?, ?, ?, ?)",
-                    ("CACHED1", f"2025-03-{20 + i:02d}", "upgrade", 200.0),
+                    ("CACHED1", (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "upgrade", 200.0),
                 )
             conn.execute(
                 "INSERT INTO earnings_surprises (ticker, quarter, surprise_pct) VALUES (?, ?, ?)",
-                ("CACHED1", "2025Q1", 0.10),
+                ("CACHED1", kst_now().date().isoformat(), 0.10),
             )
         v = WallStreetAgent().analyze("CACHED1", db_path=db_path)
         assert v.action == "BUY"
@@ -40,16 +41,16 @@ class TestWallStreetCachedBranches:
             for i in range(5):
                 conn.execute(
                     "INSERT INTO analyst_ratings (ticker, date, action, target_price) VALUES (?, ?, ?, ?)",
-                    ("CACHED2", f"2025-03-{20 + i:02d}", "downgrade", 50.0),
+                    ("CACHED2", (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "downgrade", 50.0),
                 )
             conn.execute(
                 "INSERT INTO earnings_surprises (ticker, quarter, surprise_pct) VALUES (?, ?, ?)",
-                ("CACHED2", "2025Q1", -0.10),
+                ("CACHED2", kst_now().date().isoformat(), -0.10),
             )
             for i in range(5):
                 conn.execute(
                     "INSERT INTO insider_trades (ticker, date, transaction_type, shares, value) VALUES (?, ?, ?, ?, ?)",
-                    ("CACHED2", f"2025-03-{20 + i:02d}", "sale", 1000, 50000),
+                    ("CACHED2", (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "sale", 1000, 50000),
                 )
         v = WallStreetAgent().analyze("CACHED2", db_path=db_path)
         assert v.action == "SELL"
@@ -90,7 +91,7 @@ class TestWallStreetCached:
             for i in range(5):
                 conn.execute(
                     "INSERT INTO analyst_ratings (date, ticker, action, target_price) VALUES (?, ?, ?, ?)",
-                    (f"2026-03-{20 + i}", "NVDA", "upgrade", 300.0),
+                    ((kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "NVDA", "upgrade", 300.0),
                 )
         from nuri.trading.agents.wallstreet import WallStreetAgent
 
@@ -105,7 +106,7 @@ class TestWallStreetCached:
             for i in range(5):
                 conn.execute(
                     "INSERT INTO analyst_ratings (date, ticker, action, target_price) VALUES (?, ?, ?, ?)",
-                    (f"2026-03-{20 + i}", "BADCO", "downgrade", 50.0),
+                    ((kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(), "BADCO", "downgrade", 50.0),
                 )
         from nuri.trading.agents.wallstreet import WallStreetAgent
 
@@ -118,7 +119,7 @@ class TestWallStreetCached:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO earnings_surprises (quarter, ticker, surprise_pct) VALUES (?, ?, ?)",
-                ("2026Q1", "AAPL", 0.15),
+                (kst_now().date().isoformat(), "AAPL", 0.15),
             )
         from nuri.trading.agents.wallstreet import WallStreetAgent
 
@@ -132,7 +133,7 @@ class TestWallStreetCached:
             for i in range(8):
                 conn.execute(
                     "INSERT INTO insider_trades (date, ticker, transaction_type, shares, value) VALUES (?, ?, ?, ?, ?)",
-                    (f"2026-03-{10 + i}", "SELLCO", "sale", 1000, 50000.0),
+                    ((kst_now() - timedelta(days=28 - (10 + i))).date().isoformat(), "SELLCO", "sale", 1000, 50000.0),
                 )
         from nuri.trading.agents.wallstreet import WallStreetAgent
 
@@ -168,7 +169,7 @@ class TestWallStreetYfinance:
                 {"Action": "up", "priceTargetAction": "raises", "currentPriceTarget": 210.0},
                 {"Action": "up", "priceTargetAction": "", "currentPriceTarget": 205.0},
             ],
-            index=[datetime.now()] * 3,
+            index=[kst_now().replace(tzinfo=None)] * 3,
         )
 
         class MockTicker:
@@ -195,6 +196,7 @@ class TestWallStreetYfinance:
                 {"surprisePercent": 0.12, "epsActual": 2.50, "epsEstimate": 2.23},
             ]
         )
+        eh_df.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_df))
 
         class MockTicker:
             def __init__(self, ticker):
@@ -216,6 +218,7 @@ class TestWallStreetYfinance:
     def test_nan_yfinance_fields_do_not_reach_data_points(self, db_path, monkeypatch):
         """#1481 — `x or 0` 은 NaN 을 못 거른다(`nan or 0 == nan`). strict JSON 으로 잠근다."""
         eh_df = pd.DataFrame([{"surprisePercent": float("nan"), "epsActual": float("nan"), "epsEstimate": None}])
+        eh_df.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_df))
         ud_df = pd.DataFrame(
             [{"Action": "up", "priceTargetAction": "raises", "currentPriceTarget": float("nan")}],
             index=pd.DatetimeIndex([pd.Timestamp.now()]),
@@ -300,6 +303,8 @@ class TestWallStreetYfinance:
                 {"Text": "Sale of 500 shares"},
             ]
         )
+        ins_df.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ins_df))
+        ins_df["Start Date"] = ins_df.index
 
         class MockTicker:
             def __init__(self, ticker):
@@ -371,6 +376,7 @@ class TestWallStreetAgent_R23:
             },
             index=pd.to_datetime([recent] * 5),
         )
+        ud_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ud_data))
 
         class MockTicker:
             upgrades_downgrades = ud_data
@@ -397,6 +403,7 @@ class TestWallStreetAgent_R23:
                 "epsEstimate": [3.0],
             }
         )
+        eh_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_data))
 
         class MockTicker:
             upgrades_downgrades = None
@@ -423,6 +430,7 @@ class TestWallStreetAgent_R23:
                 "epsEstimate": [3.0],
             }
         )
+        eh_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_data))
 
         class MockTicker:
             upgrades_downgrades = None
@@ -449,6 +457,7 @@ class TestWallStreetAgent_R23:
                 "epsEstimate": [3.0],
             }
         )
+        eh_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_data))
 
         class MockTicker:
             upgrades_downgrades = None
@@ -492,6 +501,8 @@ class TestWallStreetAgent_R23:
         agent = WallStreetAgent()
         monkeypatch.setattr(agent, "_check_cached", lambda *a, **kw: None)
         ins_data = pd.DataFrame({"Text": ["Sale of"] * 8 + ["Purchase of"] * 2})
+        ins_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ins_data))
+        ins_data["Start Date"] = ins_data.index
 
         class MockTicker:
             upgrades_downgrades = None
@@ -623,6 +634,7 @@ class TestWallStreetAgent_R23:
             },
             index=pd.to_datetime([recent] * 4),
         )
+        ud_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ud_data))
         eh_data = pd.DataFrame(
             {
                 "surprisePercent": [-0.15],
@@ -630,7 +642,10 @@ class TestWallStreetAgent_R23:
                 "epsEstimate": [3.0],
             }
         )
+        eh_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_data))
         ins_data = pd.DataFrame({"Text": ["Sale"] * 8 + ["Purchase"] * 1})
+        ins_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(ins_data))
+        ins_data["Start Date"] = ins_data.index
         rec_data = pd.DataFrame(
             {
                 "strongBuy": [0],
@@ -666,6 +681,7 @@ class TestWallStreetAgent_R23:
                 "epsEstimate": [3.0],
             }
         )
+        eh_data.index = pd.DatetimeIndex([kst_now() - timedelta(days=1)] * len(eh_data))
 
         class MockTicker:
             @property
@@ -722,7 +738,15 @@ class TestWallStreet_R27:
                 conn.execute(
                     "INSERT INTO analyst_ratings (ticker, date, firm, to_grade, from_grade, action, target_price) "
                     "VALUES (?,?,?,?,?,?,?)",
-                    ("AAPL", f"2025-03-{20 + i:02d}", f"Firm{i}", "buy", "hold", "upgrade", 200),
+                    (
+                        "AAPL",
+                        (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(),
+                        f"Firm{i}",
+                        "buy",
+                        "hold",
+                        "upgrade",
+                        200,
+                    ),
                 )
         agent = WallStreetAgent()
         result = agent._check_cached("AAPL", db_path=db_path)
@@ -737,7 +761,7 @@ class TestWallStreet_R27:
             conn.execute(
                 "INSERT INTO earnings_surprises (ticker, quarter, eps_actual, eps_estimate, surprise_pct) "
                 "VALUES (?,?,?,?,?)",
-                ("AAPL", "2025Q1", 1.5, 1.2, 0.25),
+                ("AAPL", kst_now().date().isoformat(), 1.5, 1.2, 0.25),
             )
         agent = WallStreetAgent()
         result = agent._check_cached("AAPL", db_path=db_path)
@@ -752,7 +776,14 @@ class TestWallStreet_R27:
                 conn.execute(
                     "INSERT INTO insider_trades (ticker, date, insider_name, transaction_type, shares, value) "
                     "VALUES (?,?,?,?,?,?)",
-                    ("AAPL", f"2025-03-{20 + i:02d}", f"Exec{i}", "sale", 1000, 150000),
+                    (
+                        "AAPL",
+                        (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(),
+                        f"Exec{i}",
+                        "sale",
+                        1000,
+                        150000,
+                    ),
                 )
         agent = WallStreetAgent()
         result = agent._check_cached("AAPL", db_path=db_path)

@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 
 from nuri.core.db import get_db, init_db, upsert_macro, upsert_portfolio, upsert_prices
+from nuri.core.timezone import kst_now
 from tests.trading.agents._helpers import _seed_macro, _seed_portfolio, _seed_prices, _seed_ticker  # noqa: F401
 
 
@@ -845,7 +846,13 @@ class TestAdditionalEdgeCases_R23:
             for i in range(5):
                 conn.execute(
                     "INSERT INTO analyst_ratings (ticker, date, firm, action, target_price) VALUES (?, ?, ?, ?, ?)",
-                    ("TSLA", f"2026-03-{20 + i}", f"Firm{i}", "upgrade", 300 + i * 10),
+                    (
+                        "TSLA",
+                        (kst_now() - timedelta(days=28 - (20 + i))).date().isoformat(),
+                        f"Firm{i}",
+                        "upgrade",
+                        300 + i * 10,
+                    ),
                 )
         result = agent._check_cached("TSLA", db_path)
         assert result is not None
@@ -860,7 +867,7 @@ class TestAdditionalEdgeCases_R23:
             conn.execute(
                 "INSERT INTO earnings_surprises (ticker, quarter, eps_actual, eps_estimate, surprise_pct) "
                 "VALUES (?, ?, ?, ?, ?)",
-                ("TSLA", "2026-Q1", 1.5, 1.2, 0.10),
+                ("TSLA", kst_now().date().isoformat(), 1.5, 1.2, 0.10),
             )
         result = agent._check_cached("TSLA", db_path)
         assert result is not None
@@ -874,7 +881,7 @@ class TestAdditionalEdgeCases_R23:
             conn.execute(
                 "INSERT INTO earnings_surprises (ticker, quarter, eps_actual, eps_estimate, surprise_pct) "
                 "VALUES (?, ?, ?, ?, ?)",
-                ("TSLA", "2026-Q1", 0.8, 1.2, -0.15),
+                ("TSLA", kst_now().date().isoformat(), 0.8, 1.2, -0.15),
             )
         result = agent._check_cached("TSLA", db_path)
         assert result is not None
@@ -889,7 +896,14 @@ class TestAdditionalEdgeCases_R23:
                 conn.execute(
                     "INSERT INTO insider_trades (ticker, date, insider_name, transaction_type, shares, value) "
                     "VALUES (?, ?, ?, ?, ?, ?)",
-                    ("TSLA", f"2026-03-{10 + i}", f"Insider{i}", "sale", 1000, 100000),
+                    (
+                        "TSLA",
+                        (kst_now() - timedelta(days=28 - (10 + i))).date().isoformat(),
+                        f"Insider{i}",
+                        "sale",
+                        1000,
+                        100000,
+                    ),
                 )
         result = agent._check_cached("TSLA", db_path)
         assert result is not None
@@ -926,7 +940,9 @@ class TestAdditionalEdgeCases_R23:
 
         agent = WallStreetAgent()
         monkeypatch.setattr(agent, "_check_cached", lambda *a, **kw: None)
-        ins_data = pd.DataFrame({"Text": ["Purchase of"] * 5 + ["Sale of"] * 1})
+        ins_data = pd.DataFrame(
+            {"Text": ["Purchase of"] * 5 + ["Sale of"] * 1, "Start Date": [kst_now() - timedelta(days=1)] * 6}
+        )
 
         class MockTicker:
             upgrades_downgrades = None
