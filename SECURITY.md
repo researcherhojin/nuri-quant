@@ -92,8 +92,8 @@ External LLM use is governed by a per-data-tier whitelist (updated
 
 | Data tier | External LLM | Condition |
 |-----------|--------------|-----------|
-| Tier 0 (public data) | Allowed: OpenAI `gpt-5.4-nano` for RSS headline classification | None |
-| Tier 2 (portfolio data, daily LLM report) | Allowed: OpenAI `gpt-5.4-nano` | `OPENAI_ZDR_APPROVED=1`, attesting that Zero Data Retention was obtained from OpenAI. Without it, `chat_text(data_tier="tier2")` raises `ExternalLLMPolicyViolation` before any network call (#294) |
+| Tier 0 (public data) | Allowed: OpenAI `gpt-6-luna` for RSS headline classification | None |
+| Tier 2 (portfolio data, daily LLM report) | Allowed: OpenAI `gpt-6-luna` | `OPENAI_ZDR_APPROVED=1`, attesting that Zero Data Retention was obtained from OpenAI. Without it, `chat_text(data_tier="tier2")` raises `ExternalLLMPolicyViolation` before any network call (#294) |
 | Tier 1 (user narrative and memos) | Not allowed | Requires a policy revision and explicit user approval |
 
 - All external calls go through `nuri/llm/openai_client.py`; importing

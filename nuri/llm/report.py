@@ -2,7 +2,7 @@
 LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
 
 생성 경로 (우선순위 순):
-1. OpenAI `gpt-5.4-nano` (Tier 2, ZDR 필수) — 기본값 (2026-04-14 STRATEGY 개정 후)
+1. OpenAI `gpt-6-luna` (Tier 2, ZDR 필수) — 기본값 (2026-04-14 STRATEGY 개정 후, 2026-10-08 nano→luna)
 2. llama.cpp GGUF 로컬 모델 — `LLAMA_MODEL_PATH` 설정 시 사용
 3. Ollama HTTP API — `OLLAMA_HOST` 설정 시 사용
 
@@ -33,7 +33,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # ─── External (OpenAI — primary per STRATEGY §4.4.3) ────────────
-OPENAI_REPORT_MODEL = os.getenv("OPENAI_REPORT_MODEL", "gpt-5.4-nano")
+OPENAI_REPORT_MODEL = os.getenv("OPENAI_REPORT_MODEL", "gpt-6-luna")
 
 # ─── Local fallbacks (optional) ─────────────────────────────────
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "")  # empty = disabled
@@ -552,7 +552,7 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
 
 
 def _generate_openai(system: str, user: str) -> str:
-    """OpenAI gpt-5.4-nano로 리포트 생성 (Tier 2, ZDR 필수).
+    """OpenAI gpt-6-luna로 리포트 생성 (Tier 2, ZDR 필수).
 
     STRATEGY.md §4.4.3: `openai_client` wrapper 단일 관문을 거친다.
     `data_tier='tier2'` → wrapper가 `OPENAI_ZDR_APPROVED=1` 미설정 시 raise.
@@ -700,7 +700,7 @@ def generate_llm_report(db_path=None) -> dict:
 
     prompt = format_prompt(ctx)
 
-    # 생성 경로: OpenAI gpt-5.4-nano (primary) → llama.cpp → Ollama → error note.
+    # 생성 경로: OpenAI gpt-6-luna (primary) → llama.cpp → Ollama → error note.
     # STRATEGY §4.4.3 Tier 2 허용 조건: `OPENAI_ZDR_APPROVED=1` 설정.
     # `NURI_DISABLE_EXTERNAL_LLM=1` 시 OpenAI 스킵 → 로컬 경로만 시도.
     raw_report = _generate_openai(SYSTEM_PROMPT, _build_user_payload(ctx))

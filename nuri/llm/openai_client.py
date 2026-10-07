@@ -16,7 +16,7 @@ module. Direct `import openai` elsewhere in `nuri/` is forbidden so that:
 4. Provider/model substitution — when a future PR adds another provider
    (Anthropic, Gemini, local Ollama as secondary, ...) it slots in here.
 
-The current §4.4.3 whitelist permits **three** purposes (`gpt-5.4-nano` and `gpt-5.4`):
+The current §4.4.3 whitelist permits **three** purposes (`gpt-6-luna` and `gpt-5.4`; luna replaced `gpt-5.4-nano` 2026-10-08):
 
 1. **Tier 0** — public RSS headline classification (`event_classifier`). ZDR 권장.
 2. **Tier 0** — source-backed public company briefing (`research_briefing`),
@@ -40,7 +40,7 @@ Usage:
         result = client.chat_json(
             system="Classify this headline...",
             user="Headline: ...",
-            model="gpt-5.4-nano",
+            model="gpt-6-luna",
         )
     except ExternalLLMDisabled:
         # NURI_DISABLE_EXTERNAL_LLM=1 — caller falls back
@@ -68,7 +68,15 @@ logger = logging.getLogger(__name__)
 
 # Provider identity (currently single-provider; new providers add their own)
 PROVIDER = "openai"
-DEFAULT_MODEL = "gpt-5.4-nano"
+DEFAULT_MODEL = "gpt-6-luna"
+
+# 추론을 끈다 — 모든 호출에 명시. gpt-6-luna 의 기본값은 `medium` 이고, 추론이 켜진 상태에서는
+# `temperature` 를 기본값(1) 외에는 받지 않는다: 분류기의 temperature=0 이 400 으로 거부되고, 그
+# 실패는 regex 폴백으로 조용히 흡수된다(2026-10-08 실측). 추론 토큰은 출력 단가로 청구되고
+# chat_json 의 256 토큰 상한도 나눠 쓴다. 분류·짧은 서술에는 필요 없다 — gpt-5.4-nano 도 이 호출에서
+# 추론 토큰 0 이었다(같은 날 실측).
+# **Test:** tests/llm/test_openai_client.py::TestRealSdkWireContract::test_reasoning_is_off_for_both_endpoints
+REASONING_EFFORT = "none"
 
 # 재시도 횟수를 **명시**한다. 값은 SDK 기본값과 같지만(openai 2.30·3.6 모두 2), 상속된
 # 기본값이면 major bump 에서 조용히 바뀌어도 신호가 없다. 명시하면 레포의 결정이 된다.
@@ -92,6 +100,7 @@ SDK_CONNECT_TIMEOUT_S = 5.0
 # When OpenAI changes prices, update both this table and the STRATEGY row.
 # Future: if we add more models or providers, move this to config/llm_pricing.yaml.
 MODEL_PRICING_USD_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-6-luna": {"input": 0.10, "output": 0.50},
     "gpt-5.4-nano": {"input": 0.20, "output": 1.25},
     "gpt-5.4-mini": {"input": 0.75, "output": 4.50},
     "gpt-5.4": {"input": 2.50, "output": 15.00},
@@ -276,6 +285,7 @@ class OpenAIClient:
                 ),
                 temperature=temperature,
                 max_completion_tokens=max_tokens,
+                reasoning_effort=REASONING_EFFORT,
             )
         except Exception as e:
             latency_ms = int((time.monotonic() - t0) * 1000)
@@ -389,6 +399,7 @@ class OpenAIClient:
                 ],
                 temperature=temperature,
                 max_completion_tokens=max_tokens,
+                reasoning_effort=REASONING_EFFORT,
             )
         except Exception as e:
             latency_ms = int((time.monotonic() - t0) * 1000)

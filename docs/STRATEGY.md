@@ -79,7 +79,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-5.4-nano` (Tier 0 / Tier 2 ZDR). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-6-luna` (Tier 0 / Tier 2 ZDR, 2026-10-08 `gpt-5.4-nano` 에서 교체). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
 | yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 
@@ -402,7 +402,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,477 tests, 402 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,478 tests, 402 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,339 tests, 112 files (2026-10-08 전체 실행, 종목 상세 미리보기 반영) |
 | E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -503,9 +503,11 @@ Commit message 스캔 (PR #202 방지):
 
 | Provider | Model | 허용 Tier | 단가 (in/out per 1M) | ZDR | 비고 |
 |---|---|---|---|---|---|
-| OpenAI | `gpt-5.4-nano` | Tier 0 (RSS 분류) | $0.20 / $1.25 | 권장 | 일 100 헤드라인 연 ~$3.51 |
+| OpenAI | `gpt-6-luna` | Tier 0 (RSS 분류) | $0.10 / $0.50 | 권장 | 일 100 헤드라인. nano 기준 연 ~$3.51 → 입력 1/2 · 출력 2/5 단가 |
 | OpenAI | `gpt-5.4` | Tier 0 (공개 기업 브리핑) | $2.50 / $15.00 | 권장 | 2026-10-07 사용자 요청. 명시적 생성 버튼, 공식 자료·확인된 기사만; 계좌·보유·손익·사용자 narrative 송신 금지. 매매 판정 생성 금지. 단, **어떤 종목을 요청하는지**가 관심·보유 종목의 표본이 된다 — 내용은 공개 자료여도 요청 목록은 사용자 신호다. |
-| OpenAI | `gpt-5.4-nano` | Tier 2 (LLM 일간 리포트) | $0.20 / $1.25 | **필수** | 일 1회, 연 ~$0.10. 2026-04-14 사용자 승인 (프로토타입; local 전환 예정) |
+| OpenAI | `gpt-6-luna` | Tier 2 (LLM 일간 리포트) | $0.10 / $0.50 | **필수** | 일 1회, nano 기준 연 ~$0.10. 2026-04-14 사용자 승인 (프로토타입; local 전환 예정) |
+
+**모델 교체 (2026-10-08, 사용자 요청)**: `gpt-5.4-nano` → `gpt-6-luna`. 같은 용도 등급(분류·추출)의 다음 세대이고 단가가 낮다. 호출은 `reasoning_effort="none"` 을 명시한다 — luna 기본값(`medium`)에서는 `temperature` 0/0.3 이 400 으로 거부돼 분류·리포트가 폴백으로 조용히 떨어진다(실측). **ZDR**: 계약이 새 모델에도 적용되는지 사용자가 확인해야 한다 — `OPENAI_ZDR_APPROVED` 는 계약 단위 attestation 이라 모델명을 검사하지 않는다.
 
 **공개 기업 브리핑 구현 기록 (2026-10-08)**: 프롬프트 `public-briefing-v9`는 가상의
 설명 예시를 문체 참고로만 사용하고 실제 근거 ID·법인·날짜·숫자 검증을 유지한다.
@@ -626,7 +628,7 @@ Deferred (필요 시점에 추가):
 
 **Frontier evidence**: AgencyBench (Li et al. 2026, 138 real-world tasks, <https://www.preprints.org/manuscript/202604.0428>) — **"agent task reliability 가 model 능력 < harness layer (infrastructure)"** 정량 입증. Same harness × different model = different success rate. HAL (Kapoor et al. 2026, 21,000+ rollouts) 도 동일 결론.
 
-**현재 상태 (2026-08-13 갱신)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-5.4-nano cloud + `scripts/dev/llm_consult.py` codex + local-LLM dual consult). **로컬 모델 축은 측정된다** — `scripts/dev/llm_ab_eval.py` 가 동결 프롬프트 50개로 두 모델을 짝지어 돌리고, `scripts/dev/llm_ab_stats.py` 가 Clopper-Pearson exact CI + McNemar exact 로 판정한다. 첫 적용(2026-08-13)이 `qwen3.5-122b-a10b` → `muse-glimmer-30b` 교체 근거였다 (#1038). **클라우드 축은 여전히 측정 0** — Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown 이고, `openai_client.py` 경로에는 대응 하네스가 없다.
+**현재 상태 (2026-08-13 갱신)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-6-luna cloud + `scripts/dev/llm_consult.py` codex + local-LLM dual consult). **로컬 모델 축은 측정된다** — `scripts/dev/llm_ab_eval.py` 가 동결 프롬프트 50개로 두 모델을 짝지어 돌리고, `scripts/dev/llm_ab_stats.py` 가 Clopper-Pearson exact CI + McNemar exact 로 판정한다. 첫 적용(2026-08-13)이 `qwen3.5-122b-a10b` → `muse-glimmer-30b` 교체 근거였다 (#1038). **클라우드 축은 여전히 측정 0** — Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown 이고, `openai_client.py` 경로에는 대응 하네스가 없다.
 
 **Acceptance criterion**:
 
