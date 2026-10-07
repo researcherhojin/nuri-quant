@@ -18,7 +18,8 @@ def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None, source: Opti
     """가격 데이터 DataFrame upsert. close 가 NaN/None 인 반쪽 행은 쓰지 않는다 (#1480).
 
     `source` 는 이 행을 쓴 공급자다 (#1727) — DataFrame 에 `source` 컬럼이 있으면 행마다 그 값이
-    이기고(KIS 수집기는 KIS 행과 yfinance 폴백 행을 한 프레임에 섞는다), 없으면 인자 값을 쓴다.
+    이기고(KIS 수집기는 KIS 행과 yfinance 폴백 행을, KR 수집기는 pykrx 종목 행과 yfinance 지수 행을
+    한 프레임에 섞는다), 그 값이 비었거나 컬럼이 없으면 인자 값을 쓴다.
     `INSERT OR REPLACE` 라 같은 (ticker, date) 를 다른 공급자가 덮으면 출처도 마지막 writer 로 바뀐다.
     """
     if df.empty:
@@ -30,6 +31,9 @@ def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None, source: Opti
         return 0
     if "source" not in df.columns:
         df = df.assign(source=source)
+    else:
+        # concat 으로 섞인 프레임은 출처가 없는 쪽이 NaN 이다 — 그대로 쓰면 NULL 이 이전 출처까지 지운다
+        df = df.assign(source=df["source"].where(df["source"].notna(), source))
     with get_db(db_path) as conn:
         rows = df.to_dict("records")
         conn.executemany(

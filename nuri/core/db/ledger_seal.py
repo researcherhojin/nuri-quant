@@ -15,6 +15,10 @@
 DB 밖에 남긴다: 월간 alpha 진행 리포트(#brief, Discord 타임스탬프)가 봉인 날짜와 머리 해시를
 싣는다. 첫 봉인(genesis)은 그 시점의 원장을 **있는 그대로** 봉인한다 — 그 이전에 무엇이
 바뀌었는지는 증명하지 못한다.
+
+`verify()` 만으로는 **최신 봉인을 지우고 행을 고친 뒤 다시 봉인한 것**(또는 봉인 전체 삭제)을
+잡지 못한다 — 남은 체인은 그 자체로 정합하다. 그건 DB 밖에 남은 머리와 대조해야 보인다:
+`--anchor DATE HASH` (리포트가 실은 64자 전체 해시. 앞 12자만 싣던 때는 2^24 번 시도로 맞출 수 있었다).
 """
 
 from __future__ import annotations
@@ -138,18 +142,35 @@ def verify(db_path: Optional[Path] = None) -> list[str]:
     return problems
 
 
+def verify_anchor(date: str, seal_hash: str, db_path: Optional[Path] = None) -> list[str]:
+    """DB 밖에 남은 머리(월간 리포트의 봉인 날짜·해시)가 지금 체인에 그대로 있는가.
+
+    봉인을 지우고 다시 만들면 체인은 정합해도 그 날짜의 seal_hash 가 바뀐다.
+    """
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT seal_hash FROM recommendation_seals WHERE date = ?", (date,)).fetchone()
+    if row is None:
+        return [f"{date}: 외부에 남은 봉인이 체인에 없다 (봉인 삭제)"]
+    if row[0] != seal_hash:
+        return [f"{date}: 외부에 남은 머리와 다르다 (봉인 재계산)"]
+    return []
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     from nuri.core.timezone import today_kst
 
     parser = argparse.ArgumentParser(description="recommendations 판정 원장 봉인 (#1718)")
     parser.add_argument("--db", type=Path, default=None, help="대상 DB (기본: 설정된 DB)")
     parser.add_argument("--seal", action="store_true", help="오늘 이전의 미봉인 날짜를 봉인한다")
+    parser.add_argument("--anchor", nargs=2, metavar=("DATE", "HASH"), help="월간 리포트가 실은 봉인 날짜·해시와 대조")
     args = parser.parse_args(argv)
 
     if args.seal:
         sealed = seal_closed_days(today_kst(), db_path=args.db)
         print(f"봉인 {len(sealed)}일" + (f" ({sealed[0]} ~ {sealed[-1]})" if sealed else ""))
     problems = verify(db_path=args.db)
+    if args.anchor:
+        problems += verify_anchor(*args.anchor, db_path=args.db)
     head = latest_seal(db_path=args.db)
     if head:
         print(f"봉인 머리: {head['date']} · {head['seal_hash'][:16]}")

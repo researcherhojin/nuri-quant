@@ -183,9 +183,11 @@ class TestRecommendationCarriesBinding:
 
         save_to_recommendations([_consensus_result(action="BUY")], db_path=db_path)
         monkeypatch.setattr(provenance, "_CODE_REV_CACHE", "newrev-1716")
+        # 설정 해시도 갱신돼야 한다 — ON CONFLICT 의 sha 줄을 빼도 code_rev 단언만으로는 통과했다
+        monkeypatch.setattr(provenance, "_CONFIG_SHA_CACHE", "newsha-1716")
         save_to_recommendations([_consensus_result(action="SELL")], db_path=db_path)
-        rows = query("SELECT code_rev, action FROM recommendations", db_path=db_path)
-        assert rows == [{"code_rev": "newrev-1716", "action": "SELL"}]
+        rows = query("SELECT code_rev, execution_config_sha_v1, action FROM recommendations", db_path=db_path)
+        assert rows == [{"code_rev": "newrev-1716", "execution_config_sha_v1": "newsha-1716", "action": "SELL"}]
 
     def test_every_insert_into_recommendations_writes_the_binding(self):
         """writer 가 셋이라 한 곳만 고치면 나머지가 조용히 NULL 을 쓴다 — SQL 문자열을 전수 대조한다.

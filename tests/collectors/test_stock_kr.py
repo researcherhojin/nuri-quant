@@ -364,6 +364,8 @@ class TestCollectIndicesMultiIndexColumns:
         # MultiIndex normalize → KOSPI/KOSDAQ 각각 3 rows = 최소 1+ row 생성
         assert results is not None
         assert len(results) > 0
+        # 지수 행은 yfinance 가 준 것 — save() 의 pykrx 로 덮이면 출처가 거짓이 된다 (#1727)
+        assert set(results["source"]) == {"yfinance"}
 
 
 class TestHaltDaysAreNotBars:

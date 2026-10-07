@@ -207,6 +207,8 @@ class StockKRCollector(BaseCollector):
                         "close": raw["Close"].values,
                         "volume": raw["Volume"].values.astype(int),
                         "adj_close": raw["Close"].values,
+                        # 지수는 yfinance 행이다 — save() 의 source="pykrx" 는 종목 행에만 해당한다 (#1727)
+                        "source": "yfinance",
                     }
                 )
                 frames.append(df)

@@ -155,7 +155,33 @@ class TestAnchor:
         line = format_progress_reason(
             {"n": 0, "ledger_seal": {"date": "2026-10-06", "seal_hash": "abcdef0123456789" * 4}}
         )
-        assert "봉인 2026-10-06 · abcdef012345" in line
+        assert f"봉인 2026-10-06 · {'abcdef0123456789' * 4}" in line, (
+            "앞 12자(48비트)만 실으면 앵커를 맞춰 만들 수 있다"
+        )
+
+    def test_deleting_the_newest_seal_and_resealing_passes_verify_but_not_the_anchor(self, db_path):
+        """남은 체인은 정합하다 — verify() 는 못 본다. DB 밖의 머리와 대조해야 잡힌다."""
+        _sealed(db_path)
+        anchored = seal.latest_seal(db_path=db_path)
+        with get_db(db_path) as conn:
+            conn.execute("DELETE FROM recommendation_seals WHERE date = ?", (anchored["date"],))
+            conn.execute("UPDATE recommendations SET action = 'SELL' WHERE date = ?", (anchored["date"],))
+        _sealed(db_path)
+        assert seal.verify(db_path=db_path) == []
+        assert seal.verify_anchor(anchored["date"], anchored["seal_hash"], db_path=db_path)
+
+    def test_deleting_every_seal_is_caught_by_the_anchor(self, db_path):
+        _sealed(db_path)
+        anchored = seal.latest_seal(db_path=db_path)
+        with get_db(db_path) as conn:
+            conn.execute("DELETE FROM recommendation_seals")
+        assert seal.verify(db_path=db_path) == []
+        assert seal.verify_anchor(anchored["date"], anchored["seal_hash"], db_path=db_path)
+
+    def test_untouched_chain_matches_its_anchor(self, db_path):
+        _sealed(db_path)
+        anchored = seal.latest_seal(db_path=db_path)
+        assert seal.verify_anchor(anchored["date"], anchored["seal_hash"], db_path=db_path) == []
 
     def test_no_seal_no_anchor(self):
         from nuri.alerts.alpha_report import format_progress_reason
