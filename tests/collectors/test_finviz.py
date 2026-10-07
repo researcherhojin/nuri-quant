@@ -103,7 +103,13 @@ class TestFINVIZCollectorMockedScreener:
         collector = FINVIZCollector()
         monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["AAPL"])
         monkeypatch.setattr(collector, "_fetch_signal_tickers", MagicMock(side_effect=RuntimeError("fail")))
-        assert isinstance(collector.collect(), list)
+        # 전부 실패하면 빈 목록이 아니라 실패다 (#1724) — 이 테스트가 예전엔 그 조용한 성공을 잠갔다
+        import pytest
+
+        from nuri.collectors.base import CollectionFailureError
+
+        with pytest.raises(CollectionFailureError):
+            collector.collect()
 
     def test_fetch_signal_tickers_finvizfinance(self, monkeypatch):
         from nuri.collectors.finviz import FINVIZCollector
@@ -228,3 +234,66 @@ class TestFinvizFallbackBranches:
         c = FINVIZCollector()
         result = c._scrape_signal_fallback("Oversold")
         assert result == set()  # 모두 invalid → empty
+
+
+class TestAllSignalsFailedIsAFailure:
+    """시그널이 전부 실패하면 빈 목록이 아니라 수집 실패다 (#1724).
+
+    빈 목록은 collector_runs 에 finished·0행으로 남아 실패율 점검이 못 본다 — 2026-08-17 부터
+    50일간 운영이 그 상태였다(#1723: finvizfinance 파싱 실패 + 대체 경로 403).
+    """
+
+    def _collector(self, monkeypatch, fetch):
+        from nuri.collectors.finviz import FINVIZCollector
+
+        collector = FINVIZCollector()
+        monkeypatch.setattr(collector, "_get_tickers", lambda market=None: ["AAPL"])
+        monkeypatch.setattr(collector, "_fetch_signal_tickers", fetch)
+        return collector
+
+    def test_every_signal_failing_raises(self, monkeypatch):
+        import pytest
+
+        from nuri.collectors.base import CollectionFailureError
+
+        def boom(signal):
+            raise RuntimeError("403")
+
+        with pytest.raises(CollectionFailureError, match="전부 실패"):
+            self._collector(monkeypatch, boom).collect()
+
+    def test_partial_failure_still_returns_what_arrived(self, monkeypatch):
+        from nuri.collectors.finviz import FINVIZ_SIGNALS
+
+        first = next(iter(FINVIZ_SIGNALS.values()))
+
+        def some(signal):
+            if signal != first:
+                raise RuntimeError("403")
+            return {"AAPL"}
+
+        records = self._collector(monkeypatch, some).collect()
+        assert [r["ticker"] for r in records] == ["AAPL"]
+
+    def test_no_match_with_working_signals_is_still_an_empty_success(self, monkeypatch):
+        """보유 종목이 어느 시그널에도 없으면 0건은 정상이다 — 실패와 구분해야 한다."""
+        assert self._collector(monkeypatch, lambda signal: {"ZZZZ"}).collect() == []
+
+    def test_run_records_the_failure_without_retrying(self, monkeypatch):
+        """`run()` 은 CollectionFailureError 를 재시도 없이 올린다 — 막힌 사이트를 세 번 더 두드리지 않는다."""
+        import pytest
+
+        from nuri.collectors.base import CollectionFailureError
+
+        calls = []
+
+        def boom(signal):
+            calls.append(signal)
+            raise RuntimeError("403")
+
+        collector = self._collector(monkeypatch, boom)
+        with pytest.raises(CollectionFailureError):
+            collector.run()
+        from nuri.collectors.finviz import FINVIZ_SIGNALS
+
+        assert len(calls) == len(FINVIZ_SIGNALS)
