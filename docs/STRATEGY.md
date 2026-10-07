@@ -79,7 +79,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 / 일간 리포트 → OpenAI `gpt-6-luna` (Tier 0 / Tier 2 ZDR, 2026-10-08 `gpt-5.4-nano` 에서 교체). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna` (Tier 0, 2026-10-08 `gpt-5.4-nano` 에서 교체). 포트폴리오 리포트(Tier 2)는 **로컬 전용** (2026-10-08 OpenAI 경로 폐지). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 ZERO-LLM 이라 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
 | yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 
@@ -404,7 +404,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,507 tests, 403 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,499 tests, 403 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,339 tests, 112 files (2026-10-08 전체 실행, 종목 상세 미리보기 반영) |
 | E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -437,7 +437,7 @@ PR 전 확인.
 | 시크릿 | `.env`, git 커밋 금지 |
 | 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 쿠키 (Edge Runtime 호환) |
 | CI | Trivy CRITICAL → 머지 차단 |
-| LLM | 외부 LLM 전송은 §4.4.3 화이트리스트 한정: 공개 RSS(Tier 0) 허용, portfolio(Tier 2) 는 ZDR 승인(`OPENAI_ZDR_APPROVED=1`) 시에만, narrative·의사결정(Tier 1) 금지. 그 밖은 local LLM (Ollama / llama.cpp). |
+| LLM | 외부 LLM 전송은 §4.4.3 화이트리스트 한정: 공개 데이터(Tier 0)만 허용, portfolio(Tier 2)·narrative·의사결정(Tier 1) 금지. 그 밖은 local LLM (Ollama / llama.cpp). |
 | **개인 금융 데이터** | commit·PR·issue·주석·fixture·CI 로그 절대 노출 금지. `config/portfolio.yaml` gitignored 지만 내용도 추적 대상 금지. broker/수량/평단/잔고/매매이력 모두 해당. |
 
 #### 4.4.1 개인 금융 데이터 enforcement (#138)
@@ -495,7 +495,7 @@ Commit message 스캔 (PR #202 방지):
 |---|---|---|
 | **Tier 0** 공개 (RSS, 공시, 시세, 13F) | 외부 송신 가능 | §4.4.3 등재 provider |
 | **Tier 1** 사용자 narrative | 외부 송신 금지 | STRATEGY 개정 + 본인 승인 + retention 정책 |
-| **Tier 2** 사용자 portfolio | **절대 외부 송신 금지** | 별도 STRATEGY 개정 + ZDR + 본인 승인. 현재 제한적 Tier 2 (LLM 리포트) 허용 중 (§4.4.3). |
+| **Tier 2** 사용자 portfolio | **절대 외부 송신 금지** | 별도 STRATEGY 개정 + 실측된 ZDR + 본인 승인. 예외 없음 — LLM 리포트의 OpenAI 경로는 2026-10-08 폐지 (§4.4.3). |
 
 §4.4.1 는 Tier 2 leak 방지, §4.4.3 은 Tier 0 화이트리스트.
 
@@ -507,9 +507,8 @@ Commit message 스캔 (PR #202 방지):
 |---|---|---|---|---|---|
 | OpenAI | `gpt-6-luna` | Tier 0 (RSS 분류) | $0.10 / $0.50 | 권장 | 일 100 헤드라인. nano 기준 연 ~$3.51 → 입력 1/2 · 출력 2/5 단가 |
 | OpenAI | `gpt-5.4` | Tier 0 (공개 기업 브리핑) | $2.50 / $15.00 | 권장 | 2026-10-07 사용자 요청. 명시적 생성 버튼, 공식 자료·확인된 기사만; 계좌·보유·손익·사용자 narrative 송신 금지. 매매 판정 생성 금지. 단, **어떤 종목을 요청하는지**가 관심·보유 종목의 표본이 된다 — 내용은 공개 자료여도 요청 목록은 사용자 신호다. |
-| OpenAI | `gpt-6-luna` | Tier 2 (LLM 일간 리포트) | $0.10 / $0.50 | **필수** | 일 1회, nano 기준 연 ~$0.10. 2026-04-14 사용자 승인 (프로토타입; local 전환 예정) |
 
-**모델 교체 (2026-10-08, 사용자 요청)**: `gpt-5.4-nano` → `gpt-6-luna`. 같은 용도 등급(분류·추출)의 다음 세대이고 단가가 낮다. 호출은 `reasoning_effort="none"` 을 명시한다 — luna 기본값(`medium`)에서는 `temperature` 0/0.3 이 400 으로 거부돼 분류·리포트가 폴백으로 조용히 떨어진다(실측). **ZDR**: 계약이 새 모델에도 적용되는지 사용자가 확인해야 한다 — `OPENAI_ZDR_APPROVED` 는 계약 단위 attestation 이라 모델명을 검사하지 않는다.
+**모델 교체 (2026-10-08, 사용자 요청)**: `gpt-5.4-nano` → `gpt-6-luna`. 같은 용도 등급(분류·추출)의 다음 세대이고 단가가 낮다. 호출은 `reasoning_effort="none"` 을 명시한다 — luna 기본값(`medium`)에서는 `temperature` 0 이 400 으로 거부돼 분류가 폴백으로 조용히 떨어진다(실측).
 
 **공개 기업 브리핑 구현 기록 (2026-10-08)**: 프롬프트 `public-briefing-v9`는 가상의
 설명 예시를 문체 참고로만 사용하고 실제 근거 ID·법인·날짜·숫자 검증을 유지한다.
@@ -518,12 +517,19 @@ Commit message 스캔 (PR #202 방지):
 이는 송신 허용 범위·투자 규칙·측정 기준의 변경이 아니다. 구현과 미해결 머지 조건은
 [종목 리서치 안내](RESEARCH_BRIEFING.md)를 참조한다.
 
-**Tier 2 전제조건**:
+**Tier 2 OpenAI 경로 폐지 (2026-10-08)** — 2026-04-14 의 Tier 2 허용(LLM 포트폴리오 리포트)과
+#854 의 "cloud primary" 결정을 대체한다. 근거:
 
-1. ZDR 승인 완료 후 첫 호출. 미승인 시 `OPENAI_ZDR_APPROVED=1` 미설정으로 wrapper raise.
-2. `NURI_DISABLE_EXTERNAL_LLM=1` 즉시 opt-out.
-3. 프롬프트 로그 금지 — token·latency·error_type 만, **content 금지**.
-4. ~~local LLM 전환 계획~~ — **dropped (2026-07-08, #854)**: 로컬 LLM 상시 가동 폐지 결정으로 Tier 2 **primary** 는 cloud ZDR 유지. 단 `nuri/llm/report.py` 의 **opt-in local fallback 경로는 제거되지 않았다** — OpenAI 실패 또는 `NURI_DISABLE_EXTERNAL_LLM=1` 시 `LLAMA_MODEL_PATH` → `OLLAMA_HOST` 순으로 시도한다 (둘 다 미설정이면 error note). 즉 "cloud 전용"이 아니라 **"cloud primary + local 상시-미가동 fallback"** 이다. 폐지된 것은 상시 가동과 primary 전환이지 fallback 코드가 아니다.
+1. **ZDR 이 없다** — Responses API `store=true` 응답이 `gpt-5.4-nano`·`gpt-6-luna` 모두 사후 재조회됐다(실측).
+2. **보호가 환경변수 하나였다** — `OPENAI_ZDR_APPROVED=1` 은 계약을 검사하지 않는 truthy 플래그였고,
+   리포트 입력은 종목별 손익%·매도 금액이다. 그 한 줄이 이 데이터를 보존하는 공급자로 보내는 유일한 장치였다.
+3. **판단에 기여하지 않는다** — 매매 파이프라인은 ZERO-LLM 이고 리포트는 서술이다. 운영에서는 플래그가
+   주석이라 이미 차단돼 있었다.
+
+리포트는 로컬 백엔드(llama.cpp → localhost Ollama)로만 생성하고, 없으면 설정 안내를 낸다. 게이트웨이는
+`data_tier="tier0"` 외에는 SDK 생성 전에 거부한다. 판정: Codex(`gpt-6.1-sol`) 와 Claude 교차 검토 일치.
+**Test:** `tests/llm/test_report.py::TestGenerateLLMReportFallbackChain::test_portfolio_report_never_reaches_the_external_gateway`,
+`tests/llm/test_openai_client.py::TestChatTextTierGate::test_tier2_is_refused_even_with_the_old_zdr_flag`.
 
 **필수 운영 룰**:
 
@@ -537,9 +543,9 @@ Deferred (필요 시점에 추가):
 
 - Narrative input UI (Tier 1 정책 결정 후)
 - 외부 LLM 비용 모니터링 대시보드 (`external_llm_calls` 테이블 기반)
-- ~~Tier 2 → local LLM 전환~~ — dropped (2026-07-08, #854 — on-demand only 결정)
+- ~~Tier 2 → local LLM 전환~~ — 2026-10-08 완료: Tier 2 는 로컬 전용 (위 폐지 기록)
 
-모니터링 트리거: #152 머지 시점 발효. 2026-04-14 Tier 2 추가 후 1주일 동안 비용 예상치 (~$0.02/주) 대비 10× 초과 시 사용자 알림 + `NURI_DISABLE_EXTERNAL_LLM=1` 복귀.
+모니터링 트리거: #152 머지 시점 발효. 비용이 예상치 대비 10× 초과 시 사용자 알림 + `NURI_DISABLE_EXTERNAL_LLM=1` 복귀.
 
 ## 5. LLM 에이전트 하네스 (Harness Engineering)
 
