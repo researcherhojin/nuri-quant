@@ -14,6 +14,7 @@ Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-base
 
 - **Recommendation only.** The system does not place orders; every trade is executed manually by the operator.
 - **No performance claim.** No investment edge is claimed unless a pre-registered evaluation passes ([`docs/STRATEGY.md`](docs/STRATEGY.md) §3.11).
+- **Not investment advice.** The output is a research record for one operator's own decisions.
 
 ## Table of Contents
 
@@ -34,6 +35,20 @@ Nuri-Quant collects market data, evaluates a portfolio with a panel of rule-base
 The repository is public, while the deployed system operates on a real portfolio. A pre-push hook and a required CI check block personal financial data from entering the repository; all external LLM calls pass through a single module that logs each call; and the production API binds to `127.0.0.1`. See [`SECURITY.md`](SECURITY.md) for the security policy and vulnerability reporting.
 
 ## Background
+
+### What it does
+
+| Task | Output |
+|------|--------|
+| Review every holding, every day | A dated BUY / SELL / HOLD per holding with the agent verdicts, market context and price levels behind it, kept in a decision ledger (`/decisions`) |
+| Grade past recommendations | Realized returns of each decision at 7, 14 and 30 days, against a benchmark where one applies; separately, each agent's 30-day hit rate sets its weight in the next consensus |
+| Screen the universe | BUY candidates outside the portfolio, scored and gated by [`config/buy_signals.yaml`](config/buy_signals.yaml), with the scanner's observations kept separate from the verdict |
+| Watch the inputs | A freshness SLA per data source, judged against each source's own schedule; when an input of the dashboard verdict fails it, the verdict is replaced by a stale-data notice |
+| Show it on one page | The Overview dashboard (`/`): market indices, regime, macro score, holding reviews, portfolio composition, data freshness and pipeline status, each with its source |
+| Send briefs | A US pre-market brief and US and Korean post-market briefs to Discord |
+| Answer an AI client | A read-only MCP server with candidates, macro facts, freshness and live quotes, and no holdings |
+
+US equities and the KOSPI 200 are covered. Korean prices come from pykrx and fundamentals from yfinance, the KOSPI 200 list from pykrx with a FinanceDataReader fallback, and real-time quotes optionally from the KIS Open API ([`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md)).
 
 ### How it works
 
@@ -173,6 +188,8 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, database, configuration, CI/CD |
 | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | Overview (home `/`): portfolio composition, data refresh, responsive layout and verification |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
+| [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) | Pre-push checks and helper scripts for recurring development pitfalls |
+| [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) | Korea Investment & Securities Open API: real-time quotes, investor flows, analyst opinions |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
 | [`SECURITY.md`](SECURITY.md) | Security policy and LLM egress rules |
 
@@ -182,7 +199,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 ## Acknowledgements
 
-Design patterns are adapted from [SIEGE Engine](https://github.com/nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution), [OAE](https://github.com/nutshells3/orchestration-assurance-engine), [TradingAgents](https://github.com/TauricResearch/TradingAgents) and [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies). Portfolio optimization uses [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/). The investment rules are based on O'Neil (CAN SLIM) and Minervini (SEPA).
+The specialist-agent consensus follows [TradingAgents](https://github.com/TauricResearch/TradingAgents), with rule-based agents in place of LLM agents. Data freshness policies follow [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies). Portfolio optimization uses [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/). The investment rules are based on O'Neil (CAN SLIM) and Minervini (SEPA). An earlier portfolio-certification gate adapted from SIEGE Engine was retired in #1619 ([`docs/STRATEGY.md`](docs/STRATEGY.md) §6).
 
 ## Contributing
 
