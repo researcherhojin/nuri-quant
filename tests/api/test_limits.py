@@ -14,6 +14,8 @@ from nuri.api.limits import DEFAULT_HEAVY_SLOTS, _slots_from_env, heavy_slot
 
 # 배선 계약 — 이 목록에서 하나라도 빠지면 FAIL (#1119 회귀 잠금)
 HEAVY_PATHS = [
+    "/ticker/{symbol}/research/refresh",
+    "/ticker/{symbol}/research/briefing",
     "/scan",
     "/swing/entries",
     "/backtest",

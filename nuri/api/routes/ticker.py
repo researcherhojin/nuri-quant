@@ -43,7 +43,7 @@ def _read_consensus_from_db(ticker: str) -> dict | None:
     rows = query(
         # emitter 행 제외 — 이 함수는 "최신 **합의**" 를 돌려준다 (#1078). 필터가 없으면
         # 같은 ticker 의 emitter 후보가 날짜만 최신이라는 이유로 합의 행세를 한다.
-        "SELECT action, confidence, signals, agent_verdicts, date "
+        "SELECT action, confidence, signals, agent_verdicts, date, scoring_detail "
         "FROM recommendations WHERE ticker = ? AND source IS NULL ORDER BY date DESC LIMIT 1",
         (ticker,),
     )
@@ -68,6 +68,10 @@ def _read_consensus_from_db(ticker: str) -> dict | None:
         sig = {}
 
     final_action = row["action"]
+    try:
+        scoring_detail = json.loads(row.get("scoring_detail") or "null")
+    except (TypeError, json.JSONDecodeError):
+        scoring_detail = None
     # 자리표시자는 반대 의견이 아니다 (#1436, codex R9). 이 경로는 `ConsensusResult.dissent`
     # 를 쓰지 않고 저장된 verdict 에서 **재구성**하는데, 두 축을 안 거르면 같은 엔드포인트가
     # 캐시 적중 시엔 기권을 dissent 로, 미적중 시엔(live 폴백은 `ConsensusResult.dissent` 를
@@ -90,6 +94,7 @@ def _read_consensus_from_db(ticker: str) -> dict | None:
         "verdicts": verdicts,
         "dissent": dissent,
         "as_of": row["date"],  # 캐시된 결정의 기준일 — staleness 투명성
+        "scoring_detail": scoring_detail if isinstance(scoring_detail, dict) else None,
     }
 
 
@@ -111,6 +116,7 @@ def _get_consensus(ticker: str) -> dict:
             "verdicts": [asdict(v) for v in consensus.verdicts],
             "dissent": consensus.dissent,
             "as_of": today_kst(),
+            "scoring_detail": consensus.scoring_detail,
         }
     except Exception:
         # 예외 문자열을 응답에 실으면 스택 트레이스·내부 경로가 외부로 나간다
@@ -270,15 +276,15 @@ def get_latest_prices(tickers: str = Query(..., description="Comma-separated tic
 
 
 @router.get("/ticker/{symbol}")
-def get_ticker_detail(symbol: str):
+def get_ticker_detail(symbol: str, stored_only: bool = False):
     """단일 종목의 모든 분석 데이터."""
     # 여기는 **network-free 로 바꾸지 않는다** (#1255 codex P2). 호출이 심볼당 1회라
     # 검색 루프(203회)의 논거가 성립하지 않고, 맵·보유 어디에도 없는 KR 종목
     # (KOSDAQ 신규 보유 등)의 이름이 사라져 헤더가 코드만 보여주게 된다.
-    from nuri.core.ticker_names import get_ticker_name
+    from nuri.core.ticker_names import get_ticker_name, get_ticker_name_local
 
     ticker = symbol.upper()
-    result = {"ticker": ticker, "name": get_ticker_name(ticker)}
+    result = {"ticker": ticker, "name": get_ticker_name_local(ticker) if stored_only else get_ticker_name(ticker)}
 
     # 1. 가격
     price_row = query(
@@ -296,7 +302,7 @@ def get_ticker_detail(symbol: str):
 
     # 3. 10 에이전트 합의 — recommendations DB read 우선 (스케줄러 일일 저장),
     #    미스 시에만 live analyze_ticker. 매 GET 10-agent 재실행 제거.
-    result["consensus"] = _get_consensus(ticker)
+    result["consensus"] = _read_consensus_from_db(ticker) if stored_only else _get_consensus(ticker)
 
     # 4. Wall Street — 애널리스트 등급 (최근 10건)
     ratings = query(
@@ -335,7 +341,7 @@ def get_ticker_detail(symbol: str):
     result["superinvestors"] = [dict(s) for s in si]
 
     # 9. 최근 시그널 — universe 스캔 결과 5분 캐시에서 필터 (매 GET 재스캔 제거)
-    result["signals"] = _get_signals(ticker)
+    result["signals"] = [] if stored_only else _get_signals(ticker)
 
     return result
 

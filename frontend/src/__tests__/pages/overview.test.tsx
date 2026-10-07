@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import DashboardNext from "@/app/(overview)/page";
 import Loading from "@/app/(overview)/loading";
 import { readPanel, freshnessSchema } from "@/app/(overview)/data";
-import { OVERVIEW } from "@/lib/strings";
+import { OVERVIEW, TICKER_PREVIEW } from "@/lib/strings";
 import { displayChange, displayShortTime, displayTime } from "@/app/(overview)/format";
 
 const fetchAPI = vi.hoisted(() => vi.fn());
@@ -69,6 +69,8 @@ describe("decision desk", () => {
     expect(within(evidence).getByText("REBALANCE")).toBeInTheDocument();
     expect(within(evidence).getAllByText("—")).toHaveLength(2);
     expect(within(evidence).getByText(/2026-01-01/)).toBeInTheDocument();
+    expect(within(evidence).getByRole("link", { name: TICKER_PREVIEW.BRIEF })).toHaveAttribute("href", "/ticker-next/DEMO?bucket=portfolio");
+    expect(within(evidence).getByText(TICKER_PREVIEW.CONFIDENCE).parentElement).toHaveTextContent(`${item.confidence}${TICKER_PREVIEW.CONFIDENCE_DENOMINATOR}`);
   });
   it("selects another item and resets selection on a bucket change", async () => {
     responses["/api/actions"] = { urgent: [item, { ...item, ticker: "SAMPLE", reasons: ["두 번째 근거"], decision_id: null }], check: [], hold: [], portfolio: [item] };
@@ -131,6 +133,7 @@ describe("decision desk", () => {
     expect(screen.getByRole("button", { name: "차단" })).toBeInTheDocument();
     expect(within(screen.getByLabelText("STOPPED · 탐색 근거")).getByText("차단 · VIX 31.0 > 30 (신규 매수 차단)")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "1일 변화" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "EXAMPLE" })).toHaveAttribute("href", "/ticker-next/EXAMPLE");
     expect(screen.getAllByText("+1.2%")[0]).toBeInTheDocument();
     expect(screen.getAllByText(/신규 판단이나 판단 변경을 의미하지 않습니다/)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/개별 가격 관측 시각은 제공되지 않습니다/)[0]).toBeInTheDocument();
@@ -418,4 +421,3 @@ describe("panel reader and loading state", () => {
     expect(status).toHaveTextContent(OVERVIEW.LOADING);
   });
 });
-

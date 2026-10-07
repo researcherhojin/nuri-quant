@@ -1,0 +1,35 @@
+{
+  "005380.KS": [
+    {
+      "url": "https://www.hyundai.com/worldwide/en/newsroom/detail/0000001260",
+      "title": "Hyundai Motor CEO Investor Day",
+      "published_at": "2026-08-26",
+      "date_marker": "August 26, 2026",
+      "identity": [
+        "Hyundai Motor Company"
+      ],
+      "entity": "Hyundai Motor Company",
+      "kind": "official",
+      "issuer_aliases": [
+        "Hyundai Motor",
+        "현대차",
+        "현대자동차"
+      ],
+      "excluded_entities": [
+        "Hyundai Motor India",
+        "Hyundai Motor Group",
+        "현대차그룹"
+      ]
+    },
+    {
+      "url": "https://www.yna.co.kr/view/AKR20261006025200008",
+      "title": "현대차 분기 실적 전망",
+      "published_at": "2026-10-06",
+      "identity": [
+        "현대차"
+      ],
+      "entity": "Hyundai Motor Company",
+      "kind": "news"
+    }
+  ]
+}

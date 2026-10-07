@@ -1,4 +1,48 @@
 import { test, expect } from "@playwright/test";
+import { TICKER_PREVIEW } from "../src/lib/strings";
+
+for (const [width, height] of [[1280, 720], [1440, 760], [1920, 850], [1920, 1080]]) {
+  test(`Overview stays fixed while its panels scroll at ${width}x${height}`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height });
+    await page.goto("/");
+    const dashboard = page.getByRole("main").getByTestId("overview-dashboard");
+
+    await expect(dashboard).toBeVisible();
+
+    const before = await dashboard.evaluate(el => {
+      const main = el.closest("main")!;
+      const bounds = el.getBoundingClientRect();
+
+      return { documentOverflow: document.documentElement.scrollHeight - innerHeight, mainOverflow: main.scrollHeight - main.clientHeight, top: bounds.top, bottom: bounds.bottom, footers: [...el.querySelectorAll('[class*="panelFooter"]')].map(footer => footer.getBoundingClientRect().bottom) };
+    });
+
+    expect(before.documentOverflow).toBeLessThanOrEqual(1);
+    expect(before.mainOverflow).toBeLessThanOrEqual(1);
+    expect(before.bottom).toBeLessThanOrEqual(height);
+    expect(before.footers.length).toBe(4);
+    expect(before.footers.every(bottom => bottom <= height)).toBe(true);
+    await dashboard.locator('[class*="evidence"]').first().hover();
+    await page.mouse.wheel(0, 1000);
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect.poll(() => dashboard.evaluate(el => ({ top: el.getBoundingClientRect().top, page: window.scrollY, main: el.closest("main")!.scrollTop }))).toEqual({ top: before.top, page: 0, main: 0 });
+    await expect(dashboard.getByRole("link", { name: TICKER_PREVIEW.BRIEF })).toBeVisible();
+
+    if (height <= 850) {
+      const total = await dashboard.locator('[class*="donutTotal"]').evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const host = el.closest('[class*="compositionChart"]')!.getBoundingClientRect();
+
+        return { top: rect.top, bottom: rect.bottom, hostTop: host.top, hostBottom: host.bottom };
+      });
+
+      // CSS 그리드의 소수 픽셀 반올림 오차만 허용한다.
+      expect(total.top).toBeGreaterThanOrEqual(total.hostTop - 1);
+      expect(total.bottom).toBeLessThanOrEqual(total.hostBottom + 1);
+    }
+
+    await page.screenshot({ path: testInfo.outputPath("overview-fixed.png"), fullPage: true });
+  });
+}
 
 // 공통 컨테이너 상한과 고정 높이가 큰 화면의 여백을 만들던 회귀를 검증한다.
 for (const [width, height] of [[1440, 900], [1920, 1080], [2560, 1440], [3440, 1440], [1280, 800], [390, 844]]) {

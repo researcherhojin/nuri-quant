@@ -16,10 +16,12 @@ module. Direct `import openai` elsewhere in `nuri/` is forbidden so that:
 4. Provider/model substitution — when a future PR adds another provider
    (Anthropic, Gemini, local Ollama as secondary, ...) it slots in here.
 
-The current §4.4.3 whitelist permits **two** entries, both `gpt-5.4-nano`:
+The current §4.4.3 whitelist permits **three** purposes (`gpt-5.4-nano` and `gpt-5.4`):
 
 1. **Tier 0** — public RSS headline classification (`event_classifier`). ZDR 권장.
-2. **Tier 2** — 일간 포트폴리오 리포트 (`report.py`), 2026-04-14 사용자 승인.
+2. **Tier 0** — source-backed public company briefing (`research_briefing`),
+   2026-10-07 사용자 요청. No holdings, accounts or user narrative.
+3. **Tier 2** — 일간 포트폴리오 리포트 (`report.py`), 2026-04-14 사용자 승인.
    ZDR **필수**: `OPENAI_ZDR_APPROVED=1` 미설정 시 `chat_text(data_tier="tier2")`
    가 `ExternalLLMPolicyViolation` 을 raise 한다 (fail loud).
 
@@ -236,6 +238,7 @@ class OpenAIClient:
         model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 256,
+        response_schema: Optional[dict] = None,
         db_path: Optional[Any] = None,
     ) -> dict:
         """Call chat.completions in JSON mode and return the parsed dict.
@@ -263,7 +266,14 @@ class OpenAIClient:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
-                response_format={"type": "json_object"},
+                response_format=(
+                    {
+                        "type": "json_schema",
+                        "json_schema": {"name": "nuri_public_briefing", "strict": True, "schema": response_schema},
+                    }
+                    if response_schema
+                    else {"type": "json_object"}
+                ),
                 temperature=temperature,
                 max_completion_tokens=max_tokens,
             )

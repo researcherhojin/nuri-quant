@@ -699,7 +699,11 @@ class TestRealSdkWireContract:
 
         captured: dict = {}
         sdk = self._client_with_transport(captured)
-        resp = sdk.chat.completions.create(
+        from openai.resources.chat import Chat
+
+        chat = sdk.chat
+        assert isinstance(chat, Chat)
+        resp = chat.completions.create(
             model="gpt-5.4",
             messages=[{"role": "user", "content": "u"}],
             response_format={"type": "json_object"},
@@ -849,3 +853,22 @@ class TestRetrySemantics:
             f"read timeout {timeout.read}s — p99 3.1s(원장 n=21,451) 의 38배를 넘는다. "
             "600s 상속 시절로 회귀? 올릴 이유가 있으면 원장 재실측과 함께 이 상한을 조정할 것 (#1411)"
         )
+
+
+def test_public_briefing_strict_schema_reaches_real_sdk(db_path):
+    from nuri.llm.openai_client import OpenAIClient
+
+    captured = {}
+    client = OpenAIClient()
+    client._sdk_client = TestRealSdkWireContract()._client_with_transport(captured)
+    schema = {
+        "type": "object",
+        "properties": {"category": {"type": "string"}},
+        "required": ["category"],
+        "additionalProperties": False,
+    }
+    client.chat_json(system="public data", user="synthetic evidence", response_schema=schema, db_path=db_path)
+    assert captured["body"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {"name": "nuri_public_briefing", "strict": True, "schema": schema},
+    }

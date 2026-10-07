@@ -20,18 +20,20 @@ import { NAV, PIPELINE } from "@/lib/strings";
 /** 이관 대상 (#1252 이 지목한 파일). */
 /** 라우트 라벨을 헤딩으로 쓰는 페이지 (#1300) — 리터럴 복귀를 여기서 막는다. */
 const ROUTE_HEADING_PAGES: Record<string, keyof typeof NAV> = {
-  "src/app/engine/page.tsx": "ROUTE_ENGINE",
-  "src/app/consensus/page.tsx": "ROUTE_AGENTS",
-  "src/app/explore/page.tsx": "ROUTE_EXPLORE",
+  "src/app/engine/page-view.tsx": "ROUTE_ENGINE",
+  "src/app/consensus/page-view.tsx": "ROUTE_AGENTS",
+  "src/app/explore/page-view.tsx": "ROUTE_EXPLORE",
   "src/app/signals/page.tsx": "ROUTE_SIGNALS",
-  "src/app/strategy/page.tsx": "ROUTE_STRATEGY",
+  "src/app/strategy/page-view.tsx": "ROUTE_STRATEGY",
   "src/app/targets/page.tsx": "ROUTE_TARGETS",
 };
 
 const MIGRATED = [
   "src/components/ui/sidebar.tsx",
-  "src/app/pipeline/page.tsx",
+  "src/app/pipeline/page-view.tsx",
   "src/app/(overview)/page.tsx",
+  "src/app/ticker-next/[symbol]/generate-briefing.tsx",
+  "src/app/ticker-next/[symbol]/public-briefing.tsx",
 ];
 
 const HANGUL = /[가-힣]/;
@@ -78,7 +80,7 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     expect(offenders, `사이드바에 리터럴로 남은 라벨: ${offenders.join(", ")}`).toHaveLength(0);
 
     // 주석을 걷고 본다 — 이 파일 주석이 라우트 이름을 언급하고 있어 그대로 보면 오탐이다.
-    const pipe = stripComments(read("src/app/pipeline/page.tsx"));
+    const pipe = stripComments(read("src/app/pipeline/page-view.tsx"));
 
     const nodeCopy = [
       PIPELINE.TITLE, // codex P3: 타이틀이 빠져 있어 하드코딩 복귀를 못 잡았다

@@ -81,7 +81,7 @@ function direction(value: number | null | undefined) {
   return value == null ? "unknown" : value > 0 ? "up" : value < 0 ? "down" : "flat";
 }
 
-export default async function Overview({ searchParams }: { searchParams?: Promise<{ bucket?: string }> }) {
+export default async function Overview({ searchParams }: { searchParams?: Promise<{ bucket?: string; ticker?: string }> }) {
   const params = await searchParams;
   const bucket = buckets.find((value) => value === params?.bucket) ?? "urgent";
 
@@ -137,7 +137,7 @@ export default async function Overview({ searchParams }: { searchParams?: Promis
         </div>
       </header>
 
-      <section className={styles.summary} aria-label={COPY.SUMMARY.ARIA}>
+      <section className={styles.summary} aria-label={COPY.SUMMARY.ARIA} data-restricted={restricted}>
         <div className={styles.verdict}>
           <span className={styles.statusDot} data-tone={restricted ? "warning" : "neutral"} />
           <span className={styles.summaryLabel}>{COPY.SUMMARY.LABEL}</span>
@@ -240,7 +240,7 @@ export default async function Overview({ searchParams }: { searchParams?: Promis
               <Link href="/decisions" className={styles.textLink}>{COPY.INBOX_PANEL.LEDGER} <ArrowUpRight size={14} /></Link>
             </div>
           </div>
-          <Inbox key={bucket} actions={actions} initialBucket={bucket} />
+          <Inbox key={`${bucket}-${params?.ticker ?? ""}`} actions={actions} initialBucket={bucket} initialTicker={params?.ticker} />
         </section>
         <section className={styles.panel} aria-label={COPY.PORTFOLIO.ARIA}>
           <div className={styles.panelHeading}>
@@ -273,7 +273,7 @@ export default async function Overview({ searchParams }: { searchParams?: Promis
                 </tr></thead>
                 <tbody>{opportunities.opportunities.slice(0, 4).map((item) => (
                   <tr key={item.ticker}>
-                    <th scope="row"><Link href={`/ticker/${encodeURIComponent(item.ticker)}`}>{item.ticker}</Link></th>
+                    <th scope="row"><Link href={`/ticker-next/${encodeURIComponent(item.ticker)}`}>{item.ticker}</Link></th>
                     <td className={styles.change} data-direction={direction(item.change_1d)}>{displayChange(item.change_1d)}</td>
                     <td className={styles.change} data-direction={direction(item.change_5d)}>{displayChange(item.change_5d)}</td>
                     <td>
@@ -285,7 +285,7 @@ export default async function Overview({ searchParams }: { searchParams?: Promis
                         <ul>{item.observations.length ? item.observations.map((obs, i) => <li key={i}>{obs}</li>) : <li>{COPY.RADAR_PANEL.NO_OBSERVATIONS}</li>}</ul>
                         <p className={styles.basis}>{COPY.RADAR_PANEL.NOT_A_DECISION}</p>
                         <p className={styles.basis}>{COPY.RADAR_PANEL.GENERATED(displayTime(opportunities.generated_at))}</p>
-                        <Link href={`/ticker/${encodeURIComponent(item.ticker)}`} className={styles.textLink}>{COPY.RADAR_PANEL.TICKER_DETAIL} <ArrowUpRight size={14} /></Link>
+                        <Link href={`/ticker-next/${encodeURIComponent(item.ticker)}`} className={styles.textLink}>{COPY.RADAR_PANEL.TICKER_DETAIL} <ArrowUpRight size={14} /></Link>
                       </DetailDialog>
                     </td>
                   </tr>
