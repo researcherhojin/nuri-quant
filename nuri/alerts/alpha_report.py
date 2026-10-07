@@ -117,7 +117,8 @@ def format_progress_reason(report: dict[str, Any]) -> str:
 
     seal = report.get("ledger_seal")
     if seal:
-        parts.append(f"봉인 {seal['date']} · {seal['seal_hash'][:12]}")
+        # 전체 해시 — 이 줄이 DB 밖에 남는 유일한 앵커다. 앞 12자(48비트)는 맞춰 만들 수 있다 (#1719)
+        parts.append(f"봉인 {seal['date']} · {seal['seal_hash']}")
 
     d = _days_until(report.get("evaluation_date"), report.get("as_of") or today_kst())
     if d is not None:

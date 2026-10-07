@@ -47,6 +47,12 @@ class TestUpsertPricesRecordsTheSource:
         upsert_prices(frame, db_path=db_path, source="ignored")
         assert (_source(db_path, "AAA"), _source(db_path, "BBB")) == ("kis", "yfinance")
 
+    def test_rows_without_their_own_source_take_the_argument(self, db_path):
+        """concat 으로 섞인 프레임 — 출처 컬럼이 없던 쪽은 NaN 이다. NULL 로 쓰지 않고 인자 값을 쓴다."""
+        frame = pd.concat([pd.DataFrame([_bar("AAA")]), pd.DataFrame([_bar("KOSPI", source="yfinance")])])
+        upsert_prices(frame, db_path=db_path, source="pykrx")
+        assert (_source(db_path, "AAA"), _source(db_path, "KOSPI")) == ("pykrx", "yfinance")
+
     def test_a_later_writer_replaces_the_source_with_the_row(self, db_path):
         """INSERT OR REPLACE — 같은 (ticker, date) 를 다른 공급자가 덮으면 출처도 그 공급자다."""
         upsert_prices(pd.DataFrame([_bar(close=100.0)]), db_path=db_path, source="kis")

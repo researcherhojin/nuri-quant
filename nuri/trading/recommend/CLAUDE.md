@@ -48,8 +48,8 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 
 ## 추천 이행 여부 진단 (`adherence.py`, #1722)
 
-합의 BUY/SELL 을 운영자가 따랐는지 보유 변경 원장(`portfolio_changes`, 트리거 기록 #1720)의 순변화로 `followed` / `contrary` / `not_followed` / `unknown` 으로 나눈다. 같은 종목·같은 행동의 연속은 한 에피소드(HOLD 제외), 창은 시작일 **다음 날**부터 `config/rules.yaml adherence.window_days`. 그 창에 원장 흔적이 없으면 `unknown` — 가져오기를 안 한 것과 안 따른 것을 구분하지 못하므로 지어내지 않는다. **진단 전용**: §3.11 판정은 읽지 않으며 결과를 저장하지 않는다(`python -m nuri.trading.recommend.adherence`, 집계만 출력). 액면분할·병합은 BUY/SELL 로 보인다(기업행동 피드 없음).
-**Test:** `tests/trading/recommend/test_adherence.py` — 창 시작을 당일로, 빈 창을 `not_followed` 로, HOLD 를 건너뛰게 바꾸면 각각 FAIL.
+합의 BUY/SELL 을 운영자가 따랐는지 보유 변경 원장(`portfolio_changes`, 트리거 기록 #1720)의 순변화로 `followed` / `contrary` / `not_followed` / `unknown` / `open` 으로 나눈다. 같은 종목·같은 행동은 간격이 `config/rules.yaml adherence.window_days` 이하인 한 한 에피소드 — HOLD 는 끊지 않는다(끊으면 SELL·HOLD·SELL 의 겹친 두 창이 매도 한 번을 두 번 센다). 창은 시작일 **다음 날**부터 마지막 추천일 + `window_days`. 순변화 0 은 그 종목을 담은 계좌를 그 창에 봤을 때만 `not_followed`(처음 사는 종목은 어느 계좌든), 아니면 `unknown` — 가져오기를 안 한 것과 안 따른 것을 구분하지 못하므로 지어내지 않는다. 창이 안 닫혔으면 `open`. `--since` 는 묶은 **뒤** 거른다. **진단 전용**: §3.11 판정은 읽지 않으며 결과를 저장하지 않는다(`python -m nuri.trading.recommend.adherence`, 집계만 출력). 액면분할·병합은 BUY/SELL 로 보인다(기업행동 피드 없음).
+**Test:** `tests/trading/recommend/test_adherence.py` — 창 시작을 당일로, 빈 창을 `not_followed` 로, HOLD 로 에피소드를 끊게, 다른 계좌 흔적을 '봤다' 로, 미종결 창을 확정하게, `since` 를 먼저 거르게 바꾸면 각각 FAIL (2026-10-07 Codex 재리뷰).
 
 ## References
 
