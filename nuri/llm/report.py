@@ -20,7 +20,7 @@ LLM 리포트 생성기 — SIEGE Certification 패턴 적용.
 import logging
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 from dotenv import load_dotenv
 
@@ -433,8 +433,9 @@ class ValidationResult:
 
 
 #: 종목·약어 토큰 — 한국 종목(`005930.KS`, `0167Z0.KS`)은 접미사까지 한 토큰, 그 외 대문자 2~5자.
-#: 앞뒤가 영숫자·점이면 단어 조각이라 잡지 않는다.
-_SYMBOL_RE = re.compile(r"(?<![A-Za-z0-9.])([0-9][0-9A-Z]{5}\.K[SQ]|[A-Z]{2,5}(?:\.K[SQ])?)(?![A-Za-z0-9])")
+#: 앞뒤가 영숫자면 단어 조각이라 잡지 않는다. 점은 막지 않는다 — 한국 종목은 첫 대안이 접미사까지
+#: 통째로 먹으므로 `KS` 가 따로 남지 않고, 점을 막으면 `문장.NVDA` 같은 종목을 놓친다 (#1748).
+_SYMBOL_RE = re.compile(r"(?<![A-Za-z0-9])([0-9][0-9A-Z]{5}\.K[SQ]|[A-Z]{2,5}(?:\.K[SQ])?)(?![A-Za-z0-9])")
 
 
 def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
@@ -455,7 +456,12 @@ def validate_output(text: str, ctx: ReportContext) -> ValidationResult:
     # 옮겨 적은 것이지 지어낸 것이 아니므로 허용한다. 입력에 없는 종목만 환각이다.
     # **Test:** tests/llm/test_report.py::TestOutputValidation::test_suffix_and_input_abbreviation_are_not_hallucinations
     mentioned_tickers = set(_SYMBOL_RE.findall(text))
-    input_tokens = set(_SYMBOL_RE.findall(_build_user_payload(ctx)))
+    # 섹션 **내용**에서만 허용 토큰을 만든다 — 고정 섹션 제목("TipRanks, Dataroma, ARK 등")까지 넣으면
+    # `ARK` 가 데이터와 무관하게 늘 통과했다 (#1748).
+    section_text = "\n".join(
+        getattr(ctx, f.name) for f in fields(ReportContext) if f.name.endswith("_section") or f.name == "gate_summary"
+    )
+    input_tokens = set(_SYMBOL_RE.findall(section_text))
     common_words = {
         "BUY",
         "SELL",

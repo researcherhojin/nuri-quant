@@ -384,6 +384,19 @@ class TestOutputValidation:
         result = validate_output("NVDA 와 999999.KS 를 보라. 005930.KS 는 유지.", ctx)
         assert result.hallucinated_tickers == ["999999.KS", "NVDA"]
 
+    def test_a_ticker_right_after_a_period_is_still_checked(self):
+        from nuri.llm.report import validate_output
+
+        result = validate_output("한 문장.NVDA 와 1.AAPL 은 입력에 없다. 005930.KS 는 있다.", self._ctx())
+        assert result.hallucinated_tickers == ["AAPL", "NVDA"]
+
+    def test_section_headers_do_not_whitelist_tickers(self):
+        """`[DATA]` 의 고정 제목 "(TipRanks, Dataroma, ARK 등)" 이 `ARK` 를 늘 통과시키면 안 된다."""
+        from nuri.llm.report import validate_output
+
+        assert validate_output("ARK 매수 후보", self._ctx()).hallucinated_tickers == ["ARK"]
+        assert validate_output("ARK 매수 후보", self._ctx(external_section="ARK Invest 13F")).hallucinated_tickers == []
+
     def test_prompt_pins_ticker_spelling_and_forbids_new_abbreviations(self):
         from nuri.llm.report import SYSTEM_PROMPT
 

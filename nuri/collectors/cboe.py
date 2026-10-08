@@ -185,17 +185,27 @@ class CBOECollector(BaseCollector):
         start = date.fromisoformat(today_kst())
         records: list[dict] = []
         fetched = 0
+        errors: list[Exception] = []
         for back in range(CBOE_LOOKBACK_CALENDAR_DAYS):
             day = (start - timedelta(days=back)).isoformat()
-            resp = requests.get(CBOE_DAILY_URL.format(date=day), headers=DEFAULT_HEADERS, timeout=20)
-            if resp.status_code in (403, 404):
+            # 날짜 하나의 실패(타임아웃·5xx·깨진 JSON)가 이미 받은 날짜를 버리게 하지 않는다 — 그러면
+            # 다른 스케일의 SPY 폴백으로 떨어진다 (#1748, Codex 재현: 10-07 수집 후 10-05 타임아웃 → BUY).
+            try:
+                resp = requests.get(CBOE_DAILY_URL.format(date=day), headers=DEFAULT_HEADERS, timeout=20)
+                if resp.status_code in (403, 404):
+                    continue
+                resp.raise_for_status()
+                pcr = self._total_ratio(resp.json())
+            except (requests.RequestException, ValueError) as e:
+                self.logger.warning("CBOE %s 파일 실패: %s", day, e)
+                errors.append(e)
                 continue
-            resp.raise_for_status()
             fetched += 1
-            pcr = self._total_ratio(resp.json())
             if pcr is not None:
                 records.append({"indicator": "put_call_ratio", "date": day, "value": pcr, "source": "CBOE"})
         if not fetched:
+            if errors:
+                raise errors[0]
             raise RuntimeError(f"CBOE 일별 통계 파일이 최근 {CBOE_LOOKBACK_CALENDAR_DAYS}일 동안 없다")
         if not records:
             raise ValueError(f"CBOE 일별 통계 파일 {fetched}개에 '{CBOE_RATIO_NAME}' 이 없다 — 형식 변경")

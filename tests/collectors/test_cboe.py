@@ -250,3 +250,44 @@ class TestCBOEDailyFile:
             patch.object(c, "_collect_yfinance_spy_pcr", return_value=spy),
         ):
             assert c.collect() == spy
+
+
+class TestCBOEDailyFileErrors:
+    """날짜 하나의 실패가 이미 받은 날짜를 버리면 다른 스케일의 SPY 폴백으로 떨어진다 (#1748)."""
+
+    def _collect(self, outcomes):
+        import requests as _requests
+
+        from nuri.collectors.cboe import CBOECollector
+
+        def fake_get(url, headers=None, timeout=None):
+            day = url.rsplit("/", 1)[-1].split("_", 1)[0]
+            out = outcomes.get(day, 403)
+            if isinstance(out, Exception):
+                raise out
+            resp = MagicMock(status_code=200 if isinstance(out, str) else out)
+            if isinstance(out, str):
+                resp.json.return_value = {"ratios": [{"name": "TOTAL PUT/CALL RATIO", "value": out}]}
+            else:
+                resp.raise_for_status.side_effect = _requests.HTTPError(f"{out}")
+            return resp
+
+        with (
+            patch("nuri.collectors.cboe.today_kst", return_value="2026-10-08"),
+            patch("nuri.collectors.cboe.requests.get", side_effect=fake_get),
+        ):
+            return CBOECollector()._collect_daily()
+
+    def test_a_timeout_after_a_success_keeps_the_fetched_dates(self):
+        import requests as _requests
+
+        rows = self._collect(
+            {"2026-10-07": "0.87", "2026-10-06": _requests.Timeout("slow"), "2026-10-05": 500, "2026-10-02": "0.78"}
+        )
+        assert [(r["date"], r["value"]) for r in rows] == [("2026-10-07", 0.87), ("2026-10-02", 0.78)]
+
+    def test_only_errors_raise_the_first_one(self):
+        import requests as _requests
+
+        with pytest.raises(_requests.Timeout, match="first"):
+            self._collect({"2026-10-07": _requests.Timeout("first"), "2026-10-06": 500})

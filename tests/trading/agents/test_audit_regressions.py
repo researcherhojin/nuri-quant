@@ -229,3 +229,41 @@ def test_null_latest_price_cannot_claim_normal_risk(db_path):
     assert verdict.degraded and verdict.confidence == 0
     assert verdict.alpha_action is None
     assert "손절 점검 미실행" in verdict.reasoning
+
+
+def _pcr(db_path, rows):
+    with get_db(db_path) as conn:
+        for ago, value, source in rows:
+            conn.execute(
+                "INSERT INTO macro(indicator,date,value,source) VALUES('put_call_ratio',?,?,?)",
+                (day(ago), value, source),
+            )
+
+
+def test_recovered_cboe_outranks_a_newer_kst_dated_fallback_row(db_path):
+    """CBOE 행은 미국 거래일, SPY 폴백 행은 KST 날짜다. 주말 폴백 행(1.5)이 복구된 CBOE 보다 늦은
+    날짜로 남아도, 유효 기간 안의 CBOE 계열을 읽는다 — 최신 행 출처만 따르면 '극도 공포' BUY 였다 (#1748)."""
+    _pcr(db_path, [(0, 1.5, "yfinance_SPY"), (1, 0.87, "CBOE"), (2, 0.82, "CBOE")])
+    verdict = OptionsAgent().analyze("DEMO", db_path=db_path)
+    assert verdict.data_points["source"] == "CBOE"
+    assert verdict.data_points["pcr_avg"] == pytest.approx(0.845)
+    assert verdict.action != "BUY"
+
+
+def test_interleaved_fallback_rows_do_not_cut_the_cboe_lookback(db_path):
+    """주말 SPY 행이 사이에 끼어도 CBOE 5개로 평균한다 — 예전엔 출처가 바뀌는 첫 행에서 끊겨 3개였다."""
+    _pcr(
+        db_path,
+        [
+            (1, 0.8, "CBOE"),
+            (2, 0.8, "CBOE"),
+            (3, 1.4, "yfinance_SPY"),
+            (4, 1.4, "yfinance_SPY"),
+            (5, 0.8, "CBOE"),
+            (6, 0.8, "CBOE"),
+            (7, 0.8, "CBOE"),
+        ],
+    )
+    verdict = OptionsAgent().analyze("DEMO", db_path=db_path)
+    assert verdict.data_points["lookback_count"] == 5
+    assert verdict.data_points["pcr_avg"] == pytest.approx(0.8)

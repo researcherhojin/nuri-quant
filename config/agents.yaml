@@ -164,6 +164,7 @@ korean_market:
 
 options:
   max_age_hours: 132        # macro_market의 기존 FAIL SLA와 정렬
+  preferred_sources: [CBOE] # 임계(1.2/0.7)와 같은 스케일. 유효 기간 안에 있으면 최신 폴백 행보다 우선 (#1748)
   pcr_bearish: 1.2          # PCR ≥ 1.2 → 극도 공포 (역발상 매수 신호)
   pcr_bullish: 0.7          # PCR ≤ 0.7 → 과도한 낙관 (경계 신호)
   pcr_neutral_low: 0.8
