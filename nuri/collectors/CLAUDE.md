@@ -104,13 +104,13 @@ API 가 죽은 뒤 스크래핑이 **예외 없이 점수를 못 찾은** 경우
 `test_first_error_is_raised_not_the_last`(`errors[0]`→`errors[-1]` 이면 FAIL) ·
 `test_scrape_fallback_still_rescues_a_dead_api`(과잉 차단 방지).
 
-`cboe` 는 조건이 `errors` 뿐이다 — 4개 티어가 값을 건지면 즉시 return 하므로 마지막 줄에
+`cboe` 는 조건이 `errors` 뿐이다 — 3개 티어가 값을 건지면 즉시 return 하므로 마지막 줄에
 닿았다는 것 자체가 이미 "한 건도 못 건졌다" 는 뜻이고, `not records` 를 덧붙이면 records
 가 비지 않을 수도 있다는 잘못된 인상만 준다.
 
-⚠️ **cboe 에서 이 raise 는 좀처럼 안 터진다 — 그리고 그건 의도다.** 4차
-`_collect_db_stale` 이 DB 에 이전 값이 하나라도 있으면 성공으로 돌려주므로, 라이브 소스 3개
-(CBOE daily/totalpc + yfinance SPY — FRED ECPCRATIO 티어는 시리즈 사망으로 제거, 2026-08-30)가
+⚠️ **cboe 에서 이 raise 는 좀처럼 안 터진다 — 그리고 그건 의도다.** 3차
+`_collect_db_stale` 이 DB 에 이전 값이 하나라도 있으면 성공으로 돌려주므로, 라이브 소스 2개
+(CBOE 일별 통계 파일 + yfinance SPY — FRED ECPCRATIO 티어는 시리즈 사망으로 제거, 2026-08-30)가
 전부 죽어도 마지막 줄까지 안 온다. **"DB_STALE 재사용이 성공으로 집계되는" 축**은 이제
 `freshness.py macro_market` 그룹 정책(#1242, put/call 포함 MIN)이 감시한다 — 2026-08-30 그
 정책이 정확히 이 형태(6일 얼어붙은 PCR, 매 run finished)를 FAIL 로 표면화했고, 원인은
@@ -118,6 +118,14 @@ CBOE CDN 전면 403 + 죽은 FRED 티어 + yfinance 티어의 미가드 None 크
 프로덕션 6주 구멍(2026-06-22→2026-08-03)은 그 정책이 생기기 전의 일이다.
 **Test:** `tests/collectors/test_cboe.py::TestCBOEFailedVsNoData::test_db_stale_still_counts_as_success`
 — 이 한계를 명시적으로 잠근다(조용히 바꾸면 라이브 소스가 흔들릴 때마다 수집기가 죽는다).
+
+**CBOE 경로 교체 (#1739, 2026-10-08)** — `api/global/us_options/market_statistics/daily.json`·`totalpc.json`
+은 2026-08-30 부터 403 이었고, 그동안 운영 PCR 은 yfinance SPY 단일 만기 값(평균 1.17)이었다. 에이전트
+임계(1.2/0.7/0.8–1.0)는 CBOE TOTAL 스케일이라 48일 중 35% 를 "극도 공포" 로 채점했다. 지금 1차는
+`cdn.cboe.com/data/us/options/market_statistics/daily/{YYYY-MM-DD}_daily_options` (거래일마다 파일, 비거래일 403,
+파일에 날짜 없음 → URL 날짜가 거래일) 의 `ratios[] "TOTAL PUT/CALL RATIO"`. 한 실행에 최근 10 달력일을 받아
+에이전트 5일 lookback 을 바로 채운다. SPY 폴백은 여전히 다른 스케일로 채점된다 — 알려진 한계.
+**Test:** `tests/collectors/test_cboe.py::TestCBOEDailyFile::test_rows_carry_the_trade_date_from_the_url`
 
 **`finviz` 는 이 규약 밖에 있다가 2026-08-17 부터 50일을 finished·0행으로 조용히 죽어 있었다** —
 시그널 6개 전부 실패(`finvizfinance` 파싱 실패 + 직접 스크래핑 403)를 `[]` 로 돌렸다. #1724 로 전면 실패를
