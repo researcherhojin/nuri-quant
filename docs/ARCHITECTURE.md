@@ -367,7 +367,7 @@ data/
 
 ## Testing
 
-8,499 backend tests across 403 files (collection) + frontend vitest (112 files) + Playwright E2E (10 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-08 1,339 tests(112 files). E2E 는 93 tests(10 files) — `playwright test --list` 수이며 전체 실행 기록이 아니다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
+8,472 backend tests across 403 files (collection) + frontend vitest (112 files) + Playwright E2E (10 spec files). 현재 수집 수·파일 수는 `verify_doc_counts.sh`로 검증한다. 프런트 전체 실행은 2026-10-08 1,339 tests(112 files). E2E 는 93 tests(10 files) — `playwright test --list` 수이며 전체 실행 기록이 아니다. 변경 범위의 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참고한다.
 
 Tests run with `pytest-xdist`. CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); local runs keep `-n auto`. Codecov reports a project check with a 1-percentage-point threshold against `target: auto`; it is not a required check, so it advises rather than blocks.
 

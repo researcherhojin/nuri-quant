@@ -440,12 +440,11 @@ class TestCboeFallbackChain:
         c = CBOECollector()
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("daily")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc")),
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf")),
             patch.object(c, "_collect_db_stale", side_effect=RuntimeError("stale")),
         ):
-            # 전면 실패는 `[]` 가 아니라 raise (#1042). 4-tier 경로(FRED 티어는 시리즈
-            # 사망으로 제거, 2026-08-30)에서 올라오는 것은 마지막("stale")이 아니라
+            # 전면 실패는 `[]` 가 아니라 raise (#1042). 3-tier 경로(FRED 티어 2026-08-30, CBOE
+            # 옛 JSON 티어 2026-10-08 제거)에서 올라오는 것은 마지막("stale")이 아니라
             # 첫 원인("daily") 이어야 한다.
             with pytest.raises(RuntimeError, match="daily"):
                 c.collect()
@@ -462,7 +461,6 @@ class TestCboeFallbackSuccess:
         sentinel = [{"indicator": "put_call_ratio", "date": "2026-01-15", "value": 1.2, "source": "yfinance_SPY"}]
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("daily")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc")),
             patch.object(c, "_collect_yfinance_spy_pcr", return_value=sentinel),
         ):
             result = c.collect()
@@ -476,35 +474,11 @@ class TestCboeFallbackSuccess:
         sentinel = [{"indicator": "put_call_ratio", "date": "2026-01-14", "value": 0.85, "source": "DB_STALE"}]
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("daily")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc")),
             patch.object(c, "_collect_yfinance_spy_pcr", return_value=[]),
             patch.object(c, "_collect_db_stale", return_value=sentinel),
         ):
             result = c.collect()
         assert result == sentinel
-
-
-class TestCboeExtractPcrZeroDivision:
-    """L265-266: ZeroDivisionError when call_vol=0 falls through, returns None."""
-
-    def test_extract_pcr_zero_call_vol(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        # call_volume=0 → ZeroDivisionError caught → None returned
-        item = {"TOTAL_PUT_VOLUME": "100", "TOTAL_CALL_VOLUME": "0"}
-        result = CBOECollector._extract_pcr(item)
-        # 0 is falsy in Python, so `put_vol and call_vol` short-circuits to falsy
-        # → never enters try block → returns None at the end
-        # If we want ZeroDivisionError specifically, use string "0.0"
-        assert result is None
-
-    def test_extract_pcr_invalid_value_continues(self):
-        """L258-259: try float() raises ValueError → continue keeps loop alive."""
-        from nuri.collectors.cboe import CBOECollector
-
-        # First key has value but invalid → continue → fall through to None
-        item = {"TOTAL_PUT_CALL_RATIO": "not-a-number"}
-        assert CBOECollector._extract_pcr(item) is None
 
 
 # ─────────────────────────────────────────────────────────────────

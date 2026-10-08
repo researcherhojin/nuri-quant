@@ -1154,13 +1154,12 @@ class TestMacroNewsBranches:
 class TestCBOEPartials:
     """8 partial branches in cboe.py — fallback chain + dict/list dispatch + FRED skip."""
 
-    def test_collect_daily_returns_empty_falls_through_to_totalpc(self, monkeypatch):
-        """Branch 51->57: `_collect_daily` returns []; if records: False → totalpc 시도."""
+    def test_collect_daily_returns_empty_falls_through_to_yfinance(self, monkeypatch):
+        """`_collect_daily` returns []; if records: False → yfinance 시도."""
         from nuri.collectors.cboe import CBOECollector
 
         c = CBOECollector()
         monkeypatch.setattr(c, "_collect_daily", lambda: [])
-        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
         monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
         monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
         assert c.collect() == []
@@ -1171,68 +1170,9 @@ class TestCBOEPartials:
 
         c = CBOECollector()
         monkeypatch.setattr(c, "_collect_daily", lambda: [])
-        monkeypatch.setattr(c, "_collect_totalpc", lambda: [])
         monkeypatch.setattr(c, "_collect_yfinance_spy_pcr", lambda: [])
         monkeypatch.setattr(c, "_collect_db_stale", lambda: [])
         assert c.collect() == []
-
-    def test_daily_extract_pcr_returns_none_skips_record(self, monkeypatch):
-        """Branch 167->191: items list 의 latest 가 PCR 키 없음 → if pcr is not None: False."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "20260101", "no_pcr": True}]}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        assert c._collect_daily() == []
-
-    def test_daily_empty_list_response_falls_through_to_return(self, monkeypatch):
-        """Branch 179->191: data 가 list 인데 비어있음 → 두 분기 모두 False → 191 (return records)."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = []
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        assert c._collect_daily() == []
-
-    def test_daily_dict_no_pcr_keys_falls_to_return(self, monkeypatch):
-        """Branch 181->191: data dict 에 PCR 키 없음 → elif True → _extract_pcr=None
-        → if pcr is not None: False → 191 (records 비어있음)."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"no_data_key": True, "ratio_unrelated": "x"}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        assert c._collect_daily() == []
-
-    def test_daily_dict_with_pcr_creates_record(self, monkeypatch):
-        """Branch 181 True: data dict + PCR 추출 성공 → record append."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"PUT_CALL_RATIO": 1.5}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        records = c._collect_daily()
-        assert len(records) == 1
-        assert records[0]["value"] == 1.5
-
-    def test_totalpc_invalid_date_skips(self, monkeypatch):
-        """Branch 206->202: parse_date None → if pcr and date_str: False → continue."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": [{"PUT_CALL_RATIO": 1.2, "TRADE_DATE": "invalid-date-format"}]}
-        mock_resp.raise_for_status = MagicMock()
-        monkeypatch.setattr("nuri.collectors.cboe.requests.get", lambda *a, **k: mock_resp)
-        assert c._collect_totalpc() == []
 
 
 # ═══════════════════════════════════════════════════════
