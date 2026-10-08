@@ -24,7 +24,8 @@ class OptionsAgent(BaseAgent):
         lookback = _CFG.get("lookback_days", 5)
         rows = self._safe_query(
             "SELECT value, source, date FROM macro WHERE indicator='put_call_ratio' AND date <= ? ORDER BY date DESC LIMIT ?",
-            (today_kst(), lookback),
+            # 출처별로 고르므로 넉넉히 읽는다 — 다른 출처 행이 끼어 있어도 한 출처로 lookback 을 채운다.
+            (today_kst(), lookback * 4),
             db_path,
         )
         if not rows:
@@ -36,23 +37,28 @@ class OptionsAgent(BaseAgent):
                 failed_reason="PCR 조회 실패",
             )
 
-        source = rows[0].get("source")
-        as_of = rows[0].get("date")
+        max_age = _CFG.get("max_age_hours", 132)
+
+        def _age_hours(row) -> float:
+            try:
+                return (kst_now().date() - datetime.strptime(row.get("date"), "%Y-%m-%d").date()).days * 24
+            except (TypeError, ValueError):
+                return float("inf")
+
+        # 임계와 같은 스케일의 출처(config `preferred_sources`)가 유효 기간 안에 있으면 그 계열을 쓴다.
+        # CBOE 행은 미국 거래일, 폴백(yfinance SPY) 행은 KST 날짜라 주말 폴백 행이 복구된 CBOE 보다
+        # 늦은 날짜로 남는다 — "최신 행의 출처" 만 따르면 복구 뒤에도 다른 스케일을 읽었다 (#1748).
+        preferred = set(_CFG.get("preferred_sources", []))
+        fresh_preferred = next((r for r in rows if r.get("source") in preferred and _age_hours(r) <= max_age), None)
+        source = (fresh_preferred or rows[0]).get("source")
+        # 다른 출처 시계열은 평균/추세에서 섞지 않는다 — 고른 출처의 최근 lookback 행만.
+        same_source = [r for r in rows if r.get("source") == source][:lookback]
+        as_of = same_source[0].get("date")
         metadata = {"scope": "us_market", "source": source, "as_of": as_of}
-        try:
-            age = (kst_now().date() - datetime.strptime(as_of, "%Y-%m-%d").date()).days * 24
-        except (TypeError, ValueError):
-            age = float("inf")
-        if age > _CFG.get("max_age_hours", 132):
+        if _age_hours(same_source[0]) > max_age:
             return AgentVerdict(
                 self.name, ticker, "HOLD", 0, "미국 시장 PCR — 자료 유효 기간 초과", metadata, abstained=True
             )
-        # 최신 소스와 다른 시계열은 평균/추세에서 섞지 않는다.
-        same_source = []
-        for row in rows:
-            if row.get("source") != source:
-                break
-            same_source.append(row)
         values = finite_values(r["value"] for r in same_source)
         if not values:
             # 조회는 성공했고 행도 있는데 값이 전부 NULL — 실패가 아니라 부재다.
