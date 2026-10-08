@@ -25,6 +25,8 @@ export default defineConfig({
     baseURL: "http://localhost:3000",
     headless: true,
     screenshot: "only-on-failure",
+    // 스크린샷만으로는 URL·네트워크·콘솔을 못 본다 — #1750 이 그래서 원인을 못 가렸다
+    trace: "retain-on-failure",
   },
   projects: [
     { name: "chromium", use: { browserName: "chromium" } },

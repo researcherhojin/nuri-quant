@@ -13,6 +13,8 @@ test("ticker tab URL survives reload and restores the previous tab with browser 
   await page.reload();
   await expect(main.getByRole("tab", { name: T.RESEARCH })).toHaveAttribute("aria-selected", "true");
   await page.goBack();
+  // URL 먼저 — 실패하면 "뒤로가 안 됐다" 와 "URL 은 바뀌었는데 탭이 안 따라왔다" 를 구분한다 (#1750)
+  await expect(page).toHaveURL(/tab=history/);
   await expect(main.getByRole("tab", { name: T.HISTORY })).toHaveAttribute("aria-selected", "true");
   await expect(main.getByRole("link", { name: T.BACK })).toHaveAttribute("href", "/?bucket=portfolio&ticker=AAPL");
 });
