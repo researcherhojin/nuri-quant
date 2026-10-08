@@ -1,16 +1,35 @@
 "use client";
 
-import { useId, type ReactNode, type KeyboardEvent } from "react";
+import { useCallback, useId, useSyncExternalStore, type ReactNode, type KeyboardEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { TICKER_PREVIEW as T } from "@/lib/strings";
 import styles from "./ticker.module.css";
 
 const keys = ["brief", "evidence", "research", "history"];
 
+// pushState 는 popstate 를 내지 않으므로 탭 선택 뒤 이 이벤트로 구독자를 깨운다.
+const TAB_EVENT = "nuri:ticker-tab";
+
+// 탭은 실제 브라우저 URL 을 따른다. useSearchParams 만 보면 라우터가 popstate 를 놓쳤을 때(CI 에서
+// 뒤로 가기 후 15 초 동안 옛 탭에 머물렀다, #1750) 화면이 URL 과 어긋난다.
+function subscribe(onChange: () => void) {
+  window.addEventListener("popstate", onChange);
+  window.addEventListener(TAB_EVENT, onChange);
+
+  return () => {
+    window.removeEventListener("popstate", onChange);
+    window.removeEventListener(TAB_EVENT, onChange);
+  };
+}
+
+const browserTab = () => new URLSearchParams(window.location.search).get("tab");
+
 export function ResearchTabs({ brief, evidence, research, history }: { brief: ReactNode; evidence: ReactNode; research: ReactNode; history: ReactNode }) {
   const id = useId();
   const params = useSearchParams();
-  const selected = Math.max(0, keys.indexOf(params.get("tab") || "brief"));
+  const serverTab = useCallback(() => params.get("tab"), [params]);
+  const tab = useSyncExternalStore(subscribe, browserTab, serverTab);
+  const selected = Math.max(0, keys.indexOf(tab || "brief"));
   const labels = [T.BRIEF, T.EVIDENCE, T.RESEARCH, T.HISTORY];
   const panels = [brief, evidence, research, history];
 
@@ -22,6 +41,7 @@ export function ResearchTabs({ brief, evidence, research, history }: { brief: Re
     url.searchParams.set("tab", keys[index]);
     url.hash = "";
     window.history.pushState(null, "", url);
+    window.dispatchEvent(new Event(TAB_EVENT));
   }
 
   function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
