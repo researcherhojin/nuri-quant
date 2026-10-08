@@ -4,22 +4,29 @@ CBOE Put/Call Ratio 수집기.
 CBOE 옵션 데이터에서 Put/Call Ratio를 수집하여 시장 심리 지표로 활용.
 PCR > 1.0: 약세 심리 (풋 매수 과다), PCR < 0.7: 강세 심리 (콜 매수 과다).
 
-소스 우선순위: CBOE JSON API → FRED ECPCRATIO → 없으면 스킵.
+소스 우선순위: CBOE 일별 통계 파일 → yfinance SPY 옵션 체인 → DB stale → 전면 실패 raise.
 
 사용법:
     python -m nuri.collectors.cboe
 """
 
 import logging
+from datetime import date, timedelta
 
 import requests
 
-from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, parse_date, today_str
+from nuri.collectors.base import DEFAULT_HEADERS, BaseCollector, today_str
 from nuri.core.db import upsert_macro
+from nuri.core.timezone import today_kst
 
-# CBOE 일별 시장 통계
-CBOE_OPTIONS_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics/daily.json"
-CBOE_TOTPC_URL = "https://cdn.cboe.com/api/global/us_options/market_statistics/totalpc.json"
+# CBOE 일별 시장 통계 — 거래일마다 파일 하나, URL 의 날짜가 미국 거래일이다(파일 안에는 날짜가 없다).
+# 주말·휴장일·미발행 날짜는 403 이라 옛 파일이 새 날짜로 둔갑하지 않는다 (2026-10-08 실측).
+# 예전 `api/global/.../daily.json`·`totalpc.json` 은 2026-08-30 부터 403 이라 제거했다.
+CBOE_DAILY_URL = "https://cdn.cboe.com/data/us/options/market_statistics/daily/{date}_daily_options"
+# 에이전트 임계(1.2 / 0.7 / 0.8–1.0)가 쓰는 스케일 — 예전 파서도 TOTAL 을 우선했다.
+CBOE_RATIO_NAME = "TOTAL PUT/CALL RATIO"
+# 한 번에 거슬러 볼 달력일 — 에이전트 lookback(5 거래일)을 한 실행으로 채운다. 투자 임계가 아니다.
+CBOE_LOOKBACK_CALENDAR_DAYS = 10
 
 
 class CBOECollector(BaseCollector):
@@ -35,8 +42,8 @@ class CBOECollector(BaseCollector):
         `[]` 로 돌려주면 보고할 게 없던 날과 DB 기록이 같아진다 — 둘 다
         `collector_runs.status='finished'` 가 박히고 `#ops` 알림도 안 뜬다.
 
-        ⚠️ 이 수집기에서 그 raise 는 **좀처럼 안 터진다.** 4차 `_collect_db_stale` 이
-        DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 3개가
+        ⚠️ 이 수집기에서 그 raise 는 **좀처럼 안 터진다.** 3차 `_collect_db_stale` 이
+        DB 에 이전 값이 하나라도 있으면 성공으로 돌려주기 때문에, 라이브 소스 2개가
         전부 죽어도 여기까지 안 온다. 즉 여기서 고치는 건 "총체적 장애가 성공으로
         기록되는" 축이고, **"DB_STALE 재사용이 영원히 성공으로 집계되는" 축은 그대로
         남아 있었는데**, #1242 가 `macro_market` 정책(금리 3종 + put/call 그룹 MIN)에
@@ -45,29 +52,20 @@ class CBOECollector(BaseCollector):
         """
         errors: list[Exception] = []
 
-        # 1차: CBOE daily.json
+        # 1차: CBOE 일별 통계 파일
         try:
             records = self._collect_daily()
             if records:
                 return records
         except Exception as e:
-            self.logger.warning("CBOE daily API 실패: %s", e)
-            errors.append(e)
-
-        # 2차: CBOE totalpc.json
-        try:
-            records = self._collect_totalpc()
-            if records:
-                return records
-        except Exception as e:
-            self.logger.warning("CBOE totalpc 폴백도 실패: %s", e)
+            self.logger.warning("CBOE 일별 통계 파일 실패: %s", e)
             errors.append(e)
 
         # (구 3차 FRED ECPCRATIO 티어는 제거 — 2026-08-30 외부 실검증: FRED 가
         # "The series does not exist" 400 을 반환한다 (CBOE 시리즈 델리스트). 죽은
         # 티어는 매 실행 api_key 가 박힌 요청 URL 을 WARNING 로그로 흘리기만 했다.)
 
-        # 3차: yfinance SPY 옵션 체인으로 PCR 직접 계산
+        # 2차: yfinance SPY 옵션 체인으로 PCR 직접 계산 — 스케일이 CBOE 와 다르다(아래 docstring)
         try:
             records = self._collect_yfinance_spy_pcr()
             if records:
@@ -76,7 +74,7 @@ class CBOECollector(BaseCollector):
             self.logger.warning("yfinance SPY PCR 폴백 실패: %s", e)
             errors.append(e)
 
-        # 4차: DB stale 재사용 (graceful degrade)
+        # 3차: DB stale 재사용 (graceful degrade)
         try:
             stale = self._collect_db_stale()
             if stale:
@@ -178,87 +176,43 @@ class CBOECollector(BaseCollector):
         ]
 
     def _collect_daily(self) -> list[dict]:
-        """CBOE daily market statistics JSON에서 PCR 추출."""
-        resp = requests.get(CBOE_OPTIONS_URL, headers=DEFAULT_HEADERS, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
+        """CBOE 일별 통계 파일에서 최근 거래일들의 TOTAL put/call 비율을 모은다.
 
-        records = []
-        today = today_str()
-
-        items = data.get("data", data) if isinstance(data, dict) else data
-        if isinstance(items, list) and items:
-            latest = items[-1] if len(items) > 1 else items[0]
-            pcr = self._extract_pcr(latest)
+        오늘(KST)부터 `CBOE_LOOKBACK_CALENDAR_DAYS` 일을 거슬러 날짜마다 파일을 요청한다. 403·404 는
+        비거래일·미발행이라 건너뛴다. 받은 파일이 하나도 없으면 raise — 비거래일만 열흘 이어질 수는
+        없으니 접근 차단이나 경로 변경이다. 행 날짜는 URL 의 거래일이다 (`today_str()` 가 아니다).
+        """
+        start = date.fromisoformat(today_kst())
+        records: list[dict] = []
+        fetched = 0
+        for back in range(CBOE_LOOKBACK_CALENDAR_DAYS):
+            day = (start - timedelta(days=back)).isoformat()
+            resp = requests.get(CBOE_DAILY_URL.format(date=day), headers=DEFAULT_HEADERS, timeout=20)
+            if resp.status_code in (403, 404):
+                continue
+            resp.raise_for_status()
+            fetched += 1
+            pcr = self._total_ratio(resp.json())
             if pcr is not None:
-                raw_date = latest.get("TRADE_DATE", latest.get("date", today))
-                date_str = parse_date(raw_date) or today
-                records.append(
-                    {
-                        "indicator": "put_call_ratio",
-                        "date": date_str,
-                        "value": float(pcr),
-                        "source": "CBOE",
-                    }
-                )
-                self.logger.info("CBOE Put/Call Ratio: %.3f (%s)", pcr, date_str)
-        elif isinstance(data, dict):
-            pcr = self._extract_pcr(data)
-            if pcr is not None:
-                records.append(
-                    {
-                        "indicator": "put_call_ratio",
-                        "date": today,
-                        "value": float(pcr),
-                        "source": "CBOE",
-                    }
-                )
-
-        return records
-
-    def _collect_totalpc(self) -> list[dict]:
-        """CBOE Total Put/Call 폴백."""
-        resp = requests.get(CBOE_TOTPC_URL, headers=DEFAULT_HEADERS, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-
-        records = []
-        items = data.get("data", []) if isinstance(data, dict) else data
-        if isinstance(items, list):
-            for item in items[-30:]:
-                pcr = self._extract_pcr(item)
-                raw_date = item.get("TRADE_DATE", item.get("date", ""))
-                date_str = parse_date(raw_date)
-                if pcr is not None and date_str:
-                    records.append(
-                        {
-                            "indicator": "put_call_ratio",
-                            "date": date_str,
-                            "value": float(pcr),
-                            "source": "CBOE",
-                        }
-                    )
-
-        self.logger.info("CBOE totalpc: %d건", len(records))
+                records.append({"indicator": "put_call_ratio", "date": day, "value": pcr, "source": "CBOE"})
+        if not fetched:
+            raise RuntimeError(f"CBOE 일별 통계 파일이 최근 {CBOE_LOOKBACK_CALENDAR_DAYS}일 동안 없다")
+        if not records:
+            raise ValueError(f"CBOE 일별 통계 파일 {fetched}개에 '{CBOE_RATIO_NAME}' 이 없다 — 형식 변경")
+        self.logger.info(
+            "CBOE Put/Call Ratio: %d 거래일 (최신 %s = %.2f)", len(records), records[0]["date"], records[0]["value"]
+        )
         return records
 
     @staticmethod
-    def _extract_pcr(item: dict) -> float | None:
-        """다양한 키 이름에서 PCR 값 추출."""
-        for key in ("TOTAL_PUT_CALL_RATIO", "PUT_CALL_RATIO", "put_call_ratio", "pcr", "ratio"):
-            val = item.get(key)
-            if val is not None:
+    def _total_ratio(data: dict) -> float | None:
+        """`ratios` 목록에서 TOTAL 비율. 값은 문자열("0.87")로 온다."""
+        for item in data.get("ratios") or []:
+            if item.get("name") == CBOE_RATIO_NAME:
                 try:
-                    return float(val)
-                except (ValueError, TypeError):
-                    continue
-        put_vol = item.get("TOTAL_PUT_VOLUME", item.get("put_volume"))
-        call_vol = item.get("TOTAL_CALL_VOLUME", item.get("call_volume"))
-        if put_vol and call_vol:
-            try:
-                return float(put_vol) / float(call_vol)
-            except (ValueError, TypeError, ZeroDivisionError):
-                pass
+                    return float(item["value"])
+                except (KeyError, TypeError, ValueError):
+                    return None
         return None
 
     def save(self, data: list[dict]) -> int:

@@ -20,31 +20,6 @@ class TestCBOECollector:
         c = CBOECollector()
         assert c.name == "cboe"
 
-    def test_extract_pcr_total(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        assert c._extract_pcr({"TOTAL_PUT_CALL_RATIO": 0.85}) == 0.85
-
-    def test_extract_pcr_simple(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        assert c._extract_pcr({"PUT_CALL_RATIO": 0.92}) == 0.92
-
-    def test_extract_pcr_calculated(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        result = c._extract_pcr({"TOTAL_PUT_VOLUME": 1000, "TOTAL_CALL_VOLUME": 2000})
-        assert result is not None and abs(result - 0.5) < 0.01
-
-    def test_extract_pcr_missing(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        assert c._extract_pcr({}) is None
-
     def test_save_records(self, db_path):
         from nuri.collectors.cboe import CBOECollector
 
@@ -55,77 +30,6 @@ class TestCBOECollector:
 
 
 class TestCBOECollector_Phase2:
-    def test_extract_pcr_ratio_key(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert CBOECollector._extract_pcr({"TOTAL_PUT_CALL_RATIO": 0.85}) == 0.85
-        assert CBOECollector._extract_pcr({"PUT_CALL_RATIO": 1.2}) == 1.2
-
-    def test_extract_pcr_volume_calc(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        result = CBOECollector._extract_pcr(
-            {
-                "TOTAL_PUT_VOLUME": 1500000,
-                "TOTAL_CALL_VOLUME": 2000000,
-            }
-        )
-        assert result == pytest.approx(0.75)
-
-    def test_extract_pcr_missing(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert CBOECollector._extract_pcr({}) is None
-        assert CBOECollector._extract_pcr({"unrelated": 42}) is None
-
-    def test_extract_pcr_zero_call(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert (
-            CBOECollector._extract_pcr(
-                {
-                    "TOTAL_PUT_VOLUME": 100,
-                    "TOTAL_CALL_VOLUME": 0,
-                }
-            )
-            is None
-        )
-
-    @patch("nuri.collectors.cboe.requests.get")
-    def test_collect_daily_json(self, mock_get):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2026-03-28", "TOTAL_PUT_CALL_RATIO": 0.92}]}
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        collector = CBOECollector()
-        records = collector.collect()
-        assert len(records) >= 1
-        assert records[0]["indicator"] == "put_call_ratio"
-        assert records[0]["value"] == 0.92
-        assert records[0]["source"] == "CBOE"
-
-    @patch("nuri.collectors.cboe.requests.get")
-    def test_save_to_macro(self, mock_get, db_path):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2026-03-28", "TOTAL_PUT_CALL_RATIO": 0.88}]}
-        mock_resp.raise_for_status = MagicMock()
-        mock_get.return_value = mock_resp
-
-        collector = CBOECollector()
-        records = collector.collect()
-        count = upsert_macro(records, db_path)
-        assert count >= 1
-
-        rows = query("SELECT * FROM macro WHERE indicator = 'put_call_ratio'", db_path=db_path)
-        assert len(rows) >= 1
-        assert rows[0]["value"] == pytest.approx(0.88)
-
     def test_parse_date_formats(self):
         from nuri.collectors.base import parse_date
 
@@ -137,18 +41,6 @@ class TestCBOECollector_Phase2:
 
 
 class TestCBOEDeepFromHistorical:
-    def test_collect_daily_mock(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2026-03-30", "TOTAL_PUT_CALL_RATIO": 0.85}]}
-        c = CBOECollector()
-        with patch("nuri.collectors.cboe.requests") as mock_req:
-            mock_req.get.return_value = mock_resp
-            result = c._collect_daily()
-        assert isinstance(result, list)
-
     def test_collect_daily_failure(self):
         from nuri.collectors.cboe import CBOECollector
 
@@ -164,132 +56,12 @@ class TestCBOEDeepFromHistorical:
 # ##############################################################################
 
 
-class TestCBOEDeepCalculations:
-    def test_collect_daily_success(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2026-03-30", "TOTAL_PUT_CALL_RATIO": 0.85}]}
-        c = CBOECollector()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_daily()
-        assert isinstance(result, list)
-        if result:
-            assert result[0]["value"] == 0.85
-
-    def test_collect_totalpc(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "data": [
-                {"TRADE_DATE": "2026-03-29", "TOTAL_PUT_CALL_RATIO": 0.90},
-                {"TRADE_DATE": "2026-03-28", "TOTAL_PUT_CALL_RATIO": 0.88},
-            ]
-        }
-        c = CBOECollector()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_totalpc()
-        assert isinstance(result, list)
-
-    def test_collect_full(self, rich_db):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2026-03-30", "TOTAL_PUT_CALL_RATIO": 0.85}]}
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c.collect()
-        assert isinstance(result, list)
-
-
 # ##############################################################################
 # Source: test_coverage_round8.py
 # ##############################################################################
 
 
-class TestCBOEFull:
-    def test_collect_with_fallback(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        mock_daily = MagicMock()
-        mock_daily.status_code = 200
-        mock_daily.json.return_value = {"data": [{"TRADE_DATE": "2026-03-30", "TOTAL_PUT_CALL_RATIO": 0.85}]}
-        mock_fail = MagicMock()
-        mock_fail.status_code = 500
-
-        c = CBOECollector()
-        with patch("nuri.collectors.cboe.requests.get", side_effect=[mock_daily, mock_fail]):
-            daily = c._collect_daily()
-            totalpc = c._collect_totalpc()
-        assert len(daily) > 0
-        assert len(totalpc) == 0
-
-
 class TestCBOEExtractPCR:
-    def test_extract_pcr_ratio_key(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert CBOECollector._extract_pcr({"TOTAL_PUT_CALL_RATIO": 0.85}) == 0.85
-        assert CBOECollector._extract_pcr({"PUT_CALL_RATIO": 0.92}) == 0.92
-        assert CBOECollector._extract_pcr({"put_call_ratio": 1.1}) == 1.1
-        assert CBOECollector._extract_pcr({"pcr": 0.75}) == 0.75
-        assert CBOECollector._extract_pcr({"ratio": 0.6}) == 0.6
-
-    def test_extract_pcr_from_volumes(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        result = CBOECollector._extract_pcr({"TOTAL_PUT_VOLUME": 1000, "TOTAL_CALL_VOLUME": 2000})
-        assert result is not None and abs(result - 0.5) < 0.01
-
-    def test_extract_pcr_none(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert CBOECollector._extract_pcr({}) is None
-
-    def test_extract_pcr_invalid_values(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        assert CBOECollector._extract_pcr({"TOTAL_PUT_CALL_RATIO": "bad"}) is None
-
-    def test_collect_daily_success(self, monkeypatch):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2025-03-15", "TOTAL_PUT_CALL_RATIO": 0.85}]}
-        mock_resp.raise_for_status = MagicMock()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_daily()
-        assert len(result) == 1
-        assert result[0]["value"] == 0.85
-
-    def test_collect_daily_dict_response(self, monkeypatch):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"TOTAL_PUT_CALL_RATIO": 0.92}
-        mock_resp.raise_for_status = MagicMock()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_daily()
-        assert len(result) == 1
-        assert result[0]["value"] == 0.92
-
-    def test_collect_totalpc(self):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        mock_resp = MagicMock()
-        mock_resp.json.return_value = {"data": [{"TRADE_DATE": "2025-03-15", "TOTAL_PUT_CALL_RATIO": 0.88}]}
-        mock_resp.raise_for_status = MagicMock()
-        with patch("nuri.collectors.cboe.requests.get", return_value=mock_resp):
-            result = c._collect_totalpc()
-        assert len(result) == 1
-
     def test_fred_tier_is_gone(self):
         """FRED ECPCRATIO 티어는 제거됐다 — 2026-08-30 외부 실검증에서 FRED 가
         "The series does not exist" 를 반환 (델리스트). 되살리면 매 실행 api_key 가
@@ -299,23 +71,6 @@ class TestCBOEExtractPCR:
 
         assert not hasattr(CBOECollector, "_collect_fred_pcr")
         assert not hasattr(cboe_mod, "FRED_PCR_URL")
-
-    def test_collect_fallback_chain(self, monkeypatch):
-        """CBOE 2개 티어가 죽어도 yfinance 티어가 값을 건지면 성공."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        with patch.object(c, "_collect_daily", side_effect=RuntimeError("fail")):
-            with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
-                with patch.object(
-                    c,
-                    "_collect_yfinance_spy_pcr",
-                    return_value=[
-                        {"indicator": "put_call_ratio", "date": "2025-03-15", "value": 1.2, "source": "yfinance_SPY"}
-                    ],
-                ):
-                    result = c.collect()
-        assert len(result) == 1
 
     def test_yfinance_none_chain_degrades_to_empty_not_crash(self, monkeypatch):
         """yfinance 가 chain.calls=None 을 주면 티어가 죽지 않고 [] — 미가드 시
@@ -335,31 +90,6 @@ class TestCBOEExtractPCR:
 
         c = CBOECollector()
         assert c._collect_yfinance_spy_pcr() == []
-
-    def test_collect_all_fail(self, monkeypatch):
-        """전면 실패는 `[]` 가 아니라 raise (#1042). 이전엔 `== []` 를 단언해 결함을 잠그고 있었다."""
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        with patch.object(c, "_collect_daily", side_effect=RuntimeError("fail")):
-            with patch.object(c, "_collect_totalpc", side_effect=RuntimeError("fail")):
-                with patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("fail")):
-                    with patch.object(c, "_collect_db_stale", side_effect=RuntimeError("fail")):
-                        with pytest.raises(RuntimeError, match="fail"):
-                            c.collect()
-
-    def test_collect_daily_returns_empty(self, monkeypatch):
-        from nuri.collectors.cboe import CBOECollector
-
-        c = CBOECollector()
-        with patch.object(c, "_collect_daily", return_value=[]):
-            with patch.object(
-                c,
-                "_collect_totalpc",
-                return_value=[{"indicator": "put_call_ratio", "date": "2025-03-15", "value": 0.8, "source": "CBOE"}],
-            ):
-                result = c.collect()
-        assert len(result) == 1
 
     def test_save(self, rich_db):
         from nuri.collectors.cboe import CBOECollector
@@ -392,7 +122,6 @@ class TestCBOEFailedVsNoData:
         c = self._collector()
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("daily down")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc down")),
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf down")),
             patch.object(c, "_collect_db_stale", side_effect=RuntimeError("db down")),
         ):
@@ -408,7 +137,6 @@ class TestCBOEFailedVsNoData:
         c = self._collector()
         with (
             patch.object(c, "_collect_daily", return_value=[]),
-            patch.object(c, "_collect_totalpc", return_value=[]),
             patch.object(c, "_collect_yfinance_spy_pcr", return_value=[]),
             patch.object(c, "_collect_db_stale", return_value=[]),
         ):
@@ -423,7 +151,6 @@ class TestCBOEFailedVsNoData:
         c = self._collector()
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("FIRST cboe daily 429")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("totalpc down")),
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("yf down")),
             patch.object(c, "_collect_db_stale", side_effect=RuntimeError("LAST db locked")),
         ):
@@ -441,8 +168,85 @@ class TestCBOEFailedVsNoData:
         stale = [{"indicator": "put_call_ratio", "date": "2026-05-12", "value": 0.9, "source": "DB_STALE"}]
         with (
             patch.object(c, "_collect_daily", side_effect=RuntimeError("down")),
-            patch.object(c, "_collect_totalpc", side_effect=RuntimeError("down")),
             patch.object(c, "_collect_yfinance_spy_pcr", side_effect=RuntimeError("down")),
             patch.object(c, "_collect_db_stale", return_value=stale),
         ):
             assert c.collect() == stale
+
+
+class TestCBOEDailyFile:
+    """CBOE 일별 통계 파일 티어 (#1739) — 네트워크는 전부 mock.
+
+    파일에는 날짜가 없어 URL 의 날짜가 곧 거래일이다. 비거래일·미발행은 403 이다.
+    """
+
+    TRADING = {"2026-10-07": "0.87", "2026-10-06": "0.82", "2026-10-02": "1.21"}
+
+    def _get(self, files):
+        def fake_get(url, headers=None, timeout=None):
+            day = url.rsplit("/", 1)[-1].split("_", 1)[0]
+            resp = MagicMock()
+            if day in files:
+                resp.status_code = 200
+                resp.json.return_value = {
+                    "ratios": [
+                        {"name": "INDEX PUT/CALL RATIO", "value": "9.99"},
+                        {"name": "TOTAL PUT/CALL RATIO", "value": files[day]},
+                    ]
+                }
+            else:
+                resp.status_code = 403
+            return resp
+
+        return fake_get
+
+    def _collect(self, files, today="2026-10-08"):
+        from nuri.collectors.cboe import CBOECollector
+
+        with (
+            patch("nuri.collectors.cboe.today_kst", return_value=today),
+            patch("nuri.collectors.cboe.requests.get", side_effect=self._get(files)),
+        ):
+            return CBOECollector()._collect_daily()
+
+    def test_rows_carry_the_trade_date_from_the_url(self):
+        """행 날짜를 `today_str()` 로 찍으면 FAIL — 파일 안에는 날짜가 없다. TOTAL 만 읽는다(INDEX 아님)."""
+        rows = self._collect(self.TRADING)
+        assert [(r["date"], r["value"], r["source"]) for r in rows] == [
+            ("2026-10-07", 0.87, "CBOE"),
+            ("2026-10-06", 0.82, "CBOE"),
+            ("2026-10-02", 1.21, "CBOE"),
+        ]
+
+    def test_no_file_in_the_window_raises_so_the_fallback_and_alert_run(self):
+        """열흘 동안 파일이 하나도 없으면 비거래일이 아니라 차단·경로 변경이다."""
+        with pytest.raises(RuntimeError, match="최근"):
+            self._collect({})
+
+    def test_files_without_the_total_ratio_raise(self):
+        from nuri.collectors.cboe import CBOECollector
+
+        resp = MagicMock(status_code=200)
+        resp.json.return_value = {"ratios": [{"name": "INDEX PUT/CALL RATIO", "value": "0.9"}]}
+        with (
+            patch("nuri.collectors.cboe.today_kst", return_value="2026-10-08"),
+            patch("nuri.collectors.cboe.requests.get", return_value=resp),
+        ):
+            with pytest.raises(ValueError, match="TOTAL PUT/CALL RATIO"):
+                CBOECollector()._collect_daily()
+
+    def test_dead_cboe_endpoints_are_gone(self):
+        import nuri.collectors.cboe as cboe_mod
+
+        assert not hasattr(cboe_mod, "CBOE_OPTIONS_URL") and not hasattr(cboe_mod, "CBOE_TOTPC_URL")
+
+    def test_cboe_failure_falls_back_to_yfinance(self):
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        spy = [{"indicator": "put_call_ratio", "date": "2026-10-08", "value": 1.2, "source": "yfinance_SPY"}]
+        with (
+            patch.object(c, "_collect_daily", side_effect=RuntimeError("403 everywhere")),
+            patch.object(c, "_collect_yfinance_spy_pcr", return_value=spy),
+        ):
+            assert c.collect() == spy
