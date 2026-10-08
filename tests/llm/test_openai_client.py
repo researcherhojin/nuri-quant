@@ -443,6 +443,23 @@ class TestChatTextTierGate:
         assert rows[0]["c"] == 0
 
 
+class TestChatJsonTierGate:
+    """`chat_json` 이 실제 호출 경로다 — 같은 게이트가 여기에도 있어야 문서의 약속이 참이다 (#1748)."""
+
+    def test_non_tier0_json_call_is_refused_before_the_sdk(self, fake_openai_success, db_path):
+        from nuri.llm.openai_client import ExternalLLMPolicyViolation, OpenAIClient
+
+        with pytest.raises(ExternalLLMPolicyViolation, match="tier2"):
+            OpenAIClient().chat_json(system="s", user="u", data_tier="tier2", db_path=db_path)
+        fake_openai_success.chat.completions.create.assert_not_called()
+
+    def test_default_json_call_is_tier0_and_sent(self, fake_openai_success, db_path):
+        from nuri.llm.openai_client import OpenAIClient
+
+        assert OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
+        fake_openai_success.chat.completions.create.assert_called_once()
+
+
 class TestChatTextContent:
     def test_returns_plain_content(self, fake_openai_text_success, db_path, monkeypatch):
         from nuri.llm.openai_client import OpenAIClient

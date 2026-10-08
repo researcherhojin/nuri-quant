@@ -164,6 +164,19 @@ class ExternalLLMPolicyViolation(ExternalLLMError):
     """
 
 
+def _require_tier0(data_tier: str) -> None:
+    """두 엔드포인트 공통 tier 게이트 — SDK 생성 전에 거부한다 (STRATEGY §4.4.3).
+
+    예전엔 `chat_text` 에만 있었고, 실제 호출이 전부 지나는 `chat_json` 에는 tier 인자조차 없었다
+    — 문서는 "게이트웨이가 거부한다" 고 적었지만 거기로 포트폴리오 데이터를 보내면 그대로 나갔다 (#1748).
+    """
+    if data_tier != "tier0":
+        raise ExternalLLMPolicyViolation(
+            f"data_tier={data_tier!r} not permitted — only public data (tier0) leaves the machine. "
+            "See STRATEGY.md §4.4.3."
+        )
+
+
 def is_disabled() -> bool:
     """True if external LLM is opted out via env var."""
     val = os.getenv("NURI_DISABLE_EXTERNAL_LLM", "").strip().lower()
@@ -237,6 +250,7 @@ class OpenAIClient:
         temperature: float = 0.0,
         max_tokens: int = 256,
         response_schema: Optional[dict] = None,
+        data_tier: str = "tier0",
         db_path: Optional[Any] = None,
     ) -> dict:
         """Call chat.completions in JSON mode and return the parsed dict.
@@ -245,10 +259,12 @@ class OpenAIClient:
         (so monitoring sees error rates too). content is never logged.
 
         Raises:
+            ExternalLLMPolicyViolation: data_tier is anything but 'tier0'.
             ExternalLLMDisabled: opt-out via env var
             ExternalLLMUnavailable: network/auth/SDK install failure
             ExternalLLMResponseError: API returned 200 but body was unparseable
         """
+        _require_tier0(data_tier)
         sdk = self._ensure_sdk()  # may raise ExternalLLMDisabled / Unavailable
         chosen_model = model or self.default_model
         endpoint = "chat.completions"
@@ -362,11 +378,7 @@ class OpenAIClient:
             ExternalLLMDisabled: opt-out via NURI_DISABLE_EXTERNAL_LLM=1
             ExternalLLMUnavailable: network/auth/SDK install failure
         """
-        if data_tier != "tier0":
-            raise ExternalLLMPolicyViolation(
-                f"data_tier={data_tier!r} not permitted — only public data (tier0) leaves the machine. "
-                "See STRATEGY.md §4.4.3."
-            )
+        _require_tier0(data_tier)
 
         sdk = self._ensure_sdk()
         chosen_model = model or self.default_model
