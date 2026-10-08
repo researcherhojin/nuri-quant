@@ -641,7 +641,7 @@ Deferred (필요 시점에 추가):
 **Acceptance criterion**:
 
 - Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/dev/llm_consult.py` 양쪽에 wired.
-- Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (gpt-5.4-nano vs gpt-5.4 cloud cost-quality tradeoff).
+- Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (분류 `gpt-6-luna` vs 상위 모델 cost-quality tradeoff — 2026-10-08 nano→luna 교체는 이 측정 없이 단가·세대 근거로 했다, #1737).
 - ✅ Phase 3 (2026-08-13, #1038): nuri-specific eval suite — `config/eval/thesis_prompts.yaml` 동결 프롬프트 **50개**(v1 10 + 적대적 40, 계열 a-j), `thesis_query` 경로 한정. 1차 지표는 `unsafe_price_level`(가격 레벨 날조/유령), 2차는 IFEval 계열 지시준수. LLM judge 를 쓰지 않는다 — 판정자가 흔들리면 A/B 가 무의미하다.
   - **한계 (과잉 인용 금지)**: 프롬프트가 합성·자작이라 외적 타당성이 없고, 투자 판단의 옳고 그름을 재지 않는다(정답 레이블 없음). 프롬프트당 1회만 돌리므로 잡음 바닥이 미측정이다 — `temperature=0.0` 인데도 같은 프롬프트가 런마다 다른 답을 낸 사례가 있다. 다음 스왑 전에 k회 반복을 붙일 것.
 
