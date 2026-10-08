@@ -6,6 +6,7 @@ import { TICKER_PREVIEW as T } from "@/lib/strings";
 import styles from "./ticker.module.css";
 
 const keys = ["brief", "evidence", "research", "history"];
+
 // pushState 는 popstate 를 내지 않으므로 탭 선택 뒤 이 이벤트로 구독자를 깨운다.
 const TAB_EVENT = "nuri:ticker-tab";
 
