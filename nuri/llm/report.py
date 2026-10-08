@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # ─── Local backends (portfolio data never leaves the machine) ───
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "")  # empty = disabled
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.5")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.8:27b")
 LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")  # GGUF path
 
 DISCLAIMER = (

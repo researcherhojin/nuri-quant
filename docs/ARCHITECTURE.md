@@ -254,7 +254,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise:
 - `DISCORD_WEBHOOK_URL`: daily report (optional; stdout fallback)
 - `DISCORD_TOKEN`: bot-mode alerts (optional)
 - `FINNHUB_API_KEY`: US institutional flows (optional)
-- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (optional; `OLLAMA_HOST` unset disables it and must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.5`)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (optional; `OLLAMA_HOST` unset disables it and must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.8:27b`)
 - `NURI_DB_PATH`: SQLite DB location override (optional; default `data/portfolio.db`)
 - `DASHBOARD_PASSWORD`: Next.js auth (optional; unset means public)
 - `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID`: Telegram alerts (optional)
