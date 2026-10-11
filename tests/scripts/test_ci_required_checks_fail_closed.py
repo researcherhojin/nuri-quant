@@ -43,7 +43,7 @@ REQUIRED_CHECKS = {
     "package-lock.json Major Boundary",
     "Local-LLM Build Gate",
     "Quick Checks",
-    # 아직 required 가 아니다(shadow, #1766) — 보호 규칙에 들어가기 전부터 같은 기준으로 감사한다
+    # #1766 — 2026-10-12 보호 규칙에 등록 (shadow 단계부터 같은 기준으로 감사해 왔다)
     "Patch Coverage",
 }
 
