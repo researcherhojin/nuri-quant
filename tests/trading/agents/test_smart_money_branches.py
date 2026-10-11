@@ -178,6 +178,41 @@ class TestSmartMoneyBranches:
         assert "ARK 최근 매수 3건" in v.reasoning
 
 
+class TestNewSuperinvestorPosition:
+    """최근 13F 에서 **처음** 담은 종목만 '신규 매수' 다 — 직전 제출분이 있어야 '처음' 을 말할 수 있다."""
+
+    def _filing(self, conn, investor, ticker, days_ago):
+        conn.execute(
+            "INSERT INTO superinvestors (investor, ticker, portfolio_pct, filing_date, investor_class) "
+            "VALUES (?, ?, ?, ?, 'conviction')",
+            (investor, ticker, 2.0, _d(days_ago)),
+        )
+
+    def test_position_absent_from_the_previous_filing_scores_as_new(self, db_path):
+        with get_db(db_path) as conn:
+            self._filing(conn, "Fund A", "OTHER", 120)
+            self._filing(conn, "Fund A", "NEWPOS", 30)
+        v = SmartMoneyAgent().analyze("NEWPOS", db_path=db_path)
+        assert "최근 신규 매수: Fund A" in v.reasoning
+        assert v.data_points["score"] == 2  # 보유 1 + 신규 1
+
+    def test_position_already_held_last_filing_is_not_new(self, db_path):
+        with get_db(db_path) as conn:
+            self._filing(conn, "Fund A", "HELDPOS", 120)
+            self._filing(conn, "Fund A", "HELDPOS", 30)
+        v = SmartMoneyAgent().analyze("HELDPOS", db_path=db_path)
+        assert "최근 신규 매수" not in v.reasoning
+        assert v.data_points["score"] == 1
+
+    def test_first_ever_filing_is_not_called_new(self, db_path):
+        """직전 제출분이 없으면 신규인지 모른다 — 수집 첫날 전 종목이 '신규 매수' 가 되지 않게."""
+        with get_db(db_path) as conn:
+            self._filing(conn, "Fund B", "FIRSTPOS", 30)
+        v = SmartMoneyAgent().analyze("FIRSTPOS", db_path=db_path)
+        assert "최근 신규 매수" not in v.reasoning
+        assert v.data_points["score"] == 1
+
+
 class TestSourceFreshnessSuppression:
     """#1187: source 별 신선도 억제 — 낡은 소스는 점수 0 + '낡음 — 제외' 명시.
 

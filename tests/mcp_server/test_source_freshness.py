@@ -193,6 +193,14 @@ class TestFreshness:
         assert out["stale"] is True
         assert out["stale_reasons"] == ["source file missing"]
 
+    def test_unparseable_date_is_stale_not_raised(self, tmp_path):
+        """날짜 형식이 틀어진 행은 나이를 잴 수 없다 — 예외로 도구를 죽이지도, 신선하다고 넘기지도 않는다."""
+        db = _seed(tmp_path / "r.db", "2026/10/06", run=TODAY.isoformat())
+        out = source.freshness(source.Source(db, "replica"), now=NOW)
+        assert out["stale"] is True
+        assert out["stale_reasons"] == ["unparseable VIX date '2026/10/06'"]
+        assert out["latest"]["vix_date"] == "2026/10/06"
+
     def test_response_carries_no_path(self, tmp_path):
         db = _seed(tmp_path / "portfolio_host-Macmini.db", TODAY.isoformat())
         out = source.freshness(source.Source(db, "replica"), now=NOW)
@@ -213,3 +221,49 @@ class TestServerReadsTheResolvedSource:
         assert server.macro_facts()["vix"]["date"] == "2026-09-15"
         assert server.buy_candidates()["run"]["run_date"] == "2026-09-15"
         assert server.data_freshness()["source"] == "replica"
+
+
+@pytest.fixture()
+def stdio_runs(monkeypatch):
+    """`MCPServer.run` 을 클래스에서 대역으로 — 실제 stdio 루프(stdin 대기) 대신 transport 만 기록한다."""
+    from mcp.server.mcpserver import MCPServer
+
+    transports: list = []
+    monkeypatch.setattr(MCPServer, "run", lambda self, transport=None, **kwargs: transports.append(transport))
+    return transports
+
+
+class TestServerStartup:
+    """기동 시 낡은 출처·미적용 마이그레이션을 stderr 로 알리되, 서버는 그래도 stdio 로 뜬다 —
+    조용히 뜨면 낡은 답이 현재처럼 읽히고, 기동을 막으면 data_freshness 로 그 사실조차 못 묻는다."""
+
+    def test_fresh_current_source_starts_without_warnings(self, tmp_path, monkeypatch, capsys, stdio_runs):
+        from nuri.core.timezone import today_kst
+        from nuri.mcp import server
+
+        db = _seed(tmp_path / "replica.db", today_kst(), mtime=time.time())
+        monkeypatch.setattr(source, "resolve_source", lambda *a, **k: source.Source(db, "replica"))
+        server.main()
+        assert capsys.readouterr().err == ""
+        assert stdio_runs == ["stdio"]
+
+    def test_missing_replica_warns_about_both_and_still_starts(self, tmp_path, monkeypatch, capsys, stdio_runs):
+        from nuri.core.db_migrations import _MIGRATIONS
+        from nuri.mcp import server
+
+        monkeypatch.setattr(source, "resolve_source", lambda *a, **k: source.Source(tmp_path / "gone.db", "replica"))
+        server.main()
+        err = capsys.readouterr().err
+        assert "[nuri-read] 경고: 출처(replica)가 낡았다 — source file missing" in err
+        assert f"[nuri-read] 경고: 스키마 0/{len(_MIGRATIONS)} — 마이그레이션 미적용 DB" in err
+        assert stdio_runs == ["stdio"]
+        assert not (tmp_path / "gone.db").exists(), "read-only 프로브가 빈 DB 를 만들면 안 된다"
+
+
+def test_module_entry_point_starts_the_stdio_server(tmp_path, monkeypatch, stdio_runs):
+    """`python -m nuri.mcp.server` (`.mcp.json` 의 기동 경로) 가 main() 을 부른다."""
+    import runpy
+
+    monkeypatch.setattr(source, "resolve_source", lambda *a, **k: source.Source(tmp_path / "gone.db", "replica"))
+    runpy.run_module("nuri.mcp.server", run_name="__main__")
+    assert stdio_runs == ["stdio"]

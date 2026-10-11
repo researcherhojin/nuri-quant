@@ -90,6 +90,27 @@ class TestFxCalibrationNullRows:
             _CFG.get("fx_strong_default", 1250),
         )
 
+    def test_connection_failure_falls_back_to_defaults_with_or_without_a_sink(self, db_path, monkeypatch):
+        """DB 연결 실패는 기본 임계로 — 실패 기록처를 준 호출자(agent)에게만 실패를 알린다 (#1446).
+
+        기록처 없이 부르는 기본 인자 호출도 예외 없이 기본값을 받아야 한다. 대역은 연결 단계의
+        sqlite OperationalError 를 흉내 낸다 (`sqlite3.connect()` 가 DB 파일을 못 열 때의 형태).
+        쿼리 단계 실패는 pandas 가 `pandas.errors.DatabaseError` 로 감싸 이 핸들러를 빠져나간다 (#1754).
+        """
+        from nuri.core.db import OperationalError
+        from nuri.trading.agents.korean_market import _CFG, _calibrate_fx_thresholds
+
+        def cannot_connect(*args, **kwargs):
+            raise OperationalError("unable to open database file")
+
+        monkeypatch.setattr("nuri.trading.agents.korean_market.query_df", cannot_connect)
+        defaults = (_CFG.get("fx_weak_default", 1400), _CFG.get("fx_strong_default", 1250))
+
+        assert _calibrate_fx_thresholds(db_path) == defaults
+        failures: list = []
+        assert _calibrate_fx_thresholds(db_path, failures=failures) == defaults
+        assert failures == ["fx_calibration"]
+
     def test_non_finite_fx_foreign_momentum_inputs_are_dropped(self, db_path, monkeypatch):
         """fx_rate=NaN, foreign_net=inf, momentum=NaN 이 각각 판정과 data_points 로 새지 않는다 (Codex P2)."""
         from nuri.trading.agents.korean_market import KoreanMarketAgent
@@ -212,6 +233,26 @@ class TestKoreanMarketFullBranches:
                 )
         v = KoreanMarketAgent().analyze("005930.KS", db_path=db_path)
         assert "모멘텀" in v.reasoning
+
+    def test_every_input_bearish_is_a_sell(self, db_path):
+        """원화약세 내수주 + 외국인 순매도 + 20일 모멘텀 부진 → 점수가 매도 임계 아래 — SELL."""
+        from nuri.trading.agents.korean_market import KoreanMarketAgent
+
+        ticker = "123456.KS"
+        self._setup_kr_base(db_path, ticker=ticker, sector="Retail", fx=1420.0)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO institutional_flows (ticker, date, market, foreign_net) VALUES (?, ?, ?, ?)",
+                (ticker, "2025-03-25", "KOSPI", -30000),
+            )
+            for i in range(21):
+                conn.execute(
+                    "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (ticker, f"2025-03-{i + 1:02d}", 70000, 71000, 69000, 70000 - i * 500, 100000),
+                )
+        v = KoreanMarketAgent().analyze(ticker, db_path=db_path)
+        assert v.action == "SELL"
+        assert "내수주 부담" in v.reasoning and "외국인 순매도" in v.reasoning and "모멘텀" in v.reasoning
 
 
 class TestKoreanAgent:

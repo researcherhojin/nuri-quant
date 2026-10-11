@@ -511,6 +511,20 @@ class TestEventsDefensivePaths:
         # decode 실패 → payload 가 raw string 그대로
         assert events[0]["payload"] == "not-valid-json{"
 
+    def test_get_timeline_keeps_a_legacy_unparseable_payload_raw(self, db_path):
+        """#935 이전 writer 가 남긴 비-JSON 행 — 타임라인 전체를 죽이지 않고 그 행만 원문으로 낸다."""
+        from nuri.core.db.connection import get_db
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                """INSERT INTO pipeline_events (event_type, step, payload)
+                   VALUES (?, ?, ?)""",
+                ("step_failed", "collect", "skipped"),
+            )
+        emit_event("step_completed", "collect", payload={"rows": 3}, db_path=db_path)
+
+        assert [e["payload"] for e in get_timeline(db_path=db_path)] == [{"rows": 3}, "skipped"]
+
 
 # ═══════════════════════════════════════════════════════
 # payload 는 항상 유효 JSON (#935)

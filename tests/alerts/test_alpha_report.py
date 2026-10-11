@@ -151,6 +151,63 @@ class TestBriefContract:
         line = alpha_report.format_progress_reason(_report(evaluation_date="not-a-date"))
         assert "D-" not in line and "경과" not in line
 
+    # n=1 이면 median_split_means 가 전반을 비우고 후반만 잰다 — 한쪽만 측정된 실제 모양은 이것뿐이다
+    @pytest.mark.parametrize("halves", [None, {"h1_n": 0, "h1_mean": None, "h2_n": 1, "h2_mean": 0.010}])
+    def test_halves_are_omitted_until_both_are_measured(self, halves):
+        """전·후반 중 하나라도 미측정이면 halves 항목만 뺀다 — 0 으로 메우지 않고, 나머지 조건은 그대로 낸다."""
+        line = alpha_report.format_progress_reason(_report(halves=halves))
+        assert "halves" not in line
+        assert "mean +1.23%p" in line and "조건 3/3 충족" in line
+
+
+class TestStagingEdges:
+    """stage 경로의 부가 단계가 본 단계(월간 리포트 stage)를 막거나 거짓 보고하지 않는다."""
+
+    @pytest.fixture()
+    def prod_db(self, monkeypatch, tmp_path):
+        from nuri.core.db import init_db
+
+        db = tmp_path / "t.db"
+        init_db(db)
+        monkeypatch.setenv("NURI_ROLE", "production")
+        return db
+
+    def test_seal_head_lookup_failure_still_stages_the_report(self, prod_db, caplog):
+        """봉인 머리는 부가 정보(#1718) — 조회가 실패해도 리포트는 앵커 없이 나간다."""
+        import logging
+
+        with (
+            patch.object(alpha_report, "build_progress_report", return_value=_report()),
+            patch("nuri.core.db.ledger_seal.latest_seal", side_effect=RuntimeError("database is locked")),
+            patch("nuri.agents.discord.outbox.stage_brief", return_value=7) as staged,
+            caplog.at_level(logging.WARNING, logger="nuri.alerts.alpha_report"),
+        ):
+            assert alpha_report.stage_alpha_progress_brief(db_path=prod_db) == 7
+        assert "봉인" not in staged.call_args.kwargs["payload"]["reason"]
+        assert "봉인 머리 조회 실패" in caplog.text
+
+    def test_a_concurrent_stage_is_not_reported_as_ours(self, prod_db, caplog):
+        """이번 달 확인과 stage 사이에 다른 실행(스케줄러 job ↔ CLI)이 같은 달을 먼저 올리면 outbox 의
+        pending dedupe 가 None 을 돌려준다 — 그때 staged 로그 없이 None 을 내고 행을 겹쳐 만들지 않는다."""
+        import logging
+
+        from nuri.core.db import get_db, query
+
+        with get_db(prod_db) as conn:
+            conn.execute(
+                "INSERT INTO discord_outbox (channel, payload_json, dedupe_key, status) VALUES (?,?,?,?)",
+                ("brief", "{}", "alpha-progress:2026-08", "pending"),
+            )
+        with (
+            patch.object(alpha_report, "already_emitted", return_value=False),  # 확인 시점엔 아직 없었다
+            patch.object(alpha_report, "build_progress_report", return_value=_report()),
+            caplog.at_level(logging.INFO, logger="nuri.alerts.alpha_report"),
+        ):
+            assert alpha_report.stage_alpha_progress_brief(db_path=prod_db, as_of="2026-08-01") is None
+        assert "staged" not in caplog.text
+        rows = query("SELECT status FROM discord_outbox WHERE dedupe_key = 'alpha-progress:2026-08'", db_path=prod_db)
+        assert rows == [{"status": "pending"}]
+
 
 class TestMonthlyOnce:
     """월 1회 보장은 cron 이 아니라 already_emitted() 가 한다."""

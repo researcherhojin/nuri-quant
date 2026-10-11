@@ -848,6 +848,25 @@ def test_draft_thesis_counts_as_absent(db, cfg_path):
     assert res.candidates[0].thesis is None
 
 
+def test_thesis_lookup_failure_still_emits_without_a_label(db, cfg_path, monkeypatch):
+    """논지 조회 실패는 표면화 실패일 뿐 — 후보를 막지 않고 라벨만 비운다 (#894 관측 비게이트).
+
+    active 논지가 있는데도 None 이므로, 비어 있는 이유는 부재가 아니라 조회 실패다.
+    """
+    from nuri.core.db import thesis_ops
+
+    _seed_calm_setup(db)
+    _register_thesis(db, "AAPL", status="active")
+
+    def store_down(*args, **kwargs):
+        raise RuntimeError("thesis store unavailable")
+
+    monkeypatch.setattr(thesis_ops, "get_active_thesis", store_down)
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates, f"blocked_reason={res.blocked_reason}"
+    assert res.candidates[0].thesis is None
+
+
 # --- Read-only evaluation (#1683) -------------------------------------------
 # `/api/opportunities` 가 자체 임계로 판정을 지어내지 않고 이 채점 결과를 그대로 보여준다.
 

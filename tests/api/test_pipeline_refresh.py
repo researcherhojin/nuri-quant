@@ -116,6 +116,114 @@ def test_job_literal_matches_the_catalog():
     assert refresh.JOB_IDS == frozenset(refresh.JOBS)
 
 
+@pytest.fixture
+def job_calls(monkeypatch):
+    """작업 대상 전부(수집기 5종 + 종합 분석)를 대역으로 — 어느 키가 어느 대상을 불렀는지 기록한다.
+
+    전부 바꿔 두어야 키가 엉뚱한 수집기로 새는 회귀가 실제 외부 호출 대신 기록 불일치로 드러난다.
+    """
+    import nuri.collectors.fundamental as fundamental
+    import nuri.collectors.macro as macro
+    import nuri.collectors.stock as stock
+    import nuri.collectors.stock_kr as stock_kr
+    import nuri.collectors.technical as technical
+    import nuri.quant.factors.composite as composite
+
+    calls: list = []
+
+    def fake(name, rows):
+        class Fake:
+            def run(self, **kwargs):
+                calls.append((name, kwargs))
+                return rows
+
+        return Fake
+
+    monkeypatch.setattr(stock, "StockCollector", fake("stock", 5))
+    monkeypatch.setattr(stock_kr, "StockKRCollector", fake("stock_kr", None))  # 행 수를 보고하지 않는 run
+    monkeypatch.setattr(macro, "MacroCollector", fake("macro", 7))
+    monkeypatch.setattr(technical, "TechnicalCollector", fake("technical", 11))
+    monkeypatch.setattr(fundamental, "FundamentalCollector", fake("fundamental", 13))
+    scores = object()
+    monkeypatch.setattr(composite, "compute_composite", lambda: calls.append(("compute_composite", {})) or scores)
+    monkeypatch.setattr(composite, "save_composite", lambda df: calls.append(("save_composite", {"df": df})) or 17)
+    return calls, scores
+
+
+@pytest.mark.parametrize(
+    ("job", "expected_calls", "rows"),
+    [
+        # 미국·한국 둘 다, 보유·관심 전체(source=all) — 한쪽이 None 을 돌려도 합산이 죽지 않는다
+        ("prices", [("stock", {"source": "all"}), ("stock_kr", {"source": "all"})], 5),
+        ("macro", [("macro", {})], 7),
+        ("technical", [("technical", {"source": "all"})], 11),
+        ("fundamentals", [("fundamental", {"source": "all"})], 13),
+    ],
+)
+def test_each_job_reaches_only_its_own_collector(job_calls, job, expected_calls, rows):
+    calls, _ = job_calls
+    assert refresh._execute(job) == rows
+    assert calls == expected_calls
+
+
+def test_factors_job_saves_exactly_what_it_just_computed(job_calls):
+    calls, scores = job_calls
+    assert refresh._execute("factors") == 17
+    assert calls == [("compute_composite", {}), ("save_composite", {"df": scores})]
+
+
+def test_unknown_job_is_refused_without_touching_any_collector(job_calls):
+    calls, _ = job_calls
+    with pytest.raises(ValueError, match="unsupported refresh job"):
+        refresh._execute("decide")
+    assert calls == []
+
+
+def test_event_journal_failure_does_not_fail_the_refresh(monkeypatch, caplog):
+    """관측이 본 작업을 막으면 안 된다 (#894) — 작업 이벤트 기록이 죽어도 갱신은 완료로 끝난다."""
+    import logging
+
+    def journal_down(*args, **kwargs):
+        raise DatabaseError("database is locked")
+
+    monkeypatch.setattr(refresh, "emit_event", journal_down)
+    monkeypatch.setattr(refresh, "_execute", lambda key: 1)
+    run = refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
+    assert run is not None
+    with caplog.at_level(logging.WARNING, logger=refresh.__name__):
+        refresh._run_refresh(run["id"], ["macro"])
+    state = refresh.get_refresh()["run"]
+    assert state["status"] == "completed"
+    assert [job["status"] for job in state["jobs"]] == ["completed"]
+    assert "dashboard refresh 이벤트 기록 실패: refresh_job_started macro" in caplog.text
+
+
+def test_abandoning_a_run_skips_only_jobs_that_never_started(monkeypatch):
+    """회수는 queued 작업만 skipped 로 닫는다 — 이미 결과가 난 작업의 상태를 덮어쓰지 않는다.
+
+    지금의 상태 기계에서 queued 실행은 queued 작업만 갖는다(작업 상태는 running 전환 뒤에야 바뀐다).
+    그래서 이 조합은 상태를 직접 만들어 잠근다.
+    """
+    from datetime import timedelta
+
+    stale = (refresh.kst_now() - timedelta(seconds=refresh.QUEUE_GRACE_SECONDS + 1)).isoformat()
+    monkeypatch.setattr(
+        refresh,
+        "_state",
+        {
+            "id": "stale-run",
+            "status": "queued",
+            "started_at": stale,
+            "finished_at": None,
+            "jobs": [{"id": "prices", "status": "completed"}, {"id": "technical", "status": "queued"}],
+            "permit": False,
+        },
+    )
+    state = refresh.get_refresh()["run"]
+    assert state["status"] == "abandoned"
+    assert [job["status"] for job in state["jobs"]] == ["completed", "skipped"]
+
+
 def test_abandoned_queued_run_returns_its_permit_and_unblocks_the_next_request(monkeypatch):
     """Codex #1658 r2 P1: 응답 send 가 예외로 끝나면 Starlette 가 BackgroundTasks 를 돌리지 않는다 — 접수 때
     잡은 slot 이 영영 남아 재시작 전까지 409 만 돌려주던 경로. 유예(QUEUE_GRACE_SECONDS) 뒤 회수한다."""

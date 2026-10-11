@@ -102,3 +102,30 @@ class TestExternalAPI_R22:
         assert resp.status_code == 200
         data = resp.json()
         assert data["saved"] == 1
+
+    def test_unparseable_research_details_are_not_republished(self, _client, db_path):
+        """company_research 의 details 가 깨졌으면 원문을 그대로 흘리지 않는다 — 공개 dossier 필터를
+        거칠 수 없는 값은 빈 dossier 로 바꾼다."""
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO external_analysis (date, source, ticker, data_type, details) VALUES (?, ?, ?, ?, ?)",
+                ("2026-01-01", "yahoo_finance", "DEMO", "company_research", "PRIVATE RAW BODY {"),
+            )
+        resp = _client.get("/api/external/demo")
+        assert resp.status_code == 200
+        assert [item["details"] for item in resp.json()["data"]] == ["{}"]
+
+    def test_rejected_write_is_reported_and_leaves_no_audit_row(self, _client, db_path):
+        """저장이 거부되면(미등록 소스) ok=False 이고 감사 로그에 쓰기 흔적을 남기지 않는다."""
+        from nuri.core.db import query
+
+        def audit_rows():
+            return query("SELECT ticker FROM audit_log WHERE table_name = 'external_analysis'", db_path=db_path)
+
+        body = {"ticker": "demo", "data_type": "consensus", "value": "Buy"}
+        assert _client.post("/api/external", json={"source": "tipranks", **body}).json() == {"ok": True}
+        assert audit_rows() == [{"ticker": "DEMO"}]
+
+        assert _client.post("/api/external", json={"source": "not_a_source", **body}).json() == {"ok": False}
+        assert audit_rows() == [{"ticker": "DEMO"}]
+        assert query("SELECT source FROM external_analysis", db_path=db_path) == [{"source": "tipranks"}]

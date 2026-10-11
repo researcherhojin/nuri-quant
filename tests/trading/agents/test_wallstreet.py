@@ -55,6 +55,76 @@ class TestWallStreetCachedBranches:
         v = WallStreetAgent().analyze("CACHED2", db_path=db_path)
         assert v.action == "SELL"
 
+    @staticmethod
+    def _recent(days_ago: int) -> str:
+        return (kst_now() - timedelta(days=days_ago)).date().isoformat()
+
+    def _seed_earnings_beat(self, conn, ticker):
+        """기준점 +1 — 실적 서프라이즈 한 건. 이 항목은 매번 reasoning 에 남는다."""
+        conn.execute(
+            "INSERT INTO earnings_surprises (ticker, quarter, surprise_pct) VALUES (?, ?, ?)",
+            (ticker, kst_now().date().isoformat(), 0.10),
+        )
+
+    def test_cached_balanced_rating_changes_do_not_score(self, db_path):
+        """상향·하향이 맞서면(차이 ≤ 1) 등급 축은 점수도 근거도 내지 않는다 — 읽기는 했다.
+
+        점수는 action 으로만 드러나서(BUY ≥ 2 · SELL ≤ −1) 기준점 둘에서 HOLD 를 본다 — 실적 +1 만
+        있으면 숨은 +1 이 BUY 로, 내부자 매도 −1 을 더한 0 이면 숨은 −1 이 SELL 로 뒤집힌다.
+        """
+        from nuri.trading.agents.wallstreet import _CFG, WallStreetAgent
+
+        over_margin = _CFG.get("insider_sell_margin", 3) + 1
+        # 날짜는 한 번만 잰다 — 자정(KST)을 넘겨 다시 재면 시드와 기대값이 하루 어긋난다
+        dates = {days_ago: self._recent(days_ago) for days_ago in range(3, 6 + over_margin)}
+        for ticker, sale_days in (("CACHED3", ()), ("CACHED3Z", range(6, 6 + over_margin))):
+            with get_db(db_path) as conn:
+                for days_ago, action in ((3, "upgrade"), (5, "downgrade")):
+                    conn.execute(
+                        "INSERT INTO analyst_ratings (ticker, date, action, target_price) VALUES (?, ?, ?, ?)",
+                        (ticker, dates[days_ago], action, 100.0),
+                    )
+                self._seed_earnings_beat(conn, ticker)
+                for days_ago in sale_days:
+                    conn.execute(
+                        "INSERT INTO insider_trades (ticker, date, transaction_type, shares, value) VALUES (?, ?, ?, ?, ?)",
+                        (ticker, dates[days_ago], "sale", 100, 1000),
+                    )
+            v = WallStreetAgent()._check_cached(ticker, db_path=db_path)
+            assert v is not None
+            assert "등급" not in v.reasoning and "실적" in v.reasoning
+            assert ("내부자매도" in v.reasoning) == bool(sale_days)  # 기준점이 실제로 0 으로 내려갔는가
+            assert v.data_points["source_dates"]["ratings"] == dates[3]
+            assert v.action == "HOLD", ticker
+
+    def test_cached_insider_selling_within_the_margin_does_not_score(self, db_path):
+        """매도가 매수 + margin 을 넘지 않으면 내부자 축은 점수도 근거도 내지 않는다 — 읽기는 했다.
+
+        기준점 둘은 위 등급 테스트와 같은 이유다 — 0 쪽의 −1 은 하향 2건(등급↓)이 만든다.
+        """
+        from nuri.trading.agents.wallstreet import WallStreetAgent
+
+        dates = {days_ago: self._recent(days_ago) for days_ago in (3, 4, 6, 7)}  # 한 번만 — 위와 같은 이유
+        for ticker, downgrade_days in (("CACHED4", ()), ("CACHED4Z", (6, 7))):
+            with get_db(db_path) as conn:
+                for days_ago in (3, 4):
+                    conn.execute(
+                        "INSERT INTO insider_trades (ticker, date, transaction_type, shares, value) VALUES (?, ?, ?, ?, ?)",
+                        (ticker, dates[days_ago], "sale", 100, 1000),
+                    )
+                self._seed_earnings_beat(conn, ticker)
+                for days_ago in downgrade_days:
+                    conn.execute(
+                        "INSERT INTO analyst_ratings (ticker, date, action, target_price) VALUES (?, ?, ?, ?)",
+                        (ticker, dates[days_ago], "downgrade", 100.0),
+                    )
+            v = WallStreetAgent()._check_cached(ticker, db_path=db_path)
+            assert v is not None
+            assert "내부자" not in v.reasoning and "실적" in v.reasoning
+            assert ("등급↓" in v.reasoning) == bool(downgrade_days)  # 기준점이 실제로 0 으로 내려갔는가
+            assert v.data_points["source_dates"]["insiders"] == dates[3]
+            assert v.action == "HOLD", ticker
+
 
 class TestWallStreetSkip:
     """스킵 대상 종목 테스트."""
