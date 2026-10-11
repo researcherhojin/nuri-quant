@@ -131,7 +131,7 @@ banner "Doc Count Sync"
 # .claude/rules/architecture.md 는 사이트에서 제외됨 — always-loaded 파일에서
 # 인벤토리/카운트를 걷어냈다. verify_doc_counts.sh 의 같은 주석 참조.
 update_claim live_collectors     nuri/collectors/CLAUDE.md     '[0-9]+ Data Collectors'
-update_claim live_collectors     README.md                     '[0-9]+ collectors \(BaseCollector'
+update_claim live_collectors     README.md                     '[0-9]+ collector modules in'
 
 # Endpoints (3 sites)
 update_claim live_endpoints      docs/ARCHITECTURE.md          '## API \([0-9]+ endpoints\)'
@@ -166,7 +166,7 @@ update_claim live_scheduler_jobs docs/ARCHITECTURE.md          '[0-9]+ cron jobs
 # README 는 같은 수치를 세 군데 적는데 (다이어그램 · 산문 · Project Stats) 전부 미등록이라
 # 셋 다 48 로 굳어 있었다 — 2026-08-03 실측, 실제 49. verify 쪽과 패턴을 맞춰 둘 것.
 update_claim live_scheduler_jobs README.md                     '[0-9]+ cron jobs · in-process'
-update_claim live_scheduler_jobs README.md                     '[0-9]+ independent APScheduler jobs'
+update_claim live_scheduler_jobs README.md                     '[0-9]+ independent cron jobs'
 update_claim live_scheduler_jobs README.md                     '[0-9]+ cron entries'
 update_claim live_rules_lines    config/CLAUDE.md              '\| [0-9]+ \| Investment rules'
 

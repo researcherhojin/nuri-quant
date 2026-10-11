@@ -1,6 +1,6 @@
 # nuri/trading/engine/ — Decision engine
 
-What lives here after the SIEGE certification layer was retired (STRATEGY §6, #1619): the decision record (`decisions.py`, `record_decisions()` — the in-memory hand-off from the consensus job), the hard-veto and symmetric-amplifier gates (`gate.py`, `amplifier_gate.py`, STRATEGY §2.6), BUY/SELL conflict detection (`conflicts.py`), learning memory (`memory.py`) and the thesis verdict roll-up (`thesis_criteria.py`). Canonical specs live elsewhere — this file documents only what is specific to this directory's implementation.
+What lives here after the SIEGE certification layer was retired (STRATEGY §6, #1619): the decision record (`decisions.py`, `record_decisions()` — the in-memory hand-off from the consensus job), the data-readiness gate that checks a phase's required data exists (`gate.py`, `REQUIRED_BY_PHASE`), the symmetric-amplifier gate (`amplifier_gate.py`, STRATEGY §2.6 — a shadow skeleton no production code calls, off via `symmetric_amplifier.enabled: false`), BUY/SELL conflict detection (`conflicts.py`), learning memory (`memory.py`) and the thesis verdict roll-up (`thesis_criteria.py`). Canonical specs live elsewhere — this file documents only what is specific to this directory's implementation.
 
 ## Canonical references
 

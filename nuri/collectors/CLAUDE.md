@@ -2,7 +2,7 @@
 
 ## BaseCollector Contract
 
-All collectors inherit `BaseCollector` (`base.py`):
+Collector classes inherit `BaseCollector` (`base.py`) — every one the scheduler dispatches, and on-demand ones such as `CompanyResearchCollector`. Some modules here are plain helpers with no collector class (e.g. `toss.py`, `filings.py`, `briefing_sources.py`). A collector class:
 
 1. Implement `collect(**kwargs) -> Any` — fetch data from external source
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db/` package functions

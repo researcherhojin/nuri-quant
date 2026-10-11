@@ -15,6 +15,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README = REPO_ROOT / "README.md"
 
@@ -123,6 +125,29 @@ class TestShortDescription:
 
 MERMAID = re.compile(r"```mermaid\n(.*?)```", re.S)
 
+# 엣지 문법 — 이 레포 다이어그램이 쓰는 형태만 읽는다: 사슬(`A --> B --> C`), 그룹(`A & B --> C`),
+# `-->` · `==>` · `-.->` 와 뒤에 붙는 `|라벨|`(앞 공백 허용). 화살표처럼 보이는데 이 문법에 안 맞는
+# 줄(`A -- 글 --> B`, 인라인 노드 정의 등)은 **실패시킨다** — 못 읽은 줄을 건너뛰면 그 줄의 화살표가
+# 조용히 검사에서 빠진다 (codex 리뷰: `& CON` 그룹이 통과했고, `--> |라벨|` 은 오탐났다).
+_GROUP = r"\w+(?:\s*&\s*\w+)*"
+_LINK = r"(?:-->|==>|-\.->)(?:\s*\|[^|]*\|)?"
+_EDGE_LINE = re.compile(rf"^\s*{_GROUP}(?:\s*{_LINK}\s*{_GROUP})+\s*$")
+_LINKISH = re.compile(r"--|==|-\.|\.-|~~~")
+
+
+def _edges(diagram: str) -> list[tuple[str, str]]:
+    edges: list[tuple[str, str]] = []
+    for line in diagram.splitlines():
+        bare = re.sub(r'"[^"]*"', '""', line)  # 따옴표 라벨 안의 글자는 화살표가 아니다
+        if not _LINKISH.search(bare):
+            continue
+        assert _EDGE_LINE.match(bare), f"읽을 수 없는 엣지 줄 — 파서를 넓히기 전엔 통과시키지 않는다: {line.strip()!r}"
+        groups = [re.findall(r"\w+", g) for g in re.split(_LINK, bare)]
+        for left, right in zip(groups, groups[1:]):
+            edges += [(a, b) for a in left for b in right]
+    return edges
+
+
 # 아키텍처 상세 다이어그램 3개는 #1595 에서 ARCHITECTURE 로 옮겼다. 테마 규칙은 GitHub 이
 # 렌더하는 모든 마크다운에 똑같이 적용되므로 두 파일을 같이 본다.
 ARCHITECTURE = REPO_ROOT / "docs" / "ARCHITECTURE.md"
@@ -183,10 +208,11 @@ class TestMermaidRendersInBothThemes:
         각 다이어그램이 답하는 질문을 **이름으로** 고정한다. 개수만 세면 어느 것이
         사라졌는지 알 수 없고, 개수를 맞추려고 아무거나 넣어도 통과한다.
         """
-        # README 는 개요 하나만, 상세 셋은 ARCHITECTURE 에 (#1595).
+        # README 는 개요 하나만, 상세는 ARCHITECTURE 에 (#1595). System Flow 는 #1770.
         placement = {
             README: ("Your holdings<br/>+ public market data",),  # 무엇을 하는가
             ARCHITECTURE: (
+                "30-day outcomes, 21-day provisional: the only learning edge",  # 데이터가 어디로 흐르는가
                 "no job calls another",  # 무엇이 그것을 돌리는가
                 "premarket_brief<br/>09:00 US/Eastern",  # 하루의 시계
                 "Should this position exist?",  # 두 축
@@ -209,6 +235,33 @@ class TestMermaidRendersInBothThemes:
         assert "JD ==> CERT" not in text, (
             "합의 잡이 certify() 를 부른다고 그렸다 — scheduler.py 는 record_decisions() 를 부른다"
         )
+
+    def test_system_flow_draws_only_the_edges_the_code_has(self):
+        """System Flow 의 화살표 세 개는 코드에서 반대로 오해되기 쉬운 것들이다 (#1770).
+
+        - 학습 경로는 하나다: `learning_memory.py` 는 `recommendations.outcome_30d`(21d 폴백)를
+          읽는다. `decision_outcomes` 는 가중치에 들어가지 않는다 — 그쪽에서 합의로 화살표를
+          그리면 "알파 원장이 학습한다" 는 거짓이 된다.
+        - 어떤 합의 에이전트도 `factors` 를 읽지 않는다. factors → consensus 를 그리면 08:10 에
+          도는 잡이 07:05 합의에 들어간다는 뜻이 된다.
+        - 합의 → 결정 기록은 테이블이 아니라 메모리 인계다 (`record_decisions()`).
+        """
+        flow = next(d for d in MERMAID.findall(ARCHITECTURE.read_text(encoding="utf-8")) if "REC -.->" in d)
+        assert 'REC -.->|"30-day outcomes, 21-day provisional: the only learning edge"| CON' in flow
+        assert "CON ==>|in memory| DEC" in flow
+        edges = _edges(flow)
+        assert ("SRC", "COL") in edges and ("COL", "TAB") in edges, "사슬을 못 읽었다 — 파서가 눈이 멀었다"
+        into_consensus = sorted({src for src, dst in edges if dst == "CON"})
+        assert into_consensus == ["PF", "REC", "TAB"], f"합의로 들어가는 입력이 코드와 다르다: {into_consensus}"
+
+    def test_the_edge_parser_has_eyes(self):
+        """카나리아 — 파서가 사슬·그룹·라벨을 읽고, 못 읽는 줄은 통과시키지 않는다."""
+        assert ("FAC", "CON") in _edges("TAB --> FAC --> BUY & CON"), "그룹 끝의 화살표를 놓친다"
+        assert _edges('PF --> |"holdings"| CON') == [("PF", "CON")], "라벨 앞 공백에서 눈이 먼다"
+        assert _edges("A & B -.->|x| C") == [("A", "C"), ("B", "C")]
+        for unreadable in ("A -- text --> B", 'X["inline"] --> CON', "FAC ~~~ CON"):
+            with pytest.raises(AssertionError, match="읽을 수 없는 엣지 줄"):
+                _edges(unreadable)
 
     def test_the_sweep_has_eyes(self):
         """카나리아 — 정규식이 조용히 아무것도 안 잡으면 위 검사들이 공허해진다."""

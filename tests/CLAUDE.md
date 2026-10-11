@@ -59,11 +59,11 @@ All tests run **network-free**. Override per-test if needed, but never remove gl
 
 ## Slow Marker
 
-27 LLM/heavy tests marked `@pytest.mark.slow` (collected count — marker sites expand via class-level marks / parametrize). PR CI excludes via `-m "not slow"`.
+LLM/heavy tests are marked `@pytest.mark.slow` — count them with `pytest tests/ -m slow --collect-only -q` (marker sites expand via class-level marks / parametrize; a number written here went stale unchecked). PR CI excludes via `-m "not slow"`.
 
 - `make test-fast` — excludes slow (81.2s, `-n auto --dist worksteal`, M5 Max 2026-08-14)
 - `make test-slow` — slow only
-- `make test` — full suite (test-fast + slow 27)
+- `make test` — full suite (test-fast + slow)
 
 ## Coverage — 로컬은 `--cov-branch` 없이는 CI 와 다른 것을 잰다
 
