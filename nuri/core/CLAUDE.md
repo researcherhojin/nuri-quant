@@ -9,7 +9,7 @@ The `nuri/core/db/` package is the **ONLY** `sqlite3` importer (the import lives
 - `query_df(sql, params, db_path=)` → `pandas.DataFrame`
 - `upsert_*(data, db_path=)` — per-table upsert functions
 - `replace_portfolio_account(account, records, db_path=)` — DELETE+INSERT in one tx
-- `OperationalError` / `DatabaseError` — sqlite3 exception types re-exported so callers can catch DB failures narrowly without importing `sqlite3` (widening to `except Exception` swallows real bugs)
+- `OperationalError` / `DatabaseError` — sqlite3 exception types re-exported so callers can catch DB failures narrowly without importing `sqlite3` (widening to `except Exception` swallows real bugs). **Both readers raise them.** pandas wraps a query-time sqlite error in its own `pandas.errors.DatabaseError` (an `OSError`, no sqlite parent), so `query_df` re-raises the original sqlite error. Before #1754 it didn't. Every narrow handler around `query_df` then let the error through, both the direct ones and the ones that reach it through a callee (`_get_regime` → `classify_regime`), and the VIX gate's "unknown → half position" path raised instead. **Test:** `tests/core/test_query_df_errors.py::TestQueryDfRaisesTheSqliteError::test_a_failing_query_raises_the_facade_error_not_the_pandas_wrapper`
 
 ⚠️ **`db_path` 를 받는 함수는 자기가 부르는 리더에도 넘겨야 한다.** 파라미터만
 선언하고 안 쓰면 그 한 줄만 기본 DB 로 새는데, 서명·타입 체크·테스트가 전부

@@ -35,7 +35,7 @@ Claude Code's edit-time hooks do not run in Codex. A rule marked **review** is e
 
 | # | Rule | Enforced by |
 |---|------|-------------|
-| 1 | **DB access**: `nuri/core/db/connection.py` is the only `sqlite3` importer. Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`; catch DB errors via `OperationalError` / `DatabaseError` from `nuri.core.db`. | CI — `tests/core/test_sqlite3_sole_importer.py` |
+| 1 | **DB access**: `nuri/core/db/connection.py` is the only `sqlite3` importer. Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`; catch DB errors via `OperationalError` / `DatabaseError` from `nuri.core.db` (both `query()` and `query_df()` raise those types; #1754). | CI — `tests/core/test_sqlite3_sole_importer.py` |
 | 2 | **Forward `db_path`**: a function that accepts `db_path=` must pass it to every DB reader it calls. An unused parameter leaks that call to the default DB while signatures, type checks and tests stay green (21 such sites in #1050–#1052). | CI — `tests/core/test_db_path_forwarding.py` |
 | 3 | **Time**: use `kst_now()` / `today_kst()` from `nuri.core.timezone`; never `datetime.now()`. | review (no lint rule or test) |
 | 4 | **Config over code**: investment rules and thresholds live in `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml`. Hardcoding is rejected. | review |

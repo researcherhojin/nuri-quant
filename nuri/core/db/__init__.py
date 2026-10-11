@@ -137,11 +137,21 @@ def query(sql: str, params: tuple = (), db_path: Optional[Path] = None, readonly
 
 
 def query_df(sql: str, params: tuple = (), db_path: Optional[Path] = None) -> pd.DataFrame:
-    """범용 읽기 쿼리 → DataFrame."""
+    """범용 읽기 쿼리 → DataFrame.
+
+    pandas 는 쿼리 단계의 sqlite 오류를 자기 `pandas.errors.DatabaseError`(`OSError` 계열)로
+    감싸 낸다. 그대로 두면 `query()` 에 맞춘 `except (OperationalError, DatabaseError)` 가 이
+    경로에서만 빗나가 "조회 실패 → 미상/기본값" 대신 예외가 위로 샌다 (#1754 — VIX 게이트와
+    레짐 분류의 미상 경로가 그랬다). 원래의 sqlite 예외로 되돌려 두 리더가 같은 예외 계약을 갖게 한다.
+    """
     conn = get_connection(db_path)
     try:
         df = pd.read_sql_query(sql, conn, params=params)
         return df
+    except pd.errors.DatabaseError as exc:
+        if isinstance(exc.__cause__, DatabaseError):
+            raise exc.__cause__ from None
+        raise
     finally:
         conn.close()
 

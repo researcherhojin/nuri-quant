@@ -135,24 +135,18 @@ class TestBuyCandidateEmitterRegimeFallbacks:
         # 빈 VIX df → 지어내지 않고 None (2026-08-10 이전엔 20.0 이었다)
         assert vix is None
 
-    def test_vix_query_exception_yields_none(self, monkeypatch):
-        """VIX 조회가 DB 오류로 죽으면 `None` — 숫자를 지어내지 않는다."""
-        from nuri.trading.recommend import buy_candidate_emitter as bce
-        from nuri.trading.recommend import vix_gate as vg
+    def test_a_real_query_failure_yields_unknown_regime_and_no_vix(self, tmp_path):
+        """실제 DB 실패(테이블 없음)가 분류와 VIX 양쪽에서 미상으로 접힌다 — 숫자를 지어내지 않고, 예외로 새지도 않는다.
 
-        def fake_query_df(sql, *a, **kw):
-            if "vix" in sql:
-                from nuri.core.db import OperationalError
-
-                raise OperationalError("synthetic vix fail")
-            return pd.DataFrame()
-
-        monkeypatch.setattr(bce, "query_df", fake_query_df)
-        monkeypatch.setattr(vg, "query_df", fake_query_df)
-        regime, vix = bce._get_regime()
-
-        # 데이터가 없는 테스트 DB 라 분류는 신선도 미충족으로 차단된다 → 미상
+        이 자리에 있던 테스트는 `query_df` 대역이 sqlite `OperationalError` 를 던지게 했다. 실제
+        `query_df` 는 pandas 의 `DatabaseError` 로 감싸 냈고, 그건 좁은 핸들러를 빠져나갔다 —
+        대역이 실제와 달라서 VIX 게이트의 "미상 → 절반 포지션" 경로가 실은 죽는다는 걸 가렸다
+        (#1754). 그래서 대역 없이 실제로 실패시킨다.
+        """
         from nuri.quant.regime.classifier import UNKNOWN_REGIME
+        from nuri.trading.recommend import buy_candidate_emitter as bce
+
+        regime, vix = bce._get_regime(db_path=tmp_path / "empty.db")
 
         assert regime == UNKNOWN_REGIME
         assert vix is None

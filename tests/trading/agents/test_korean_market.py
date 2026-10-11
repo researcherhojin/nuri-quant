@@ -95,7 +95,7 @@ class TestFxCalibrationNullRows:
 
         기록처 없이 부르는 기본 인자 호출도 예외 없이 기본값을 받아야 한다. 대역은 연결 단계의
         sqlite OperationalError 를 흉내 낸다 (`sqlite3.connect()` 가 DB 파일을 못 열 때의 형태).
-        쿼리 단계 실패는 pandas 가 `pandas.errors.DatabaseError` 로 감싸 이 핸들러를 빠져나간다 (#1754).
+        쿼리 단계 실패는 아래 테스트가 대역 없이 실제로 일으킨다.
         """
         from nuri.core.db import OperationalError
         from nuri.trading.agents.korean_market import _CFG, _calibrate_fx_thresholds
@@ -109,6 +109,20 @@ class TestFxCalibrationNullRows:
         assert _calibrate_fx_thresholds(db_path) == defaults
         failures: list = []
         assert _calibrate_fx_thresholds(db_path, failures=failures) == defaults
+        assert failures == ["fx_calibration"]
+
+    def test_a_real_query_failure_falls_back_to_defaults(self, tmp_path):
+        """테이블이 없는 DB 에서 실제로 실패시킨다 — 쿼리 단계 오류도 기본 임계로 접힌다 (#1754).
+
+        `query_df` 가 pandas 의 `DatabaseError` 를 그대로 내던 동안 이 경로는 핸들러를 빠져나가
+        에이전트를 죽였다. 대역은 그 차이를 볼 수 없다 — 그래서 여기서는 대역을 쓰지 않는다.
+        """
+        from nuri.trading.agents.korean_market import _CFG, _calibrate_fx_thresholds
+
+        defaults = (_CFG.get("fx_weak_default", 1400), _CFG.get("fx_strong_default", 1250))
+        failures: list = []
+
+        assert _calibrate_fx_thresholds(tmp_path / "empty.db", failures=failures) == defaults
         assert failures == ["fx_calibration"]
 
     def test_non_finite_fx_foreign_momentum_inputs_are_dropped(self, db_path, monkeypatch):
