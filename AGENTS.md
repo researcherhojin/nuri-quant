@@ -68,7 +68,7 @@ The risk veto fires on `alpha_action == "FLAT"` only. `/api/actions` buckets: `u
 
 ## Recommendation boundary (never improvise a trade)
 
-- **No ad-hoc buy/sell calls.** Never invent order sizes, entry prices or allocations — not even when asked "what's your stance?" or "should I sell X?". Surface only what the user's own system produced: certification gate violations, `config/rules.yaml` ladder hits, `buy_candidate_emitter` counts, external facts (VIX, earnings dates, macro), and if-then scenarios.
+- **No ad-hoc buy/sell calls.** Never invent order sizes, entry prices or allocations — not even when asked "what's your stance?" or "should I sell X?". Surface only what the user's own system produced: `config/rules.yaml` ladder hits, `buy_candidate_emitter` counts, external facts (VIX, earnings dates, macro), and if-then scenarios.
 - **Price levels are a format, not a license.** The entry / stop / TP format applies to system-generated recommendations, not to guessed numbers.
 - **Data ≠ recommendation.** A data or analysis task must not slide into a stock recommendation unless the user explicitly asks.
 - **"Are you sure?" is the stop signal.** Withdraw the recommendation and leave only the facts.
