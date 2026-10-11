@@ -27,11 +27,11 @@ _STEP_LABELS = {
     "track": "Track",
 }
 _STEP_DESCRIPTIONS = {
-    "collect": "31 collectors + external sites",
-    "analyze": "Signals, regimes, factor composite",
+    "collect": "Collector jobs + external sources",
+    "analyze": "Factor composite",
     "consensus": "10 agents weighted vote",
-    "decide": "Decision record + veto gates",
-    "track": "30/60/90d outcomes",
+    "decide": "Decision record (in-memory hand-off)",
+    "track": "7–90d outcomes + alpha",
 }
 # core event status -> frontend PipelineStep.status enum (idle|running|done|error).
 # Robust to both vocabularies: canonical EVENT_TYPES (step_completed/...) and the

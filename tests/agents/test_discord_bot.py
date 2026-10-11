@@ -185,3 +185,48 @@ class TestMainRuntime:
         mock_tree.sync.assert_awaited_once()
         out = capsys.readouterr().out
         assert "9999" in out and "synced" in out
+
+
+class TestEveryMakeTargetExists:
+    """봇이 셸로 부르는 make 타깃이 Makefile 에 실제로 있는가 (#1772).
+
+    위의 `_run_make` 테스트는 전부 `subprocess.run` 을 mock 해서, `buy-candidates` · `thesis`
+    타깃이 #510 에서 지워진 뒤에도 초록이었다 — Discord 명령 두 개가 매번 "No rule to make
+    target" 으로 끝났는데 아무 신호가 없었다. 여기서는 bot.py 를 AST 로 읽어 실제로 넘기는
+    타깃 이름을 모으고, Makefile 의 규칙 정의와 대조한다.
+    """
+
+    @staticmethod
+    def _targets_called_by_the_bot() -> set[str]:
+        import ast
+        from pathlib import Path
+
+        src = (Path(__file__).resolve().parents[2] / "nuri" / "agents" / "discord" / "bot.py").read_text()
+        targets = set()
+        for node in ast.walk(ast.parse(src)):
+            if not isinstance(node, ast.Call):
+                continue
+            args = node.args
+            # `_run_make("x", …)` 와 `asyncio.to_thread(_run_make, "x", …)` 둘 다
+            if isinstance(node.func, ast.Name) and node.func.id == "_run_make":
+                first = args[0] if args else None
+            elif args and isinstance(args[0], ast.Name) and args[0].id == "_run_make":
+                first = args[1] if len(args) > 1 else None
+            else:
+                continue
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                targets.add(first.value)
+        return targets
+
+    def test_the_sweep_finds_the_slash_command_targets(self):
+        assert {"buy-candidates", "thesis"} <= self._targets_called_by_the_bot()
+
+    def test_every_called_target_is_defined_in_the_makefile(self):
+        import re
+        from pathlib import Path
+
+        makefile = (Path(__file__).resolve().parents[2] / "Makefile").read_text()
+        missing = sorted(
+            t for t in self._targets_called_by_the_bot() if not re.search(rf"^{re.escape(t)}:", makefile, re.M)
+        )
+        assert not missing, f"봇이 부르는데 Makefile 에 없는 타깃: {missing}"

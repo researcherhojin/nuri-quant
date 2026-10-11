@@ -57,8 +57,8 @@ class BuyCandidate:
     deploy_pct: float  # % of cash to allocate
     entry: float  # current close (or breakout level)
     stop: float  # entry × (1 + stop_pct/100), -7% default
-    tp1: float  # entry × (1 + tp1_pct/100), +21% default
-    tp2: float  # entry × (1 + tp2_pct/100), +42% default
+    tp1: float  # entry × (1 + tp1_pct/100), +20% (config/buy_signals.yaml)
+    tp2: float  # entry × (1 + tp2_pct/100), +40% (config/buy_signals.yaml)
     why_now: str  # single-sentence catalyst
     sources: dict[str, float]  # {factor: 0.78, momentum: 0.65, ...}
     sector: str | None = None

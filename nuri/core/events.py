@@ -70,9 +70,9 @@ PIPELINE_STEPS = (
 )  # `decide` 는 옛 `certify` (#1619; 그 이름의 행은 원장에 0건)
 
 # `step` 컬럼은 lifecycle 이벤트(step_*)와 임의 도메인 이벤트가 공유한다 —
-# 예: holdings_monitor 가 step="track" 으로 holdings_monitor_run 을 남긴다.
+# 예: holdings_monitor 가 step="recommend" 로 holdings_monitor_run 을 남긴다.
 # 스테이지 "상태"는 lifecycle 이벤트로만 판정해야 한다. 그렇지 않으면
-# get_step_status("track") 이 "holdings_monitor_run" 을 status 로 돌려주고,
+# get_step_status("recommend") 가 "holdings_monitor_run" 을 status 로 돌려주고,
 # 의존성 체크와 대시보드가 그걸 completed 가 아닌 값으로 읽는다.
 # `step_success` 는 `nuri/api/routes/pipeline.py` 의 수동 실행 엔드포인트가 남기는
 # 레거시 이름이다(같은 뜻, 다른 철자). 빼면 대시보드에서 수동 실행한 스테이지가

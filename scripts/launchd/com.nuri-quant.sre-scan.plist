@@ -4,8 +4,8 @@
 <!--
   com.nuri-quant.sre-scan (#529 Phase 2 — O3 SREIncidentAgent hourly cron)
 
-  매시간 SREIncidentAgent.scan 실행 — 6 detector (orphan_run / disk_full / db_lock /
-  scheduler_heartbeat / actor_failure_streak / data_freshness_critical) 일괄 검사.
+  매시간 SREIncidentAgent.scan 실행 — detector 전체(orphan_run / disk_full / db_lock /
+  scheduler_heartbeat / data_freshness_critical 등, 목록은 sre_incident_agent.py)를 일괄 검사.
   critical 발견 시 Discord INCIDENTS 자동 publish, warning 시 OPS publish.
 
   health_check.sh 와 보완 관계 — health_check 는 schema/table 검증 (build-time),

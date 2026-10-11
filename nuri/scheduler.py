@@ -98,7 +98,8 @@ logger = logging.getLogger("nuri.scheduler")
 # 여기 없는 잡은 스테이지에 속하지 않으며 lifecycle 이벤트를 남기지 않는다 —
 # 브리프·디스패처·백업 같은 운영 잡이 그렇다.
 _STAGE_OF_JOB = {
-    # collect — 25개 수집 잡이 전부 이 스테이지다
+    # collect — 수집 잡은 전부 이 스테이지다 (키는 SCHEDULES 의 잡 이름이 아니라 디스패치 이름이라
+    # `stock` 하나가 여러 잡을 덮는다)
     "stock": "collect",
     "stock_kr": "collect",
     "macro": "collect",
@@ -322,7 +323,7 @@ def _dispatch_collector(name: str, **kwargs):
         return n
     elif name == "consensus":
         # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
-        # decision_outcomes 가 30 일 후 outcome_30d 채우면 _compute_weights 가 가중치 조정.
+        # recommendation_outcomes(07:02) 가 outcome_30d 를 채우면 _compute_weights 가 가중치를 조정한다.
         from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
         from nuri.trading.engine.decisions import record_decisions
 
@@ -477,7 +478,7 @@ def _run_postmarket_brief_kr():
 def _run_postmarket_brief_us():
     """US session post-market brief (NYSE 16:00 ET + 30min, DST-aware).
 
-    Dual-cron (06:30 / 07:30 KST) 등록 — `run_postmarket_us_dst_aware` 가 현재
+    Dual-cron (05:30 / 06:30 KST) 등록 — `run_postmarket_us_dst_aware` 가 현재
     시각이 NYSE 16:30 ET ± 15분 window 인지 확인 후 진행. 2회 fire risk 는
     idempotent persist (UPSERT) 로 mitigate.
     """
@@ -893,10 +894,10 @@ def _self_restart():
 
 
 SCHEDULES = [
-    # 미국장 주가 (KST 23:30~06:00, 5분)
+    # 미국장 주가 (KST 23:00~06:55, 5분 — 23시대는 평일, 0~6시대는 화~토)
     {"name": "stock_us_night", "func": _run_collector, "args": ("stock",), "cron": "*/5 23 * * 1-5"},
     {"name": "stock_us_dawn", "func": _run_collector, "args": ("stock",), "cron": "*/5 0-6 * * 2-6"},
-    # 한국장 주가 (KST 09:00~15:30, 5분)
+    # 한국장 주가 (KST 09:00~15:55, 5분)
     {"name": "stock_kr", "func": _run_collector, "args": ("stock_kr",), "cron": "*/5 9-15 * * 1-5"},
     # 매크로 (매시)
     {"name": "macro", "func": _run_collector, "args": ("macro",), "cron": "0 * * * *"},
@@ -1024,9 +1025,7 @@ SCHEDULES = [
     {"name": "evidence_charts", "func": _run_evidence_charts, "args": (), "cron": "20 8 * * *"},
     {"name": "postmarket_brief_kr", "func": _run_postmarket_brief_kr, "args": (), "cron": "0 16 * * 1-5"},
     # Post-market brief — US session (NYSE 16:00 ET + 30min, DST-aware).
-    # Dual-cron 06:30/07:30 KST 등록, 함수 내부에서 NYSE 16:30 ET window 일치
-    # 시점만 진행. EDT 기간 → 05:30 KST (둘 다 skip → 다음날 fire),
-    # EST 기간 → 06:30 KST 매칭. 함수 idempotent UPSERT 라 2회 fire 도 안전.
+    # 함수 idempotent UPSERT 라 2회 fire 도 안전.
     # NYSE 16:30 ET(종가+30분)에 해당하는 KST 시각은 DST 에 따라 갈린다:
     #   EDT(3월중~11월초) = 05:30 KST · EST(11월초~3월중) = 06:30 KST
     # `run_postmarket_us_dst_aware` 가 ±15분 window 로 맞는 쪽만 통과시키므로 두 시각을
