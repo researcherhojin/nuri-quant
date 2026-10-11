@@ -45,6 +45,23 @@ def _seed_spy(db_path, dates: list[str], closes: list[float]) -> None:
     upsert_prices(df, db_path)
 
 
+def _seed_spy_null_closes(db_path, dates: list[str]) -> None:
+    """close 가 NULL 인 SPY 행 — `upsert_prices` 는 #1480 이후 NaN close 행을 **버리므로** SQL 로 직접 넣는다.
+
+    #1480 이전 원장에는 이런 반쪽 행이 남아 있을 수 있어 경로 자체는 살아 있다. `_seed_spy` 에 NaN 을
+    넘기면 행이 아예 안 생겨 `len(spy_df) >= N` 바깥 분기에서 끝나고, 아래 두 테스트가 이름과 다른
+    분기를 밟으며 초록이었다 (Codecov 가 115→123 · 159→163 을 미커버로 보고한 이유).
+    """
+    from nuri.core.db import get_db
+
+    with get_db(db_path) as conn:
+        conn.executemany(
+            "INSERT INTO prices (ticker, date, open, high, low, close, volume, adj_close) "
+            "VALUES ('SPY', ?, NULL, NULL, NULL, NULL, 50000000, NULL)",
+            [(d,) for d in dates],
+        )
+
+
 def _seed_vix(db_path, dates: list[str], values: list[float]) -> None:
     rows = [{"indicator": "vix", "date": d, "value": v, "source": "test"} for d, v in zip(dates, values)]
     upsert_macro(rows, db_path)
@@ -64,13 +81,12 @@ class TestPriorStressBranches:
         SPY 2 row 모두 NaN close → dropna 후 0 → 115 False → 123 (F&G).
         """
         dates = _bdates("2024-01-02", 65)
-        closes = [float("nan")] * 65  # 전부 NaN → dropna 후 비어있음
-        _seed_spy(db_path, dates, closes)
+        _seed_spy_null_closes(db_path, dates)  # 행은 있고 close 는 전부 NULL → dropna 후 비어있음
         _seed_vix(db_path, dates, [16.0] * 65)
 
         result, reasons = detect_prior_stress(dates[-1], db_path=db_path)
-        # SPY DD 평가 자체 skip → reasons 에 spy_max_dd_63d 없음
-        assert not any("spy_max_dd_63d" in r for r in reasons)
+        # SPY DD 평가 자체 skip → 지어낸 drawdown 이 stress 사유로 새지 않는다
+        assert (result, reasons) == (False, [])
 
     def test_fg_above_threshold_skips_reason(self, db_path):
         """Branch 126->129: F&G 데이터 있지만 fg_min ≥ threshold → if False → 129 (return).
@@ -107,13 +123,14 @@ class TestRepairDayBranches:
     def test_spy_sma_nan_skips_above_check(self, db_path):
         """Branch 159->163: spy_now or spy_sma20 NaN → spy_above_20dma 평가 skip."""
         dates = _bdates("2024-01-02", 30)
-        # 전부 NaN → spy_now / spy_sma20 모두 NaN → 159 False
-        closes = [float("nan")] * 30
-        _seed_spy(db_path, dates, closes)
+        # 행은 30개, close 는 전부 NULL → spy_now / spy_sma20 모두 NaN → 159 False
+        _seed_spy_null_closes(db_path, dates)
         _seed_vix(db_path, dates, [16.0] * 30)
 
         repair, components = evaluate_repair_day(dates[-1], db_path=db_path)
         assert components["spy_above_20dma"] is False
+        assert components["spy_3d_return_positive"] is False  # NaN 종가로 수익률을 지어내지 않는다
+        assert repair is False
 
     def test_spy_too_short_for_3d_return(self, db_path):
         """Branch 163->170: SPY 길이 < REPAIR_SPY_RETURN_LOOKBACK+1 → 3d return 평가 skip.

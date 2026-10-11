@@ -10,6 +10,7 @@ already-True 인 dead-by-design — 별도 simplify issue 후보):
 | 421→424 | `if spy_prev_close > 0:` False (run_backtest)            | prev_row.close == 0 |
 | 598→596 | `if future_idx > entry_idx:` False (analyze_entry_timing) | entry 가 마지막 인덱스 |
 | 733→746 | outer for 자연 종료 (no break) — monte_carlo_test          | total < n 으로 break 미발동 |
+| 264→265, 439→440 | SH 수익률 NaN → 이론값(-SPY) 대체 (두 백테스트) | SH 첫 행(`pct_change` NaN) 이 숏 배분일과 겹침 |
 """
 
 from __future__ import annotations
@@ -189,3 +190,62 @@ class TestMonteCarloOuterLoopExhausts:
         # 정상 종료 확인 — error 키 없음.
         assert "error" not in result
         assert result["n_simulations"] == 50
+
+
+# ═══════════════════════════════════════════════════════
+# 264→265, 439→440: SH 수익률이 NaN 인 날 — 이론값(-SPY)으로 대체
+# ═══════════════════════════════════════════════════════
+
+
+class TestShortLegFallsBackWhenShReturnIsMissing:
+    """SH 첫 행은 `pct_change` 가 NaN 이다 — 그날 숏 다리를 NaN 으로 두면 누적 수익률 전체가 NaN 이
+    된다. 대체값은 SH 데이터가 아예 없을 때와 같은 이론값(-SPY)이라, SH 가 그 하루만 있는 DB 와 SH 가
+    없는 DB 의 결과가 같아야 한다."""
+
+    @staticmethod
+    def _bear_regimes(n=30):
+        dates = pd.bdate_range("2024-01-02", periods=n)
+        return pd.DataFrame(
+            {
+                "date": dates,
+                "regime": ["bear_high_vol"] * n,  # 숏 50% — SH 경로를 탄다
+                "return": [-0.002] * n,
+                "close": list(np.linspace(110, 100, n)),
+            }
+        )
+
+    @staticmethod
+    def _db(tmp_path, name, sh_date=None):
+        p = tmp_path / name
+        init_db(p)
+        if sh_date is not None:
+            row = {"ticker": "SH", "date": sh_date.strftime("%Y-%m-%d"), "open": 30.0, "high": 30.5}
+            row.update({"low": 29.5, "close": 30.2, "volume": 1000, "adj_close": 30.2})
+            upsert_prices(pd.DataFrame([row]), p)
+        return p
+
+    def _assert_same_as_without_sh(self, tmp_path, run):
+        import math
+        from dataclasses import asdict
+
+        regimes = self._bear_regimes()
+        one_sh_day = asdict(run(regimes, db_path=self._db(tmp_path, "sh1.db", regimes["date"][1])))
+        no_sh = asdict(run(regimes, db_path=self._db(tmp_path, "nosh.db")))
+
+        assert one_sh_day == no_sh
+        assert all(math.isfinite(v) for v in one_sh_day.values() if isinstance(v, float))
+
+    def test_run_backtest(self, tmp_path):
+        from nuri.trading.strategy.ls_backtest import run_backtest
+
+        self._assert_same_as_without_sh(tmp_path, run_backtest)
+
+    def test_run_interactive_backtest(self, tmp_path):
+        from nuri.trading.strategy.ls_backtest import run_interactive_backtest
+
+        self._assert_same_as_without_sh(
+            tmp_path,
+            lambda regimes, db_path: run_interactive_backtest(
+                regimes, stop_loss_pct=10.0, take_profit_pct=20.0, db_path=db_path
+            ),
+        )

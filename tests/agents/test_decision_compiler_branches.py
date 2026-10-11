@@ -8,6 +8,7 @@ Targets residual branches uncovered by test_decision_compiler.py:
 - L438-439: classify_stock_type 가 raise 해도 horizon 만 omit, 다른 필드 진행.
 - L466-471: position 분기 — held/loser (cur < avg×0.95) / held (flat band).
 - L501-502: _publish_block 의 stage_ops raise 흡수.
+- `_brief_summary`: 빠진 가격 레벨·트레일링·합의 점수는 빈 자리 없이 통째로 생략.
 
 Privacy: synthetic tickers TST_*, fictional accounts. Real broker name 금지.
 """
@@ -410,3 +411,32 @@ class TestPublishBlockSwallow:
             db_path=patched_db,
         )
         assert any(r["status"] == "blocked" for r in rows)
+
+
+class TestBriefCardOmitsWhatIsMissing:
+    """카드는 있는 값만 싣는다 — 빈 레벨이 `손절 — (+nan%)` 나 빈 근거 줄로 새면 안 된다.
+
+    배선(카드가 실제로 staged payload 에 붙는가)은 `test_decision_compiler.py` 의 end-to-end
+    테스트가 잠근다. 여기는 렌더러 자신의 생략 분기다.
+    """
+
+    def test_absent_levels_and_scores_leave_no_empty_slots(self):
+        from nuri.agents.discord.outbox import format_money
+
+        card = DecisionCompiler._brief_summary(
+            {"ticker": "TST_A", "kind": "buy", "price_levels": {"entry": 100, "stop": None, "tp1": 120}},
+            {},
+        )
+
+        assert card.splitlines() == [
+            "🟢 TST_A · BUY",
+            f"　진입 {format_money(100, 'TST_A')} · 1차 {format_money(120, 'TST_A')} (+20.0%)",
+        ]
+
+    def test_only_the_scores_that_exist_are_listed_in_order(self):
+        card = DecisionCompiler._brief_summary(
+            {"ticker": "TST_A", "kind": "sell", "conviction": 0.81},
+            {"causal_certainty": 0.68},
+        )
+
+        assert card.splitlines() == ["🔴 TST_A · SELL", "　합의 0.81 · 인과 확신 0.68"]

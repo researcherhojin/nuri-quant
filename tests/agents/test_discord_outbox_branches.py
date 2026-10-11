@@ -246,3 +246,22 @@ class TestGenericDigestTruncation:
         # 적어도 하나의 field 에 overflow 마커 존재.
         joined = " ".join(f["value"] for f in embed["fields"])
         assert "more)" in joined  # "… (+N more)" 마커
+
+
+# ════════════════════════════════════════════════════════════
+# format_money(None) / 스칼라가 하나도 없는 payload 의 머리
+# ════════════════════════════════════════════════════════════
+
+
+class TestRenderEdges:
+    def test_a_missing_amount_renders_as_a_dash(self):
+        from nuri.agents.discord.outbox import format_money
+
+        assert format_money(None, "TST_A") == "—"
+
+    def test_a_payload_without_any_scalar_field_keeps_the_bare_head(self):
+        """summary 도 화이트리스트 키도, 실어 보낼 스칼라도 없으면 `? | KIND` 머리만 남는다 —
+        중첩 dict 를 문자열로 쏟아 넣지 않는다."""
+        from nuri.agents.discord.outbox import _format_event_line
+
+        assert _format_event_line({"kind": "info", "context": {"nested": 1}, "items": [1, 2]}) == "? | INFO"

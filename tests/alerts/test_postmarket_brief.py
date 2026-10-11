@@ -832,6 +832,45 @@ def test_write_brief_survives_stop_breach_staging_failure(seeded_db, portfolio_y
     assert path.exists(), "부가 신호 실패가 브리프를 통째로 죽였다"
 
 
+@pytest.mark.parametrize("failing", ["stage_trailing_briefs", "stage_take_profit_briefs"])
+def test_write_brief_survives_a_profit_signal_staging_failure(seeded_db, portfolio_yaml, monkeypatch, caplog, failing):
+    """트레일링·익절 staging 은 각자 별도 try 다 — 한쪽이 죽어도 브리프와 다른 쪽 신호는 나간다.
+
+    둘을 한 try 로 합치면 트레일링 실패가 익절 신호까지 삼킨다(1b/1c/1d 와 같은 per-concern 원칙).
+    """
+    import logging
+
+    import nuri.alerts.profit_signals as ps
+    from nuri.alerts.postmarket_brief import write_brief
+
+    called = []
+
+    def stub_for(name):
+        def stage(session, d, db_path=None):
+            called.append(name)
+            if name == failing:
+                raise RuntimeError("simulated staging failure")
+
+        return stage
+
+    for name in ("stage_trailing_briefs", "stage_take_profit_briefs"):
+        monkeypatch.setattr(ps, name, stub_for(name))
+    with (
+        patch("nuri.agents.discord.outbox._privacy_gate_payload", return_value=[]),
+        patch("nuri.agents.discord.outbox.stage_brief", return_value=None),
+        caplog.at_level(logging.WARNING, logger="nuri.alerts.postmarket_brief"),
+    ):
+        path = write_brief("us", date="2026-05-01")
+
+    assert path.exists(), "부가 신호 실패가 브리프를 통째로 죽였다"
+    assert called == ["stage_trailing_briefs", "stage_take_profit_briefs"]
+    expected = {
+        "stage_trailing_briefs": "trailing give-back brief staging 실패",
+        "stage_take_profit_briefs": "take-profit brief staging 실패",
+    }[failing]
+    assert expected in caplog.text
+
+
 # ─── _load_5d helpers — empty / coerce-error / zero-divisor branches ─────
 
 
@@ -1131,6 +1170,51 @@ class TestRetroLessons:
         with patch.dict("os.environ", {"OLLAMA_HOST": ""}):  # LLM off → deterministic only
             lessons = pmb._generate_retro_lessons("us", "2026-06-01", feats, db_path=path)
         assert lessons and "유사 2건" in lessons[0] and "SPY 중앙값" in lessons[0]
+
+    def test_retro_without_forward_outcomes_skips_the_headline(self, tmp_path, monkeypatch):
+        """유사일은 있는데 전방 SPY 가 없으면 헤드라인을 만들지 않는다 — 빈 목록의 중앙값은
+        StatisticsError 다. 정성 합성은 공개 필드만 받아 그대로 진행한다."""
+        import nuri.core.db as db_mod
+        from nuri.alerts import postmarket_brief as pmb
+        from nuri.core.db import init_db, upsert_postmortem
+
+        path = tmp_path / "r.db"
+        init_db(path)
+        monkeypatch.setattr(db_mod, "DB_PATH", path)
+        upsert_postmortem(
+            date="2026-01-05",
+            session="us",
+            regime="bull_low_vol",
+            vix=16.0,
+            fear_greed=60.0,
+            vix_5d_delta=-1.0,
+            fg_5d_delta=5.0,
+            spy_5d_delta=1.0,
+            top_sector_delta_pct=1.5,
+            holdings_total_pnl_pct=2.0,
+            db_path=path,
+        )
+        seen = []
+        monkeypatch.setattr(
+            pmb, "_synthesize_retro_llm", lambda features, enriched: seen.append((features, enriched)) or ["💡 llm"]
+        )
+        feats = {
+            "regime": "bull_low_vol",
+            "vix": 16.0,
+            "fear_greed": 60.0,
+            "vix_5d_delta": -1.0,
+            "fg_5d_delta": 5.0,
+            "spy_5d_delta": 1.0,
+            "top_sector_delta_pct": 1.5,
+            "holdings_total_pnl_pct": 2.0,
+        }
+
+        lessons = pmb._generate_retro_lessons("us", "2026-06-01", feats, db_path=path)
+
+        assert lessons == ["💡 llm"]
+        ((features, enriched),) = seen
+        assert features == {"vix": 16.0, "fear_greed": 60.0, "regime": "bull_low_vol"}
+        assert [fwd for _, fwd in enriched] == [None]
 
     def test_synthesize_retro_llm_disabled_safe(self, monkeypatch):
         from nuri.alerts import postmarket_brief as pmb

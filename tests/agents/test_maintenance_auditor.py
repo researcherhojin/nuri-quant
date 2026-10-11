@@ -463,6 +463,22 @@ class TestDependencyLag:
             }
         ]
 
+    def test_failed_dry_run_is_not_reported_as_clean(self, tmp_path, monkeypatch):
+        """resolver 오류를 0건 관측으로 읽으면 #1362가 막으려는 silent failure가 재발한다."""
+        (tmp_path / "pyproject.toml").write_text("[project]\ndependencies = []\n", encoding="utf-8")
+        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
+        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
+        monkeypatch.setattr(
+            ctx,
+            "run",
+            lambda *args, **kwargs: real_subprocess.CompletedProcess(args[0], 1, "", "resolution failed"),
+        )
+
+        findings = ma.scan_dependency_lag(ctx)
+
+        assert findings[0]["title"] == "직접 의존성 lag 관측 실패"
+        assert "resolution failed" in findings[0]["detail"]
+
 
 def _uv_stub(monkeypatch, ctx, *, upgrade: str, tree: str, tree_rc: int = 0):
     """`uv lock --upgrade` 와 `uv tree --outdated` 를 argv 로 갈라 흉내낸다.
@@ -480,22 +496,6 @@ def _uv_stub(monkeypatch, ctx, *, upgrade: str, tree: str, tree_rc: int = 0):
 
     monkeypatch.setattr(ctx, "run", run)
     return calls
-
-    def test_failed_dry_run_is_not_reported_as_clean(self, tmp_path, monkeypatch):
-        """resolver 오류를 0건 관측으로 읽으면 #1362가 막으려는 silent failure가 재발한다."""
-        (tmp_path / "pyproject.toml").write_text("[project]\ndependencies = []\n", encoding="utf-8")
-        monkeypatch.setattr(ma, "_uv_binary", lambda: "uv")
-        ctx = ma.ScanContext(repo_root=tmp_path, tracker=ma._CapTracker(caps=ma.AuditCaps()))
-        monkeypatch.setattr(
-            ctx,
-            "run",
-            lambda *args, **kwargs: real_subprocess.CompletedProcess(args[0], 1, "", "resolution failed"),
-        )
-
-        findings = ma.scan_dependency_lag(ctx)
-
-        assert findings[0]["title"] == "직접 의존성 lag 관측 실패"
-        assert "resolution failed" in findings[0]["detail"]
 
 
 class TestStuckDependencies:
