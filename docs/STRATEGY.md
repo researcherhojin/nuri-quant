@@ -404,7 +404,7 @@ PR 전 확인.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,651 tests, 404 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,652 tests, 404 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,459 tests, 118 files (2026-10-11 전체 실행, 종목 상세 미리보기 커버리지 보강 반영) |
 | E2E | 핵심 flow | 9 spec files · 78 Playwright tests (2026-10-07, #1698 후) |
 | CI | 필수 | lint + test + coverage + security + privacy |
