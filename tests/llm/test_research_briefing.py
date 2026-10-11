@@ -1,6 +1,7 @@
 """공개 브리핑은 근거·시점·법인·단위 및 송신 허용 목록을 검사한다."""
 
 import json
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -371,3 +372,193 @@ def test_extraction_pool_excludes_ambiguous_subjects_before_model(dossier):
     assert len(units) == 3
     assert not any("Our customers" in unit["quote"] for unit in units)
     assert any("The company plans" in unit["quote"] for unit in units)
+
+
+def _client(monkeypatch, *responses):
+    """게이트웨이 경계 스텁 — 실제 외부 LLM 은 호출하지 않는다."""
+    client = MagicMock()
+    client.chat_json.side_effect = list(responses)
+    monkeypatch.setattr("nuri.llm.research_briefing.get_client", lambda: client)
+    return client
+
+
+APPROVED = {"valid": True, "errors": [], "invalid_claim_ids": [], "reason": ""}
+
+
+def test_fragments_too_short_to_quote_are_not_evidence_units(dossier):
+    from nuri.llm.research_briefing import evidence_units
+
+    dossier["briefing_evidence"]["sources"][0]["text"] = "Update. Demo Company plans to expand production by 20%."
+    units = evidence_units(public_bundle(dossier))
+    # 문장 식별자는 원문 위치를 유지한다 — 짧은 조각을 건너뛰어도 번호를 당기지 않는다.
+    assert [(unit["unit_id"], unit["quote"]) for unit in units] == [
+        ("official:1", "Demo Company plans to expand production by 20%.")
+    ]
+
+
+@pytest.mark.parametrize("collected_at", ["", "not-a-date", "2026/01/01T09:00:00+09:00", "tomorrow"])
+def test_collection_cutoff_must_be_a_valid_non_future_date(dossier, collected_at):
+    if collected_at == "tomorrow":
+        collected_at = (kst_now() + timedelta(days=1)).isoformat()
+    dossier["collected_at"] = collected_at
+    with pytest.raises(ValueError, match="Invalid collection cutoff"):
+        public_bundle(dossier)
+
+
+def test_issuer_without_provider_name_uses_only_listed_aliases(dossier):
+    dossier["profile"] = {"symbol": "DEMO", "display_name": "샘플기업", "quote_type": "EQUITY"}
+    bundle = public_bundle(dossier)
+    assert bundle["name"] is None
+    assert bundle["issuer_aliases"] == ["샘플기업"]
+
+
+@pytest.mark.parametrize("change", [{"url": "http://example.com/release"}, {"text": ""}])
+def test_source_without_https_link_or_body_contributes_nothing(dossier, change):
+    extra = {
+        **dossier["briefing_evidence"]["sources"][0],
+        "source_id": "extra",
+        "issuer_aliases": ["Leaked Alias"],
+        "excluded_entities": ["Leaked Entity"],
+        **change,
+    }
+    dossier["briefing_evidence"]["sources"].append(extra)
+    bundle = public_bundle(dossier)
+    assert [item["source_id"] for item in bundle["sources"]] == ["official"]
+    assert "Leaked Alias" not in bundle["issuer_aliases"]
+    assert bundle["excluded_entities"] == []
+
+
+@pytest.mark.parametrize(
+    "text,error",
+    [
+        ("-$-25", "Conflicting numeric signs"),
+        ("$5 KRW", "Conflicting currency units"),
+        ("$5%", "Conflicting percentage and currency"),
+    ],
+)
+def test_contradictory_numeric_notation_fails_closed(text, error):
+    from nuri.llm.research_briefing import _numbers
+
+    with pytest.raises(ValueError, match=error):
+        _numbers(text)
+
+
+def test_multiples_and_durations_keep_their_own_dimension_but_calendar_years_do_not():
+    from nuri.llm.research_briefing import _numbers
+
+    assert _numbers("3배") != _numbers("3")
+    assert _numbers("10년") != _numbers("10")
+    assert _numbers("3월") != _numbers("3일")
+    assert _numbers("2030년") == _numbers("2030")
+
+
+def test_triangle_marker_is_neither_a_plain_nor_a_negative_number():
+    from nuri.llm.research_briefing import _numbers
+
+    assert _numbers("▲10%").isdisjoint(_numbers("10%") | _numbers("+10%") | _numbers("-10%"))
+
+
+def test_quote_naming_an_excluded_legal_entity_is_rejected(dossier):
+    quote = "Demo Company India reported revenue growth of 10%."
+    source = dossier["briefing_evidence"]["sources"][0]
+    source["text"] += " " + quote
+    source["excluded_entities"] = ["Demo Company India"]
+    claim = {**claim_data()["claims"][1], "quote": quote}
+    with pytest.raises(ValueError, match="Other legal entity"):
+        validate_claims({"claims": [claim]}, public_bundle(dossier))
+
+
+def test_reporting_period_must_be_stated_in_the_quote(dossier):
+    claim = {**claim_data()["claims"][1], "period": "2025"}
+    with pytest.raises(ValueError, match="reporting period"):
+        validate_claims({"claims": [claim]}, public_bundle(dossier))
+    quote = "Demo Company reported revenue growth of 10% in 2025."
+    dossier["briefing_evidence"]["sources"][0]["text"] += " " + quote
+    assert validate_claims({"claims": [{**claim, "quote": quote}]}, public_bundle(dossier))[0].period == "2025"
+
+
+def test_forecast_claim_must_be_worded_as_a_forecast(dossier):
+    # 인용도 전망이어야 한다 — 과거 실적 인용("reported ... 10%")을 forecast 로 통과시키면
+    # 사실이 전망으로 바뀐 것을 정답으로 박는다.
+    quote = "Analysts forecast Demo Company revenue growth of 10%."
+    dossier["briefing_evidence"]["sources"][0]["text"] += " " + quote
+    claim = {**claim_data()["claims"][1], "kind": "forecast", "quote": quote}
+    with pytest.raises(ValueError, match="Forecast wording"):
+        validate_claims({"claims": [claim]}, public_bundle(dossier))
+    claim["statement"] = "매출 증가율은 10%로 전망됩니다."
+    assert validate_claims({"claims": [claim]}, public_bundle(dossier))[0].kind == "forecast"
+
+
+def test_heading_with_a_full_width_digit_is_rejected(dossier):
+    raw = report_data()
+    # 스키마 패턴 ^[^0-9]+$ 은 ASCII 숫자만 막는다. 전각 숫자는 수치 대조가 막아야 한다.
+    raw["arguments"][0]["title"] = "생산 ３배 확대"
+    with pytest.raises(ValueError, match="Unsupported number in heading"):
+        validate_report(raw, validate_claims(claim_data(), public_bundle(dossier)))
+
+
+def test_unverifiable_and_duplicate_extractions_are_counted_not_cited(dossier, monkeypatch):
+    raw = _extraction_fixture()
+    raw["claims"] += [
+        {**raw["claims"][0], "claim_id": "ghost", "unit_id": "official:99"},
+        dict(raw["claims"][1]),
+    ]
+    client = _client(monkeypatch, raw, report_data(), APPROVED)
+    result = generate_briefing(dossier)
+    assert result["status"] == "ready"
+    assert result["rejected_claim_count"] == 2
+    assert result["rejected_claim_reasons"] == {"Unknown evidence unit": 1, "Duplicate claim": 1}
+    writer = json.loads(client.chat_json.call_args_list[1].kwargs["user"])
+    assert [item["claim_id"] for item in writer["claims"]] == ["plan", "revenue"]
+
+
+def test_fewer_than_two_verified_claims_stop_before_writing(dossier, monkeypatch):
+    raw = _extraction_fixture()
+    raw["claims"][1]["unit_id"] = "official:99"
+    client = _client(monkeypatch, raw)
+    result = generate_briefing(dossier)
+    assert (result["status"], result["failure_stage"], result["failure_code"]) == (
+        "invalid",
+        "claims",
+        "Insufficient verified claims",
+    )
+    assert client.chat_json.call_count == 1
+
+
+def test_semantic_correction_drops_flagged_claim_and_is_marked_repaired(dossier, monkeypatch):
+    dossier["briefing_evidence"]["sources"][0]["text"] += " Demo Company reported operating profit growth of 5%."
+    raw = _extraction_fixture()
+    raw["claims"].append(
+        {
+            "claim_id": "profit",
+            "unit_id": "official:2",
+            "statement": "영업이익 증가율은 5%였습니다.",
+            "kind": "fact",
+            "entity": "Demo Company",
+            "period": None,
+        }
+    )
+    flagged = {"valid": False, "errors": ["unsupported"], "invalid_claim_ids": ["profit"], "reason": "Not supported."}
+    client = _client(monkeypatch, raw, report_data(), flagged, report_data(), APPROVED)
+    result = generate_briefing(dossier)
+    assert result["status"] == "ready"
+    assert result["semantic_repaired"] is True
+    assert [item["claim_id"] for item in result["claims"]] == ["plan", "revenue"]
+    correction = json.loads(client.chat_json.call_args_list[3].kwargs["user"])
+    assert [item["claim_id"] for item in correction["claims"]] == ["plan", "revenue"]
+    assert (correction["errors"], correction["reason"]) == (["unsupported"], "Not supported.")
+    assert client.chat_json.call_count == 5
+
+
+def test_unreachable_gateway_is_unavailable_not_invalid(dossier, monkeypatch):
+    from nuri.llm.openai_client import ExternalLLMDisabled
+
+    def disabled():
+        raise ExternalLLMDisabled("external LLM disabled")
+
+    monkeypatch.setattr("nuri.llm.research_briefing.get_client", disabled)
+    result = generate_briefing(dossier)
+    assert result["status"] == "unavailable"
+    assert "failure_stage" not in result
+    assert "report" not in result
+    assert [item["source_id"] for item in result["sources"]] == ["official"]

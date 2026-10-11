@@ -177,6 +177,20 @@ class TestCollectorMainRunpyArgparse:
         # check_credentials returns True/False based on env; either is a successful CLI run
         assert exc.value.code in (0, 1)
 
+    def test_company_research_main_passes_the_ticker(self, monkeypatch, db_path, patch_base_collector_run):
+        _run_module_capture(
+            "nuri.collectors.company_research", monkeypatch, argv=["company_research", "--ticker", "DEMO"]
+        )
+        assert patch_base_collector_run == [("company_research", {"ticker": "DEMO"})]
+
+    def test_company_research_main_requires_a_ticker(self, monkeypatch, db_path, patch_base_collector_run):
+        monkeypatch.setattr(sys, "argv", ["company_research"])
+        monkeypatch.setattr(sys, "stderr", io.StringIO())
+        with pytest.raises(SystemExit) as exc:
+            runpy.run_module("nuri.collectors.company_research", run_name="__main__")
+        assert exc.value.code == 2
+        assert patch_base_collector_run == []
+
     def test_kis_analyst_opinion_main(self, monkeypatch, db_path, patch_base_collector_run):
         """KIS analyst opinion main: BaseCollector.run() patched → no network."""
         _run_module_capture("nuri.collectors.kis_analyst_opinion", monkeypatch, argv=["kis_ao"])
