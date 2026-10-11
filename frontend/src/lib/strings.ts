@@ -341,10 +341,7 @@ export const TICKER_PREVIEW = {
   AUM: "운용자산", EXPENSE: "연간 총보수", INCEPTION: "출시일", HOLDING_COUNT: "구성 종목 수", HOLDINGS: "주요 구성", ASSET_NAME: "자산", FUND_DETAILS_DATE: "상품 정보 기준", HOLDINGS_DATE: "구성 기준", POINTS: "투자 포인트", PROSPECTUS: "투자설명서", OFFICIAL: "운용사 공식 자료",
   EXPENSE_NOTE: "총보수는 연간 운용 비용 비율이며 매매 수수료와는 별개입니다. 운용자산 규모만으로 안전성을 판단하지 않습니다.",
   CONCENTRATION_NOTE: "상위 비중은 분산 정도를 보여줍니다. ETF라는 이름만으로 위험이 작다고 볼 수 없습니다.",
-  FUND_TOP: (names: string, weight: string, count: number) => `공개된 구성에서 ${names} 등 상위 ${count}개가 ${weight}%를 차지합니다. 이 자산들의 움직임이 상품 성과에 큰 영향을 줄 수 있습니다.`,
   FUND_TOTAL: (count: number, value: string) => `공개된 ${count}개 자산의 비중 합계는 ${value}%입니다. 나머지 구성과 현금은 이 목록에 포함되지 않을 수 있습니다.`,
-  FUND_FEE: (value: string) => `연간 총보수는 ${value}%입니다. 장기 보유 시 비용이 누적되므로 동일한 투자 대상의 다른 상품과 비교할 항목입니다.`,
-  FUND_LARGEST: (name: string, weight: string) => `가장 큰 구성 자산은 ${name}이며 비중은 ${weight}%입니다. 해당 자산의 사업·가격 변화가 이 ETF에 미치는 영향을 함께 확인하세요.`,
   FUND_UNKNOWN_DATE: "공급자가 구성 기준일을 제공하지 않았습니다. 수집일을 구성 기준일로 대신 표시하지 않습니다.",
   RISK_GLOSSARY: {
     "Sector Focus Risk": { title: "산업 집중", text: "특정 산업에 투자하므로 그 산업의 경기·규제 변화가 여러 구성 자산에 동시에 영향을 줄 수 있습니다." },
