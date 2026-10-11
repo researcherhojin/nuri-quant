@@ -31,7 +31,8 @@ from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
-#: stage 를 허용하는 role. mini `.env` 에 `NURI_ROLE=production`.
+#: stage 를 허용하는 role. `NURI_ROLE=production` 은 mini 의 scheduler plist
+#: (`scripts/launchd/com.nuri-quant.scheduler.plist` EnvironmentVariables)에 둔다 — `.env` 는 배포 때 덮인다.
 PRODUCTION_ROLE = "production"
 
 #: 판정 3조건 라벨 — decision_alpha.adjudicate() 의 conditions 키와 1:1.

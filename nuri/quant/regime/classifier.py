@@ -403,7 +403,7 @@ def classify_regime(date: str | None = None, db_path=None) -> RegimeState | None
 
 
 def _classify_regime_uncached(date: str | None = None, db_path=None) -> RegimeState | None:
-    # 데이터 신선도 체크: 72시간 초과 시 분석 차단
+    # 데이터 신선도 체크: SPY 가 120시간 초과로 낡았으면 분석 차단 (`_check_data_freshness`)
     if date is None:
         if not _check_data_freshness(db_path):
             logger.warning("SPY 데이터 신선도 미충족. 레짐 분류 차단.")

@@ -1,7 +1,7 @@
 """Post-market daily brief — KR (16:00 KST) / US (16:00 ET + 30min) 종장 후 자동 생성.
 
 KR session (KST 16:00 cron): 한국장 holdings (`.KS`) PnL 합산 + KOSPI200 계열
-sector mover. US session (KST 06:30 + 07:30 dual cron, NYSE close +30min 시점만
+sector mover. US session (KST 05:30 + 06:30 dual cron, NYSE close +30min 시점만
 fire): non-`.KS` holdings PnL + 11 SPDR sector ETF mover.
 
 Privacy: Discord publish payload 는 summary-only (regime / VIX delta / top sector
@@ -717,7 +717,7 @@ def write_brief(
 
 
 # ─── US session DST-aware dispatch ───────────────────────────────────────────
-# Cron 06:30 KST + 07:30 KST 두 시각 양쪽 등록 — 함수 내부에서 NYSE close
+# Cron 05:30 KST + 06:30 KST 두 시각 양쪽 등록 — 함수 내부에서 NYSE close
 # (16:00 ET) + 30min 시각인지 확인 후 분기. EST/EDT 자동 처리. 2회 fire risk
 # 는 idempotent persist (덮어쓰기) 로 mitigate.
 
@@ -745,7 +745,7 @@ def _is_now_within_us_postclose_window(*, _now_kst=None) -> bool:
 
 
 def run_postmarket_us_dst_aware() -> Optional[Path]:
-    """Scheduler 진입점 — dual-cron (06:30 / 07:30 KST) 중 NYSE 16:30 ET 와 일치하는 시점만 실행."""
+    """Scheduler 진입점 — dual-cron (05:30 / 06:30 KST) 중 NYSE 16:30 ET 와 일치하는 시점만 실행."""
     if not _is_now_within_us_postclose_window():
         logger.info("postmarket_us skip — not within NYSE 16:30 ET window")
         return None

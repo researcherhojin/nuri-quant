@@ -12,7 +12,7 @@
 # by then — that is exactly what PR #202 cost, and the lesson that created this
 # gate. Only a local hook stops it.
 #
-# Why `--skip-tests`: the test sections are mirrored by CI's 4 shards, while a
+# Why `--skip-tests`: the test sections are mirrored by CI's test shards, while a
 # local full run is 320.8s. A slow hook is a bypassed hook, and a bypassed hook
 # is an absent gate again. Everything CI cannot replace still runs here — drift,
 # lint, doc counts, tracked-file privacy, and the commit-message scan — in 0.9s.

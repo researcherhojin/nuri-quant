@@ -375,6 +375,19 @@ llm-consult:
 	@test -n "$(prompt)" || (echo "usage: make llm-consult slug=<kebab> prompt=<file>"; exit 1)
 	$(PYTHON) scripts/dev/llm_consult.py --slug "$(slug)" --prompt-file "$(prompt)"
 
+# BUY candidate emitter (Issue #507) — 조회만 한다. 원장 기록은 예약 발행(premarket brief)이나 --persist.
+# Discord `/buy-candidates` 가 이 타깃을 부른다 — #510 에서 실수로 지워졌다가 복원 (#1772).
+buy-candidates:
+	$(PYTHON) -m nuri.trading.recommend.buy_candidate_emitter
+
+# Thesis Q&A engine (Issue #508) — DB 맥락 + LLM 으로 종목 논지를 묻는다. 결과는 data/thesis_query/.
+# Discord `/thesis` 가 이 타깃을 부른다 (#1772). Usage:
+#   make thesis ticker=INTC
+#   make thesis ticker=INTC question="hyperscaler 수혜자인가?"
+thesis:
+	@test -n "$(ticker)" || (echo "usage: make thesis ticker=<TICKER> [question=\"...\"]"; exit 1)
+	$(PYTHON) -m nuri.llm.thesis_query --ticker "$(ticker)" $(if $(question),--question "$(question)") --print
+
 # Earnings preview (Issue #509) — consensus EPS/revenue + ATM straddle implied move.
 # yfinance-based, on-demand. Future: 위스퍼 (Estimize/StockTwits) Phase 2.
 # Usage:

@@ -534,10 +534,9 @@ jobs:
   # live code (collectors, endpoints, test file counts, e2e spec count).
   # Runs in <1s — no Python env needed (find + grep only). Always-run so
   # docs/gitignore-only PRs also report status (see CLAUDE.md "Branch
-  # protection conditional skip trap"). Currently **advisory** — not added to
-  # required_status_checks in this PR. Promotion to required is a separate
-  # manual step once the check has been observed clean for N consecutive merges
-  # (STRATEGY §2.6 — soft penalty before hard veto).
+  # protection conditional skip trap"). It is a required check (branch
+  # protection). The Python-based counts (backend tests, DB tables, regimes)
+  # need the venv and are skipped here — the pre-push hook checks them.
   doc-counts-verify:
     name: Doc Count Drift Check
     runs-on: ubuntu-latest

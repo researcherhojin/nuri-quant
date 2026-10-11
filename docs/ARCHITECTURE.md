@@ -480,7 +480,7 @@ data/
 
 ## Testing
 
-8,807 backend tests across 434 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,809 backend tests across 434 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the push-time slow shards (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 
