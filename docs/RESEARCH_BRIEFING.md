@@ -1,110 +1,112 @@
-# 종목 리서치와 공개 브리핑
+# Ticker research and public briefings
 
-기준일: 2026-10-08. 현재 작업 트리의 구현을 설명한다. 운영 배포·머지 완료를 뜻하지 않는다.
-투자 규칙과 외부 송신 정책의 정본은 [STRATEGY](STRATEGY.md), 실행 구조는 [ARCHITECTURE](ARCHITECTURE.md)다.
+*Korean edition: [ko/RESEARCH_BRIEFING.md](ko/RESEARCH_BRIEFING.md)*
 
-## 화면과 데이터의 경계
+As of: 2026-10-08. The implementation it describes is merged into `main`.
+The canonical source for investment rules and the external egress policy is [STRATEGY](STRATEGY.md); for the runtime structure, it is [ARCHITECTURE](ARCHITECTURE.md).
 
-`/ticker-next`는 종목 선택 화면이고 `/ticker-next/[symbol]`은 종목 상세 미리보기다.
-상세 화면의 탭은 종목 브리핑, 매매 판단, 가격·자료, 판단 기록이다.
-기업·ETF·자료 부족 상태는 같은 `ReportFrame`과 `ReportSection`을 사용한다.
-종목마다 설명 내용은 다르지만 본문과 목차의 순서는 같다.
+## Screen and data boundaries
 
-| 영역 | 역할 |
+`/ticker-next` is the ticker selection screen, and `/ticker-next/[symbol]` is the ticker detail preview.
+The detail screen's tabs are Ticker briefing (종목 브리핑), Trading judgment (매매 판단), Prices and data (가격·자료) and Judgment history (판단 기록).
+Companies, ETFs and the insufficient-data state all use the same `ReportFrame` and `ReportSection`.
+The explanations differ by ticker, but the body and the table of contents follow the same order.
+
+| Area | Role |
 |---|---|
-| 핵심 요약 | 어떤 기업·상품인지, 확인된 기회와 불확실성 |
-| 사업과 수익 구조 | 기업의 수익원 또는 펀드의 운용 구조 |
-| 최근 변화 | 확인된 사건, 회사 계획, 외부 전망의 구분 |
-| 실적과 가치 지표 | 지표의 의미와 결측·비교 한계 |
-| 성장 요인과 위험 | 근거 → 영향 조건 → 반대 위험 → 확인 항목 |
-| 확인 일정 | 근거로 확인된 일정과 미확인 항목 |
-| 시스템 판단과 가격 | 저장된 시스템 판정과 별도의 가격 패널 |
+| Key summary (핵심 요약) | What the company or product is, and the confirmed opportunities and uncertainties |
+| Business and revenue structure (사업과 수익 구조) | The company's sources of revenue, or the fund's operating structure |
+| Recent changes (최근 변화) | Keeps confirmed events, company plans and external outlooks apart |
+| Earnings and valuation metrics (실적과 가치 지표) | What the metrics mean, and the limits of missing values and comparisons |
+| Growth drivers and risks (성장 요인과 위험) | Evidence → conditions for impact → opposing risks → items to check |
+| Dates to check (확인 일정) | Dates confirmed by evidence, and unconfirmed items |
+| System judgment and price (시스템 판단과 가격) | The stored system decision and a separate price panel |
 
-LLM의 공개 브리핑은 매매 판정을 작성하지 않는다. 화면의 판정·계좌 손익·보유 점검은
-애플리케이션이 저장된 사용자 시스템 자료로 별도 표시한다. 자료 갱신과 브리핑 생성은
-합의·판정 기록을 다시 실행하지 않는다. 기업과 ETF에 같은 재무 의미를 강제하지 않는다.
-ETF의 상품·구성 자료는 펀드 전용 수집·표시 경로도 사용한다.
+The LLM's public briefing does not write trading decisions. The decisions, account profit and loss, and holdings review on screen
+are shown separately by the application from the user's stored system data. Refreshing data and generating a briefing
+do not rerun consensus or decision recording. Companies and ETFs are not forced into the same financial meaning.
+ETF product and composition data also use a fund-specific collection and display path.
 
-## 수집·생성 흐름
+## Collection and generation flow
 
-| 진입점 | 처리 |
+| Entry point | Processing |
 |---|---|
-| `GET /api/ticker/{symbol}/research` | 저장된 공개 자료와 브리핑 상태 조회 |
-| `POST /api/ticker/{symbol}/research/refresh` | 공개 기업·상품·기사 자료 갱신 |
-| `POST /api/ticker/{symbol}/research/briefing` | 저장된 공개 자료로 브리핑 생성 접수 |
+| `GET /api/ticker/{symbol}/research` | Reads the stored public data and the briefing status |
+| `POST /api/ticker/{symbol}/research/refresh` | Refreshes public company, product and article data |
+| `POST /api/ticker/{symbol}/research/briefing` | Accepts a briefing generation request that uses the stored public data |
 
-라우터는 `nuri/api/routes/ticker_research.py`에 있다. 생성 요청은 백그라운드 작업으로 처리하고,
-프로세스 잠금과 DB 작업 임대로 중복 실행을 제한한다. 생성 결과는 `external_analysis`에 저장한다.
-`ready`는 생성·검증 성공, `pending`은 처리 중, `insufficient`는 근거 부족,
-`unavailable`은 생성·검증 실패다. 근거·모델·프롬프트 버전이 달라지면 기존 결과는 `stale`로 취급한다.
-실패 시 확인되지 않은 보고서를 정상 본문으로 표시하지 않는다.
+The router is in `nuri/api/routes/ticker_research.py`. A generation request runs as a background job,
+and a process lock plus a DB job lease limit duplicate runs. The generated result is stored in `external_analysis`.
+`ready` means generation and validation succeeded, `pending` means in progress, `insufficient` means not enough evidence,
+`invalid` means the output failed the source, number and plan checks, and `unavailable` means the external model was unavailable or the job was interrupted. When the evidence, the model or the prompt version changes, the existing result is treated as `stale`.
+On failure, an unverified report is never shown as a normal body.
 
-수집은 화면의 **최신 자료 갱신** 버튼으로만 시작한다. 페이지를 여는 것만으로는 DB 쓰기나 외부 호출이
-일어나지 않는다 — 예전에는 당일 자료가 없으면 진입 시 자동 수집해, 검색으로 연 임의 종목과 CI E2E 방문이
-외부 소스를 호출했다. **Test:** `frontend/src/__tests__/pages/ticker-preview.test.tsx` "opening a page without today's research sends no collection request".
+Collection starts only from the **Refresh latest data** (최신 자료 갱신) button on the screen. Opening the page alone causes no DB write or external call
+— previously, when there was no data for the day, the page collected automatically on entry, so arbitrary tickers opened from search and CI E2E visits
+called external sources. **Test:** `frontend/src/__tests__/pages/ticker-preview.test.tsx` "opening a page without today's research sends no collection request".
 
-## 출처 설정과 프롬프트의 역할
+## Source configuration and the role of prompts
 
-`config/research_sources.json`은 공식 문서와 뉴스의 URL, 발표일, 법인 식별명과 제외 대상을
-등록하는 출처 설정이다. 출력 문체나 설명 깊이를 정하는 few-shot 파일이 아니다.
-등록된 출처라도 본문·발표일·발행 주체를 확인하지 못하면 근거에서 제외한다.
-자동으로 발견한 뉴스도 본문·날짜·대상 기업이 검증된 경우에만 근거로 사용한다.
-모든 종목이 동일한 공식 자료 범위를 확보한 상태는 아니다.
+`config/research_sources.json` is the source configuration that registers the URLs, publication dates, legal-entity identifying names and exclusions
+for official documents and news. It is not a few-shot file that sets the output style or the depth of explanation.
+Even a registered source is excluded from the evidence if its body, publication date or publisher cannot be confirmed.
+Automatically discovered news is also used as evidence only when its body, date and subject company are verified.
+Not every ticker has the same coverage of official material.
 
-설명 방식은 `nuri/llm/research_briefing.py`가 관리한다.
+The explanation approach is managed by `nuri/llm/research_briefing.py`.
 
-- `EXTRACT`: 원문 문장 ID를 선택하고 사실·회사 계획·외부 전망을 구분한다.
-- `WRITE`: 처음 보는 독자가 사업 구조와 영향 조건을 이해하도록 설명한다.
-- `WRITE_EXAMPLES`: 가상의 제조사 보고서와 ETF 논점 예시. 문체와 논리 전개만 참고한다.
-- Pydantic 출력 스키마: 요약·사업·변화·재무·논점·일정과 근거 연결을 유지한다.
+- `EXTRACT`: selects source sentence IDs and separates facts, company plans and external outlooks.
+- `WRITE`: explains so that a first-time reader understands the business structure and the conditions for impact.
+- `WRITE_EXAMPLES`: examples of a fictional manufacturer report and of ETF theses. They are a reference for style and line of reasoning only.
+- Pydantic output schema: keeps the summary, business, changes, financials, theses and dates linked to their evidence.
 
-현재 모델은 `gpt-5.4`, 프롬프트 버전은 `public-briefing-v9`다.
-v9는 단순 항목 나열을 줄이고 근거에서 실적·비용·현금흐름·펀드 가치로 이어지는 조건을
-설명하도록 한다. 자료가 부족하면 긴 보고서를 흉내 내지 않고 한계를 명시한다.
-예시의 법인·사실·식별자·수치를 실제 보고서의 근거로 재사용하지 않는다.
-프롬프트 변경은 버전을 올리고 기존 캐시와 구분한다. 모델 교체는 별도 변경이다.
+The current model is `gpt-5.4`, and the prompt version is `public-briefing-v9`.
+v9 cuts down on plain item lists and has the briefing explain the conditions that lead from the evidence to earnings, costs, cash flow and fund value.
+When data is short, it states the limits instead of imitating a long report.
+The entities, facts, identifiers and figures in the examples are never reused as evidence in a real report.
+A prompt change bumps the version and is kept apart from the existing cache. Changing the model is a separate change.
 
-## 검증과 외부 송신
+## Validation and external egress
 
-생성은 원문 문장 선택 → 결정론적 주장 검증 → 한국어 보고서 작성 → 보고서 검증 →
-의미 검토 순서다. 숫자·단위 또는 의미 검토 실패에 대한 수정 시도는 제한되어 있다.
-검증은 법인 귀속, 날짜 상한, 사실과 계획, 숫자·단위·통화·부호, 근거 ID와 매매 지시를 검사한다.
-법인 이름이 비슷하다는 이유로 그룹·계열사 실적을 상장 발행사에 귀속하지 않는다.
+Generation runs in this order: source sentence selection → deterministic claim validation → Korean report writing → report validation →
+semantic review. Repair attempts after a number or unit failure, or after a semantic review failure, are limited.
+Validation checks entity attribution, the date ceiling, facts versus plans, numbers, units, currencies and signs, evidence IDs, and trading instructions.
+Results of a group or an affiliate are never attributed to the listed issuer just because the entity names are similar.
 
-외부 호출은 `nuri/llm/openai_client.py`만 사용하며 공개 자료 허용 목록만 송신한다.
-계좌·보유·손익·개인 질문은 공개 브리핑 입력에서 제외한다. 원문은 분석용 입력에 사용하지만
-공개 조회 응답에서는 제거한다. 응답에서 원문을 숨기는 것과 수집·저장·송신 범위의 적절성은
-별개다 — 아래 "알려진 한계" 참고. 단일 관문·개인정보 검사 통과만으로 그 항목이 해결된 것은 아니다.
+External calls go only through `nuri/llm/openai_client.py`, and only the public-data allowlist is sent.
+Accounts, holdings, profit and loss, and personal questions are excluded from public briefing input. Source text is used as analysis input
+but is removed from the public read response. Hiding source text in the response is a separate question from whether the scope of collection, storage and egress is appropriate
+— see "Known limitations" below. Passing the single gateway and the privacy checks does not by itself resolve those items.
 
-관련 회귀 검증:
+Related regression tests:
 
-- `tests/llm/test_research_briefing.py`: 주장·보고서·송신 허용 목록과 예시 근거 유입 차단
-- `tests/llm/test_openai_client.py`: 실제 SDK 직렬화·감사·JSON 스키마 요청 계약
-- `tests/collectors/test_briefing_sources.py`: 원문 날짜·법인 식별
-- `tests/collectors/test_research_news.py`, `test_company_briefing.py`: 기사·사업 설명 처리
-- `tests/api/test_ticker_research.py`: 저장·조회·작업 상태
-- `frontend/src/__tests__/pages/public-briefing.test.tsx`: 기업·펀드 공통 본문 계약
-- `frontend/e2e/ticker-preview.spec.ts`: 실제 상세 화면과 이동 경로
+- `tests/llm/test_research_briefing.py`: claims, reports, the egress allowlist, and blocking example evidence from entering
+- `tests/llm/test_openai_client.py`: real SDK serialization, auditing and the JSON schema request contract
+- `tests/collectors/test_briefing_sources.py`: source dates and entity identification
+- `tests/collectors/test_research_news.py`, `test_company_briefing.py`: handling of articles and business descriptions
+- `tests/api/test_ticker_research.py`: storage, reads and job status
+- `frontend/src/__tests__/pages/public-briefing.test.tsx`: the shared body contract for companies and funds
+- `frontend/e2e/ticker-preview.spec.ts`: the real detail screen and navigation paths
 
-## 검증 기록
+## Verification record
 
-2026-10-08 수행 기록이다.
+Record of the runs on 2026-10-08.
 
-| 검사 | 관측 결과 |
+| Check | Observed result |
 |---|---|
-| 엄격 JSON 스키마 실제 호출 (`gpt-5.4`, Extraction·Report·Verification·숫자 금지 수정 스키마) | 4개 모두 수용 |
-| 공개 기업 자료로 v9 실제 생성 | `ready`, 논점 4개, 외부 호출 4회 성공 |
+| Live call with strict JSON schemas (`gpt-5.4`; Extraction, Report, Verification and number-free repair schemas) | All 4 accepted |
+| Live v9 generation from public company data | `ready`, 4 theses, 4 external calls succeeded |
 
-실제 호출은 해당 모델과 스키마가 그 시점에 수용됐다는 증거다. 모든 종목의 근거 확보,
-생성 품질·성공률을 보장하지 않는다. 새로운 변경 뒤에는 다시 검증한다.
-개인 계좌·수량·가격·손익·스크린샷·원격 호스트명은 이 문서와 테스트 근거에 기록하지 않는다.
+A live call is evidence that the model and the schemas were accepted at that time. It does not guarantee evidence coverage for every ticker,
+or generation quality and success rate. Verify again after any new change.
+Personal accounts, quantities, prices, profit and loss, screenshots and remote host names are not recorded in this document or in test evidence.
 
-## 알려진 한계
+## Known limitations
 
-- **펀드 전용 어댑터** — `company_research.py` 의 ETF 운용사 페이지 파서는 한 상품 전용이다(페이지 구조·FAQ 문구에
-  맞춰져 있다). 다른 펀드로 일반화하려면 운용사별 어댑터가 필요하다. `research_news.py` 의 동명 기사 필터도 같은 상품 전용 분기다.
-- **비공식 접근 경로** — Google News 기사 원문 URL 해석은 공개 API 가 아닌 내부 RPC 를 쓰고, 한국 종목 프로필은 포털의
-  모바일 JSON 응답을 읽는다. 둘 다 예고 없이 깨질 수 있다. 발행처 기사 본문은 robots.txt 를 확인하지 않고 가져와
-  일부를 저장하고 분석 입력으로 OpenAI 에 보낸다 — 공개 기사지만 이용 약관 측면의 검토가 남아 있다.
-- **요청 자체가 신호** — 어떤 종목의 브리핑을 요청하는지가 관심·보유 종목의 표본이 된다. 공개 자료만 보내도 Tier 0 정책
-  안이지만 이 점은 STRATEGY §4.4.3 에 적었다.
+- **Fund-specific adapter** — the ETF manager page parser in `company_research.py` serves a single product (it is fitted to that page's structure and FAQ
+  wording). Generalizing to other funds needs a per-manager adapter. The same-name article filter in `research_news.py` is also a branch for that one product.
+- **Unofficial access paths** — resolving Google News article URLs to the original uses an internal RPC, not a public API, and Korean ticker profiles read a portal's
+  mobile JSON response. Either can break without notice. Publisher article bodies are fetched without checking robots.txt; part of each body is
+  stored and sent to OpenAI as analysis input — the articles are public, but a terms-of-use review is still pending.
+- **The request itself is a signal** — which tickers get briefing requests forms a sample of the tickers the user watches or holds. Sending only public data stays within the Tier 0
+  policy, but this point is recorded in STRATEGY §4.4.3.

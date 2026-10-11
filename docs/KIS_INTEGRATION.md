@@ -1,46 +1,48 @@
-# KIS Open API 통합 가이드
+# KIS Open API Integration Guide
 
-한국투자증권 (KIS) Open API 로 실시간 시세, 투자자별 매매동향, 애널리스트 투자의견을 수집하는 모듈을 설명한다.
+*Korean edition: [ko/KIS_INTEGRATION.md](ko/KIS_INTEGRATION.md)*
 
-## 모듈 구조
+This guide describes the modules that collect real-time quotes, trading activity by investor type, and analyst investment opinions through the Korea Investment & Securities (KIS) Open API.
+
+## Module structure
 
 ```
 nuri/collectors/
-├── kis_realtime.py         # 실시간 시세 (한국 + 미국), 토큰 캐시, rate limit 처리
-├── institutional.py        # 기관/외인 수급 (#247 — investor-trade-by-stock-daily)
-└── kis_analyst_opinion.py  # KR 애널리스트 투자의견 (#418 — invest-opinion REST endpoint)
+├── kis_realtime.py         # Real-time quotes (Korea + US), token cache, rate-limit handling
+├── institutional.py        # Institutional/foreign investor flows (#247 — investor-trade-by-stock-daily)
+└── kis_analyst_opinion.py  # KR analyst investment opinions (#418 — invest-opinion REST endpoint)
 ```
 
-`kis_analyst_opinion.py` 는 #418 (Playwright 기반 리서치 페이지 스크래퍼 설계)을 대체한다. 공식 KIS Open API REST endpoint `invest-opinion` (tr_id `FHKST663300C0`)만 사용하므로 Playwright, 로그인 세션 자동화, DOM 렌더링 우회가 필요 없다.
+`kis_analyst_opinion.py` replaces #418 (a design for a Playwright-based research-page scraper). It uses only the official KIS Open API REST endpoint `invest-opinion` (tr_id `FHKST663300C0`), so it needs no Playwright, no login-session automation, and no workaround for DOM rendering.
 
-## 자격 증명 (Credentials)
+## Credentials
 
-### 우선순위
+### Priority order
 
-1. **`.env` 파일** (권장 — git ignored)
-2. **`config/kis/kis_devlp.yaml`** (프로젝트 내 gitignored, KIS Open API SDK 호환)
-3. **`~/KIS/config/kis_devlp.yaml`** (레거시 위치, 하위 호환 fallback)
+1. **`.env` file** (recommended — git ignored)
+2. **`config/kis/kis_devlp.yaml`** (gitignored, inside the project; compatible with the KIS Open API SDK)
+3. **`~/KIS/config/kis_devlp.yaml`** (legacy location; backward-compatible fallback)
 
-### .env 변수
+### .env variables
 
 ```bash
-# 실전 (Production)
+# Production (live)
 KIS_PROD_APP_KEY=PSxxxxxx...
 KIS_PROD_APP_SECRET=...
-KIS_PROD_ACCOUNT=1000000  # 8자리 종합계좌 (시세만 조회 시 비워둬도 OK)
+KIS_PROD_ACCOUNT=1000000  # 8-digit comprehensive account (OK to leave blank for quote-only use)
 
-# 모의 (Paper)
+# Paper (simulated)
 KIS_PAPER_APP_KEY=...
 KIS_PAPER_APP_SECRET=...
 KIS_PAPER_ACCOUNT=...
 
-# WebSocket (실시간 호가 사용 시)
+# WebSocket (when using real-time bid/ask quotes)
 KIS_HTS_ID=your_hts_id
 ```
 
 ### YAML fallback (`config/kis/kis_devlp.yaml`)
 
-KIS Open API 공식 SDK 와 호환되는 형식이다. 프로젝트 내 `config/kis/` 하위(gitignored)에 두는 것을 권장하며, 레거시 위치 `~/KIS/config/kis_devlp.yaml` 도 자동 감지한다.
+The format is compatible with the official KIS Open API SDK. The recommended location is under `config/kis/` inside the project (gitignored); the legacy location `~/KIS/config/kis_devlp.yaml` is also detected automatically.
 
 ```yaml
 my_app: "실전 앱키"
@@ -48,51 +50,51 @@ my_sec: "실전 시크릿"
 paper_app: "모의 앱키"
 paper_sec: "모의 시크릿"
 my_htsid: "HTS ID"
-my_acct_stock: "1000000"        # 실전 종합계좌
-my_paper_stock: "1000000"       # 모의 종합계좌
-my_prod: "01"                    # 종합계좌 (01) / 선물옵션 (03) / 해외선물옵션 (08)
+my_acct_stock: "1000000"        # Production comprehensive account
+my_paper_stock: "1000000"       # Paper comprehensive account
+my_prod: "01"                    # Comprehensive account (01) / futures & options (03) / overseas futures & options (08)
 ```
 
-#### KIS Open API 공식 SDK와 동시 사용 시
+#### When used alongside the official KIS Open API SDK
 
-KIS 공식 SDK (`pykis` 등)는 `~/KIS/config/kis_devlp.yaml` 경로를 고정으로 사용한다. nuri-quant 와 공식 SDK 를 함께 쓰려면 두 위치 모두에서 파일을 읽을 수 있어야 한다.
+The official KIS SDK (`pykis` and others) always uses the fixed path `~/KIS/config/kis_devlp.yaml`. To use nuri-quant and the official SDK together, the file must be readable from both locations.
 
-**옵션 1 — symlink (권장, 1개 파일)**:
+**Option 1 — symlink (recommended, one file)**:
 
 ```bash
-mkdir -p ~/KIS/config ~/KIS/cache
+mkdir -p ~/KIS/config
 ln -sf "$(pwd)/config/kis/kis_devlp.yaml" ~/KIS/config/kis_devlp.yaml
-ln -sf "$(pwd)/config/kis/cache" ~/KIS/cache
+ln -sfn "$(pwd)/config/kis/cache" ~/KIS/cache   # if ~/KIS/cache is already a directory, ln puts the link inside it
 ```
 
-**옵션 2 — legacy only (nuri-quant fallback 활용)**:
-`~/KIS/config/kis_devlp.yaml` 에 파일을 두고 `config/kis/` 에 yaml 을 두지 않으면 nuri-quant 가 legacy 경로에서 자격 증명을 읽는다. SDK 는 기본 경로에서 읽는다. token cache 는 이 경우에도 `config/kis/cache/` 를 쓴다.
+**Option 2 — legacy only (uses the nuri-quant fallback)**:
+If the file is at `~/KIS/config/kis_devlp.yaml` and `config/kis/` holds no YAML file, nuri-quant reads the credentials from the legacy path. The SDK reads from its default path. The token cache still uses `config/kis/cache/` in this case.
 
-**옵션 3 — SDK 미사용**: nuri-quant 만 쓰면 `config/kis/` 만으로 충분하다.
+**Option 3 — no SDK**: If you use only nuri-quant, `config/kis/` alone is sufficient.
 
-## 사용법
+## Usage
 
-### 1. 자격 증명 확인 (API 호출 X)
+### 1. Check credentials (no API call)
 
 ```bash
 make collect-kis-check
 # → KIS 자격 증명 OK [prod] app_key=PSxxxxxx... account=(미설정)
 ```
 
-### 2. 실시간 시세 수집
+### 2. Collect real-time quotes
 
 ```bash
-make collect-kis                                          # prod 모드 (기본)
-.venv/bin/python -m nuri.collectors.kis_realtime --mode paper   # 모의
+make collect-kis                                          # prod mode (default)
+.venv/bin/python -m nuri.collectors.kis_realtime --mode paper   # paper
 ```
 
-**출력 예시**:
+**Sample output**:
 
 ```
 KIS 실시간 수집: 23/23 (KIS=21, yfinance fallback=2)
 ```
 
-### 3. 단일 종목 시세 조회 (Python)
+### 3. Query a single ticker's quote (Python)
 
 ```python
 from nuri.collectors.kis_realtime import load_credentials, get_access_token, inquire_price_us
@@ -103,37 +105,37 @@ result = inquire_price_us(creds, token, "NVDA")
 # {'ticker': 'NVDA', 'date': '2026-04-09', 'open': ..., 'close': 184.02, ...}
 ```
 
-## Rate Limit 처리
+## Rate-limit handling
 
-### KIS 공식 정책 (2026.03.20 공지)
+### KIS official policy (notice of 2026.03.20)
 
-| 계정 유형 | 신청 후 3일 | 그 이후 |
+| Account type | First 3 days after application | After that |
 |---|---|---|
-| **실전 신규** | 초당 3건 | 기본 유량 (정확값 미공시) |
-| **실전 갱신** | 즉시 기본 유량 | — |
-| **모의** | 항상 더 낮은 제한 | — |
+| **Production, new** | 3 requests per second | Standard rate (exact value not published) |
+| **Production, renewed** | Standard rate immediately | — |
+| **Paper** | Always a lower limit | — |
 
-### 시스템 적용
+### System settings
 
-| 모드 | 호출 간격 | 초당 |
+| Mode | Call interval | Per second |
 |---|---|---|
-| **prod** | `KIS_REQUEST_INTERVAL_PROD = 0.4s` | 2.5건 (안전 마진) |
-| **paper** | `KIS_REQUEST_INTERVAL_PAPER = 1.0s` | 1건 |
-| **EXCD 폴백** | `KIS_EXCD_RETRY_INTERVAL_SEC = 0.4s` | NAS→NYS→AMS 사이 |
-| **rate limit 후** | `KIS_RATE_LIMIT_RETRY_DELAY_SEC = 1.5s` | 충분히 회복 |
+| **prod** | `KIS_REQUEST_INTERVAL_PROD = 0.4s` | 2.5 calls (safety margin) |
+| **paper** | `KIS_REQUEST_INTERVAL_PAPER = 1.0s` | 1 call |
+| **EXCD fallback** | `KIS_EXCD_RETRY_INTERVAL_SEC = 0.4s` | Between NAS→NYS→AMS |
+| **After a rate limit** | `KIS_RATE_LIMIT_RETRY_DELAY_SEC = 1.5s` | Enough time to recover |
 
-### Rate Limit 감지
+### Rate-limit detection
 
-`_is_rate_limit(payload)` 는 에러 응답(`rt_cd == "1"`)이면서 다음 중 하나에 해당할 때 rate limit 으로 판정한다.
+`_is_rate_limit(payload)` treats a response as a rate limit when it is an error response (`rt_cd == "1"`) and matches one of the following.
 
-1. **공식 코드**: `msg_cd == "EGW00201"`
-2. **메시지**: `msg1` 에 "거래건수" 또는 "초당" 포함
+1. **Official code**: `msg_cd == "EGW00201"`
+2. **Message**: `msg1` contains "거래건수" (transaction count) or "초당" (per second)
 
-> 실측상 KIS 해외 시세 API 는 `msg_cd=None` 을 반환하므로 메시지 매칭이 주된 판정 경로다.
+> In observed responses, the KIS overseas quote API returns `msg_cd=None`, so message matching is the primary detection path.
 
-## yfinance Fallback
+## yfinance fallback
 
-KIS 시세 조회에 실패한 종목만 yfinance 로 보충 수집한다.
+Only the tickers whose KIS quote lookup failed are filled in from yfinance.
 
 ```python
 def _yfinance_fallback(tickers):
@@ -145,77 +147,77 @@ def _yfinance_fallback(tickers):
     return recovered
 ```
 
-**효과**: KIS 21/23 + yfinance fallback 2 = 23/23 (100%)
+**Effect**: KIS 21/23 + yfinance fallback 2 = 23/23 (100%)
 
-## Token 관리
+## Token management
 
-### 1분 Cooldown
+### 1-minute cooldown
 
-KIS 는 토큰 발급을 1분당 1회로 제한하며, 연속 호출은 거부된다.
+KIS limits token issuance to once per minute and rejects back-to-back requests.
 
-### 디스크 캐시
+### Disk cache
 
-| 경로 | 형식 | TTL | 선택 조건 |
+| Path | Format | TTL | When used |
 |---|---|---|---|
-| `config/kis/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (실제 24h, 마진 1h) | 항상 (자격 증명 출처와 무관, #532) |
-| `config/kis/cache/token_paper.json` | 동일 | 동일 | 동일 |
-| `~/KIS/cache/token_*.json` | 동일 | 동일 | 사용하지 않음 (legacy 위치 — `make clean-all` 이 정리만 한다) |
+| `config/kis/cache/token_prod.json` | `{access_token, issued_at, expires_in}` | 23h (actual 24h, 1h margin) | Always (regardless of the credential source, #532) |
+| `config/kis/cache/token_paper.json` | Same | Same | Same |
+| `~/KIS/cache/token_*.json` | Same | Same | Not used (legacy location — `make clean-all` only cleans it up) |
 
-### Cooldown 응답 감지
+### Cooldown response detection
 
 `_is_token_cooldown(payload, status_code)`:
 
 - HTTP **403** → cooldown
-- HTTP 200 + `error_description`에 "1분당" 포함 → cooldown
+- any other status with "1분당" (per minute) in `error_description` → cooldown
 - `error_code == "EGW00133"` → cooldown
 
-## 미국 시세 (EXCD 폴백)
+## US quotes (EXCD fallback)
 
-KIS 는 미국 종목을 거래소별로 구분한다.
+KIS distinguishes US tickers by exchange.
 
-| EXCD | 거래소 | 예시 종목 |
+| EXCD | Exchange | Example tickers |
 |---|---|---|
 | **NAS** | NASDAQ | NVDA, GOOGL, AMD, PLTR |
 | **NYS** | NYSE | OKLO, BLSH, FIG |
-| **AMS** | AMEX/Arca | VOO, ETF 일부 |
+| **AMS** | AMEX/Arca | VOO, some ETFs |
 
-`inquire_price_us()` 는 NAS → NYS → AMS 순서로 시도하며, 시도 사이에 0.4s 대기한다(rate limit 회피).
+`inquire_price_us()` tries NAS → NYS → AMS in that order and waits 0.4s between attempts (to avoid the rate limit).
 
-## 한국 종목 (Ticker 변환)
+## Korean tickers (ticker conversion)
 
 ```python
-"005930.KS" → "005930"  # .KS 접미사 제거
-"000660.KQ" → "000660"  # .KQ도 처리
+"005930.KS" → "005930"  # strip the .KS suffix
+"000660.KQ" → "000660"  # .KQ is handled too
 ```
 
-`FID_COND_MRKT_DIV_CODE = "J"` (주식 구분).
+`FID_COND_MRKT_DIV_CODE = "J"` (market division: stocks).
 
-## 날짜와 저장 규칙 (#1636)
+## Date and storage rules (#1636)
 
-- **미국 시세의 `date` 는 뉴욕 거래일이다.** KIS 해외 현재가 응답에는 날짜가 없다. 예전에는 `today_kst()` 를 찍어, 미국 장이 열려 있는 KST 아침마다 같은 세션이 일일 수집기(yfinance, 미국 거래일)보다 하루 뒤 날짜로 저장됐다. `us_session_date()` 가 America/New_York 으로 변환해 정규장 개장(09:30) 전이면 직전 세션, 주말과 NYSE 휴장일(연방 공휴일 − Columbus/Veterans Day + Good Friday, New Year's 는 일→월만)은 직전 영업일로 당긴다. 특별 휴장은 모델에 없다. 한국 시세는 `today_kst()` 가 맞다.
-- **O/H/L 없는 현재가는 완전한 봉을 덮지 않는다.** 해외 현재가(HHDFS00000300)는 `last`/`tvol` 만 주어 open/high/low 가 0 이다. `upsert_prices` 는 INSERT OR REPLACE 라, 날짜가 맞아진 뒤에는 이 행이 yfinance 일봉을 통째로 덮을 수 있다. `KISRealtimeCollector.save()` 는 (ticker, date) 에 `open != 0` 인 봉이 있으면 그 행을 쓰지 않고, 봉이 없거나 앞선 관측도 O/H/L 이 없으면 쓴다. 한국 현재가와 yfinance fallback 행은 OHLC 를 갖고 오므로 그대로 갱신된다.
-- **yfinance fallback 의 `date` 는 봉의 인덱스 날짜다.**
+- **The `date` of a US quote is the New York trading day.** The KIS overseas current-price response carries no date. The collector used to stamp `today_kst()`, so on every KST morning while the US market was open, the same session was stored under a date one day later than in the daily collector (yfinance, US trading day). `us_session_date()` converts to America/New_York: before the regular-session open (09:30) it uses the previous session, and it moves weekends and NYSE holidays (federal holidays − Columbus/Veterans Day + Good Friday; New Year's moves only Sunday→Monday) back to the previous business day. Special closures are not modeled. For Korean quotes, `today_kst()` is correct.
+- **A current price without O/H/L does not overwrite a complete bar.** The overseas current-price API (HHDFS00000300) returns only `last`/`tvol`, so open/high/low are 0. `upsert_prices` is INSERT OR REPLACE, so once the dates line up, this row could overwrite an entire yfinance daily bar. `KISRealtimeCollector.save()` does not write the row when a bar with `open != 0` exists for (ticker, date); it writes the row when no bar exists or when the earlier observation also lacks O/H/L. Korean current-price rows and yfinance fallback rows carry OHLC, so they are updated as before.
+- **The `date` of a yfinance fallback row is the bar's index date.**
 
-**Test:** `tests/collectors/test_kis_us_session_date.py` — 달력 12 케이스 · 행 날짜 · fallback 날짜 · save 가드 4 케이스.
+**Test:** `tests/collectors/test_kis_us_session_date.py` — 12 calendar cases · row date · fallback date · 4 save-guard cases.
 
-## 검증 결과
+## Verification results
 
-| 테스트 | 결과 |
+| Test | Result |
 |---|---|
-| **23개 보유 종목 수집** | 100% (KIS 21 + yfinance fallback 2) |
-| **단위 테스트** | 62 collected across `tests/collectors/test_kis_realtime.py` · `test_kis_realtime_branches.py` · `test_kis_token_cache.py` · `test_kis_us_session_date.py` (2026-10-06) |
-| **검증 함수** | `_is_rate_limit`, `_is_token_cooldown`, `load_credentials`, `inquire_price_kr/us` |
+| **Collection of 23 held tickers** | 100% (KIS 21 + yfinance fallback 2) |
+| **Unit tests** | 62 collected across `tests/collectors/test_kis_realtime.py` · `test_kis_realtime_branches.py` · `test_kis_token_cache.py` · `test_kis_us_session_date.py` (2026-10-06) |
+| **Functions verified** | `_is_rate_limit`, `_is_token_cooldown`, `load_credentials`, `inquire_price_kr/us` |
 
-## 알려진 한계
+## Known limitations
 
-1. **모의(vps) 데이터 누락**: 일부 미국 종목(OKLO, IONQ, FIG)은 모의 환경에서 빈 응답을 반환한다. yfinance fallback 이 자동 적용된다.
-2. **KIS_HTS_ID**: WebSocket 실시간 호가에는 HTS ID 가 필요하다. 현재처럼 REST 만 쓰면 필요 없다.
-3. **종합계좌 (account) 미설정 가능**: 시세 조회만 하면 계좌번호를 비워도 동작한다. 매매 주문에는 필요하다.
-4. **WebSocket "No close frame received" 오류**: HTS ID 가 정확한지 확인한다 (KIS 공식 안내).
+1. **Missing data in paper (vps)**: Some US tickers (OKLO, IONQ, FIG) return empty responses in the paper environment. The yfinance fallback applies automatically.
+2. **KIS_HTS_ID**: WebSocket real-time bid/ask quotes require an HTS ID. It is not needed when only REST is used, as is currently the case.
+3. **Comprehensive account (account) can stay unset**: Quote lookups work with a blank account number. Trade orders require it.
+4. **WebSocket "No close frame received" error**: Check that the HTS ID is correct (official KIS guidance).
 
-## 애널리스트 투자의견 (#418)
+## Analyst investment opinions (#418)
 
-`nuri/collectors/kis_analyst_opinion.py` 는 KIS Open API `invest-opinion` (tr_id `FHKST663300C0`) endpoint 로 KR 종목별 애널리스트 투자의견을 수집한다. scheduler 의 `kis_analyst_opinion` job 이 매주 일요일 00:30 KST 에 실행한다.
+`nuri/collectors/kis_analyst_opinion.py` collects analyst investment opinions per KR ticker through the KIS Open API `invest-opinion` endpoint (tr_id `FHKST663300C0`). The scheduler's `kis_analyst_opinion` job runs it every Sunday at 00:30 KST.
 
 ### Endpoint
 
@@ -228,48 +230,48 @@ tr_id: FHKST663300C0
 
 - `FID_COND_MRKT_DIV_CODE=J` (KRX)
 - `FID_COND_SCR_DIV_CODE=16633` (Primary key)
-- `FID_INPUT_ISCD`: 6자리 ticker code (e.g. `005930`)
-- `FID_INPUT_DATE_1` / `FID_INPUT_DATE_2`: YYYYMMDD 시작/종료. 기본값은 6개월(180일) rolling window. T-0(당일)도 정상 동작하며, `investor-trade-by-stock-daily` 의 T-1 제약과 다르다 (2026-04-28 live probe 확인).
+- `FID_INPUT_ISCD`: 6-digit ticker code (e.g. `005930`)
+- `FID_INPUT_DATE_1` / `FID_INPUT_DATE_2`: YYYYMMDD start/end. The default is a 6-month (180-day) rolling window. T-0 (the current day) also works, unlike the T-1 constraint of `investor-trade-by-stock-daily` (confirmed by a live probe on 2026-04-28).
 
 **Output** (`output[]`, broker-level rows):
 
 - `stck_bsop_date` — YYYYMMDD
-- `invt_opnn` / `invt_opnn_cls_code` — 현재 의견 + 코드
-- `rgbf_invt_opnn` / `rgbf_invt_opnn_cls_code` — 직전 의견 + 코드
-- `mbcr_name` — 발표 증권사명 (한국어 raw text)
-- `hts_goal_prc` — 목표가 (KRW)
-- `stck_nday_esdg` / `nday_dprt` / `stft_esdg` / `dprt` — 괴리도/괴리율 (현 단계 미저장)
+- `invt_opnn` / `invt_opnn_cls_code` — current opinion + code
+- `rgbf_invt_opnn` / `rgbf_invt_opnn_cls_code` — previous opinion + code
+- `mbcr_name` — name of the issuing brokerage (raw Korean text)
+- `hts_goal_prc` — target price (KRW)
+- `stck_nday_esdg` / `nday_dprt` / `stft_esdg` / `dprt` — price gap / gap ratio (not stored at this stage)
 
-### 설계 결정 (codex Round 1+2 consult, 2026-04-28)
+### Design decisions (Codex Round 1+2 consult, 2026-04-28)
 
-| 결정 | 이유 |
+| Decision | Reason |
 |---|---|
-| `cls_code` 무시, `invt_opnn` 텍스트로 정규화 | live probe — 같은 cls_code 가 broker 별로 BUY / HOLD / Outperform / Neutral 으로 다르게 매핑 (broker-inconsistent ranking). 텍스트 normalization 으로 canonical bucket 추출. |
-| `firm` = 원본 broker 이름, 빈 값은 stable fallback (`KIS_UNKNOWN`) | `INSERT OR IGNORE` UPSERT 의 UNIQUE `(ticker, date, firm)` 가 NULL≠NULL SQLite quirk 로 깨지지 않도록 보장. |
-| `to_grade` / `from_grade` 원본 KIS 텍스트 그대로 | 기존 US 행 (브로커별 영문) 과 동일 패턴; 정규화는 consumer 책임. |
-| `action` 4-value derivation: `init` / `main` / `up` / `down` | 기존 `analyst_ratings.action` vocabulary (`init`, `up`, `down`, `main`, `reit`) 와 호환. KIS 의 `reit` 의미는 없어 `main` 으로 흡수. |
-| 6 month rolling window, 매 Sunday 재실행 idempotent | strict T-7d watermark 보다 안전 — scheduler miss 이후 hole 방지. UPSERT IGNORE 가 dup 흡수. |
+| Ignore `cls_code`; normalize from the `invt_opnn` text | Live probe — the same cls_code maps to BUY / HOLD / Outperform / Neutral differently per broker (broker-inconsistent ranking). Text normalization extracts the canonical bucket. |
+| `firm` = the original broker name; empty values get a stable fallback (`KIS_UNKNOWN`) | Ensures that the UNIQUE `(ticker, date, firm)` of the `INSERT OR IGNORE` UPSERT is not broken by the NULL≠NULL SQLite quirk. |
+| `to_grade` / `from_grade` keep the original KIS text as is | Same pattern as the existing US rows (per-broker English text); normalization is the consumer's responsibility. |
+| `action` 4-value derivation: `init` / `main` / `up` / `down` | Compatible with the existing `analyst_ratings.action` vocabulary (`init`, `up`, `down`, `main`, `reit`). KIS has no `reit` meaning, so it is folded into `main`. |
+| 6-month rolling window; rerunning every Sunday is idempotent | Safer than a strict T-7d watermark — prevents holes after a scheduler miss. UPSERT IGNORE absorbs duplicates. |
 
-### 운영 한계 (Round 2 codex flagged, 후속 이슈 대상)
+### Operational limitations (flagged by Codex in Round 2, targets for follow-up issues)
 
-1. **`analyst_ratings` 는 여전히 `nuri/core/coverage.py::US_ONLY_TABLES` 에 있다.** KR 행이 DB 에 들어오지만 coverage 통계에는 "(KR n/a — 소스 미지원)" 으로 표시된다. KR 지원 재분류는 후속 PR 대상이다.
-2. **`WallStreetAgent` 는 `.KS` ticker 를 건너뛴다** (`nuri/trading/agents/wallstreet.py` 의 skip 조건). 따라서 KR 의견은 consensus 에 반영되지 않고 UI ticker detail 에만 표시된다. read-path 활성화는 후속 PR 대상이다.
-3. **Privacy scanner 의 `BROKER_NAMES_KO`**: DB row 의 broker 이름은 scanner pattern 과 일치한다. scanner 는 committed code/docs/PR/commit 만 검사하고 DB 와 runtime log 는 검사하지 않는다. test fixture 와 docs 에서는 합성 broker 이름("Test Securities A" 등)을 쓰며, 이 문서도 broker 이름을 generic 하게 표기한다.
+1. **`analyst_ratings` is still in `nuri/core/coverage.py::US_ONLY_TABLES`.** KR rows reach the DB, but coverage statistics show them as "(KR n/a — 소스 미지원)" (source not supported). Reclassifying the table as KR-supported is a follow-up PR.
+2. **`WallStreetAgent` skips `.KS` and `.KQ` tickers** (the skip condition in `nuri/trading/agents/wallstreet.py`). KR opinions therefore do not reach consensus and appear only in the UI ticker detail. Enabling the read path is a follow-up PR.
+3. **The privacy scanner's `BROKER_NAMES_KO`**: The broker names in DB rows match the scanner patterns. The scanner checks only committed code/docs/PRs/commits, not the DB or runtime logs. Test fixtures and docs use synthetic broker names ("Test Securities A" and the like), and this document also refers to brokers generically.
 
-### 실패 모드 (STRATEGY §2.6 Surface rung)
+### Failure modes (STRATEGY §2.6 Surface rung)
 
-| 상황 | 동작 | pipeline_events |
+| Situation | Behavior | pipeline_events |
 |---|---|---|
-| KIS creds 미설정 | 즉시 `[]`, warning | `step_blocked` + `kis_creds_missing` |
-| Token 발급 실패 | 즉시 `[]`, error | `step_failed` + `kis_token_failed` |
-| 전체 실행 완료 | 결과 반환 | `kis_analyst_opinion_run` (covered / empty / failed / rows) |
-| `tr_cont` recursion ≥ 8 | ticker 당 한 번 surface, 계속 진행 | `kis_analyst_opinion_truncation_risk` (ticker_code, depth_reached, max_depth) |
-| HTTP 4xx/5xx, `rt_cd != 0`, exception | 해당 ticker skip, debug 로그 | (없음 — per-ticker level) |
-| Empty `output` | 해당 ticker `empty++`, continue | (없음 — 통합 run 이벤트에 합산) |
+| KIS creds not set | Immediate `[]`, warning | `step_blocked` + `kis_creds_missing` |
+| Token issuance fails | Immediate `[]`, error | `step_failed` + `kis_token_failed` |
+| Full run completes | Returns the results | `kis_analyst_opinion_run` (covered / empty / failed / rows) |
+| `tr_cont` recursion ≥ 8 | Surfaced once per ticker, collection continues | `kis_analyst_opinion_truncation_risk` (ticker_code, depth_reached, max_depth) |
+| HTTP 4xx/5xx, `rt_cd != 0`, exception | Skip that ticker, debug log | (none — per-ticker level) |
+| Empty `output` | `empty++` for that ticker, continue | (none — counted in the aggregate run event) |
 
-## 투자자매매동향 (기관/외인 수급, #247)
+## Investor trading trends (institutional/foreign flows, #247)
 
-`nuri/collectors/institutional.py` 는 KIS Open API `investor-trade-by-stock-daily` endpoint 로 한국 종목의 기관/외국인/개인 일별 순매수 데이터를 수집한다.
+`nuri/collectors/institutional.py` collects daily net-buying data by institutions, foreigners, and individuals for Korean stocks through the KIS Open API `investor-trade-by-stock-daily` endpoint.
 
 ### Endpoint
 
@@ -281,45 +283,45 @@ tr_id: FHPTJ04160001
 **Parameters**:
 
 - `FID_COND_MRKT_DIV_CODE=J` (KRX)
-- `FID_INPUT_ISCD`: 6자리 ticker code (e.g. `005930`)
-- `FID_INPUT_DATE_1`: YYYYMMDD. T-1 을 사용한다 (당일 날짜는 15:40 KST daily settlement 전에 `OPSQ2001 TIME LIMIT` 에러).
-- `FID_ORG_ADJ_PRC`, `FID_ETC_CLS_CODE`: 공란
+- `FID_INPUT_ISCD`: 6-digit ticker code (e.g. `005930`)
+- `FID_INPUT_DATE_1`: YYYYMMDD. Uses T-1 (the current day's date returns an `OPSQ2001 TIME LIMIT` error before the 15:40 KST daily settlement).
+- `FID_ORG_ADJ_PRC`, `FID_ETC_CLS_CODE`: blank
 
-**Response** (`output2`): 30일 history 배열, 101개 필드/row. 핵심 필드:
+**Response** (`output2`): a 30-day history array, 101 fields per row. Key fields:
 
 - `stck_bsop_date` — YYYYMMDD
-- `frgn_ntby_qty` — 외국인 순매수 수량
-- `orgn_ntby_qty` — 기관계 순매수 수량
-- `prsn_ntby_qty` — 개인 순매수 수량
+- `frgn_ntby_qty` — foreign net-buy quantity
+- `orgn_ntby_qty` — institutional (total) net-buy quantity
+- `prsn_ntby_qty` — individual net-buy quantity
 
-### Rate Limit
+### Rate limit
 
-`KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec 안전 마진) + rate limit 감지 시 1.5s 대기 후 1회 재시도.
+`KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec, safety margin), plus a 1.5s wait and one retry when a rate limit is detected.
 
-universe 의 KR ticker 203개 × 0.4s ≈ 81초/run.
+The collector requests each held Korean ticker once (`_get_tickers(market="kr")`, portfolio source), so a run takes about 0.4 s × the number of held Korean tickers.
 
-### 실패 모드 (STRATEGY §2.6 Surface rung)
+### Failure modes (STRATEGY §2.6 Surface rung)
 
-| 상황 | 동작 | pipeline_events |
+| Situation | Behavior | pipeline_events |
 |---|---|---|
-| KIS creds 미설정 | 즉시 `return []`, warning 로그 | `step_blocked` + `kis_creds_missing` |
-| Token 발급 실패 | 즉시 `return []`, error 로그 | `step_failed` + `kis_token_failed` |
-| HTTP 4xx/5xx | 해당 ticker skip, loop 지속 | (없음 — per-ticker 레벨) |
-| `rt_cd != 0` | 해당 ticker skip, debug 로그 | (없음) |
-| Connection error | 해당 ticker skip, debug 로그 | (없음) |
+| KIS creds not set | Immediate `return []`, warning log | `step_blocked` + `kis_creds_missing` |
+| Token issuance fails | Immediate `return []`, error log | `step_failed` + `kis_token_failed` |
+| HTTP 4xx/5xx | Skip that ticker, loop continues | (none — per-ticker level) |
+| `rt_cd != 0` | Skip that ticker, debug log | (none) |
+| Connection error | Skip that ticker, debug log | (none) |
 
-**Surface only**: collector 인프라 장애는 market signal 이 아니므로 게이트 warning 이나 pipeline block 으로 승격하지 않는다. `institutional_flows` 테이블이 비어도 한국장 분석은 degraded mode 로 진행한다.
+**Surface only**: A collector infrastructure failure is not a market signal, so it is not promoted to a gate warning or a pipeline block. Even when the `institutional_flows` table is empty, Korean-market analysis proceeds in degraded mode.
 
 ### UPSERT (B1 lesson, PR #311)
 
-`UNIQUE(ticker, date, market)` + `ON CONFLICT DO UPDATE SET ...` 를 사용한다. `INSERT OR REPLACE` 는 row id 를 바꿔 FK 를 깨뜨리므로 쓰지 않는다.
+The collector uses `UNIQUE(ticker, date, market)` + `ON CONFLICT DO UPDATE SET ...`. It does not use `INSERT OR REPLACE`, because that changes the row id and breaks FKs.
 
-## 참고 자료
+## References
 
-- **KIS Open API 포털**: https://apiportal.koreainvestment.com
-- **공식 GitHub (REST 샘플)**: https://github.com/koreainvestment/open-trading-api
-- **AI 에이전트 확장**: https://github.com/koreainvestment/kis-ai-extensions
-- **공지사항**:
-  - 2026.03.20 [중요] 신규 고객 초당 호출 제한 안내 (3일 후 기본 유량)
-  - 2026.04.02 OpenAPI Github 샘플코드 신규 업로드
-  - 2026.02.25 API 호출 유량 안내 (REST, WebSocket)
+- **KIS Open API portal**: https://apiportal.koreainvestment.com
+- **Official GitHub (REST samples)**: https://github.com/koreainvestment/open-trading-api
+- **AI agent extensions**: https://github.com/koreainvestment/kis-ai-extensions
+- **Notices**:
+  - 2026.03.20 [Important] Per-second call limit for new customers (standard rate after 3 days)
+  - 2026.04.02 New OpenAPI GitHub sample code uploaded
+  - 2026.02.25 API call rate guidance (REST, WebSocket)

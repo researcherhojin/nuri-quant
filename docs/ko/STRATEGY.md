@@ -1,0 +1,867 @@
+# Nuri-Quant 전략 정의서
+
+*English (official) edition: [../STRATEGY.md](../STRATEGY.md)*
+
+*§3.11·§3.12 의 사전등록 기준은 한국어로 작성됐다. 두 판이 이 부분에서 다르면 이 한국어 본문이 기록이다.*
+
+이 문서는 프로젝트의 존재 이유, 핵심 설계 결정의 근거, 개발 품질 기준을 정의한다. 새로운 기능을 만들거나 기존 구조를 변경할 때 이 문서의 원칙에 부합하는지 먼저 확인한다.
+
+<!--
+Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on demand" 로만 가리켜진다 (on-demand load). Claude Code 공식 가이드 ("target under 200 lines per CLAUDE.md", "imports do not reduce context") 에 따라 본문은 canonical policy + 결정의 "왜" 만 담는다. 상세 methodology / narrative / case study 는 별도 파일 (data/llm_consults/, scripts/*.py docstring, git log) 에 위임한다. 이 원칙을 어기는 추가 narrative 는 stripped HTML comment 로 감싸거나 외부 파일로 뽑아내 context cost 를 0 으로 유지한다.
+-->
+
+---
+
+## 1. 왜 이 프로젝트를 만들었는가
+
+**문제**: 개인 투자에서 감정과 직감에 의존하면 처분효과(Shefrin 1985)에 빠진다 — 수익 종목은 너무 빨리 팔고, 손실 종목은 너무 오래 잡는다.
+
+**가설**: "왜 사야 하는지/팔아야 하는지"를 데이터로 증명하는 시스템을 만들면, 감정 개입을 제거하고 일관된 의사결정을 할 수 있다.
+
+**핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
+
+- 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 승률/수익비(PF) 검증
+- 10개 에이전트 독립 분석 후 가중 합의 (risk agent 거부권)
+- prudential 제약(비중·섹터·레버리지 한도)의 기계적 검증 — `rebalance_advisor` 가 위반을 REBALANCE 로 surface (포트폴리오 전체 CERTIFIED/REJECTED 판정은 §6 에 따라 2026-10 폐기)
+- 5개 Plotly 차트가 최종 증거를 시각화
+
+## 2. 설계 원칙
+
+### 2.1 증거 우선 (Evidence-first) — 3-tier bucket split
+
+모든 BUY/SELL 판단은 **증거 품질에 따라 분류**된다. 숫자가 없을 때 "평균" 을 가정하지 않는다 (가정 폴백이 과거 사용자 손실의 원인 — 2026-04-17 codex audit).
+
+**Tier 정의** (`nuri/trading/recommend/candidates.py` `TIER_*` 상수)
+
+| Tier | 조건 | 시스템 동작 |
+|---|---|---|
+| **actionable** | validated (≥ 30 trades) + positive edge (PF ≥ 1.0) | 정식 추천. confidence 수식 full 적용. UI 주요 리스트. |
+| **advisory** | unscored (백테스트 미커버) OR low-sample (< 30 trades) | confidence = 0. 별도 section disclosure 만. "참고만" 문구. |
+| **avoid** | validated 이지만 negative edge (PF < 1.0) | confidence = 0. "독립 행동 금지" 경고와 함께 노출. |
+
+**규칙**: 시그널 → scorecard 통계 조회 → tier 분류. 통계가 없거나 negative edge 면 추천 리스트에 섞지 않는다 (advisory/avoid 섹션에 노출). 가격 타겟은 tier 와 무관하게 mechanical 이다 (§2.2). "좋아 보여서" 는 이유가 아니다 — 통계가 없으면 advisory 다.
+과거 실패 모드 (archived 2026-04-17):
+
+- `candidates.py:203` win_rate=0.5, pf=1.0 폴백이 confidence ~45 로 emit (B-2 에서 제거)
+- SELL 시그널 역방향 측정 bug 로 모두 PF>1 (B-1 sign-flip fix 후 0.52–0.60 로 드러남, B-2-ext 에서 avoid 자동 분류)
+- Learning Memory warming up: recommendations.agent_verdicts 144 rows 누적, strategy_memory 스냅샷은 outcome_30d 채워진 후 생성 → 첫 weight drift ~2026-05-17 예상 (TODO.md Tier 1 row 20). 그 전까지 DEFAULT_WEIGHTS 정적.
+
+### 2.2 기계적 실행 (Mechanical execution)
+
+규칙은 `config/rules.yaml` 에 정의하고, 코드는 실행만 한다.
+
+- 손절 -7%(성장)/-10%(가치), 익절 +20%/+40%, 트레일링 -15% — 예외 없음
+- VIX > 30 신규 매수 차단 — "이번엔 다르다" 불허
+- 한도 위반은 `rebalance_advisor` 가 기계적으로 surface, 수동 오버라이드 없음 (옛 SIEGE gate 의 REJECTED 판정은 §6 폐기)
+- **execution_priority** (PR #200, ⚠️ 미배선 — 이 순서를 읽는 모듈이 없다, §3.4): 손절 → 익절 → 트레일링 설정 → 신규매수. 출혈 차단이 수익 확정보다 선행. 손절 내 손실률 큰 것부터, 익절 내 타겟 초과율 큰 것부터.
+- 규칙 변경은 YAML 수정 + 백테스트 검증. 코드에 예외 분기 금지.
+
+### 2.3 느슨한 결합 (Loose coupling via data)
+
+파이프라인 5개 스테이지는 **가능한 한** DB/CSV 로 통신한다. 원칙은 유지하되, 여기 적힌 것은 실측이다 (#920/#922 — 이전 문구 "8개 페이즈는 서로 import 하지 않는다"는 거짓이었고, 스테이지→디렉터리 매핑이 없어 검증조차 불가능했다).
+
+- **이유**: 앞 스테이지 재실행 시 뒤 스테이지가 자동으로 새 데이터 사용. 직접 import 하면 실행 순서/상태 관리 복잡.
+- **스테이지 매핑** (검증 가능성의 전제): `collect`=`nuri/collectors` · `analyze`=`nuri/analysis` · `consensus`=`nuri/trading/agents` · `decide`=`nuri/trading/engine`(2026-10 까지 `certify`) · `track`=`nuri/trading/recommend`. `nuri/quant`·`nuri/core` 는 공용 라이브러리이지 스테이지가 아니다.
+- **원칙**: 새 모듈은 다른 스테이지 함수를 직접 호출하지 않는다. DB 테이블/CSV 로 전달.
+- **실제로 강제되는 것**: 교차 import 는 **함수 본문 안(deferred)에만** 허용 — module-level 금지 — 이고 사유와 함께 allowlist 에 등재해야 한다. 실측 **13건 / 12 pair / module-level 0** (2026-10-07 — SIEGE 제거 #1624 로 3 pair 감소). `engine/conflicts.py` ↔ `recommend/candidates.py` 상호 의존은 deferral 덕분에만 로드되며, 하나라도 hoist 하면 import 가 깨진다.
+- **예외 2건**: 같은 스테이지 내부 import 허용. consensus→decide 핸드오프는 `scheduler.py` 가 객체를 **메모리로** 넘긴다 (DB 경유 아님). 받는 쪽은 `nuri/trading/engine/decisions.py` 의 `record_decisions()` 다(SIEGE 인증기는 #1619 로 제거).
+- **Test**: `tests/core/test_cross_stage_imports.py` — 신규 교차 의존과 사라진 allowlist 항목 **양방향** 모두 FAIL.
+
+### 2.4 관찰 가능성 (Observability)
+
+모든 상태 변화는 추적 가능해야 한다.
+
+- `pipeline_events` 테이블: append-only event journal. `causation_id` 로 이벤트 체인 추적.
+- Freshness SLA: 데이터 소스별 warn/fail 임계값. PASS 아니면 대시보드 경고.
+- 결정 기록: 합의 결정마다 시장 맥락·증거를 `decisions` / `decision_evidence` 에 기록 (옛 SIEGE 인증 기록은 §6 폐기 — `certifications` 테이블은 역사 기록으로만 남는다).
+- **새 기능 기준**: "이 기능이 실패하면 어떻게 알 수 있는가" 를 먼저 답한다.
+
+### 2.5 비용 최소화 + 데이터 sovereignty (Lean-cost stack)
+
+유료 API / 클라우드 / 상용 소프트웨어 의존을 최소화한다. 100% 무료 교조는 아니다 — quality 향상이 정량화되고 연 비용이 이자 한 잔 수준이며 §4.4.3 sovereignty 룰을 지킬 수 있을 때 도입을 허용한다.
+
+| 선택 | 이유 |
+|------|------|
+| SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
+| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna` (Tier 0, 2026-10-08 `gpt-5.4-nano` 에서 교체). 포트폴리오 리포트(Tier 2)는 **로컬 전용** (2026-10-08 OpenAI 경로 폐지). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 로컬 LLM 을 쓰지 않아 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
+| GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
+
+### 2.6 Escalation Ladder (근거 기반 → 기계적 개입의 4단계)
+
+§2.1 (Evidence-first) 과 §2.2 (Mechanical) 는 같은 스펙트럼의 양 끝이다. 모든 증거에 대해 어디까지 기계적으로 개입할지는 4단계 사다리로 결정한다. **3 단계는 downside-block, 1 단계는 upside-amplify**. 새 feature 설계 시 레벨을 명시적으로 고르고 PR/STRATEGY 에 기록한다.
+
+| 단계 | 방향 | 행동 | 언제 | 예시 |
+|------|------|------|------|------|
+| **Surface** | — | 증거 노출만 (UI/reasoning/log). action·confidence 불변. | noisy, sparse, outcome-검증 부족. 판단 여지 유지. | PR #301 `divergence_flag`, PR #302 UI 배지 |
+| **Soft penalty** | down | 결정적 downgrade/reweight (HOLD 전환, confidence cap). 차단 아님. config tunable. | 같은 반대 시그널 반복 + downside skew 명확, universal fatal 은 아님. | PR #303 `divergence_technical_threshold` (default 80) |
+| **Hard veto** | down | action 강제 변경 또는 차단. config 건드리기 어렵게. | 정책 수준, risk-of-ruin 급. | Risk agent 거부권, VIX>30 차단 |
+| **Symmetric amplifier** | up | Post-veto sizing — veto/penalty 통과한 eligible candidate 에 대해서만 다중 favorable 조건 동시 충족 시 size/confidence 상향. cap 강제 (baseline × 1.5). | regime + momentum + VIX 모두 favorable. 단일 조건 발동 금지. | E3 Phase 3 와 함께 보류 (§3.6, `symmetric_amplifier.enabled: false`) |
+
+**운용 원칙**:
+
+1. Surface → Soft penalty 이관은 **데이터 기반** (발동 빈도 + 적중률 측정 선행, `pipeline_events` 의 `consensus_penalty_applied` 감사).
+2. Soft penalty → Hard veto 이관은 **정책/이론 기반** (STRATEGY 개정 PR + 백테스트).
+3. 등급 상향은 쉽고 하향은 어렵다 (mechanical → informational 시 과거 case 해석 모호).
+4. **Amplifier 평가 순서**: 항상 veto/penalty 이후. Hard veto 차단 candidate 는 amplifier 대상 아님 — 보상 증폭이 손실 회피 우회하는 경로 구조적 불가능. 발동 전 Surface 단계에서 측정 (§3.6 minimum sample/positive-outcome).
+5. **승격 게이트 — champion-challenger 순차 통제 (#1307, 2026-08-29)**: 투자 룰 변형(challenger)의 승격 자격 판정은 `nuri/quant/validation/champion_gate.py` 를 거친다. 한 캠페인 안의 다중비교는 기존 walk-forward gate(Bonferroni + frozen holdout, #706)가 통제하고, **캠페인을 거듭하는 순차 탐색**은 이 게이트가 통제한다 — (a) 기각 포함 모든 시도를 `challenger_attempts` 원장에 기록(#1305 evidence 바인딩 포함, append-only), (b) 캠페인 j 의 alpha 배정 = `alpha_total / 2^j` 반감 스펜딩(무한 반복해도 family 평생 예산 불변), (c) 같은 holdout 세대는 `holdout_max_uses` 회 열람 후 은퇴 — 재사용된 봉인 구간은 봉인이 아니므로, 이후는 새 `holdout_version` 사전등록 PR 전까지 승격 제안 불가. 파라미터는 `config/walkforward.yaml champion_gate:` (변경 = STRATEGY PR). **기계는 기각만 자동이다** — `promotion_candidate` 는 제안이고 승격은 항상 사람의 STRATEGY PR (운용 원칙 2 와 동일 축). 증거 축 분리: 이 게이트는 research(walk-forward) 전용 — §3.11 라이브 결정원장 판정과 한 verdict 안에서 섞지 않는다 (승격 서사가 유리한 축을 골라 쓰는 것을 막는다).
+
+**Anti-pattern**: Surface 과용 → "performative 경고" (JKHY ⚠ 배지 행동 무변화). Hard veto 과용 → 기회 손실 + 판단권 박탈. Amplifier 를 Soft penalty 대칭 mirror 로 단일 조건 발동 → noise pumping. **변경 절차**: 단계 이동은 config/docs PR 로. 코드 매직넘버 금지.
+
+**게이트 입력이 없을 때 (2026-08-10 채택)** — 사다리는 시그널이 *있을 때* 무엇을 하느냐만 규정했고, 입력이 **없을 때**는 침묵했다. 그 공백을 `buy_candidate_emitter._get_regime` 이 `vix = 20.0` 으로 메우고 있었다. 20.0 은 차단(>30)·caution(≥25) 임계 **아래**라 측정 불가가 조용히 통과권을 얻었고, 브리핑에는 `VIX=20.0` 이 측정값처럼 찍혔다. #753 이 같은 계열(미수집 `prices.VIX` 를 읽어 항상 폴백)로 이미 한 번 게이트를 무력화한 기록이다.
+
+원칙: **위험 게이트의 입력 부재는 그 게이트의 가장 보수적 관측치와 같은 등급으로 처리한다.** VIX 미상·노후(`entry_rules.vix_gate.max_age_business_days`, 기본 **영업일** 2일 — 달력일로 재면 휴장 뒤 정상 데이터가 미상으로 떨어진다)는 caution 구간과 동일한 **Soft penalty**(절반 포지션)다. Hard veto 로 올리지 않은 이유는 수집 하루 장애로 강세장 진입 기회를 통째로 잃는 비용이 실측되지 않았기 때문이고, Surface 로 낮추지 않은 이유는 근거 없이 전액이 나가는 것이 §2.6 이 막으려는 바로 그 형태이기 때문이다. 표기는 숫자가 아니라 `미상` — 없는 측정을 있는 것처럼 적지 않는다.
+
+**점수 성분에는 다른 규칙이 적용된다 (2026-08-10)** — 위 조항은 *게이트*(통과/차단) 이야기다. `factors/composite` 의 센티먼트처럼 **점수 성분**이 없을 때는 "가장 보수적 관측치" 라는 게 정의되지 않는다. 그때는 값을 지어내지 말고 **성분을 빼고 나머지 비중을 비례 재정규화**한다(합계 1.0 유지). 과거엔 Fear & Greed 부재 시 `0.5` 를 채웠는데, 0.5 는 중립이라 무해해 보여도 실측 0.637 대비 0-100 스케일에서 2.74점이고 `quality_bar.base_threshold: 70` 앞에서 통과 **개수**를 움직였다. 재정규화는 "모른다" 가 점수를 위로도 아래로도 밀지 않게 한다. 랭킹은 어차피 불변이다 — 시장 전체 값이라 모든 티커에 같은 양이 들어간다.
+
+**2차 적용: `regime/macro_score` (2026-08-11, #1026)** — 같은 조항을 9성분 매크로 점수에 적용했다. 결측 성분에 `50.0` 을 채워 가중합하던 것을 **성분 제외 + 비례 재정규화**로 바꾸고 `coverage`(측정된 가중치 합)를 함께 내보낸다. 실측 여파가 크다: `FRED_API_KEY` 미설정으로 FRED 전용 지표 **8개 전부 0행**이라 3성분(3M-10Y · 실업 · CPI)이 결측이고, 총점 **64.4 "Neutral" → 71.3 "Favorable"** 로 **해석 경계를 넘는다**. 지어낸 중립이 우호적 판독을 눌러 온 것이다. 코드는 이미 결측을 감지해 `warnings` 에 담고 있었으나 **읽는 소비처가 0개**였다 — 감지는 어디에도 닿지 않으면 없는 것과 같다. 얇은 표본이 확신 라벨을 달지 않도록 `macro.min_coverage`(기본 0.6) 미만이면 `interpretation="Insufficient"`.
+
+**SIEGE 게이트에도 같은 원칙이 적용됐다 (2026-08-10, #1022 — SIEGE 인증은 #1619 로 제거, 원칙의 적용 사례로만 남긴다)** — §6 gate 7 `volatility_gate` 는 지표가 없으면 `passed=True, "데이터 없음 — 스킵"` 을 냈다. 이 게이트의 가장 보수적 관측치는 **자기 자신의 실패 상태**(warning)이므로, 입력 부재는 `passed=False, severity=warning` 으로 낸다. 적용 범위는 게이트의 **판정 입력**(primary)이다 — 보조 spillover 지표(secondary)는 값이 없으면 condition 을 아예 만들지 않아 "정상" 이라 주장하지도 score 를 부풀리지도 않으므로 그대로 둔다. 없는 참고 지표마다 경고를 띄우는 건 §2.6 이 경계하는 performative 경고 쪽이다. 영구 미수집 secondary 는 런타임이 아니라 PR 시점 계약 테스트가 잡는다. 30줄 위 `data_fresh` 는 처음부터 그렇게 동작했다 — 같은 파일 두 게이트가 같은 상황에 반대로 답하고 있었다. warning 이라 `certified` 는 안 막는다 — **매매 행동은 안 바뀐다**(Surface rung). 다만 "무변화" 는 아니다: `score = passed/total` 이라 인증서 점수가 내려가고, 그 값은 `certifications` 테이블에 적재돼 `/api/engine` 이 rolling 평균을 낸다. 즉 **이 커밋 앞뒤의 score 시계열은 정의가 달라 직접 비교하면 안 된다** (실측 63 → 56). 이전 구간이 높았던 건 개선이 아니라 평가되지 않은 게이트를 통과로 세었기 때문이다. E4-0b predictivity 감사가 이 경계를 넘는 구간을 쓸 때 반드시 분리해야 한다. 실측 여파: `kr_index` · `bond` 의 primary 지표(`kospi` / `yield`)는 프로덕션 `macro` 에 n=0 이라, 두 게이트는 도입(#248) 이래 한 번도 평가되지 않은 채 매 인증서에 초록으로 찍혀 있었다. **미수집이 아니라 배관 문제다** — `prices.KOSPI` 는 419행 있고 같은 인증서의 freshness 게이트가 이미 그걸 읽는다. 변동성 게이트만 `macro` 전용 경로라 못 볼 뿐이다. 그래서 이 PR 은 semantics 만 고치고(거짓말 제거), 입력 경로 연결과 bond threshold 재도출은 분리한다 — 후자는 `_compute_3d_change` 가 pct 를 돌려주는데 threshold 0.3 은 bp 의미로 쓰여 있어 포인터만 바꾸면 죽은 게이트가 상시 발화 게이트로 바뀐다. 후속: `kr_index` 는 #1032(2026-08-11)에서 `prices` 경유 조회를 연결했고, `bond` 는 #1067(2026-08-18)에서 bp 단위 지표(`us_10y_yield_3d_bp`)로 재정의했다. **2026-10-06 §6 폐기로 이 게이트와 score 시계열은 더 이상 생성되지 않는다** — 위 서술은 `certifications` 테이블에 남은 기록을 읽을 때의 주의사항으로만 유효하다 (#1619).
+
+이 조항에 백테스트를 붙이지 않는다. 발동 조건이 시장 시그널이 아니라 **데이터 장애**라, "VIX 가 없었다면" 을 과거 시장에 되돌려 세우는 것은 의미 있는 증거가 아니다. 등급을 올리거나 내리려면 실제 장애 발생 빈도와 그때의 시장 분포를 먼저 측정해야 한다.
+
+### 2.7 개발 Flow (gstack 7-phase, 2026-04-16 채택)
+
+모든 작업은 **Think → Plan → Build → Review → Test → Ship → Reflect** 7 단계를 거친다. 단계를 건너뛰지 않는다. Gate 를 통과하지 못하면 다음 단계로 가지 못한다.
+
+| # | 단계 | 입력 | 행동 | 산출물 | 통과 gate |
+|---|------|------|------|-------|-----------|
+| 1 | **Think** | 이슈/관찰/페인포인트 | 문제 framing, root-cause, literature 확인 (§2.1) | 이슈 본문 또는 `docs/plans/*.md` problem + evidence + constraint | "왜 지금" 을 1 문장으로 답 가능? |
+| 2 | **Plan** | Think 산출물 | scope, touched files, acceptance, Escalation Ladder (§2.6) 레벨 | PR description 초안 / `/plan` 출력 | 스코프 팽창 없는가? 이슈 1 = PR 1? 커밋 ≤ 3? |
+| 3 | **Build** | Plan | 최소 구현. `config/*.yaml` 우선 (§2.2), 교차 스테이지 import 는 deferred + allowlist (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인? |
+| 4 | **Review** | feature diff | Codex `/codex review` + Claude self-review. P1 해결 필수 | Review log, GATE verdict | P1 전부 해결? disagreement 이유 명시? |
+| 5 | **Test** | reviewed 브랜치 | `make test-fast` + 사용자 워크플로 live 실행 (§5.8 #3). UI 면 browser QA | green CI + manual QA 로그 | 사용자 명령 1 회 이상 직접 실행? |
+| 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --auto` (merge 시 레포가 head branch 를 지운다). 이슈 close. 로컬 branch 정리. scope 가 바뀌었으면 TODO Tier 2 / 3 업데이트 | MERGED PR, CLOSED 이슈 | Tier 2 / 3 갱신? 로컬 branch 정리? |
+| 7 | **Reflect** | ship 결과 | 놀라웠던 점, 새 gotcha, 메모리 업데이트, NEXT_SESSION refresh | NEXT_SESSION 갱신 + fix-pattern gotcha 는 `**Test:**` cite (§5.3.1) | 다음 세션이 바로 뛸 수 있는가? |
+
+**단계 실패 = 이전 단계 회귀**. Codex 부재 시 Claude self-review 를 하고 다음 PR Review 에서 회수한다. Trivial chore 는 Think/Plan 을 inline 으로 압축할 수 있다 (Build 이상은 모든 단계를 준수한다).
+
+**Next-session entry artifact Plan gate** (2026-04-22): `NEXT_SESSION.md` 는 docs-only/gitignored 라도 Reflect 산출물이다. **Inline OK**: typo/format/self-note/HEAD append. **Plan consult 필수** (다음 primary PR 의 Plan consult 에 batch 포함): next primary 변경, 우선순위 재정렬, risk framing 신규, live command 교체, acceptance 변경. Re-consult trigger: (a) next primary 변경, (b) 후보 2+ 경쟁, (c) handoff stale 가능성, (d) 5 PR 누적 또는 48h burst 후 cadence reflection, (e) legal/TOS/production-risk 신규.
+Burst ship cadence (2026-04-22 실측, 48h 6 functional + 3 docs PR): 재현 조건은 독립 scope + 명확한 queue + codex Plan consult 선행이다. Sustainable default 가 아니다 — codex Round 2 skip 빈발, docs PR scope-discipline 경계, reviewer fatigue, handoff drift. 48h 이상 burst 후에는 반드시 handoff Plan consult 를 하고 다음 cycle cadence 를 내린다.
+
+## 3. 핵심 아키텍처 결정 기록
+
+향후 이 결정을 변경하려면, 아래 "이유" 를 반박할 근거가 필요하다.
+
+### 3.1 DB 가 유일한 통합 지점
+
+`nuri/core/db/` 만 `sqlite3` 를 import 한다. 다른 모듈은 `query()`, `query_df()`, `upsert_*()`, `get_db()` 만 사용한다.
+
+**이유**: DB 접근 패턴 단일 제어 → WAL 충돌 방지, 트랜잭션 관리, 마이그레이션 안전. 테스트는 `db_path` 주입으로 완전히 격리된다.
+
+### 3.2 10-에이전트 가중 합의
+
+10 개 에이전트 독립 분석 + 가중치 투표. Risk agent 거부권 (`alpha_action=FLAT` + confidence ≥ `consensus.risk_veto_threshold`(기본 80) → 전체 오버라이드. alpha_action 이 없는 risk verdict 는 action 이 SELL 일 때만 거부권이 발동한다).
+
+**이유**: 단일 모델 편향을 줄인다. 손실 회피가 수익 추구보다 우선한다.
+
+**가중치**: 기본값은 `nuri/trading/agents/consensus/registry.py::DEFAULT_WEIGHTS`(코드), 조정 폭·하한은 `config/agents.yaml`(`adjustment_range` · `min_weight_floor`). Learning Memory 가 과거 적중률로 ±30% 범위에서 동적으로 조정한다.
+
+**에이전트 입력 정합화 (2026-10-08)** — 판정 규칙이 아니라 입력 해석의 오류를 고친 변경이다. 부채비율을 퍼센트로 읽기(DB·yfinance 단위, 이전에는 배수로 읽어 664종목 중 634종목이 감점), 내부자 `other` 거래를 매수로 세지 않기, 13F 는 운용사별 최신 보고만, 등급·내부자·실적 캐시에 날짜 창, PCR 은 132시간이 지나면 기권하고 출처가 바뀐 시계열은 섞지 않기, 리스크 거부권은 손절 이탈에서만(불변식 — 손실·변동성 합산만으로 FLAT 이 나던 경로 제거), 비중은 USD 평가액·실계좌 기준, KOSDAQ 판별은 `.KQ` 접미사. **영향 측정**: 같은 운영 원장 사본(2026-10-08 수신)에서 보유 17종목 합의를 변경 전후 코드로 재계산 — 최종 판정 변화 **0건**, 에이전트 표 변화 2건(fundamental), 확신도 +1.3·+3.6 두 건, 기권·yfinance 실시간 호출 증가 0건. 하루 스냅샷이며 과거 판정의 재연이 아니다. CBOE 전용 PCR 출처 조건은 운영 PCR 이 `yfinance_SPY` 뿐이라 옵션 표를 매일 전 종목 기권시켜 넣지 않았다 — SPY 단일 만기 값의 스케일 문제는 별도 이슈 → **#1739 로 해결 (2026-10-08)**: CBOE 공식 일별 통계 파일(`cdn.cboe.com/data/.../{date}_daily_options`, TOTAL put/call)을 1차 소스로 복구해 임계와 같은 스케일로 채점한다. 영향(같은 원장 사본, 입력만 SPY→CBOE, 코드 동일): 보유 17종목 최종 판정 변화 **0건**, 옵션 표 방향 변화 0(HOLD 유지 — '약한 공포' PCR 1.13 → '중립' 0.84), 확신도 −2.2~+2.1 (14종목). `agents.yaml` 무변경이라 `execution_config_sha_v1` 은 그대로이고 경계는 `code_rev`·`macro.source='CBOE'` 행이 표시한다. SPY 폴백은 CBOE 가 죽은 날에만 쓰이고 여전히 다른 스케일 — 알려진 한계. **Test:** `tests/trading/agents/test_audit_regressions.py` (입력별 회귀), `tests/scripts/test_placeholder_vote_impact.py` (새 기권 출구의 원장 재구성).
+
+### 3.3 Confidence 스코어링 파이프라인
+
+```
+base = regime_win_rate × 60% + profit_factor × 40%
+     × drift_multiplier (0.3 ~ 1.1)        ← Learning Memory
+     × conflict_penalty (0.5x if high)     ← Conflict Detection
+     × regime_fit_penalty (0.4x if avoid)  ← Strategy Map
+     × position_penalty (0.3x if minimal)  ← Regime position sizing
+     × vix_gate (0x if blocked, 0.5x caution)
+```
+
+**이유**: 단순 승률로는 부족하다. 현재 레짐 성과, drift, 충돌 여부를 모두 반영해야 신뢰도 있는 점수가 된다.
+
+### 3.4 투자 규칙의 출처
+
+모든 규칙에는 학술/실증 근거가 있다. 근거 없는 규칙 추가는 금지한다.
+
+| 규칙 | 근거 | 출처 |
+|------|------|------|
+| 손절 -7% | CAN SLIM + 자체 validation PR F (2026-04-22). us_core 85 × SMA golden cross 250 entries paired counterfactual: ATR shadow surface 는 6-metric 3/6 로 acceptance 미달 → **PR F2 deferred**, -7% 유지. 상세: `scripts/episodes/pr_f_atr_validation.py` docstring + commit `c834049` (squash 된 PR 브랜치 커밋 — clone 에서는 원래부터 resolve 되지 않는다). | O'Neil, *How to Make Money in Stocks* |
+| 익절 +20%/+40% | 손익비 3:1 유지 | Minervini, *Trade Like a Stock Market Wizard* |
+| 트레일링 -15% | 11년 백테스트 최적 (73.9% 누적) | 자체 백테스트 |
+| VIX > 30 매수 차단 | 공포 구간 승률 붕괴 검증 | 자체 시그널 백테스트 |
+| 슈퍼투자자 ≥ 3명 | 13F 보유 종목 초과수익 | SEC EDGAR 분석 |
+| 처분효과 경고 | 수익 조기 매도 편향 | Shefrin & Statman, 1985 |
+| **execution_priority** | 하락 모멘텀 1h 지연 = 추가 손실 확정 | 자체 재무 논리 (PR #200) — ⚠️ **미배선**: config 를 읽는 코드 없음 (§3.5 주석) |
+| **trailing_stop_arm +15%** | 수익 give-back 방지 | PR #202 — ⚠️ **미배선**: 트레일링은 무장 조건 없이 HWM 기준 동작 (§3.5 주석) |
+| **decisions 결과 추적** | 에이전트별 적중률로 가중치 동적 조정 | PR #181, #183 |
+| **Kelly f\* = (bp−q)/b** | edge·승률·payoff 반영 position size. Fractional Kelly (full 은 estimation error·DD 로 부적합). E3 실배선. | Kelly (1956); MacLean/Thorp/Ziemba (2011) |
+| **Mean-variance frontier** | sector cap 의도. `max_sector_exposure: 35%` 는 frontier 도출 아닌 prudential default. regime 재평가 E3 후보. | Markowitz (1952) |
+| **Trend-following regime filter** | 장기 SMA risk-on/off 전환. §3.6 empirical 출발점. | Faber (2007) |
+
+### 3.5 계좌별 전략 프로파일
+
+`config/rules.yaml account_strategies` 에 정의한다. `portfolio.yaml` 의 계좌 `strategy` 필드와 매칭한다.
+
+| 전략 | 손절 | 단일종목 | 섹터 | 특이사항 | 의도 |
+|------|------|--------|------|---------|------|
+| **core** | -7% | 15% | 35% | — | 정석. Main 기본값 |
+| **active** | -10% | 25% | 45% | `trailing_stop_arm: 15` | 손실 짧게, 수익 길게 (PR #202) |
+| **swing** | -15% | 30% | 50% | — | 단기 5~20일 |
+| **long_term** | -20% | 25% | 50% | — | 장기 보유 |
+| **pension** | -30% | 40% | 60% | — | 연금 ETF 초장기 |
+
+**선택**: Core 보수, Active 적극 컷+위너보호, Swing 진짜 단기, Long_term/Pension 장기 ETF. 규칙 변경은 YAML + 백테스트 + PR.
+
+> ⚠️ **위 표 중 실제로 강제되는 건 손절과 단일종목 한도뿐이다 (2026-08-02 감사).**
+> - **섹터 열은 장식이다.** `account_strategies.*.max_sector_exposure` 를 읽는 코드가 없고, 섹터 검사(rebalance_advisor · execution_firewall)는 전부 전역 `position_limits.max_sector_exposure`(35%)를 쓴다. 즉 pension 계좌를 60%로 적어둬도 35%에서 걸린다.
+> - **`trailing_stop_arm: 15` 도 읽는 코드가 없다.** 트레일링은 존재하되 계좌별도 아니고 무장 조건도 없다 — `check_trailing_stop_signals()` 가 보유 전 종목에 대해 진입 후 고점(HWM) 대비 하락으로 판정한다(-15% growth/value, -20% volatile/swing). "+15%에 도달해야 켜진다"는 서술은 사실이 아니었다.
+>
+> 배선하는 건 매매 동작 변경이라 별도 STRATEGY PR 대상이다. 지금 이 문단은 **문서를 코드에 맞춘 것**이지 규칙을 약화시킨 게 아니다.
+
+### 3.6 Regime-adaptive framework (E3)
+**상태 (2026-04-29)**: Phase 1 shadow 는 ship 됐다 (#479). **Phase 2 paired counterfactual: binary rule 에 따라 FAIL** — 30d horizon CI_lower=-1.06% ≤ 0. 60d/90d horizon 은 robust PASS 다 (CI_lower=+1.95% / +2.60%). 자세한 내용은 아래 "Phase 2 verdict" 를 참조한다. **Phase 3 영구 보류 (2026-04-29 3-LLM consensus)** — Codex(gpt-5.4) Round 1 B → Round 2 A, Qwen3.5-122B Round 1 D → Round 2 A, Claude 는 일관되게 A. Phase 1 shadow telemetry 는 영구 유지한다 (`enabled: false`, 무기한). Reopen trigger: §7.1 auto-trade reversal 뿐이다. 자세한 Round 1/2 verdict: `data/llm_consults/2026-04-29_e3-phase2-shelve-decision.md` + `..._round2-three-way.md` (gitignored, 사용자 머신 local).
+**Phase 2 verdict (2026-04-29, branch `feat/e3-phase2-paired-counterfactual`)**:
+- Spec: `docs/plans/E3_phase2_paired_counterfactual.md` (local-only, gitignored; Round 5 codex GATE PASS 이후)
+- Universe: us_core 85 frozen (81/85 가 price row ≥1000), 2020-01-01+
+- Gate: `recovery_confirmed AND vix_favorable(VIX<22 AND 3d_slope<0) AND regime_favorable(in {bull_low_vol, recovery} AND conf≥0.60)`. macro_benign 은 제외했다 — 5Y backfill 이 없다.
+- Sample: raw 20d-breakout 14,728 건 → 고유 거래일 7 일에 걸친 eligible 166 건 (post-90d-window). Effective N≈7 (binding power-limit caveat).
+- Bootstrap: 1000 iter × block_size=20 거래일 (frozen primary), seed=42.
+- Metrics:
+| Horizon | N | Mean Δ | CI95 Lower | CI95 Upper | Verdict signal |
+|---------|---|--------|-----------|-----------|----------------|
+| **30d (primary)** | 166 | +0.54% | **−1.06%** | +2.59% | **FAIL** |
+| 60d | 166 | +4.46% | +1.95% | +7.75% | (would PASS) |
+| 90d | 166 | +6.76% | +2.60% | +12.53% | (would PASS) |
+- Sensitivity (block 10/40, informational): 60d/90d 는 모든 block size 에서 robust PASS 를 유지하고, 30d 는 FAIL 로 남는다.
+- Decision: spec acceptance rule 에 따라 **FAIL** (PASS iff 30d CI_lower > 0).
+- Honest framing: amplifier 효과는 60d/90d 에서 실재하고 크지만, 30d 에서는 power-limited 다.
+- **Final disposition (2026-04-29 3-LLM consensus)**: Phase 3 (alpha-amplified live) 는 **영구 보류**. Decisive argument: §7.1 auto-trade 가 영구 deferred → E3 효과 경로가 추천에 대한 conf-boost-only 로 축소되고, 이는 사용자의 수동 판단이 이미 완화한다 → Phase 3 의 product value chain 이 broken. Redesign options (a/b/c/d) 모두 **각하** — (a) sample extension은 effective N≈7 power-limit 미해결, (b) universe widening은 survivorship bias trade-off 가 conf-boost-only 가치에 비해 과함, (c) regime threshold 완화는 result-fitting risk, (d) macro_events 누적 후 재시도는 §7.1 deferral 이 product-layer 답을 안 바꿈. **Spec amend (D-style 30d→60d primary) 거부** — 5-round GATE PASS 후 사후 amend 는 process credibility 훼손. 60d/90d PASS 는 "supportive horizon evidence" 로만 기록 (Phase 3 promotion 근거 아님).
+- **Reopen trigger**: STRATEGY §7.1 reversal (auto-trade 재개) 결정 시에만. 그 시점에 fresh spec 재작성 (real execution path tied) 후 Phase 2 재실행.
+- Phase 1 shadow telemetry 영구 유지: amplifier `enabled: false` 무기한, gate evaluation 만 logging.
+- Verdict artifact: `data/reports/<YYYY-MM-DD>/e3_phase2_verdict.json` (gitignored).
+- Lock-tests: `tests/quant/exits/test_amplifier_paired_replay.py` (24 invariants), `tests/quant/exits/test_amplifier_stage0_audit.py` (13 invariants).
+**원래 framework intent**: §3.4 Kelly·Markowitz·Faber + §2.6 Symmetric amplifier 를 config + code 로 배선. `siege_gates.regime_overrides` 스키마 + `certification.py` 분기(둘 다 §6 폐기로 제거, 2026-10). **Hard veto (VIX>30, risk-of-ruin) override 금지**.
+**E3 acceptance (2026-04-19 codex Plan consult)**: 3-stage validation — **Stage 0 + Stage 2 모두 통과 시 ship** (Stage 1 진단 신호). 순서: Stage 0 → 1 (병행) → 2.
+- **Stage 0 — No-lookahead audit**: classifier historical 호출 시 future row 가 rolling stats 에 유입되지 않음 검증 (`compute_dynamic_thresholds()`, `_load_spy_series()`, special-regime detectors, `classify_regime_history()` intra-month flip 은닉 점검).
+- **Stage 1 — Classifier plausibility (diagnostic)**: N=24~36 date 샘플 → regime label → forward 30d return 분포 directional sanity. fail 해도 Stage 2 PASS 시 ship (codex Round 1 P1: raw sign predictivity 없어도 sizing rule 은 loss attenuation 가치).
+- **Stage 2 — Paired counterfactual (main gate)**: Frozen entry signal 단일 source (후보: SMA crossover / momentum top-decile / BUY signal historical replay). prices 5Y × N≥200 entries. (a) baseline vs (b) regime-adaptive sizing → forward 30/60/90d return. **Same entries, only sizing differs**.
+**Primary metrics** (Sharpe 가 아닌 paired — 50-200 sample 로 Δ0.1 detect power 부족): mean paired excess return 30/60/90d, bootstrap CI on mean/median paired delta, downside rate / MAE, CVaR / drawdown, sign test (보조).
+**Secondary (deferred)**: walk-forward 5Y IS / 1Y OOS Sharpe+DD, Monte Carlo regime mis-classification 5%.
+**Amplifier 발동 조건**: Surface 20+ 발동 중 70%+ positive outcome (paired excess return > 0 at 30d) 누적 후 승격한다.
+
+### 3.7 SIEGE 의 한계와 equity-context 재평가 (E3 가설)
+
+**라벨**: E3 validation 대상 hypothesis. 진단은 유효하다 — "upside / opportunity-cost gate 0개". 정량 acceptance 는 §3.6 에 있다.
+
+**진단** (2026-04-18, `certification.py:553`): `ALL_CERT_CHECKS` 11 base (portfolio 구성에 따라 11~30+ 가변) 가 **모두 downside-block** — position/sector cap, stop-loss, leverage ban, freshness, volatility, external, conflict, drift, macro, rules. **upside / opportunity-cost gate 0**. 결과: "신규 매수 안전한가" 만 판정하고, "현금 보유 기회비용" 은 invisible 하다. VIX 12 + bull + momentum top-decile 이 favorable 하게 합치해도 silent 하다. 사용자 페인 ("너무 보수적") 의 구조적 원인이다.
+
+**업데이트 2026-04-21 (PR A #429)**: "SIEGE REJECT → 매도 surface" 경로는 structural fix 가 ship 됐다. §2.6 Soft penalty 구현 — concentration/sector_limit 은 `portfolio_action=REBALANCE` 로 분리하고, alpha (SELL) 경로는 차단했다. Live verify (production DB): BAC/TSLA concentration → `portfolio` bucket, urgent 0. **원 진단 (upside gate 부재) 은 여전히 open** — PR A 는 "downside-only 의 잘못된 increase-risk emit" 만 막는다.
+
+**업데이트 2026-10-06 (#1619)**: SIEGE 인증 자체가 §6 에 따라 폐기됐다. 이 절의 가설(양방향 균형 · amplifier)은 인증서가 아니라 §2.6 ladder 와 §3.6 paired counterfactual 경로에 걸려 있으므로 그대로 open 이다 — 다만 "SIEGE 양방향 균형" 이라는 표현은 역사적이며, 구현 대상은 `nuri/trading/engine/amplifier_gate.py` 쪽이다.
+
+**업데이트 2026-04-22 (§3.8)**: "downside-block 방향" 은 structural truth 이나 "effectively downside-predictive 로 작동" premise 는 synthetic audit 에서 tentatively refuted 됐다 (position_limit Δ wrong-sign 반복). Prudential constraint 로는 유효하고, predictive gate 로는 미증명이다. upside-gate 논의 시 "기존 gate 가 intended 대로 작동" 을 assumed 로 두지 않는다.
+
+**가설** (E3 에서 검증, §3.6 3-stage): §2.6 4번째 rung (amplifier) + §3.4 Kelly/Markowitz/Faber 근거 위에서 SIEGE 양방향 균형 (REJECT 외 favorable 측정) 도입이 baseline 대비 paired outcome 을 개선하는가. Amplifier 와 Hard veto 충돌 시 우선순위는 §2.6 운용 원칙 4 (post-veto sizing) 를 따른다.
+
+**경고**: 본 §3.7 진단·가설을 prescriptive 로 인용해 config/code PR 을 만드는 것은 금지한다. §3.6 백테스트 PASS 전까지 hypothesis 등급이다. PR A #429 는 예외가 아니다 (alpha/portfolio 데이터 구조 분리만 shipped, upside gate 추가 아님).
+
+### 3.8 SIEGE predictivity measurement (E4-0b v2) — audit route closed
+
+**상태**: v1 #417 → v2 재설계 → 60-month production rerun 완료 (2026-04-22, Mac mini). 결과: acceptance `CI_upper < 0` 미달, `position_limit` Δ point estimate 반복 wrong-sign (fired > not_fired, 30/60/90d 전부). **variant ladder × momentum-based snapshot audit route 는 2026-04-22 data/design 에서 §3.7 downside-predictive framing 을 증명하지 못함 — closed**. §3.7 hypothesis 전체가 closed 된 것은 아니다 (real-portfolio replay, `recommendations.outcome` 누적, Symmetric amplifier 전용 측정은 열려 있다).
+
+**Prudential vs predictive 축 분리 (필수 인용 규칙)**: `position_limit` / `sector_limit` / `leverage_ban` 는 **prudential portfolio constraints + user-preference defaults** 로 유효 — 감정 통제, §7 자동 매매 deferred, O'Neil/Minervini lineage. **그러나 synthetic audit 은 forward-downside-predictive gate 로 기능한다는 주장 미증명**. 혼동하지 않는다 — rule 은 prudential 근거로만 인용하고, downside-predictive framing 은 §3.8 에서 tentatively refuted 됐다.
+
+**2026-10-06 (#1619)**: 인증기 폐기(§6). 본 절의 판정은 그대로 유효하다 — prudential 축은 `rebalance_advisor` 가 집행하고, predictive 축은 refuted 로 남는다. 감사 도구(`siege_predictivity_audit.py` · `/nuri-siege-audit`)는 정리 PR 에서 삭제되며 리비전 `d8a89ede` 로 고정한다.
+
+**E4-0c (measurement consume 후 재-grading) 무효화** — consume 할 durable evidence 가 없다. §3.7 upside-gate hypothesis 는 §3.6 paired counterfactual (sizing-rule legitimacy, E3-3b PASS) 과 별도 경로로 검증한다 (user actual portfolio replay, `recommendations.outcome` 누적 후 real-history).
+
+**상세 methodology / gate eligibility matrix / 60-month gate-level table / deferred extensions / 재실행 명령**: 삭제된 `/nuri-siege-audit` skill 과 `scripts/analysis/siege_predictivity_audit.py` 의 마지막 리비전 `d8a89ede` 에 있다 (`git show d8a89ede:.claude/skills/nuri-siege-audit/SKILL.md`, #1619). STRATEGY 본문은 canonical verdict 만 담는다.
+
+### 3.9 Provisional vs canonical Learning Memory (#468)
+
+`_compute_weights` 가 `recommendations.outcome_30d` 만 read 하던 단일 호라이즌 구조에서, **per-agent 다중 호라이즌 precedence** 구조로 확장했다. 30d 는 canonical, 21d 는 provisional warm-start 다. 7d/14d 는 readiness/monitoring 전용이다.
+
+**30d 가 canonical 이고 변경 불가인 이유**: O'Neil 8주 보유 (CAN SLIM)·Minervini 손익비 3:1 (SEPA) 의 holding window 와 정합한다. 트레일링 -15% 발동 (PR #202) 도 30d 내에서 측정한다. hit/hit_quality 판정 기준 (BUY +5% / SELL -2%) 은 30d 에 한정된다.
+
+**21d 가 유일한 provisional source 인 이유 (7-14-21 blend 없음)**: blend 는 horizon-specific decay 가중치를 임의로 설정해야 한다 → "heuristic disguised as learning". 21d 는 30d 의 70% 진행률이고 sample distribution 이 비교적 안정적이다. 7d/14d 는 noisy 하다 (intraday/short-term 영향) — readiness/monitoring 에만 사용한다.
+
+**global 이 아니라 per-agent precedence 인 이유**: agent 별 verdict 빈도가 비대칭이다. 2026-04-28 production: technical 158 BUY+SELL / risk 5 / retail+crypto 0. global label (single weight source) 은 "일부 canonical, 일부 provisional, 일부 default" 동시 상태를 표현하지 못한다. per-agent 가 정확한 모델이다.
+
+**provisional cap 이 `0.10` 인 이유 (canonical 은 `0.30`)**: weaker evidence (shorter window + same min_agent_records gate) 에는 conservative cap 을 둔다. 정확한 calibration 은 별도 작업이다 (statistical shrinkage, Bayesian posterior). 현 단계는 **policy cap, not inference** 다.
+
+**spy-test 가 아니라 structural separation 인 이유**: `compute_canonical_weights` 와 `compute_provisional_weights` 가 별도 함수로 각자 다른 outcome 컬럼만 read 한다. import-graph 가 contract 를 보장한다 — Hard veto / amplifier (§2.6) 경로는 `compute_canonical_weights` 만 호출한다 (provisional 무접근). spy-test (mock + assert_not_called) 는 brittle 하므로 채택하지 않는다.
+
+**retail/crypto 가 `structurally_unsaturating` 인 이유** ("underpowered" 가 아님): 두 agent 는 현 동작 패턴상 BUY+SELL 발동 빈도가 0 이다. Natural-wait 으로도 영영 saturate 되지 않는다. `default_weight` 를 영구 사용하는 것이 의도다. agent emit 정책 변경은 별도 이슈다 (PR scope 밖).
+
+**API surface**: `/api/learning-memory/readiness` 가 per-agent source list 를 응답한다 (canonical_30d / provisional_21d / default / structurally_unsaturating + 호라이즌별 sample_count + eligible). 5분 캐시.
+
+**참조**: `nuri/trading/agents/consensus/learning_memory.py` (`compute_canonical_weights` / `compute_provisional_weights` / `select_weight_source`) + `nuri/trading/agents/consensus/__init__.py` (`agent_readiness`), Migration 23 (`outcome_7/14/21d` 컬럼), `nuri/trading/recommend/tracker.py::TRACK_HORIZONS`.
+
+### 3.10 Strategic Asset Allocation (SAA) — long-term policy mix
+
+**근거 (현대 학술 + 공신력 자료, 2020+)**:
+
+- **Ibbotson & Kaplan** (_FAJ_ 2000, Brinson "93%" 해석 정정): 자산 배분은 **return 분산 (variance over time)** 의 ~90% 를 설명 (return **수준** 이 아님). 종목 선택 / market timing 도 cross-sectional 차이의 30-40% 설명. 자주 오용되는 통계 — "자산 배분이 100% 답" 이라는 단순 결론 X.
+- **Vardharaj & Fabozzi** (_J. Portfolio Mgmt_ 2007): modern data 재현 — 자산 배분 도미넌스 확인. Brinson 후속.
+- **Andrew Ang** (BlackRock CIO, _Asset Management_ 2014): "Factors are the new asset classes" — momentum / value / quality factor 비중도 자산 배분 차원.
+- **Antti Ilmanen** (AQR, _Investing Amid Low Expected Returns_ **2022**): 2020s 저금리·고밸류 환경 → 60/40 expected return 연 4-5% 로 하락. factor diversification + global tilt 권고.
+- **Vanguard** _Principles for Investing Success_ 4th ed (**2024**) + Capital Markets Model (**VCMM 2024**): 4 원칙 (goals/balance/costs/discipline). 향후 10년 expected return — US equity 3-5% / Intl 7-9% / US bond 4-5%/yr.
+- **Morningstar** _Mind the Gap_ (**2024**) + DALBAR QAIB (**2024**): 투자자 실현 수익 vs 펀드 수익 격차 -1.7%/yr (Morningstar). retail equity vs S&P 500 격차 누적 ~3%/yr (DALBAR, 1994-2023). **discipline (매뉴얼 rebalance) 가 alpha 보다 큰 영향**.
+- **Damodaran** (NYU, ERP 2024 update): equity risk premium implied 4.6% (mid-2024) — valuation context.
+- **CFA Curriculum** Asset Allocation reading: SAA (장기 정책 mix) 와 TAA (시장 view overlay) 를 **분리된 layer** 로 운영 권고.
+- **Bernstein** _Intelligent Asset Allocator_ (2000, 여전히 reference): equal-weight rebalance 가 mean-variance 최적해와 근사 — cov matrix instability 로 강건성 우선.
+
+**핵심 보정 (오용 방지)**:
+
+1. Brinson "93%" = **variance (over time)**, NOT return level. "자산 배분만 잘하면 100% 알파" 는 오독.
+2. 2020s 환경 = **low expected return** (Ilmanen 2022). 단순 비중 mix 보다 **비용 최소화 + behavior gap 억제** 가 expected return 의 큰 부분.
+3. Factor (momentum/value/quality) 도 asset class — 우리 `quant/factors/` 모듈이 이미 보유 (Ang 2014 framework 정합).
+
+**현재 상태 (2026-05-04 audit)**:
+
+- TAA ✅: `REGIME_ALLOCATION` (`nuri/trading/strategy/longshort.py:24`) — 10 regime × long/short/cash 비중 동적 매핑.
+- SAA ❌: 자산 클래스 (주식/채권/원자재/REIT) **장기 target 비중** 미정의. `account_strategies` 는 single-position / sector cap 만, asset class 비중 룰 부재. (이후 `config/rules.yaml` `strategic_allocation_targets` 로 정의됐고 `nuri/trading/strategy/strategic_allocation.py` 가 읽는다.)
+
+**채택 framework** (Vanguard 2024 + Bernstein equal-weight robustness + Ang factor):
+
+- Equal-weight 또는 risk-tolerance 기반 strategic 비중. mean-variance optimization 의 cov matrix instability 회피.
+- Account_strategy 별 (core / active / swing / long_term / pension) 다른 SAA target — 위험 허용도 차등 반영.
+- Lifecycle glide path (Vanguard target-date 모형): 100 - age = equity % (러프 anchor). 사용자 portfolio.yaml `target_age` 옵션 으로 적용 (Phase 2 후행).
+- Factor tilt (Ang 2014): momentum/value/quality 비중은 SAA 위에 overlay (현재 우리 `quant/factors/` 신호 가 반영).
+
+**SAA target 정의** (config/rules.yaml `strategic_allocation_targets` 신설, 사용자 검토 필요):
+
+| account_strategy | us_equity | kr_equity | bond | commodity | cash 최소 | 근거 |
+|---|---|---|---|---|---|---|
+| `core` | 50% | 20% | 20% | 5% | 5% | Vanguard 3-fund 변형 (KR 추가, US 60% 기준) |
+| `active` | 60% | 20% | 10% | 5% | 5% | 적극 — equity 비중 ↑, Ilmanen low-return 환경에서도 risk premium 추구 |
+| `swing` | 50% | 30% | 5% | 5% | 10% | 단기 회전 — 현금 buffer ↑ |
+| `long_term` | 40% | 20% | 30% | 5% | 5% | 장기 안정 — bond 비중 ↑ |
+| `pension` | 30% | 15% | 45% | 5% | 5% | 연금 — Vanguard target-date glide path (60대 기준) |
+
+**Drift threshold**: target 대비 ±5% 이상 deviate → REBALANCE 권고 emit (alpha_action=FLAT 절대 X — STRATEGY §3.7 portfolio_action axis 분리 룰).
+
+**Rebalance cadence** (Morningstar/Vanguard 2024 권고: discipline 우선):
+
+- 정기: 분기 1회 (3/6/9/12 월 첫 영업일).
+- 비정기: drift > 10% 또는 regime 전환 시 즉시 권고 (TAA 와 sync).
+- **behavior gap 억제**: 시장 timing 시도 X — 기계적 rebalance 가 long-run alpha (DALBAR/Morningstar 2024 데이터).
+
+**TAA × SAA 결합 규칙**:
+
+- SAA = 자산 클래스 비중 (장기 anchor)
+- TAA = `REGIME_ALLOCATION` long/short/cash 비중 (단기 overlay)
+- 충돌 시: regime-driven cash up 은 TAA 가 SAA 를 **일시** override (방어 우선). regime 정상화 시 SAA 로 회귀.
+- factor tilt (Ang 2014): SAA 비중 안에서 factor 신호 (`quant/factors/momentum.py` 등) 가 종목 선택을 가이드.
+
+**미적용 (의도적 deferred)**:
+
+- Mean-variance optimization (시스템 기본 경로에서 미사용) — Bernstein/Ilmanen 권고대로 cov matrix instability 회피. `nuri/analysis/rebalance.py` 에 Riskfolio-Lib 기반 MVO(최대 Sharpe)와 Risk Parity 가 함께 구현돼 있고, 시스템 경로(`regime_aware_rebalance` — `GET /api/rebalance` 기본값 · tracker)는 Risk Parity(`rp`)를 쓴다. MVO 는 `?method=mvo` 또는 분석 CLI(`python -m nuri.analysis.rebalance`, 기본값 `mvo`)로만 선택된다.
+- All Weather risk parity (Dalio) — leverage 필요 (4-environment hedge), STRATEGY §7.1 자동 매매 deferred 와 호환 X.
+- Yale model (Swensen) — 비전통 자산 (PE / hedge fund) 접근 제약.
+
+**참조**: `config/rules.yaml strategic_allocation_targets` (canonical 값, Phase 1 skeleton), `nuri/analysis/rebalance_advisor.py` (drift 계산 — Phase 2 확장 예정).
+
+### 3.11 소액+측정 모드 (Measurement mode) — 시스템 알파의 입증책임 (#824/#828, 2026-07-07)
+**결정**: 시스템 추천을 따르는 실집행 자본을 계좌 equity 비중 **내부**의 "실험 슬리브" sub-cap 으로 한정하고, 나머지 equity 는 §3.10 SAA 기반 broad-index passive core 로 둔다. 슬리브 상한 상향은 아래 사전 고정 판정 기준 통과 + STRATEGY PR 로만 (§2.6 운용 원칙 2 준용). 하향/동결은 상시 허용 (prudential). 입증책임은 시스템에 있다 — 엣지의 기본값은 "없음".
+**왜 지금**: 2026-06 Edge Reality Check. Live 성적 (#675, 116 picks / 7wk 단일 강세장): BUY alpha vs SPY +2.8/+5.0/+19.8%p (7/14/30d) 이나 growth-peer QQQ 대비 ~56% beat (30d) — style 효과가 지배하는 표본. 순열 검정은 momentum/RS 엣지 기각 (#709: 퇴화 버그 fix 후 p=0.791), exit 개선 기각 (#715: Δ−0.318, p=0.552 → #800 leader-exit 비활성). 측정 인프라 (#674/#675) 는 가동 중이나 판정 기준이 사전 고정돼 있지 않으면 사후 해석이 반복된다 (§3.6 의 spec amend 거부와 동일 원리).
+**Escalation Ladder (§2.6)**: 성적표 원장 = **Surface** (증거 노출만). 슬리브 상한 = **Surface** — 소비 배선은 ⑤ 로 완료(#834/#909, 2026-10-07 상태 갱신): 상한 초과는 장마감 브리프의 REBALANCE 로 매일 표출된다. "슬리브 잔여 소진 시 신규 매수 차단" face 는 ExecutionFirewall 에 배선돼 있으나 그 액터는 수동 phase-2 체인에서만 호출된다(운영 원장 마지막 실행 2026-08-18) — 일상 경로에 들어가기 전까지는 **Hard veto** 로 보지 않는다 (들어가면 VIX>30 신규 매수 차단 계열). 상한 **초과 상태의 해소**는 `portfolio_action=REBALANCE` 로만 surface (§3.7/#429 axis — alpha SELL 로 표출 금지). §3.8 축 분리 준수 — 슬리브 상한은 prudential constraint 로만 인용하며, downside-predictive 주장이 아니다. §3.8 이 열어둔 "real-portfolio replay + `recommendations.outcome` 누적" 경로의 실측 개통이 본 절의 측정 대상이다.
+**1) 성적표 단일 원장 (ledger of record)**: 판정에 쓰이는 측정 기록 (`decision_outcomes` 등) 의 원장은 **production (Mac mini) DB 단일** (#824) — dev 머신 DB 는 read-replica 이며, 판정·리포트는 원장 쿼리만 인용한다 (2026-07-07 두 원장 혼용 오탐이 계기). 운영 상세 (sync 방향, writer-job 금지) 는 `docs/SOURCE_OF_TRUTH.md` (local), 원장 스냅샷/백업은 ⑥ 으로 구축 완료 (#835/#896 — WAL-safe 검증 백업 매일 00:00 + off-machine 사본 + 나이 watchdog).
+**2) 슬리브 × SAA 결합 규칙** (§3.10 TAA×SAA 패턴 준용): 슬리브는 자산 클래스가 아니라 equity bucket **내부** 구획 (상한 분모 = us_equity+kr_equity **합산** 대비 %) — SAA target/drift ±5% 계산은 슬리브 포함 통상 계산 (이중 계상 없음). 상한 값은 `config/rules.yaml measurement_mode.sleeve_max_equity_pct` (account_strategy 별, canonical). 집행은 §7.1 대로 사용자 수동 — 본 절은 §3.6 Phase 3 (alpha-amplified live) 의 우회 부활이 아니다.
+**3) 판정 기준 (2026-07-08 사전 고정 — 사후 amend 거부, §3.6 선례)**:
+
+**사후 추가가 허용되는 유일한 종류 — prudential invalidator** (2026-08-18, #1068 계기로 명문화):
+판정을 **보류만 시킬 수 있고 승격은 시킬 수 없는** 조건은 사전등록 이후에도 추가할 수 있다.
+사전등록의 목적은 *긍정적 결과의 사후 정당화*를 막는 것인데, 한 방향으로만 작동해 verdict 를
+withhold 하기만 하는 조건은 그 남용에 쓰일 수 없기 때문이다 (§2.6 "하향/동결은 상시 허용" 과
+같은 논리). 조건 완화·표본 규약 변경·3조건 수정은 여기 해당하지 않으며 종전대로 STRATEGY PR +
+재승인 대상이다. **추가 시 의무**: (a) 본 절에 조건과 도입일을 기록, (b) `config/rules.yaml
+measurement_mode` 에 임계를 두고 lock test 로 잠가 우발적 완화를 막고, (c) 그 조건이 무효화를
+만드는 시나리오를 회귀 테스트로 고정. 첫 사례가 아래 `max_settlement_lag_days` 다.
+| 항목 | 값 | 근거 |
+|---|---|---|
+| 판정일 | 2027-06-30. 조기 승격 금지 (하향은 상시). 표본 emit cutoff = 2027-05-15 (30d 창 완결 보장) | pre-registration — Harvey, Liu & Zhu (2016) multiple testing / p-hacking |
+| 표본 규약 | `declared_date` (2026-07-08) ~ emit cutoff 에 emit 된 **US BUY** 결정만 (distinct `decision_id`). 30d window 단일 판정 창 — 7/14d 는 진단용 (30d 는 파일럿 #675 탐색 결과 기반 선택, 판정 표본은 declared_date 이후 disjoint). n ≥ 200. SELL 은 진단 전용 (원장 alpha 는 방향 보정 저장 — tracker 부호 반전) | 원장 실측 σ≈25.0%p (US BUY 30d, n=62, #828 코멘트 쿼리): n=200 의 검출 하한 ≈ +4.4%p/30d (one-sided α=0.05, 80% power), accrual 실측 ~43건/월 → 판정 시점 기대 n≈400 → ≈ +3.1%p. **미검출 ≠ 엣지 부재** (power 한계 명시). §2.1 30-trade 는 per-signal tier, 본 n 은 system-level (별개 축) |
+| 벤치마크 | SPY (`forward_outcome_tracker.py` `DEFAULT_BENCHMARK_TICKER` = `measurement_mode.benchmark`). **본 판정은 US-only 로 고정.** #833 착륙 후 KR 결정의 **기록 기준**은 기초자산별 (`measurement_mode.benchmark_by_asset_class`, 분류 = `asset_class_rules`, 매 outcome 행의 `benchmark_ticker` 에 자기기술; KRX 상장 US 추종 ETF → SPY, 채권·원자재 → 벤치마크 없음 = alpha NULL, 그 외 KR → KOSPI. #833 은 상장 시장 기준이었고 #1459 가 기초자산 기준으로 고쳤다) — 기록 기준이 바뀌었을 뿐 **판정 대상 여부는 그대로**이며, KR 은 **별도 사전등록** 전까지 진단 전용 | #675 caveat: SPY 는 growth 대비 과대평가. KR 을 SPY 로 재면 FX + 시장 스타일이 alpha 에 섞여 부호까지 뒤집힘 |
+| 승격 조건 (3개 동시) | mean 30d alpha > 0 · 순열 p < 0.05 (**ticker-block placebo**: 실 표본의 ticker→emit일 구조 유지, 동일 시장 eligible universe 에서 ticker 치환, N=1000, 통계량 = mean 30d alpha, one-sided — 중첩 창·동일일 배치·반복 종목 의존성을 null 이 상속) · **median-decision-date 등분 2분할** 모두 mean alpha > 0 (반기 n 균형 보장) | López de Prado (2018) PBO/deflated-Sharpe 정신 — 단일 통계 아닌 강건성 요구. naive iid 순열은 클러스터링으로 anti-conservative |
+| regime 축 | 내부 10-regime 분류는 진단 Surface 전용, 판정 비사용 — 원장 라벨 커버리지 3% (12/383, #828 코멘트 쿼리), 2026-04 이후 transition 1회 (판정 교착 위험), 자기 분류기 순환성 | 실측 2026-07-07 (production 원장) |
+| 오염 방지 | `decision_id` 없는 ad-hoc 체결은 표본 제외 (#715 사전등록 원칙의 자본 버전). missing outcome (추적 실패/가격 결측) 은 제외하되 비율을 판정 리포트에 공시 — **15% 초과 시 판정 무효 (측정 연장)** **결측 계상은 창이 *정산*된 것만** — 벤치마크가 만기일 이후 종가를 가진 상태 (#1068, 2026-08-18). 아직 안 온 bar 는 추적 실패도 가격 결측도 아니다; 프로덕션 실측 달력 50.0% vs 정산 9.1%. emit cutoff 가 판정일 46일 전이라 **판정일에는 두 기준이 일치**하므로 사전등록 개정이 아니다 — 바뀌는 것은 측정 중 월간 진행 리포트다. 짝 가드: 정산 프런티어가 `max_settlement_lag_days`(7 — 위 prudential invalidator 정책의 첫 사례, 2026-08-18 도입) 넘게 뒤처지면 `INVALID_STALE_BENCHMARK` 로 판정 차단 (결측률은 정산분만 세므로 수집이 멈추면 오히려 깨끗해 보인다) | Shefrin & Statman (1985) — ad-hoc 개입이 처분효과 재유입 경로. 결측 편향 (탈락은 나쁜 outcome 과 상관 가능) |
+**판정 결과 처리**: 3조건 통과 → **US 집행분 슬리브에 한해** 상한 상향 STRATEGY PR (새 상한도 본 표 개정으로 사전 고정). 미달 → 슬리브 유지/축소 + 측정 연장 또는 §3.10 passive 로 수렴 — "조금만 더" 없이 본 표가 답이다. 사전등록 대상은 판정 **기준**이지 상한 초기값이 아니다 — 슬리브 초기값은 판정 표본에 영향이 없으므로 최초 사용자 확정 PR 까지 placeholder 로 두며 일반 PR 로 정정 가능. 확정 이후부터 상향-sticky 발효.
+**판정 전 선결 과제 (follow-up issue — 2026-10-07 기준 ①~⑥ 모두 착륙, 판정 기준 무변경)**: ① regime 라벨 백필 — #832 구현 완료 (`scripts/ops/backfill_regime_labels.py` + emit 경로 canonical-or-NULL, 진단용) ② 순열 판정 도구 — #842 구현 완료 (`nuri/quant/validation/decision_alpha.py`, 설계는 본 표에 사전 고정; 기존 `nuri/quant/validation/` 3종은 포트폴리오 Sharpe 전용) ③ 3조건 통합 판정 — 구현 완료: #842 `decision_alpha.adjudicate()` 가 세 조건을 한 리포트로 내고, #856 월간 리포트(매월 1일, production 원장, 판정일 전엔 `PROGRESS_REPORT`)가 #brief 로 표출한다 (`/api/alpha` 는 추적 완결성 엔드포인트라 설계상 항상 NOT_MEASURABLE — 판정을 내지 않는다) ④ KR benchmark 분리 — #833 구현 완료 (`decision_outcomes.benchmark_ticker`, 기록 기준만; KR 판정 사전등록은 미착수). #1459 (2026-09-08): 기록 기준을 상장 시장이 아니라 **기초자산**으로 — `measurement_mode.benchmark_by_asset_class` (분류 = `asset_class_rules`). KRX 상장 US 추종 ETF → SPY, 채권·원자재 → 벤치마크 없음(alpha NULL). 원장 실측 KOSPI 행 1,200 중 525 가 비-한국 기초자산이었고 US 지수 ETF 의 30d "alpha" −15%p 는 KOSPI−S&P 스프레드였다. **US 상장 결정(판정 표본)은 SPY 고정 그대로** — 이 map 을 보지 않는다. **쌓인 행은 다음 일일 스캔이 새 규칙으로 재측정한다** — `scheduler.py` `alpha_tracking` (17:00 KST) 이 `max_decisions=2000` 으로 도는데 emit 된 결정이 1,247 건이라 전부 걸리고, scan 쿼리에 '이미 측정됨' 필터가 없으며 upsert 가 `ON CONFLICT … DO UPDATE SET benchmark_ticker = excluded.benchmark_ticker, alpha = excluded.alpha` 다. 어느 규칙이 만든 행인지는 같은 upsert 가 갱신하는 `decision_outcomes.code_rev` · `tracked_as_of_date` (#1305) 로 가린다. 판정 표본은 불변 — `decision_alpha.py` 의 `is_kr_ticker → continue` 가 alpha 수집과 `n_missing_closed` 계상 **양쪽보다 앞**이라 새 NULL 행이 15% 무효화 지표를 못 움직인다 ⑤ 슬리브 상한 소비 배선 — 구현 완료 (#834/#909; 신규 매수 차단 face 의 호출 범위는 위 Escalation Ladder 참고) ⑥ 원장 스냅샷/백업 정책 — 구현 완료 (#835/#896). 월간 알파 진행 리포트 표출 = #856.
+**참조**: `config/rules.yaml measurement_mode` (canonical 값), `nuri/agents/actors/forward_outcome_tracker.py` (측정 파이프라인, 매일 17:00 KST), `docs/SOURCE_OF_TRUTH.md` (원장 매핑, local-only).
+### 3.12 held_add 임계 그리드 전방 측정 (#1173 = #788 Stage 1, 2026-08-29 사전등록)
+**결정**: held_add 임계(75/75/80)는 바꾸지 않고, "임계가 X 였다면 발화했을까" 를 후보 그리드 전체에 대해 `held_add_would_fire` 원장에 매일 기록한다 (Stage 1). 판정(Stage 2)은 아래 사전 고정 기준으로만 — §3.6/§3.11 과 같은 원리로 **기록이 쌓이기 전에** 고정하며, 사후 amend 는 §3.11 의 prudential invalidator (보류 전용 조건) 만 허용한다.
+**왜 지금**: `held_add_shadow` 잡이 6주 연속 0건 emit / 19건 skip — 임계가 과도한지 데이터가 없다. 소급 백테스트(v1)는 survivorship 으로 기각 (#788 Codex 2026-08-21) → v2 = 전방 측정. 그리드·판정 기준은 codex 설계 리뷰 1회전 (NEEDS_REWORK → 반영) 을 거쳤다 (`data/llm_consults/2026-08-29_held-add-would-fire-design-1173.md`).
+**canonical 값**: `config/buy_signals.yaml held_add_mode.would_fire_logging` (grid + `stage2_adjudication`) — 잠금 테스트가 드리프트를 차단, 변경은 본 절 개정 PR 로만.
+**판정 스펙 (서술 정본)**:
+1. **이벤트 행** = (as_of_date, ticker, account). eligible = `earnings_blackout=0 ∧ headroom_pct>0`.
+2. **variant 발화** = would_fire_json[V] ≠ null — V 가 어떤 mode 를 고르든 무관 (임계 완화는 current 와 다른 상위 precedence mode 를 고를 수 있고, 그것까지가 측정 대상).
+3. **incremental(V)** = V 발화 ∧ current 미발화인 eligible 행.
+4. **dedup**: (ticker, account, V) 안에서 7 calendar day 클러스터당 **첫 발화 행** 생존 — 실행했다면 첫 신호에 했을 것 (prospective 규율).
+5. **결과 지표**: 30 calendar day 전방 alpha = ticker 수익률 − SPY 수익률. entry = as_of_date 종가, exit = as_of_date+30d 이하 마지막 거래일 종가 (양측 동일 날짜).
+6. **추정량**: incremental(V) 의 **표본 중앙값** (paired 아님 — incremental 집합엔 짝이 없다). qualifying = median alpha > 0 ∧ n ≥ 20 ∧ 발화율 제약 충족.
+7. **발화율 hard constraint**: 주간 dedup 발화 ≤ 당주 eligible 고유 (ticker, account) 행의 25% — 책 크기에 스케일하고 원장 단독으로 계산 가능 (고정 건수 상한은 오늘의 보유 수를 규칙에 박는다). 초과 variant 는 alpha 무관 탈락.
+8. **variant 간 순위**: qualifying 을 median alpha 로 정렬, 상위 2개 차이 ≤ 0.5%p 면 더 보수적(실효 임계 높은) 쪽.
+9. **settlement**: 판정은 로깅 시작 + 8주 이후에만, 이벤트는 `as_of_date ≤ 판정일 − 30d` 인 행만 (부분 성숙 꼬리의 기회주의적 포함/제외 차단 — §3.11 emit cutoff 준용).
+10. **추론 한계 (명시 사전등록)**: 겹침 창 + 반복 티커로 iid 불성립 — 본 판정은 **기술적(descriptive) 스크리닝**이다. PASS 는 #519 calibration 백테스트 착수 자격만 부여하며, 임계 변경은 여전히 STRATEGY PR + Escalation Ladder.
+11. **days_held 공변량 금지**: 소스가 하드코딩 fallback 30 (portfolio 에 entry_date 없음) — 원장에 기록하지 않으며 Stage 2 에서 사용 금지. gates 에 남는 fallback 효과는 전 variant 공유라 variant 간 비교에서 상쇄된다. 소스 수정은 별도 이슈.
+**참조**: `nuri/trading/recommend/held_add_would_fire.py` (그리드 계산·기록), `nuri/trading/recommend/held_add.py::evaluate_mode_gates` (측정·라이브 공유 게이트 평가).
+
+## 4. 개발 품질 기준
+
+PR 전에 확인한다.
+
+### 4.1 테스트
+
+| 항목 | 기준 | 현재 |
+|---|---|---|
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,866 tests, 435 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Frontend tests | 목표 ≥ 90% | 1,459 tests, 118 files (2026-10-11 전체 실행, 종목 상세 미리보기 커버리지 보강 반영) |
+| E2E | 핵심 flow | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
+| CI | 필수 | lint + test + coverage + security + privacy |
+| 네트워크 | 금지 | conftest.py mock |
+
+### 4.2 코드
+
+| 항목 | 기준 |
+|---|---|
+| Linter | `ruff check` (E/F/W/I) |
+| 커밋 | Conventional Commits (영문) |
+| PR | issue 1 = PR 1, 커밋 ≤ 3 |
+| 새 규칙 | `config/rules.yaml`, 하드코딩 금지 |
+| 새 임계값 | `config/agents.yaml` |
+| 시간 | `kst_now()` / `today_kst()`, `datetime.now()` 금지 |
+
+### 4.3 데이터
+
+| 항목 | 기준 |
+|---|---|
+| DB 접근 | `nuri/core/db/` 만 |
+| 스키마 변경 | `_MIGRATIONS` 리스트, 직접 ALTER 금지 |
+| 환율 | DB → yfinance `KRW=X` → `StaleExchangeRateError` (하드코딩 폴백 금지) |
+| 외부 데이터 | 최소 10개 외부 소스 교차 |
+
+### 4.4 보안
+
+| 항목 | 기준 |
+|---|---|
+| 시크릿 | `.env`, git 커밋 금지 |
+| 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 쿠키 (Edge Runtime 호환) |
+| CI | Trivy CRITICAL → 머지 차단 |
+| LLM | 외부 LLM 전송은 §4.4.3 화이트리스트 한정: 공개 데이터(Tier 0)만 허용, portfolio(Tier 2)·narrative·의사결정(Tier 1) 금지. 그 밖은 local LLM (Ollama / llama.cpp). |
+| **개인 금융 데이터** | commit·PR·issue·주석·fixture·CI 로그 절대 노출 금지. `config/portfolio.yaml` gitignored 지만 내용도 추적 대상 금지. broker/수량/평단/잔고/매매이력 모두 해당. |
+
+#### 4.4.1 개인 금융 데이터 enforcement (#138)
+
+**권위 있는 차단 기준**: `scripts/verify/check_privacy_leak.py` 가 ground truth 다.
+
+| 카테고리 | 차단 대상 | 허용 placeholder |
+| Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권, 신영증권, 교보증권, 현대차증권, SK증권, DB금융투자, LS증권, 다올투자증권, iM증권, 부국증권, 유진투자증권, 한양증권, 케이프투자증권, 상상인증권, BNK투자증권, 하이투자증권, 한화투자증권 | `Brokerage Alpha/Beta` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
+<!-- cspell:disable-next-line -->
+| Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
+| Suspect monetary literal | 7자리 이상 정수 + `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` 키 | round million (`1_000_000`...`100_000_000`) 자동 허용 |
+| **Ticker + PnL 조합** (PR #202) | (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` (`-34% (TEM)`) (b) 인접 `TICKER <signed %>` (`PL +43%`). 소스 + unpushed commit message 스캔. | 규칙 threshold text (`손절 -7%`) ticker 컨텍스트 없으면 통과. `TICKER_FALSE_POSITIVES` frozenset (HWM/SL/MDD/CPI/VIX/BTC/ETH 등 120개). | <!-- privacy-allow: ticker_pnl — §4.4.1 패턴 표 자체 (#981) -->
+| **개인 식별자** (#1557) | 모양만: `<name>ui-Macmini` (한국어 기본 호스트명 로마자) · `<account>@<host>.local` · `/Users/<account>/` · `-Users-<account>-` (Claude 프로젝트 경로). 값은 스캐너에도 테스트에도 적지 않는다 — 정확한 이름은 `tests/test_no_personal_identifiers.py` 가 런타임 조립으로 잠근다. 소스 + `--message` + unpushed commit 스캔. | `user@macmini.local`, `/Users/USER/`, `Test-Macmini` |
+
+**의도적 제외**: `한국투자증권` (KIS) 은 Open API 통합 대상이다 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 자격 증명은 `config/kis/kis_devlp.yaml` 이다 (gitignored by `config/kis/*`, `~/KIS/` legacy 호환).
+
+**Plan / spec 노트 보호 (2026-04-30 Session 8 통합)**: `docs/plans/` 디렉토리 전체가 `.gitignore` 처리돼 있다. 이전에는 개별 파일 (`E3_symmetric_amplifier_design.md`, `507_buy_candidate_emitter_phase1.md`)만 등록됐으나, 새 spec 추가 시 누락 위험 — 디렉토리 단위로 통합했다. 기존 tracked 3건 (`E3_phase2_paired_counterfactual.md`, `E3_symmetric_amplifier_design.md`, `e4_0b.md`)는 `git rm --cached` 처리했다. 사용자 본인 spec 노트의 broker name / financial figure 누설을 방어한다. **새 spec 작성 시 broker name placeholder 를 사용한다** (`Brokerage Alpha Main` 등) — gitignored 라도 future commit 사고를 회피한다.
+
+**방어 layer 4개** (defense in depth):
+
+1. `scripts/verify/check_privacy_leak.py` — 핵심 scanner (stdlib only).
+2. `scripts/verify/pre_push_check.sh` Section 4 — local pre-push gate.
+3. `.github/workflows/main-ci-cd.yml` `privacy-scan` — CI gate 모든 PR (frontend-only 예외 없음).
+4. `.claude/settings.json` PreToolUse hook — Edit/Write 의 `new_string` 을 `--message` 로 편집 시점에 검사한다. 레포 밖·gitignored 경로는 면제된다(invariant 는 **공개 트리**, #1567 — 로컬 handoff 에 자기 호스트명을 적을 수 있어야 한다). 잠금: `tests/test_hook_guard_execution.py::TestPrivacyGuard`.
+
+**새 broker 추가**: `scripts/verify/check_privacy_leak.py` `BROKER_NAMES_KO`/`BROKER_NAMES_EN` 튜플 + `tests/scripts/test_check_privacy_leak.py` + 위 표를 동시에 갱신한다.
+Commit message 스캔 (PR #202 방지):
+
+- pre_push_check.sh Section 4b: `origin/main..HEAD` 의 unpushed commit 을 `--unpushed-commits` 로 스캔 → push 차단 (ticker+PnL + 개인 식별자 모양, #1567)
+- 로컬 hook 이 정답이다 — push 후 history 에 박힌다 (Stage 2 필요)
+- CLI: `git log -1 --format=%B | python scripts/verify/check_privacy_leak.py --message`
+
+**History cleanup (Stage 2) — 2026-09-29 완료** (사용자 명시 승인 + 직접 실행, force push 1회):
+
+`main` 전체 1,471 커밋을 `filter-branch` 로 재작성해 **4범주를 전부** 걷어냈다. 착수 전 스캐너로 전수 검사한
+실측이 근거다 — 증권사명 7종 39회(18 커밋) · 개인 식별자 9 커밋 · ticker+PnL 2 커밋 · 금액 리터럴 1 커밋,
+그리고 과거 blob 626개. author/committer 239건의 `계정명@실명기기.local` 신원도 noreply 로 바꿨다.
+
+- **판정을 사람이 나열하지 않았다**: 치환기가 `check_privacy_leak.gate_text()` 가 0건이라고 할 때까지
+  반복하고, 끝난 뒤 커밋 메시지 1,471건 + (경로,blob) 6,632쌍을 같은 스캐너로 재검사해 0건을 확인했다.
+- **HEAD tree 는 바이트 단위로 동일**했다(`7abf77eb`) — 현재 코드는 한 글자도 안 바뀌었다는 증거다.
+- **정당한 예외는 보존**: 스캐너 본체·그 테스트·이 문서의 패턴 표 등 증권사명이 설계상 들어 있는 경로 10개는
+  제외했고, `test_held_add_mode.py` 는 ticker+PnL fixture 만 남기고 과거 증권사명은 지웠다.
+- **부작용**: 모든 커밋 SHA 가 바뀌었다. 문서·코드의 짧은 SHA 참조 8개는 새 값으로 갱신했고, 프로덕션 ledger 의
+  `backtests.params.code_rev` 에 기록된 정화 전 SHA 는 **기록이므로 손대지 않았다**(`provenance.py` 주석 참조).
+  fork 1개는 옛 히스토리를 그대로 가지며, GitHub 의 unreachable 객체 캐시 제거는 Support 요청이 필요하다.
+- PR #202(squash) 의 commit message body 가 이 leak 의 원조였다. enforcement 는 그 뒤로 ticker+PnL 을
+  commit 단계에서 막아 왔고(§4.4.1 표), 이제 history 쪽도 닫혔다.
+
+#### 4.4.2 외부 데이터 처리 원칙
+
+모든 외부 서비스는 **데이터 클래스별 화이트리스트** 를 따른다.
+
+| 데이터 클래스 | 기본 정책 | 허용 조건 |
+|---|---|---|
+| **Tier 0** 공개 (RSS, 공시, 시세, 13F) | 외부 송신 가능 | §4.4.3 등재 provider |
+| **Tier 1** 사용자 narrative | 외부 송신 금지 | STRATEGY 개정 + 본인 승인 + retention 정책 |
+| **Tier 2** 사용자 portfolio | **절대 외부 송신 금지** | 별도 STRATEGY 개정 + 실측된 ZDR + 본인 승인. 예외 없음 — LLM 리포트의 OpenAI 경로는 2026-10-08 폐지 (§4.4.3). |
+
+§4.4.1 은 Tier 2 leak 방지, §4.4.3 은 Tier 0 화이트리스트다.
+
+#### 4.4.3 외부 LLM Egress Policy (#152, 2026-04-14 개정)
+
+**화이트리스트** 방식이다. 모든 호출은 `nuri/llm/openai_client.py` 단일 관문을 거친다.
+
+| Provider | Model | 허용 Tier | 단가 (in/out per 1M) | ZDR | 비고 |
+|---|---|---|---|---|---|
+| OpenAI | `gpt-6-luna` | Tier 0 (RSS 분류) | $0.10 / $0.50 | 권장 | 일 100 헤드라인. nano 기준 연 ~$3.51 → 입력 1/2 · 출력 2/5 단가 |
+| OpenAI | `gpt-5.4` | Tier 0 (공개 기업 브리핑) | $2.50 / $15.00 | 권장 | 2026-10-07 사용자 요청. 명시적 생성 버튼, 공식 자료·확인된 기사만; 계좌·보유·손익·사용자 narrative 송신 금지. 매매 판정 생성 금지. 단, **어떤 종목을 요청하는지**가 관심·보유 종목의 표본이 된다 — 내용은 공개 자료여도 요청 목록은 사용자 신호다. |
+
+**모델 교체 (2026-10-08, 사용자 요청)**: `gpt-5.4-nano` → `gpt-6-luna`. 같은 용도 등급(분류·추출)의 다음 세대이고 단가가 낮다. 호출은 `reasoning_effort="none"` 을 명시한다 — luna 기본값(`medium`)에서는 `temperature` 0 이 400 으로 거부돼 분류가 폴백으로 조용히 떨어진다(실측).
+
+**공개 기업 브리핑 구현 기록 (2026-10-08)**: 프롬프트 `public-briefing-v9`는 가상의
+설명 예시를 문체 참고로만 사용하고 실제 근거 ID·법인·날짜·숫자 검증을 유지한다.
+저장된 시스템 판정은 애플리케이션이 별도로 표시한다. 실제 API의 엄격 JSON 스키마 수용과
+보고서 생성은 확인했지만 모든 종목의 품질이나 agent 판정 영향 검증을 뜻하지 않는다.
+이는 송신 허용 범위·투자 규칙·측정 기준의 변경이 아니다. 구현과 미해결 머지 조건은
+[종목 리서치 안내](RESEARCH_BRIEFING.md)를 참조한다.
+
+**Tier 2 OpenAI 경로 폐지 (2026-10-08)** — 2026-04-14 의 Tier 2 허용(LLM 포트폴리오 리포트)과
+#854 의 "cloud primary" 결정을 대체한다. 근거:
+
+1. **ZDR 이 없다** — Responses API `store=true` 응답이 `gpt-5.4-nano`·`gpt-6-luna` 모두 사후 재조회됐다(실측).
+2. **보호가 환경변수 하나였다** — `OPENAI_ZDR_APPROVED=1` 은 계약을 검사하지 않는 truthy 플래그였고,
+   리포트 입력은 종목별 손익%·매도 금액이다. 그 한 줄이 이 데이터를 보존하는 공급자로 보내는 유일한 장치였다.
+3. **판단에 기여하지 않는다** — 판정은 LLM 을 쓰지 않고 리포트는 서술이다. 운영에서는 플래그가
+   주석이라 이미 차단돼 있었다.
+
+리포트는 로컬 백엔드(llama.cpp → localhost Ollama)로만 생성하고, 없으면 설정 안내를 낸다. 게이트웨이는
+`data_tier="tier0"` 외에는 SDK 생성 전에 거부한다. 판정: Codex(`gpt-6.1-sol`) 와 Claude 교차 검토가 일치했다.
+**Test:** `tests/llm/test_report.py::TestGenerateLLMReportFallbackChain::test_portfolio_report_never_reaches_the_external_gateway`,
+`tests/llm/test_openai_client.py::TestChatTextTierGate::test_tier2_is_refused_even_with_the_old_zdr_flag`.
+
+**필수 운영 룰**:
+
+1. 모든 외부 LLM 은 wrapper (`openai_client.get_client()`). 직접 `import openai` 금지.
+2. Per-call audit log — `external_llm_calls` 테이블: `timestamp, provider, model, endpoint, prompt_tokens, completion_tokens, latency_ms, success, error_type`. content 금지.
+3. `NURI_DISABLE_EXTERNAL_LLM=1` → `ExternalLLMDisabled` raise.
+4. Failure loud — silent fallback 금지. caller 가 graceful degradation 책임.
+5. Provider 추가 / 데이터 클래스 확장은 STRATEGY 개정 + 본인 승인.
+
+Deferred (필요 시점에 추가):
+
+- Narrative input UI (Tier 1 정책 결정 후)
+- 외부 LLM 비용 모니터링 dashboard (`external_llm_calls` 테이블 기반)
+- ~~Tier 2 → local LLM 전환~~ — 2026-10-08 완료: Tier 2 는 로컬 전용 (위 폐지 기록)
+
+모니터링 트리거: #152 머지 시점에 발효한다. 비용이 예상치 대비 10× 초과 시 사용자 알림 + `NURI_DISABLE_EXTERNAL_LLM=1` 로 복귀한다.
+
+## 5. LLM agent harness (Harness Engineering)
+
+이 프로젝트는 LLM (Claude Code) 이 주요 개발 도구다. LLM 은 체계적으로 실패하는 패턴이 있다. 본 섹션은 canonical 원칙이다 — 실제 사례·진단 절차·Gotcha-Test Pair 프로토콜 상세는 `/nuri-harness-debug` skill (`.claude/skills/nuri-harness-debug/SKILL.md`) 이 on-demand load 한다. Case study 본문은 `git log` (PR #272, #300-#307) 에 보존한다.
+
+### 5.1–5.6 실패 패턴 (canonical 목록)
+
+6 개 패턴이 시스템적으로 재발한다. 각 패턴의 증상·실제 사례·방어 절차는 `/nuri-harness-debug` skill 에 있다.
+
+| # | 패턴 | 1-줄 핵심 |
+|---|------|----------|
+| 5.1 | **할루시네이션** | 존재하지 않는 함수/파라미터/경로를 자신 있게 말함 — 호출 전 시그니처 grep |
+| 5.2 | **확증 편향** | 같은 실패를 같은 방식으로 반복 — 2회 실패 시 접근 자체 의심 |
+| 5.3 | **유령 수정** | "수정했다" 말하지만 실제 다른 곳 고침 — 수정 후 coverage 로 의도 라인 확인 |
+| 5.4 | **스코프 팽창** | 요청 이상 "개선" — issue 1 = PR 1, 커밋 ≤ 3 |
+| 5.5 | **테스트 환각** | 테스트 통과하지만 타겟 코드 미실행 — coverage 리포트로 라인 실제 커버 확인 |
+| 5.6 | **숫자 전파 오류** | 한 곳 변경 후 다른 참조 미업데이트 — `grep -ri "이전값"` 전수 + `make verify-doc-counts` |
+
+#### 5.3.1 Gotcha-Test Pair 원칙 (PR #307)
+
+**모든 fix-pattern gotcha 는 fix 가 사라졌을 때 fail 하는 test 를 명명해서 cite 해야 한다.** 단순 facts/quirks 는 Test: 가 불필요하다 (PR body 에 "no fix, just facts" 명시). Folklore 만 남으면 다음 리뷰어가 defensive 코드를 "불필요" 로 제거해도 막을 수 없다 (`df.copy()` 재발 교훈). 프로토콜 상세·enforcement 단계 (1차 리뷰 checklist, 2차 Tier 3 `scripts/audit_phantom_fixes.py` — planned, 미구현) 는 `/nuri-harness-debug` skill 에 있다.
+
+### 5.7 harness 구성 요소
+
+| 레이어 | 역할 | 구현 |
+|--------|------|------|
+| **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
+| **MCP Servers** | 외부 도구 연결 | `.mcp.json` → `nuri-read` read-model (stdio · 전 쿼리 `readonly=True` 엔진 강제 · ALLOWED 컬럼만, #1306). raw SQLite 등록은 커밋 기본값에서 제거 — 임의 SQL 이 portfolio/trades 에 닿는다 (§4.4 Tier 2). |
+| **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
+| **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · `scripts/verify/gate_check.py`(Makefile 단계 게이트) |
+
+**엔트로피 GC**:
+
+| 유형 | 감지 | 방어 |
+|---|---|---|
+| Dead code | `ruff` (F401/F841) | CI 차단 |
+| Stale data | Freshness SLA | WARN/FAIL dashboard |
+| Stale tests | Codecov PR comment | 커버리지 하락 경고 |
+| Schema drift | `schema_version` + `_MIGRATIONS` | `init_db()` 자동 |
+| Config drift | `config/*.yaml` 중앙 | 하드코딩 금지 |
+| Number drift | `grep -ri` 전수 | 커밋 메시지 숫자 명시 |
+
+**Context Files 설계**: 거대 단일 파일 ✕ → 디렉토리별 scoped ✓ (루트 + 13개). 코드에서 유추 가능한 정보 ✕ → 결정의 "왜" 만. `STRATEGY.md` 는 `CLAUDE.md` 가 on-demand load 대상으로 가리킨다.
+
+### 5.8 harness 원칙 요약 (2026-04-14 #272 반영, 7개)
+
+1. 모르면 읽는다              — 가정하지 않는다
+2. 2번 실패하면 접근을 바꾼다  — 같은 시도 3회 금지. 같은 fix 3회 부분 해결 시 root cause 의심
+3. 사용자 워크플로로 검증한다  — mock test ≠ verification. ship 전 `make X --flag` 직접 실행
+4. 스코프를 지킨다            — 요청된 것만 한다
+5. 숫자를 grep한다            — 한 곳만 고치지 않는다
+6. 시스템이 차단한다          — 문서가 아닌 린터/CI/게이트가 강제
+7. 외부 API는 측정한다        — 동시성/timeout/rate-limit 추정 금지. yfinance 10-thread OK ≠ KRX 10-thread OK
+
+**변경 이력**: 2026-04-14 — #3 강화 ("실행" → "사용자 워크플로 검증"), #7 추가 (외부 API 측정). Mock-only ship 함정 3회 반복 후 (`#272` 세션, git log).
+
+### 5.9 Case Studies (on-demand reference)
+
+실제 실패 세션의 구체 교훈은 `/nuri-harness-debug` skill 이 canonical 이다. 비슷한 패턴 디버깅 시 auto-trigger 또는 manual `/nuri-harness-debug` invoke 한다.
+
+- **Case #1** — #272 세션 (2026-04-14, 12 PRs): Mock-only 테스트, API 동시성 비대칭, ThreadPool timeout, 사용자 관점 검증, multi-role flow. 본문 → `git log --grep '#272' --since 2026-04-13 --until 2026-04-16`.
+- **Case #2** — JKHY 에피소드 (PR #300-#303, #306, #307): dissent overwhelmed, mechanical divergence penalty, 초기 진단 오독 정정. 본문 → `gh pr view 300/301/302/303/306/307`.
+
+### 5.10 Frontier Alignment + Improvement Roadmap (2026-04-30)
+
+§5.8 의 7 원칙은 **2026-02 OpenAI 공표 ("Harness engineering: leveraging Codex in an agent-first world", <https://openai.com/index/harness-engineering/>) + Anthropic Claude Code Best Practices (<https://www.anthropic.com/engineering/claude-code-best-practices>) + 학술 evidence (HAL Kapoor et al. 2026 / AgencyBench Li et al. 2026)** 와 **본질적으로 align** 한다. 다만 frontier 대비 **3 개 measurable gap** 이 존재한다. 본 sub-section 은 각 gap 의 정량 spec + acceptance + risk 를 박는다 (TODO 와 분리 — 정책 layer).
+
+#### Gap A. Agent autonomy 확장 (OpenAI 1M LOC pattern)
+
+**Frontier 사례**: OpenAI Codex team — `1,000,000+ LOC` production app, `사람 손 0줄` (2026-02 OpenAI blog). AGENTS.md + mechanical CI invariants + layered architecture (Types → Config → Repo → Service → Runtime → UI) 로 enable.
+
+**현재 상태 (nuri-quant)**: Build/Review/Test/Ship/Reflect 7-phase Flow (§2.7) — 인간 review 단계 mandatory. Codex consult + Claude self-review 양쪽 hooks. Merge 는 사용자 명시 승인. **agent-only PR merge rate ≈ 0%**.
+
+**Gap 의 양면성 (정직한 평가)**:
+
+- *확장 정당화*: harness invariants (privacy-scan, doc count drift, hooks, ruff, conventional commits, ≤3 commits/PR) 가 이미 deterministic 차단 실효. autonomous merge 가 안전한 PR class 존재 (예: doc-only, lint-only).
+- *확장 거부 근거*: STRATEGY §7.1 자동 매매 영구 deferred 와 동일 ethos — **financial-impact 코드는 사용자 review 필수**. ₩7M 손실 cascade 직접 경험 후 system 책임 인정한 ecosystem 에서 autonomy 키우는 건 trust budget 역행.
+
+**Acceptance criterion** (research, no commit by default):
+
+- Phase α: PR class taxonomy (doc-only / lint / test / src / config / strategy) 정의 + autonomy_safe_class 명시 (initial: `doc-only` only, ≤ 5% of merged PRs).
+- Phase β: `autonomy_safe_class` PR 의 사후 측정 — 4 주 후 regression rate (post-merge revert 또는 fix-forward 빈도) < 10%.
+- Phase γ: **strategy / src / config 는 영구 인간 review** (STRATEGY change 필수).
+
+**Priority**: Tier 3 research. 우선순위가 낮다. **사용자 review 가 ₩2-4M 손실 회피 가치 (#507 격상 사례) — autonomy 확장 EV 가 낮다**.
+
+#### Gap B. Harness-model coupling 측정 (AgencyBench-style)
+
+**Frontier evidence**: AgencyBench (Li et al. 2026, 138 real-world tasks, <https://www.preprints.org/manuscript/202604.0428>) — **"agent task reliability 가 model 능력 < harness layer (infrastructure)"** 정량 입증. Same harness × different model = different success rate. HAL (Kapoor et al. 2026, 21,000+ rollouts) 도 동일 결론.
+
+**현재 상태 (2026-08-13 갱신)**: 다중 LLM consumer (`nuri/llm/openai_client.py` gpt-6-luna cloud + `scripts/dev/llm_consult.py` codex + local-LLM dual consult). **로컬 모델 축은 측정된다** — `scripts/dev/llm_ab_eval.py` 가 동결 프롬프트 50개로 두 모델을 짝지어 돌리고, `scripts/dev/llm_ab_stats.py` 가 Clopper-Pearson exact CI + McNemar exact 로 판정한다. 첫 적용(2026-08-13)이 `qwen3.5-122b-a10b` → `muse-glimmer-30b` 교체 근거였다 (#1038). **클라우드 축은 여전히 측정 0** — Codex GPT-5.4 → GPT-4-class 강등 시 어느 phase 가 깨지는지 unknown 이고, `openai_client.py` 경로에는 대응 harness 가 없다.
+
+**Acceptance criterion**:
+
+- Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/dev/llm_consult.py` 양쪽에 wired.
+- Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (분류 `gpt-6-luna` vs 상위 모델 cost-quality tradeoff — 2026-10-08 nano→luna 교체는 이 측정 없이 단가·세대 근거로 했다, #1737).
+- ✅ Phase 3 (2026-08-13, #1038): nuri-specific eval suite — `config/eval/thesis_prompts.yaml` 동결 프롬프트 **50개**(v1 10 + 적대적 40, 계열 a-j), `thesis_query` 경로 한정. 1차 지표는 `unsafe_price_level`(가격 레벨 날조/유령), 2차는 IFEval 계열 지시준수. LLM judge 를 쓰지 않는다 — 판정자가 흔들리면 A/B 가 무의미하다.
+  - **한계 (과잉 인용 금지)**: 프롬프트가 합성·자작이라 외적 타당성이 없고, 투자 판단의 옳고 그름을 재지 않는다(정답 레이블 없음). 프롬프트당 1회만 돌리므로 잡음 바닥이 미측정이다 — `temperature=0.0` 인데도 같은 프롬프트가 런마다 다른 답을 낸 사례가 있다. 다음 스왑 전에 k회 반복을 붙일 것.
+
+**Priority**: Phase 1-2(telemetry) **Tier 2 P2** 로 잔존 — harness 는 로컬 모델 **교체 판단**만 덮고, 매 LLM 호출의 상시 관측은 아니다.
+
+#### Gap C. HAL evaluation framework 도입 검토
+
+**Frontier evidence**: HAL (Holistic Agent Leaderboard, Kapoor et al. 2026, 21,000+ agent rollouts) — 산업 표준 평가 protocol. SWE-bench (Jimenez et al. ICLR 2024) + AgencyBench 과 함께 frontier benchmark trio.
+
+**현재 상태**: nuri-quant 는 domain-specific (quant 투자) repo 다. HAL benchmark task (e.g. SWE-bench code editing tasks) 가 직접 적용되지 않는다.
+
+**Gap 의 본질**:
+
+- *직접 적용 어려움*: HAL/SWE-bench 는 generic — quant 투자 의사결정을 측정하지 않는다.
+- *간접 활용 가능*: HAL methodology (rollout sampling, 표준 evaluation harness) 를 nuri 에 어댑테이션 — `nuri-eval-suite` 신설.
+- *비용*: HAL-style evaluation 1 회 ~ \$50-200 (token cost, 1000+ rollouts). 정기 적용 시 cost-quality tradeoff 평가 필수.
+
+**Acceptance criterion** (research):
+
+- Phase 1: HAL methodology 검토 — generic 부분 vs nuri-specific 어댑테이션 가능 부분 분류.
+- Phase 2: `nuri-eval-suite` 신설 (예: 50 fixed test cases on portfolio analysis / signal scoring / earnings preview) — Gap B 의 telemetry 와 통합.
+- Phase 3: Quarterly evaluation report → model swap / harness change 의사결정 입력.
+
+**Priority**: **Tier 3 research**. Gap B 가 선행 (Gap C 는 Gap B 의 데이터 위에 build). 단독 build 는 EV 가 낮다.
+
+#### Frontier alignment 종합
+
+| Frontier 권장 | nuri-quant 적용 | Gap |
+|---|---|---|
+| AGENTS.md + machine-readable instructions | ✅ `AGENTS.md` + `CLAUDE.md` + `STRATEGY.md` | 0 |
+| Mechanical CI invariants | ✅ privacy-scan, doc count drift, ruff, hook | 0 |
+| Layered architecture | ✅ `nuri/core/` → `collectors/` → `quant/` → `trading/` → `api/` | 0 |
+| Pre-commit deterministic hooks | ✅ `.claude/settings.json` PreToolUse/PostToolUse | 0 |
+| Conventional commits + scope discipline | ✅ ≤3 commits/PR, 1 issue = 1 PR | 0 |
+| Subagents (parallel, context isolation) | ✅ codex consult + local-LLM dual | 0 |
+| Skills (reusable templates) | ✅ `make` targets + `nuri-*` skills | 0 |
+| **Agent autonomy (OpenAI 1M LOC)** | ⚠ 인간 review 필수 (의도된 conservative) | **Gap A** |
+| **Harness-model coupling 측정** | ◐ 로컬 모델 축만 측정 (2026-08-13~, Gap B) | **Gap B** (Tier 2 P2) |
+| **Standardized eval framework (HAL)** | ❌ 없음 | **Gap C** (Tier 3 research) |
+
+**결론**: 7 of 10 frontier 권장 적용. 3 gap 은 측정 + 결정 layer (autonomy / coupling / eval) — **시스템 코드가 아니라 시스템에 대한 시스템**. Tier 2 P2 (Gap B) 만 **build value 즉시**, 나머지는 research / 정책 결정.
+
+### 5.11 BUY Signal Asymmetry — #507 Phase 1 ship + Phase 2 v2 sequence (2026-04-30 Session 8)
+
+**문제 (4-29 발견, #507 격상)**: 시스템이 `Collect → Analyze → Consensus → Certify → Track` 전체에서 **sell-side gate 7개** 와 **buy-side emitter 0개** 를 운영. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor 모두 SELL 또는 block. 4월 사용자 ₩3.25M 실현 + ~₩2-4M 추정 기회비용 attribution. 자세한 inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
+
+**Phase 1 ship (PR #508 / #512)**:
+
+- `nuri/trading/recommend/buy_candidate_emitter.py` — factor + momentum + RSI + breakout fusion → BUY candidate stream + entry/stop/TP1/TP2.
+- `_get_held_tickers()` SELL/TRIM/REDUCE filter + `_get_cooldown_tickers(days=5)` 단일 cooldown (PR #508 ship 시).
+- API + read-side dual-layer guard (PR #512): `recommendations.action ∈ {SELL,TRIM,REDUCE}` 는 portfolio JOIN으로 0주 ticker 차단.
+- `FRESHNESS_POLICIES["portfolio"]` 24h warn / 72h fail 정책 등록.
+- 4-30 brief 검증: GOOGL/TSM 0주 SELL 누설 0건, MSFT/GOOGL 신규 매수 후 brief surface 정상.
+- **잔여 결손**: held=skip 100% / threshold 70 floor / cooldown 5d uniform / brief에 freshness 미surface / 신규 매수 시 consensus 수동 호출 / 0주 HOLD stale row.
+
+**Phase 2 spec v2 sequence (Session 8 codex+Qwen consult REJECT v1)**:
+
+1. **#517 (2b)** — Cooldown SELL-type split + event taxonomy 통일. Forward-only ALTER (no backfill). `payload.action_type ∈ {hard_sell, trim_action, position_reduce, divergence_alert}`. hard_sell 21d / trim 0d (re-add allowed) / reduce 7d / divergence 3d / legacy fallback 5d. Session-level dedup lock for trim 0d spam.
+2. **#518 (2a)** — Held add-mode + multi-account cap + earnings blackout. 3 modes precedence (`tp1_residual_add` > `ride_winner` > `average_down`) — 같은 (ticker, account, session) 단 1건 emit. Account별 cap: `account_strategies.<acct>.cap_max` derive (active=25%, core=15%, hardcoded 금지). Avg_down window: `account.stop_loss × [0.3, 0.7]` derive. **Earnings blackout: held_add는 earnings_date ± 5d 차단** (binary event risk). **Shadow mode 14d 의무** — 첫 14일 brief 미surface, calibration sample 생성.
+3. **#519 (2c)** — Threshold backtest 104 weekly (2024-04 ~ 2026-04). In-sample 60% / OOS 40% (peek 금지). Objective: max profit_factor s.t. MaxDD ≥ -10% AND n_emit ≥ 1.5/session. Liquidity-tier slippage. Tie-break: T*와 1σ within 시 conservative 선택. **3-LLM consult 의무**.
+
+**v1 → v2 변경 (LLM 8개 STOP/REFINE 합의)**:
+
+- 시퀀스: ~~2b → 2c → 2a~~ → **2b → 2a (shadow) → 2c** (threshold tune은 held-add 활성 후 calibrate)
+- C1 sample: ~~13 weekly Q1-2026~~ → **104 weekly 2년**
+- A3 hardcoded [-3,-10] → account-derived
+- A4 cap hardcoded 5%p → account_strategy derive
+- A2 mutual exclusion: 3 modes 같은 ticker 동시 emit 차단
+- B2 backfill 폐기 (heuristic 위험)
+- E2 multi-account cap 분리
+- G 정량 수치 ~₩1.2-2.3M 폐기 → April audit replay에서 backtest로 derive
+
+**Spec**: `docs/plans/507_buy_candidate_emitter_phase2_spec.md` (gitignored, v2 작성 완료)
+
+**Consult archive**: `data/llm_consults/2026-04-30_507-phase2-spec-review.md`
+
+### 5.12 Session 8 결함 격상 (2026-04-30, #513–#516)
+
+Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
+
+| # | 발견 | 우선순위 |
+|---|---|---|
+| **#513** | `premarket_brief.py`가 `FRESHNESS_POLICIES["portfolio"]` 결과를 brief 본문에 surface 안 함 (backend 작동, 사용자 가시성 0) | P1 |
+| **#514** | `recommendations.action='HOLD'` 행이 portfolio JOIN filter 미적용 → 0주 ticker (TSM 등) HOLD noise surface | P2 |
+| **#515** | 신규 매수 후 `make consensus` 수동 호출 운영 burden — `scripts/ops/import_portfolio.py` 에 newly-added ticker detection + auto-trigger 필요 | P1 |
+| **#516** | Pension 계좌 4월 매도 3종목 재진입 — 증권사 자동매수 설정 의도 검증 필요 | P3 |
+
+### 5.13 BUY candidate backtracking ledger (Session 8 신설)
+
+**Goal**: Phase 1 emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 자동 적립.
+
+**Mechanism**:
+
+- 매 세션 emit한 BUY 후보를 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 기록.
+- 다음 세션 진입 시 `scripts/analysis/compare_buy_candidates.py --session N` (tracked infra) 실행 → baseline vs current close + tier별 평균 return.
+- 4주간 누적 → 13 weekly samples → Phase 2c threshold backtest 입력 보강.
+
+**Tier 정의**:
+
+- `A_high`: 고확신 (AI capex 직결, fundamentals 강함)
+- `B_mid`: 중확신 (catalyst 후 진입)
+- `C_chase`: 추격 회피 (5d momentum 과열, breakout+RVOL 후만)
+- `ADD_ride`: 보유 ride-winner (Phase 2a 미ship 수동 판단)
+- `ADD_held`: 보유 add (Phase 2a 미ship 수동 판단)
+
+**검증 항목 (acceptance — score function 신뢰도 측정)**:
+
+- A_high 평균 1d return > 0 → score 신호 valid
+- A_high − C_chase spread > 0 → score 차등화 valid (5d momentum 과열이 더 잘 가는 비정상 차단)
+- ADD_ride peak 대비 흐름 → ride-winner 명분 정량 검증
+- B_mid 평균 → catalyst 전이 측정
+
+**Session 8 baseline**: 11종 (A_high 3 / B_mid 3 / C_chase 2 / ADD_ride 1 / ADD_held 2). 4-29 close 기준. 다음 세션 첫 task로 검증 실행 (`NEXT_SESSION.md` cold-start 체크리스트).
+
+**부정 결과 시 액션**: A_high avg < 0 → 즉시 P0 격상 + Phase 2c threshold backtest 우선순위 격상 + score function 재교정 issue 격상.
+
+### 5.14 Conversational / Reasoning Failure Patterns (observational, 2026-05-27 신설)
+
+§5.1-5.6 = **코드/툴 레벨** mechanical failure patterns. §5.14 = **대화/추론 레벨** behavioral patterns (사용자와의 응답 흐름에서 발생). 별도 numbering 이유: 다른 class, 다른 방어 메커니즘 (gate 강제 어려움, 1차 = 인간 규율 + memory cross-session 보존).
+
+| 패턴 | 증상 | 방어 |
+|---|---|---|
+| **5.14.1 Data→Recommendation Slide** | 데이터 수집/분석 결과 공유 요청에 대해 silent 하게 종목/액션 권고로 변환 (user 명시 요청 없이 자의적 advice) | user 가 명시적 권고 요청 ("X 어떻게 생각해", "deploy 어디에", "추천해") 했는지 확인 후만 권고. data presentation 은 ranking / 사실 / freshness 까지만. 권고 시작 전 1 step pause: "user 가 결정 권고 요청했는가? 아니면 정보만 요청했는가?" |
+| **5.14.2 Cross-context Inconsistency** | 같은 정량 filter / rule 을 시장 / 도메인 별로 다르게 적용 (예: KR universe blow-off 보류 → US universe blow-off 진입 권고) | Filter 기준 (60d return cap, vol threshold, blow-off 제외) 을 **명시 선언** 후 모든 시장에 동일 적용. 권고 전 self-check: "내가 컨텍스트 A 에서 적용한 rule 을 B 에 동일 적용하면 통과?" |
+
+**Case studies**: `.claude/skills/nuri-harness-debug/SKILL.md` Part B (canonical narrative — session 2026-05-27 정정 사례 + git log reference). 본 절은 pattern definition 만 보유한다.
+
+**Enforcement layer**: 1차 = always-on 규칙 (`.claude/rules/invariants.md` "No ad-hoc buy/sell calls" · "Data ≠ recommendation", Codex 는 `AGENTS.md` Recommendation boundary). 2차 = `/nuri-harness-debug` skill 진단. 3차 (미구현) = hook 으로 mechanical 강제 어려움 (LLM 응답 layer, structured 검출 metric 없음).
+
+**Gotcha-Test Pair**: N/A — behavioral pattern, 코드 fix 가 아니다. `*(facts, no fix)*` 로 마킹한다.
+
+## 6. SIEGE Gate 명세 (v2) — 폐기 (2026-10-06, #1619)
+
+**결정**: 포트폴리오 전체를 CERTIFIED / REJECTED 로 판정하던 SIEGE 인증(`certify()` · `certifications` 적재 · remediation)을 **제거**한다. 약화해서 남기지 않는다 — 반쯤 남은 코드는 다음 세션에 "왜 있는지 모르는 코드" 가 된다(§5.3.1 의 교훈). 제거 작업은 #1619 가 5개 PR 로 추적한다.
+
+**근거** (3개 모두 독립적으로 성립):
+
+1. **신호가 없다.** 운영 ledger(Mac mini) 2026-09-01 ~ 10-05: 인증 50건, CERTIFIED 0건. 호출자는 `cli:premarket_brief` 25 · `api:actions:violations` 25 가 전부다. error 등급 실패는 `stop_loss` 50건 + `position_limit` 2건 — 보유 종목 하나가 손절선 아래면 포트폴리오 전체가 매일 REJECTED 다. 같은 사실을 Tier-1 손절 카드(`nuri/alerts/risk_signals.py`, 계좌별 `get_stop_loss_for_account`)가 종목 단위로 이미 알린다.
+2. **아무것도 분기하지 않는다.** 판정을 읽는 코드는 전부 표시 전용 — 브리프 상태색·필드, dashboard health 점수·violations, `/engine` 카드, MCP `siege_status`, `/api/certify`(dashboard 홈이 footer 품질 줄에 쓴다) · `/api/remediate`(remediation 계획은 실패 게이트별 `SELL_ALL`/`REDUCE` 와 수량을 내지만 프런트엔드 소비자가 없다 — 축 invariant 가 막으려는 바로 그 SELL 표면이라 함께 지운다). `config/rules.yaml amplifier.portfolio.requires_certify_pass` 는 reader 가 0 이라 죽은 설정이었고 정리 PR 에서 지웠다. 제거는 Escalation Ladder 의 Surface 단 철거라 **매매 행동 변화 0** 이다.
+3. **예측력이 없다.** §3.8 의 60개월 감사는 `CI_upper < 0` 미달로 닫혔고 `position_limit` 은 부호가 반대였다. 유효한 것은 prudential constraint 로서의 비중·섹터·레버리지 한도뿐이며, 그 집행은 인증서가 아니라 `rebalance_advisor` 가 이미 맡고 있다.
+
+Codex 설계 상담(2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHANGES — 집계 판정 폐기에 동의, 대체 보고서는 만들지 말 것, 프런트엔드를 백엔드보다 먼저 떼어 거짓 REJECTED 렌더를 막을 것, `siege_gates` 키 아래의 비-SIEGE 데이터는 이사시킬 것.
+
+### 게이트별 처분
+
+| 게이트 (등급) | 처분 | 대체 출처 · 의미론 |
+|---|---|---|
+| `position_limit` (error) | 대체 | `rebalance_advisor` `position_limit_exceeded`. **의미가 바뀐다**: SIEGE 는 종목의 전 계좌 합산 비중을 그 종목을 가진 계좌들 중 가장 관대한 한도 × regime multiplier 와 비교했다. advisor 는 (계좌, 종목) 의 계좌 내 비중을 그 계좌 전략 한도와 비교한다 — core 계좌 위반이 active 한도에 가려지지 않고, regime 완화가 없다. 표출은 `portfolio_action=REBALANCE` 만(축 invariant). |
+| `sector_limit` (error) | 대체 | `rebalance_advisor` `sector_limit_exceeded`. 의미 동일 — 둘 다 포트폴리오 전체 `weight_pct` 를 섹터별로 합산해 `max_sector_exposure` 와 비교한다. 표출은 REBALANCE 만. |
+| `stop_loss` (error) | 대체 | Tier-1 손절 카드(`risk_signals.py`) + `rebalance_advisor` `stop_loss_exceeded`(계좌별 전략). 기계적 `alpha_action=FLAT` 경로(`nuri/core/axis.py`)는 그대로. |
+| `leverage_ban` (error) | 대체 | `rebalance_advisor` `leverage_etf`. advisor 행은 `SELL_ALL` 과 수량을 싣고 있으므로 violations 표면은 **집행 필드를 벗겨** REBALANCE 로만 낸다 — urgent SELL 금지(축 invariant). |
+| `rules_loaded` (error) | 폐기 | 대체 없음. `config/rules.yaml` 로드 실패를 인증서 전체 REJECTED 로 바꾸던 게이트. `remediation.py` 는 이미 `_UNRESOLVABLE_GATES` 로 분류해 행동을 매기지 않았다. 다만 `nuri/core/rules.py::_load_rules` 는 파일 부재 시 3-섹션 하드코딩 폴백으로 **조용히** 떨어졌다 — 이 게이트가 잡던 것이 바로 그 폴백이다. 백엔드 PR 에서 폴백을 제거해 파일 부재를 기동 시 예외로 바꾼다 — 제거 완료(#1619, `_load_rules` 가 `FileNotFoundError`). |
+| `data_fresh` (warning) | 대체 | `nuri/core/freshness.py` SLA(`config/freshness.yaml`, dashboard verdict stale gate). 신선도 추적 티커 목록은 `siege_gates.asset_classes.*.freshness_*` 에서 중립 키로 이사. |
+| `volatility_gate` (warning) | 폐기 | 대체 없음. VIX 사실은 브리프 indicators 와 MCP `macro_facts` 가 계속 낸다. |
+| `external_data` (warning) | 폐기 | 대체 없음. |
+| `conflict_free` (warning) | 폐기 | 게이트만 폐기. `engine/conflicts.py` 는 `recommend/candidates.py` 가 계속 쓴다. |
+| `drift_safe` (warning) | 폐기 | 게이트만 폐기. |
+| `macro_event_alignment` (warning) | 폐기 | 대체 없음. |
+| `regime_overrides` (비중 한도 regime 배수) | 폐기 | 유일한 reader 가 `certification.py` 였다. `nuri/quant/exits/atr.py` 는 같은 **패턴**을 쓸 뿐 이 키를 읽지 않는다. |
+
+### 남기는 것과 옮기는 것
+
+- **`certifications` 테이블은 남는다** — 마이그레이션은 forward-only. 쓰는 코드가 없어진 역사 기록이며, §2.6 의 score 시계열 경계 서술은 그 기록에 대한 설명으로 유지한다.
+- **`asset_class_rules`** 는 SIEGE 가 아니라 측정 모드(§3.11)의 benchmark 분류 정본이다(`forward_outcome_tracker` · `strategic_allocation`). PR 2 에서 `siege_gates` 밖 최상위 키로, 분류기는 `nuri/core/asset_class.py` 로 옮겼다. 지우면 pre-registered alpha 측정이 조용히 오염된다. 신선도 추적 티커는 정리 PR 에서 `freshness_tickers` 로 옮겼다(읽는 곳 `collectors/stock.py` · `alerts/data_sanity.py`).
+- **Stage 4 경계는 유지, 이름은 바꾼다.** `nuri/trading/engine` 에 남는 `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` 는 결정 기록 · 데이터 준비 게이트 · §2.6 amplifier shadow 와 그 보조 장치이지 인증기가 아니다. 인증서 작성자가 사라진 뒤 `certify` 는 거짓 이름이므로 후속 PR 에서 `decide` 로 바꿨고 §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · 교차 import 테스트를 함께 옮겼다. `pipeline_events` 의 과거 행은 `certify` 그대로 둔다. `nuri/trading/strategy/position.py` 의 `certify_position()` 은 paper `positions` 테이블의 자체 게이트로 인증기와 무관하며 이름 변경 범위 밖이다.
+- **감사 도구는 리비전으로 고정한다.** `scripts/analysis/siege_predictivity_audit.py` 와 `/nuri-siege-audit` skill 의 마지막 리비전은 `d8a89ede`(main, 2026-10-06). §3.8 재실행이 필요하면 `git show d8a89ede:<path>` 로 꺼낸다.
+- **`nuri/core/freshness.py` 의 `certification` 정책(`config/freshness.yaml` warn 24h / fail 48h)은 백엔드 PR 에서 지웠다.** `verdict_gate` 에는 없어 dashboard 판정은 무관하지만, `get_freshness_summary` 가 전 정책을 순회하고 `premarket_brief._brief_color` 는 FAIL 이 하나라도 있으면 RED 를 낸다 — 쓰기가 멈추고 48시간 뒤부터 모든 브리프가 "Certification FAIL" 로 영구 RED 가 된다. 프런트엔드를 먼저 떼더라도 이 정책은 인증기 호출을 끊는 PR 과 **같은 PR** 에서 제거했다.
+- **MCP `macro_facts` 의 regime** 은 `certifications.regime` 이 아니라 `candidate_runs.regime`(일일, Tier-1 허용 컬럼)에서 읽도록 바꿨다 — 쓰기가 멈춘 테이블을 계속 읽으면 값이 조용히 얼어붙는다(#1617 과 같은 형태).
+
+**대체 게이트를 만들지 않는다.** 포트폴리오 단위 판정이 다시 필요해지면 SIEGE 의 모양을 본뜨지 말고 §3.6 선례대로 판정 기준을 pre-register 하는 STRATEGY PR 에서 시작한다.
+
+## 7. 작업 정책
+
+운영 backlog (Tier 1/2/3) 는 `docs/TODO.md` 에 있다. STRATEGY 는 **변하지 않는 정책** 만 담는다. 새 세션 시작 시 `NEXT_SESSION.md` → `docs/TODO.md`.
+
+### 7.1 자동 매매 — 영구 deferred (사용자 opt-out)
+
+| 항목 | issue | 결정 사유 |
+|------|------|---------|
+| Alpaca 실전 (Paper → Live) | [#17](https://github.com/researcherhojin/nuri-quant/issues/17) | **영구 보류**. 2026-04-11 사용자 결정 — 자동 매매 손실 책임소재. 시스템 추천(확률적)과 실제 매매(결정적) 경계 모호화 차단. |
+| KIS Open API 매매 endpoint | — | **영구 보류** (동일 사유). `kis_realtime.py` **read** endpoint (잔고/가격/drift) 는 유지. |
+
+**원칙**: 시스템은 추천·알림만 한다. 실제 주문은 사용자가 증권사 앱에서 수동으로 한다. `DryRun` / paper trading 은 backtest/검증용으로 유지한다. 뒤집으려면 STRATEGY 개정 PR + 재승인이 필요하다.
+
+### 7.2 작업 규칙 (PR discipline)
+
+- issue 1개 = PR 1개, 커밋 ≤ 3
+- 새 발견 → 별도 issue, 같은 PR 에 묶지 않는다
+- Tier 를 건너뛰지 않는다 (Tier 2 시작 전 Tier 1 close)
+- `docs/TODO.md` 함께 업데이트, issue 번호 필수
+
+## 8. 오픈소스 레퍼런스
+
+### 투자 이론
+
+| 출처 | 적용 | 위치 |
+|---|---|---|
+| O'Neil, *CAN SLIM* | 손절 -7%, 익절 +20%/+40%, 8주 보유 | `config/rules.yaml` |
+| Minervini, *SEPA* | 트레일링 -15%, 3:1 손익비 | `config/rules.yaml` |
+| Shefrin & Statman 1985 | 처분효과 경고 | 익절 규칙 근거 |
+
+### 아키텍처/엔진
+
+| 출처 | 적용 | 위치 |
+|---|---|---|
+| SIEGE Engine (`nutshells3/Swarm-Intelligence-Engine-with-Gated-Execution`) | Gate-based certification, event journal (외부 v1, 본 프로젝트 v2 asset-class expansion) — **#1619 로 제거**(처분표 §6, 원 레포는 404) | — |
+| [Palantir Foundry](https://www.palantir.com/docs/foundry/data-lineage/overview) | Data Health, Decision Intelligence (#178) | `nuri/core/freshness.py`, `events.py`, `decisions` |
+| [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies) | Freshness SLA | `nuri/core/freshness.py` |
+| [TradingAgents](https://github.com/TauricResearch/TradingAgents) | multi-agent consensus | `nuri/trading/agents/` |
+| [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/) | Risk Parity | `nuri/analysis/rebalance.py` |
+| [López de Prado](https://www.wiley.com/en-us/Advances+in+Financial+Machine+Learning-p-9781119482086) | Walk-forward · permutation test null-safe gate (#701/#702) | `nuri/quant/validation/strategy_walkforward.py` |
+
+### UX
+
+| 출처 | 참고 |
+|---|---|
+| [Ghostfolio](https://github.com/ghostfolio/ghostfolio) | 미니멀 dashboard, progressive disclosure |
+| [React Flow](https://reactflow.dev/) | pipeline DAG |
+| [FreqUI](https://www.freqtrade.io/en/stable/freq-ui/) | backtest 시그널 마커 |

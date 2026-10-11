@@ -159,7 +159,9 @@ def repo_copy(tmp_path):
     for rel in (
         "README.md",
         "docs/ARCHITECTURE.md",
+        "docs/ko/ARCHITECTURE.md",
         "docs/STRATEGY.md",
+        "docs/ko/STRATEGY.md",
         "config/CLAUDE.md",
         "config/rules.yaml",
         "nuri/api/CLAUDE.md",

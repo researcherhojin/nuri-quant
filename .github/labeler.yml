@@ -52,6 +52,7 @@ kis:
       - any-glob-to-any-file:
           - "nuri/collectors/kis_*.py"
           - "docs/KIS_INTEGRATION.md"
+          - "docs/ko/KIS_INTEGRATION.md"
 
 tests:
   - changed-files:
