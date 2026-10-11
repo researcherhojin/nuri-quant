@@ -106,6 +106,22 @@ class TestTamperIsDetected:
         assert any(p.startswith("2026-10-02") and "prev_hash" in p for p in problems)
 
 
+class TestForeignFieldSet:
+    def test_a_seal_from_another_field_set_is_reported_not_verified(self, db_path):
+        """v2 체인 행은 이 코드가 검증할 수 없다 — 조용히 통과시키지도, v1 규칙으로 오판하지도 않는다.
+
+        최신 행을 고친다: 중간 행이면 다음 날짜의 체인 끊김 보고가 따라붙어 그 연쇄까지 잠그게 된다.
+        seal_hash 도 바꿔 두므로 field_set 검사를 지우면 v1 해시 검사가 대신 걸려 목록이 달라진다.
+        """
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                "UPDATE recommendation_seals SET field_set = 'v2', seal_hash = ? WHERE date = '2026-10-05'",
+                ("f" * 64,),
+            )
+        assert seal.verify(db_path=db_path) == ["2026-10-05: field_set 'v2' — 이 코드는 'v1' 만 검증한다"]
+
+
 class TestLegitimateChangesStayClean:
     """사후 측정·라벨 백필은 정상 운영이다 — 이게 변조로 잡히면 봉인이 매일 거짓 경보를 낸다."""
 
@@ -240,3 +256,86 @@ class TestDailyJob:
             scheduler._run_alpha_report()
         staged.assert_called_once_with()
         assert emitted.call_args.kwargs["payload"]["error"] is None
+
+    def test_a_seal_mismatch_is_counted_and_warned(self, caplog):
+        """불일치는 매일 job 이 표면화한다 — 개수는 heartbeat payload 에, 경고는 운영 로그에."""
+        import logging
+        from unittest.mock import patch
+
+        from nuri import scheduler
+
+        with (
+            patch("nuri.alerts.alpha_report.is_production", return_value=True),
+            patch("nuri.alerts.alpha_report.already_emitted", return_value=True),
+            patch("nuri.alerts.alpha_report.stage_alpha_progress_brief", return_value=None),
+            patch("nuri.core.db.ledger_seal.seal_closed_days", return_value=[]),
+            patch("nuri.core.db.ledger_seal.verify", return_value=["2026-10-01: a", "2026-10-02: b"]),
+            patch("nuri.core.events.emit_event") as emitted,
+            caplog.at_level(logging.WARNING, logger="nuri.scheduler"),
+        ):
+            scheduler._run_alpha_report()
+        assert emitted.call_args.kwargs["payload"]["seal_problems"] == 2
+        warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("봉인 불일치 2건" in m for m in warnings)
+
+
+class TestCli:
+    """`python -m nuri.core.db.ledger_seal` — 운영자가 손으로 돌리는 검증. 종료 코드가 곧 판정이다."""
+
+    @pytest.fixture(autouse=True)
+    def _pin_today(self, monkeypatch):
+        from nuri.core import timezone
+
+        monkeypatch.setattr(timezone, "today_kst", lambda: TODAY)
+
+    def test_seal_prints_the_sealed_range_and_the_head(self, db_path, capsys):
+        assert seal.main(["--db", str(db_path), "--seal"]) == 0
+        head = seal.latest_seal(db_path=db_path)
+        assert head is not None
+        assert capsys.readouterr().out.splitlines() == [
+            "봉인 3일 (2026-10-01 ~ 2026-10-05)",
+            f"봉인 머리: 2026-10-05 · {head['seal_hash'][:16]}",
+            "✓ 무결",
+        ]
+
+    def test_resealing_on_the_same_day_prints_no_range(self, db_path, capsys):
+        _sealed(db_path)
+        assert seal.main(["--db", str(db_path), "--seal"]) == 0
+        assert capsys.readouterr().out.splitlines()[0] == "봉인 0일"
+
+    def test_tampering_exits_nonzero_and_lists_each_problem(self, db_path, capsys):
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("DELETE FROM recommendations WHERE date = '2026-10-02'")
+        assert seal.main(["--db", str(db_path)]) == 1
+        out = capsys.readouterr().out.splitlines()
+        assert "✗ 2026-10-02: 봉인 후 행이 바뀌었다 (행 수 1 → 0)" in out
+        assert out[-1] == "✗ 1건 불일치"
+
+    def test_an_anchor_that_no_longer_matches_exits_nonzero(self, db_path, capsys):
+        _sealed(db_path)
+        head = seal.latest_seal(db_path=db_path)
+        assert head is not None
+        assert seal.main(["--db", str(db_path), "--anchor", head["date"], head["seal_hash"]]) == 0
+        assert seal.main(["--db", str(db_path), "--anchor", head["date"], "0" * 64]) == 1
+        assert "✗ 2026-10-05: 외부에 남은 머리와 다르다 (봉인 재계산)" in capsys.readouterr().out.splitlines()
+
+    def test_an_unsealed_ledger_has_no_head_and_is_clean(self, tmp_path, capsys):
+        empty = tmp_path / "empty.db"
+        init_db(empty)
+        assert seal.main(["--db", str(empty)]) == 0
+        assert capsys.readouterr().out.splitlines() == ["✓ 무결"]
+
+
+def test_module_entry_point_exits_with_the_verdict(db_path, monkeypatch):
+    """`python -m` 의 종료 코드가 판정이다 — 변조된 원장이 0 으로 끝나면 호출한 쪽은 무결로 읽는다."""
+    import runpy
+    import sys
+
+    _sealed(db_path)
+    with get_db(db_path) as conn:
+        conn.execute("UPDATE recommendations SET action = 'BUY' WHERE ticker = 'BBB'")
+    monkeypatch.setattr(sys, "argv", ["ledger_seal", "--db", str(db_path)])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("nuri.core.db.ledger_seal", run_name="__main__")
+    assert exc.value.code == 1

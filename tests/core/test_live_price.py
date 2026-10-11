@@ -260,3 +260,12 @@ class TestFetchQuote:
         with patch.object(lp, "is_market_open_for", return_value=True), patch.dict("sys.modules", {"yfinance": yf}):
             q = lp.fetch_quote("ABC")
         assert q["change_pct"] is None and q["previous_close"] is None and q["market_open"] is True
+
+    @pytest.mark.parametrize("last_price", [None, 0.0, -1.0])
+    def test_absent_or_non_positive_price_is_no_quote(self, last_price):
+        """가격이 없거나 0 이하면 호가가 아니다 — 0 원·음수 호가를 사실처럼 내지 않는다."""
+        from nuri.core import live_price as lp
+
+        yf = self._yf(last_price=last_price, regular_market_previous_close=10.0, currency="USD", exchange="X")
+        with patch.object(lp, "is_market_open_for", return_value=True), patch.dict("sys.modules", {"yfinance": yf}):
+            assert lp.fetch_quote("ABC") is None

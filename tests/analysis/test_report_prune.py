@@ -106,3 +106,19 @@ class TestMain:
         assert "removed 3 report directories older than 0 days" in capsys.readouterr().out
         assert (reports / "2026-10-05").exists()  # newest past dir survives
         assert not (reports / "2026-09-07").exists()
+
+
+def test_module_entry_point_exits_with_mains_code(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    """`python -m nuri.analysis.report_prune` 가 main() 의 종료 코드로 끝난다.
+
+    runpy 는 모듈을 다시 실행해 REPORT_DIR 이 실제 `data/reports` 로 되돌아간다 — 그래서 --dry-run 과
+    100년 보존으로만 돌린다: 아무것도 지우지 않고, 어느 체크아웃에서든 대상이 0 개다.
+    """
+    import runpy
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["report_prune", "--dry-run", "--days", "36500"])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("nuri.analysis.report_prune", run_name="__main__")
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.splitlines()[-1] == "would remove 0 report directories older than 36500 days"

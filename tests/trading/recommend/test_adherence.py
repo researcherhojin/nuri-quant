@@ -154,6 +154,37 @@ def test_episode_before_the_log_is_unknown(db_path):
     assert adh.classify(ep, 30, LATER, db_path=db_path) == "unknown"
 
 
+def test_cli_prints_only_aggregates_and_forwards_since(db_path, monkeypatch, capsys):
+    """출력은 분류별 개수뿐 — 종목명이 콘솔로 새지 않는다. `--since` 는 그대로 집계에 전달된다."""
+    from nuri.core import rules, timezone
+
+    monkeypatch.setattr(timezone, "today_kst", lambda: LATER)
+    _change(db_path, "2026-09-25 09:00:00", "ZZZ", None, 1)
+    _recs(db_path, [("2026-09-01", "CCC", "BUY"), ("2026-10-01", "AAA", "BUY"), ("2026-10-01", "BBB", "SELL")])
+    _change(db_path, "2026-10-03 09:00:00", "AAA", 0, 10)
+
+    assert adh.main(["--db", str(db_path), "--since", "2026-09-15"]) == 0
+    out = capsys.readouterr().out
+    window = rules.ADHERENCE["window_days"]
+    assert out.splitlines() == [
+        f"창 {window}일 — 에피소드 분류 (종목명 없이 집계만)",
+        f"  {'BUY:followed':24} 1",
+        f"  {'SELL:not_followed':24} 1",
+    ]
+    assert not any(t in out for t in ("AAA", "BBB", "CCC", "ZZZ"))
+
+
+def test_module_entry_point_exits_with_mains_code(db_path, monkeypatch, capsys):
+    import runpy
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["adherence", "--db", str(db_path)])
+    with pytest.raises(SystemExit) as exc:
+        runpy.run_module("nuri.trading.recommend.adherence", run_name="__main__")
+    assert exc.value.code == 0
+    assert "에피소드 분류" in capsys.readouterr().out
+
+
 def test_summary_reads_the_window_from_config(db_path, monkeypatch):
     from nuri.core import rules
 

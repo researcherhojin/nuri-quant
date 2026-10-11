@@ -772,3 +772,90 @@ class TestHeldAddShadowSkipReasons:
 
         assert "0건 emit / 1건 skip" in caplog.text  # 본 작업 로그는 살아남는다
         assert "실행 실패" not in caplog.text
+
+
+# ─────────────────────────────────────────────
+# 주간·상시 job 래퍼 — 실패 흡수 + 결과 로그
+# ─────────────────────────────────────────────
+
+
+class TestRunMaintenanceAudit:
+    """`_run_maintenance_audit` — 주간 스캔. 결과는 로그로 남고 실패는 다른 job 으로 번지지 않는다."""
+
+    def test_scan_is_requested_and_its_output_logged(self, caplog):
+        import logging
+
+        from nuri.scheduler import _run_maintenance_audit
+
+        auditor = MagicMock()
+        auditor.return_value.run.return_value = SimpleNamespace(output={"staged": 2})
+        with (
+            patch("nuri.agents.actors.maintenance_auditor.MaintenanceAuditor", auditor),
+            caplog.at_level(logging.INFO, logger="nuri.scheduler"),
+        ):
+            _run_maintenance_audit()
+
+        auditor.return_value.run.assert_called_once_with({"action": "scan"})
+        assert "[maintenance_audit] {'staged': 2}" in caplog.text
+
+    def test_exception_swallowed(self, caplog):
+        import logging
+
+        from nuri.scheduler import _run_maintenance_audit
+
+        with (
+            patch(
+                "nuri.agents.actors.maintenance_auditor.MaintenanceAuditor",
+                side_effect=RuntimeError("audit boom"),
+            ),
+            caplog.at_level(logging.ERROR, logger="nuri.scheduler"),
+        ):
+            _run_maintenance_audit()  # must not raise
+
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert errors == ["[maintenance_audit] 실행 실패: audit boom"]
+
+
+class TestRunOffboxHeartbeat:
+    """`_run_offbox_heartbeat` — 침묵이 신호라 여기서는 보내기만 하고, 실패는 로그로만 남긴다."""
+
+    def test_heartbeat_is_sent(self):
+        from nuri.scheduler import _run_offbox_heartbeat
+
+        with patch("nuri.alerts.offbox_heartbeat.send_heartbeat") as send:
+            _run_offbox_heartbeat()
+
+        send.assert_called_once_with()
+
+    def test_failure_is_logged_not_raised(self, caplog):
+        import logging
+
+        from nuri.scheduler import _run_offbox_heartbeat
+
+        with (
+            patch("nuri.alerts.offbox_heartbeat.send_heartbeat", side_effect=OSError("network down")),
+            caplog.at_level(logging.ERROR, logger="nuri.scheduler"),
+        ):
+            _run_offbox_heartbeat()  # must not raise
+
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert errors == ["[offbox_heartbeat] 실행 실패: network down"]
+
+
+class TestPruneReports:
+    """`_prune_reports` — 보존 규칙은 모듈 기본값(30일 · 소비 산출물 최신 보존)을 그대로 쓴다."""
+
+    def test_prunes_with_the_module_defaults_and_logs_the_count(self, caplog, tmp_path):
+        import logging
+
+        from nuri.scheduler import _prune_reports
+
+        removed = [tmp_path / "2026-01-01", tmp_path / "2026-01-02"]
+        with (
+            patch("nuri.analysis.report_prune.prune_report_dirs", return_value=removed) as prune,
+            caplog.at_level(logging.INFO, logger="nuri.scheduler"),
+        ):
+            _prune_reports()
+
+        prune.assert_called_once_with()
+        assert "prune_reports: 2 directories removed" in caplog.text

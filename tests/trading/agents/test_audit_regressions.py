@@ -77,12 +77,57 @@ def test_mixed_currency_weight_uses_market_value(db_path):
     assert RiskAgent().analyze("USDEMO", db_path=db_path).data_points["position_pct"] is None
 
 
+def test_fx_reader_failure_leaves_the_weight_unknown_not_invented(db_path, monkeypatch):
+    """환율 조회가 예외를 내도 리스크 판정은 계속된다 — 원화가 섞인 비중만 미상으로 남긴다.
+
+    저장소에는 환율이 있다: 비중이 미상인 이유는 부재가 아니라 조회 실패다.
+    """
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO portfolio(account,ticker,quantity,avg_price,currency) VALUES('Demo','KRDEMO.KS',1,100000,'KRW')"
+        )
+        conn.execute(
+            "INSERT INTO portfolio(account,ticker,quantity,avg_price,currency) VALUES('Demo','USDEMO',1,1000,'USD')"
+        )
+        conn.execute("INSERT INTO prices(ticker,date,close) VALUES('KRDEMO.KS',?,100000)", (day(),))
+        conn.execute("INSERT INTO prices(ticker,date,close) VALUES('USDEMO',?,1000)", (day(),))
+        conn.execute("INSERT INTO macro(indicator,date,value) VALUES('usd_krw',?,1000)", (day(),))
+
+    def fx_down(*args, **kwargs):
+        raise RuntimeError("fx store unavailable")
+
+    monkeypatch.setattr("nuri.core.fx.latest_usd_krw_value", fx_down)
+    verdict = RiskAgent().analyze("KRDEMO.KS", db_path=db_path)
+    assert verdict.data_points["position_pct"] is None
+    assert "비중 평가 불가" in verdict.reasoning
+    assert verdict.portfolio_action is None
+    assert not verdict.degraded
+
+
 @pytest.mark.parametrize(
     "quantity,price,rate",
     [("invalid", 1, 1000), (1, "invalid", 1000), (1, 1, "invalid"), (1, float("inf"), 1000), (-1, -1, 1000)],
 )
 def test_malformed_valuation_is_unknown(quantity, price, rate):
     assert holding_value_usd("DEMO.KS", "KRW", quantity, price, rate) is None
+
+
+@pytest.mark.parametrize(
+    "currency,quantity,price",
+    [
+        ("USD", None, 10),  # 수량 미상
+        ("USD", 1, None),  # 가격 미상 — 원가로 대체할지는 호출자가 정한다
+        ("USD", 1e200, 1e200),  # 곱이 inf 로 넘친다 — 무한대 평가액이 비중 분모에 들어가면 모든 비중이 0 이 된다
+        ("EUR", 1, 10),  # 환산 규칙이 없는 통화 — USD 로 간주하지 않는다
+    ],
+)
+def test_unvaluable_holding_is_unknown_not_guessed(currency, quantity, price):
+    assert holding_value_usd("DEMO", currency, quantity, price, 1000) is None
+
+
+@pytest.mark.parametrize("currency", ["USD", "usd", None])
+def test_dollar_or_unlabelled_holding_is_valued_as_is(currency):
+    assert holding_value_usd("DEMO", currency, 2, 10, None) == 20.0
 
 
 @pytest.mark.parametrize("percent,expected", [(100, "BUY"), (300, "HOLD")])

@@ -1328,6 +1328,51 @@ class TestGetPortfolioMapAggregation:
         assert result["SHARED"]["account"] == "Main"
         assert result["SHARED"]["current_price"] == 75.0
 
+    def test_a_portfolio_worth_nothing_reports_zero_weight_not_unknown(self):
+        """#1284: 분모 0 은 사실이다(전부 0주) — 비중은 미상(None)이 아니라 0 이다."""
+        rows = [
+            {
+                "account": "Brokerage Alpha",
+                "ticker": "AAA",
+                "quantity": 0,
+                "avg_price": 100.0,
+                "currency": "USD",
+                "current_price": 110.0,
+            }
+        ]
+        with patch("nuri.api.routes.actions.latest_usd_krw_value", return_value=None):
+            result = self._run(rows)
+        assert result["AAA"]["position_pct"] == 0
+        assert result["AAA"]["accounts"][0]["position_pct"] == 0
+
+    def test_unknown_weight_stays_unknown_when_accounts_are_combined(self):
+        """#1284: 원화 보유인데 환율이 없으면 계좌별 비중도, 합산 비중도 미상이다 —
+        None 을 0 으로 더하면 다계좌 노출이 과소 보고된다."""
+        rows = [
+            {
+                "account": "Brokerage Alpha",
+                "ticker": "123456.KS",
+                "quantity": 10,
+                "avg_price": 70000.0,
+                "currency": "KRW",
+                "current_price": 71000.0,
+            },
+            {
+                "account": "Brokerage Beta",
+                "ticker": "123456.KS",
+                "quantity": 5,
+                "avg_price": 72000.0,
+                "currency": "KRW",
+                "current_price": 71000.0,
+            },
+        ]
+        with patch("nuri.api.routes.actions.latest_usd_krw_value", return_value=None):
+            result = self._run(rows)
+        holding = result["123456.KS"]
+        assert holding["position_pct"] is None
+        assert [a["position_pct"] for a in holding["accounts"]] == [None, None]
+        assert len(holding["accounts"]) == 2
+
     def test_multi_account_order_independence(self):
         """SQLite row 순서에 의존 안 함 — worst-pnl 이 첫 row 든 마지막 row 든 동일 결과."""
         worst_first = [

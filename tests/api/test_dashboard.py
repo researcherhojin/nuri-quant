@@ -201,6 +201,39 @@ class TestCashBalances:
         assert result["total_cash_usd"] == 500.0
         assert len(result["accounts"]) == 1
 
+    def test_krw_cash_without_a_rate_is_unknown_not_zero(self, tmp_path, monkeypatch):
+        """#1284: 원화 현금이 있는데 환율이 없으면 그 계좌 합계도 총합도 미상이다.
+
+        미상 계좌는 금액 없이 **목록에 남는다**(빈 줄이 0원보다 정직하다). 총합을 아는 계좌만 더해 내면
+        조용히 과소집계된다.
+        """
+        import nuri.api.routes.dashboard as dash_mod
+
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (config_dir / "portfolio.yaml").write_text(
+            "accounts:\n"
+            "  acct_krw:\n"
+            "    label: Brokerage Alpha\n"
+            "    cash_krw: 140000\n"
+            "  acct_usd:\n"
+            "    label: Brokerage Beta\n"
+            "    cash_usd: 500.0\n",
+            encoding="utf-8",
+        )
+        fake_file = tmp_path / "l1" / "l2" / "l3" / "dashboard.py"
+        fake_file.parent.mkdir(parents=True)
+        fake_file.touch()
+        monkeypatch.setattr(dash_mod, "__file__", str(fake_file))
+
+        assert dash_mod._get_cash_balances(exchange_rate=None) == {
+            "accounts": [
+                {"account": "Brokerage Alpha", "cash_usd": 0.0, "cash_krw": 140000.0, "total_usd": None},
+                {"account": "Brokerage Beta", "cash_usd": 500.0, "cash_krw": 0.0, "total_usd": 500.0},
+            ],
+            "total_cash_usd": None,
+        }
+
     def test_cache_mechanism(self, db_path, monkeypatch):
         """캐시 동작 확인."""
         import nuri.api.routes.dashboard as dash_mod
@@ -1744,6 +1777,22 @@ class TestMacroInputsProvenance:
         assert by_key["vix"] == {"key": "vix", "date": "2026-01-02", "source": "yfinance"}
         assert by_key["cpi_yoy"] == {"key": "cpi_yoy", "date": "2025-11-01", "source": "FRED"}
         assert by_key["unemployment"] == {"key": "unemployment", "date": None, "source": None}
+
+    def test_unreadable_store_keeps_every_input_with_unknown_provenance(self, tmp_path, caplog):
+        """조회가 실패해도 지표 목록은 그대로 나간다 — 출처를 지어내지 않고 null 로 두며, 실패는 로그로 남긴다."""
+        import logging
+
+        from nuri.api.routes.dashboard import MACRO_INPUTS, _get_macro_inputs
+
+        no_macro = tmp_path / "no_macro_table.db"
+        with get_db(no_macro) as conn:
+            conn.execute("CREATE TABLE unrelated (x INTEGER)")
+
+        with caplog.at_level(logging.ERROR, logger="nuri.api.routes.dashboard"):
+            items = _get_macro_inputs(db_path=no_macro)
+
+        assert items == [{"key": key, "date": None, "source": None} for key in MACRO_INPUTS]
+        assert "macro input us_10y_yield 조회 실패" in caplog.text
 
     def test_inputs_match_what_the_macro_score_reads(self):
         """잠금 — 점수 계산이 읽는 지표와 화면의 출처 목록이 어긋나면 출처 표시가 거짓말이 된다."""

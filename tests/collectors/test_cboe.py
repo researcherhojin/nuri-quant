@@ -235,6 +235,41 @@ class TestCBOEDailyFile:
             with pytest.raises(ValueError, match="TOTAL PUT/CALL RATIO"):
                 CBOECollector()._collect_daily()
 
+    def test_collect_stops_at_the_daily_file_and_never_asks_the_fallbacks(self):
+        """1차 티어가 값을 건지면 거기서 끝난다 — 다른 스케일(SPY 단일 만기)의 값이나 낡은 DB 값이 섞이면
+        CBOE TOTAL 스케일에 맞춘 에이전트 임계가 어긋난다."""
+        from nuri.collectors.cboe import CBOECollector
+
+        c = CBOECollector()
+        with (
+            patch("nuri.collectors.cboe.today_kst", return_value="2026-10-08"),
+            patch("nuri.collectors.cboe.requests.get", side_effect=self._get(self.TRADING)),
+            patch.object(c, "_collect_yfinance_spy_pcr") as spy,
+            patch.object(c, "_collect_db_stale") as stale,
+        ):
+            rows = c.collect()
+        assert [(r["date"], r["source"]) for r in rows] == [
+            ("2026-10-07", "CBOE"),
+            ("2026-10-06", "CBOE"),
+            ("2026-10-02", "CBOE"),
+        ]
+        spy.assert_not_called()
+        stale.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "item",
+        [
+            {"name": "TOTAL PUT/CALL RATIO"},
+            {"name": "TOTAL PUT/CALL RATIO", "value": None},
+            {"name": "TOTAL PUT/CALL RATIO", "value": "n/a"},
+        ],
+    )
+    def test_unreadable_total_ratio_is_no_value_not_a_crash(self, item):
+        """값이 없거나 숫자가 아니면 그 날짜는 비율이 없는 것이다 — 예외로 나머지 날짜까지 버리지 않는다."""
+        from nuri.collectors.cboe import CBOECollector
+
+        assert CBOECollector._total_ratio({"ratios": [item]}) is None
+
     def test_dead_cboe_endpoints_are_gone(self):
         import nuri.collectors.cboe as cboe_mod
 

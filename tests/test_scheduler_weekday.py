@@ -102,6 +102,14 @@ class TestCrontabDowConversion:
         with pytest.raises(ValueError):
             _crontab_dow(bad)
 
+    @pytest.mark.parametrize("cron", ["0 7 * *", "0 7 * * 1-5 2026"])
+    def test_cron_without_exactly_five_fields_is_refused(self, cron):
+        """필드 수가 틀린 cron 은 자리가 밀려 엉뚱한 시각이 된다 — 언패킹 오류가 아니라 명시적 거부로."""
+        from nuri.scheduler import _make_trigger
+
+        with pytest.raises(ValueError, match="5개가 아님"):
+            _make_trigger(cron)
+
 
 def _registered_triggers() -> dict[str, object]:
     """`create_scheduler()` 가 **실제로 등록한** 트리거.
