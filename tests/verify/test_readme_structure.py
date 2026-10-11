@@ -129,9 +129,13 @@ MERMAID = re.compile(r"```mermaid\n(.*?)```", re.S)
 # `-->` · `==>` · `-.->` 와 뒤에 붙는 `|라벨|`(앞 공백 허용). 화살표처럼 보이는데 이 문법에 안 맞는
 # 줄(`A -- 글 --> B`, 인라인 노드 정의 등)은 **실패시킨다** — 못 읽은 줄을 건너뛰면 그 줄의 화살표가
 # 조용히 검사에서 빠진다 (codex 리뷰: `& CON` 그룹이 통과했고, `--> |라벨|` 은 오탐났다).
+# 화살표는 정규식이 아니라 문자열 치환으로 읽는다 — `-->` 를 담은 정규식은 CodeQL 이 HTML 주석
+# 필터로 오인해 high 경고(py/bad-tag-filter)를 낸다 (#1774).
+_ARROWS = ("-.->", "-->", "==>")
+_MARK = "\x00"
+_LABEL = re.compile(r"\x00\s*\|[^|]*\|")
 _GROUP = r"\w+(?:\s*&\s*\w+)*"
-_LINK = r"(?:-->|==>|-\.->)(?:\s*\|[^|]*\|)?"
-_EDGE_LINE = re.compile(rf"^\s*{_GROUP}(?:\s*{_LINK}\s*{_GROUP})+\s*$")
+_EDGE_LINE = re.compile(rf"^\s*{_GROUP}(?:\s*\x00\s*{_GROUP})+\s*$")
 _LINKISH = re.compile(r"--|==|-\.|\.-|~~~")
 
 
@@ -141,8 +145,11 @@ def _edges(diagram: str) -> list[tuple[str, str]]:
         bare = re.sub(r'"[^"]*"', '""', line)  # 따옴표 라벨 안의 글자는 화살표가 아니다
         if not _LINKISH.search(bare):
             continue
+        for arrow in _ARROWS:
+            bare = bare.replace(arrow, _MARK)
+        bare = _LABEL.sub(_MARK, bare)
         assert _EDGE_LINE.match(bare), f"읽을 수 없는 엣지 줄 — 파서를 넓히기 전엔 통과시키지 않는다: {line.strip()!r}"
-        groups = [re.findall(r"\w+", g) for g in re.split(_LINK, bare)]
+        groups = [re.findall(r"\w+", g) for g in bare.split(_MARK)]
         for left, right in zip(groups, groups[1:]):
             edges += [(a, b) for a in left for b in right]
     return edges
