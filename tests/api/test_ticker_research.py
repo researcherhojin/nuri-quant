@@ -542,7 +542,8 @@ def test_pending_briefing_is_shown_only_while_its_lease_is_alive(client, provide
     assert client.get("/api/ticker/DEMO/research").json()["public_briefing"]["status"] == status
 
 
-@pytest.mark.parametrize("details", ["{broken", None])
+# 파싱은 되지만 객체가 아닌 JSON(null · [] · "text")도 손상 행이다 — `.get()` 에서 AttributeError 로 500 이었다 (#1755)
+@pytest.mark.parametrize("details", ["{broken", None, "null", "[]", '"text"'])
 def test_corrupt_stored_briefing_is_hidden_without_breaking_the_page(client, provider, details):
     client.post("/api/ticker/DEMO/research/refresh")
     with get_db() as conn:
