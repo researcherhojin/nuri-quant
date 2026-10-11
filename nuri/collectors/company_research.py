@@ -1,7 +1,7 @@
 """종목 소개와 연간 재무 원자료 수집 — 전략 판단 없이 공급자 값을 저장한다.
 
 `parse_tema_fund` 는 한 ETF 운용사 페이지 전용 어댑터다(구조·FAQ 문구에 맞춰져 있다). 다른 펀드에는 쓰지 않는다.
-자세한 한계: `docs/RESEARCH_BRIEFING.md` "알려진 한계".
+자세한 한계: `docs/RESEARCH_BRIEFING.md` "Known limitations" (한국어판 `docs/ko/RESEARCH_BRIEFING.md` "알려진 한계").
 
 cspell:words Tema MUTUALFUND Starlink SPCX
 """

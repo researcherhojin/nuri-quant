@@ -164,7 +164,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,809 collected across 434 files |
+| Backend tests | 8,862 collected across 435 files |
 | Frontend test files | 118 vitest files |
 | Data collectors | 31 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 59 cron entries |
@@ -184,6 +184,8 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | [`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md) | Korea Investment & Securities Open API: real-time quotes, investor flows, analyst opinions |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
 | [`SECURITY.md`](SECURITY.md) | Security policy and LLM egress rules |
+
+The `docs/` documents above also have Korean editions, with technical terms in English, in [`docs/ko/`](docs/ko/). The English editions are official; for the pre-registered criteria in `docs/STRATEGY.md` §3.11 and §3.12, the Korean text is the record.
 
 ## Maintainers
 
