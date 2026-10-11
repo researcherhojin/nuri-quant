@@ -329,14 +329,19 @@ def compute_agent_accuracy(db_path=None) -> dict:
     """decisions 테이블에서 에이전트별 적중률 계산 (학습 루프).
 
     완료된 decisions (outcome = success/failure)의 agent_verdicts를 파싱하여
-    각 에이전트의 판단이 최종 결과와 일치하는지 계산한다.
+    각 에이전트의 판단이 실제 가격 방향과 일치하는지 계산한다.
+
+    채점 기준은 `outcome` 이 아니라 실현 수익률 `pnl_90d` 의 부호다. `outcome` 은 결정 자신의
+    방향 기준이라(`track_decision_outcomes`: BUY 는 상승이 success, SELL 은 하락이 success)
+    "매수가 통했나" 로 읽으면 SELL 결정에서 적중·미스가 뒤집히고, 수익률이 0 이면 BUY·SELL
+    결정 모두 failure 라 방향을 되살릴 수도 없다 (#1773, 잠금:
+    `tests/trading/engine/test_decisions.py::TestAgentAccuracyOnSellDecisions`).
 
     적중 기준:
-      - BUY + outcome=success → hit
-      - SELL + outcome=failure → hit (올바르게 회피)
-      - BUY + outcome=failure → miss
-      - SELL + outcome=success → miss
-      - HOLD → 판정 제외
+      - pnl_90d > 0 (상승) → 에이전트 BUY 적중
+      - pnl_90d < 0 (하락) → 에이전트 SELL 적중
+      - 보합(0)은 어느 쪽도 적중이 아니다 (total 에는 센다)
+      - 에이전트 HOLD → 판정 제외
 
     Returns:
         {agent_name: {"total": N, "hits": N, "hit_rate": float, "weight_adjustment": float}}
@@ -345,7 +350,7 @@ def compute_agent_accuracy(db_path=None) -> dict:
     from nuri.core.db import query
 
     rows = query(
-        "SELECT agent_verdicts, outcome FROM decisions WHERE outcome IN ('success', 'failure')",
+        "SELECT agent_verdicts, pnl_90d FROM decisions WHERE outcome IN ('success', 'failure') AND pnl_90d IS NOT NULL",
         db_path=db_path,
     )
 
@@ -357,7 +362,7 @@ def compute_agent_accuracy(db_path=None) -> dict:
 
     for row in rows:
         verdicts_json = row["agent_verdicts"]
-        outcome = row["outcome"]
+        pnl = row["pnl_90d"]
         if not verdicts_json:
             continue
 
@@ -377,8 +382,7 @@ def compute_agent_accuracy(db_path=None) -> dict:
 
             agent_stats[agent_name]["total"] += 1
 
-            # BUY + success = hit, SELL + failure = hit
-            if (action == "BUY" and outcome == "success") or (action == "SELL" and outcome == "failure"):
+            if (action == "BUY" and pnl > 0) or (action == "SELL" and pnl < 0):
                 agent_stats[agent_name]["hits"] += 1
 
     # 적중률 + weight_adjustment 계산

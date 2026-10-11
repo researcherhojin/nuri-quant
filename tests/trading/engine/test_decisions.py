@@ -814,15 +814,21 @@ class TestDecisionSummary:
 # ═══════════════════════════════════════════════════════
 
 
-def _insert_decision_with_outcome(db_path, ticker, action, outcome, verdicts, date="2026-04-10"):
-    """테스트 헬퍼: outcome이 설정된 decision 삽입."""
+def _insert_decision_with_outcome(db_path, ticker, action, outcome, verdicts, date="2026-04-10", pnl_90d=None):
+    """테스트 헬퍼: outcome이 설정된 decision 삽입.
+
+    `pnl_90d` 를 안 주면 tracker 규칙대로 outcome 과 맞는 부호를 넣는다 — BUY 는 상승이
+    success, SELL 은 하락이 success (`track_decision_outcomes`).
+    """
+    if pnl_90d is None:
+        pnl_90d = 5.0 if (action == "BUY") == (outcome == "success") else -5.0
     verdicts_json = json.dumps(verdicts)
     with get_db(db_path) as conn:
         conn.execute(
             "INSERT OR REPLACE INTO decisions "
-            "(date, ticker, action, confidence, agent_verdicts, outcome, entry_price) "
-            "VALUES (?, ?, ?, 75.0, ?, ?, 100.0)",
-            (date, ticker, action, verdicts_json, outcome),
+            "(date, ticker, action, confidence, agent_verdicts, outcome, entry_price, pnl_90d) "
+            "VALUES (?, ?, ?, 75.0, ?, ?, 100.0, ?)",
+            (date, ticker, action, verdicts_json, outcome, pnl_90d),
         )
 
 
@@ -1104,6 +1110,44 @@ class TestComputeAgentAccuracy:
 # ═══════════════════════════════════════════════════════
 # save_agent_accuracy_snapshot 멱등성 테스트
 # ═══════════════════════════════════════════════════════
+
+
+class TestAgentAccuracyOnSellDecisions:
+    """`decisions.outcome` 은 그 결정 자신의 방향 기준이다 (#1773).
+
+    `track_decision_outcomes` 는 BUY 를 `pnl_90d > 0` 일 때, SELL 을 `pnl_90d < 0` 일 때
+    success 로 매긴다. 에이전트 적중은 결정의 성패가 아니라 **실제 가격 방향**과 비교해야
+    한다 — 예전 공식은 모든 결정을 BUY 로 읽어 SELL 결정에서 적중·미스가 뒤집혔다. 위 클래스의
+    헬퍼 호출이 전부 BUY 결정이라 그 경로가 한 번도 실행되지 않았다.
+    """
+
+    @pytest.mark.parametrize(
+        ("decision", "outcome", "pnl", "agent_action", "hit"),
+        [
+            ("SELL", "success", -5.0, "SELL", 1),  # SELL 결정 성공 = 하락 → SELL 이 맞았다
+            ("SELL", "success", -5.0, "BUY", 0),
+            ("SELL", "failure", 5.0, "BUY", 1),  # SELL 결정 실패 = 상승 → BUY 가 맞았다
+            ("SELL", "failure", 5.0, "SELL", 0),
+            # 보합 — tracker 는 BUY·SELL 결정 모두 failure 로 매긴다. outcome 으로는 방향이 없다.
+            ("BUY", "failure", 0.0, "SELL", 0),
+            ("SELL", "failure", 0.0, "BUY", 0),
+        ],
+    )
+    def test_hits_follow_the_realized_direction(self, db_path, decision, outcome, pnl, agent_action, hit):
+        from nuri.trading.engine.decisions import compute_agent_accuracy
+
+        _insert_decision_with_outcome(
+            db_path,
+            "XYZ",
+            decision,
+            outcome,
+            [{"agent_name": "technical", "action": agent_action, "confidence": 80}],
+            pnl_90d=pnl,
+        )
+
+        result = compute_agent_accuracy(db_path)
+        assert result["technical"]["total"] == 1
+        assert result["technical"]["hits"] == hit
 
 
 class TestSaveAgentAccuracySnapshot:

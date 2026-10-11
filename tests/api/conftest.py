@@ -34,15 +34,21 @@ def _mock_pykrx_names(monkeypatch):
     그리고 `config/kr_ticker_names.json` 은 **gitignored** 라 개발 머신엔 있고 CI 엔
     없다 — 스텁하지 않으면 이 fixture 를 쓰는 테스트가 로컬 초록 / CI 빨강이 된다
     (실제로 그렇게 났다). 프로덕션도 이 종목을 2차에서 해석하므로 계층도 맞다.
+
+    ⚠️ **`sys.modules["pykrx"]` 를 통째로 갈아끼우지 않는다** — 함수 하나만 patch 한다. 예전엔
+    모듈을 가짜 `SimpleNamespace` 로 바꿨는데, 그 창 안에서 처음 import 된 모듈이 가짜를 영구히
+    붙잡았다: `pipeline_refresh` 가 지연 import 하는 `nuri.collectors.stock_kr` 의
+    `from pykrx import stock as krx` 가 그렇게 묶여, 같은 워커에서 뒤에 도는
+    `tests/collectors/test_stock_kr.py` 10개가 `get_market_ohlcv` 없음으로 실패했다 (#1777 CI —
+    샤드 구성이 바뀌자 드러났다). 실모듈의 속성만 바꾸면 창 밖으로 새는 것이 없다.
+    **Test:** `tests/api/test_pykrx_stub_does_not_leak.py`
     """
-    import sys
-    import types
+    import pykrx.stock
 
     from nuri.core import ticker_names as _tn
 
     _KR_NAMES = {"005930": "삼성전자", "000660": "SK하이닉스", "005380": "현대차"}
-    _fake_stock = types.SimpleNamespace(get_market_ticker_name=lambda code: _KR_NAMES.get(str(code), ""))
-    monkeypatch.setitem(sys.modules, "pykrx", types.SimpleNamespace(stock=_fake_stock))
+    monkeypatch.setattr(pykrx.stock, "get_market_ticker_name", lambda code: _KR_NAMES.get(str(code), ""))
     monkeypatch.setattr(_tn, "_load_kr_name_map", lambda: {f"{c}.KS": n for c, n in _KR_NAMES.items()})
     _tn.get_ticker_name.cache_clear()
     _tn.get_ticker_name_local.cache_clear()  # #1255: 요청 경로가 쓰는 쪽도 같이 비운다

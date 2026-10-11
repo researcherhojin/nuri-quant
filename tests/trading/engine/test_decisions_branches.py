@@ -41,14 +41,14 @@ class TestComputeAgentAccuracyBranches:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-25", "AAA", "BUY", 60.0, "success", None),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("2025-03-25", "AAA", "BUY", 60.0, "success", None, 5.0),
             )
             # Also one with empty string (still falsy)
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-26", "BBB", "BUY", 60.0, "failure", ""),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("2025-03-26", "BBB", "BUY", 60.0, "failure", "", -5.0),
             )
         result = compute_agent_accuracy(db_path=db_path)
         # Both rows skipped → no agent stats accumulated → empty dict
@@ -65,8 +65,8 @@ class TestComputeAgentAccuracyBranches:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-25", "AAA", "BUY", 60.0, "success", "not-json"),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("2025-03-25", "AAA", "BUY", 60.0, "success", "not-json", 5.0),
             )
         result = compute_agent_accuracy(db_path=db_path)
         assert result == {}
@@ -85,17 +85,19 @@ class TestComputeAgentAccuracyBranches:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-25", "AAA", "HOLD", 60.0, "success", json.dumps(verdicts)),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ("2025-03-25", "AAA", "HOLD", 60.0, "success", json.dumps(verdicts), 5.0),
             )
         result = compute_agent_accuracy(db_path=db_path)
         assert result == {}  # HOLD vote → no contribution
 
-    def test_buy_success_and_sell_failure_count_as_hit(self, db_path):
-        """Lines 305-309: BUY+success and SELL+failure both increment hits.
+    def test_buy_on_a_rise_and_sell_on_a_fall_count_as_hit(self, db_path):
+        """An agent BUY on a rise and an agent SELL on a fall both increment hits.
 
-        Insert two decisions: one BUY agent succeeded (+hit), one SELL agent that
-        failed (+hit because the avoid was correct). Both have hit_rate=1.0.
+        A BUY decision that succeeded means the price rose (+hit for the BUY agent);
+        a SELL decision that succeeded means it fell (+hit for the SELL agent). This
+        test used a SELL decision that *failed* — a rise — and counted the SELL agent
+        as a hit, which locked in the inverted reading fixed in #1773.
         """
         import json
 
@@ -104,13 +106,29 @@ class TestComputeAgentAccuracyBranches:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-20", "AAA", "BUY", 70.0, "success", json.dumps([{"action": "BUY", "agent_name": "tech"}])),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "2025-03-20",
+                    "AAA",
+                    "BUY",
+                    70.0,
+                    "success",
+                    json.dumps([{"action": "BUY", "agent_name": "tech"}]),
+                    5.0,
+                ),
             )
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-21", "BBB", "SELL", 70.0, "failure", json.dumps([{"action": "SELL", "agent_name": "tech"}])),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "2025-03-21",
+                    "BBB",
+                    "SELL",
+                    70.0,
+                    "success",
+                    json.dumps([{"action": "SELL", "agent_name": "tech"}]),
+                    -5.0,
+                ),
             )
         result = compute_agent_accuracy(db_path=db_path)
         assert "tech" in result
@@ -133,8 +151,16 @@ class TestComputeAgentAccuracyBranches:
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO decisions (date, ticker, action, confidence, "
-                "outcome, agent_verdicts) VALUES (?, ?, ?, ?, ?, ?)",
-                ("2025-03-22", "CCC", "BUY", 60.0, "failure", json.dumps([{"action": "BUY", "agent_name": "risk"}])),
+                "outcome, agent_verdicts, pnl_90d) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "2025-03-22",
+                    "CCC",
+                    "BUY",
+                    60.0,
+                    "failure",
+                    json.dumps([{"action": "BUY", "agent_name": "risk"}]),
+                    -5.0,
+                ),
             )
         result = compute_agent_accuracy(db_path=db_path)
         assert result["risk"]["hits"] == 0
