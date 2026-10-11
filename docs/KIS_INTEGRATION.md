@@ -62,9 +62,9 @@ The official KIS SDK (`pykis` and others) always uses the fixed path `~/KIS/conf
 **Option 1 — symlink (recommended, one file)**:
 
 ```bash
-mkdir -p ~/KIS/config ~/KIS/cache
+mkdir -p ~/KIS/config
 ln -sf "$(pwd)/config/kis/kis_devlp.yaml" ~/KIS/config/kis_devlp.yaml
-ln -sf "$(pwd)/config/kis/cache" ~/KIS/cache
+ln -sfn "$(pwd)/config/kis/cache" ~/KIS/cache   # if ~/KIS/cache is already a directory, ln puts the link inside it
 ```
 
 **Option 2 — legacy only (uses the nuri-quant fallback)**:
@@ -168,7 +168,7 @@ KIS limits token issuance to once per minute and rejects back-to-back requests.
 `_is_token_cooldown(payload, status_code)`:
 
 - HTTP **403** → cooldown
-- HTTP 200 + `error_description` contains "1분당" (per minute) → cooldown
+- any other status with "1분당" (per minute) in `error_description` → cooldown
 - `error_code == "EGW00133"` → cooldown
 
 ## US quotes (EXCD fallback)
@@ -255,7 +255,7 @@ tr_id: FHKST663300C0
 ### Operational limitations (flagged by Codex in Round 2, targets for follow-up issues)
 
 1. **`analyst_ratings` is still in `nuri/core/coverage.py::US_ONLY_TABLES`.** KR rows reach the DB, but coverage statistics show them as "(KR n/a — 소스 미지원)" (source not supported). Reclassifying the table as KR-supported is a follow-up PR.
-2. **`WallStreetAgent` skips `.KS` tickers** (the skip condition in `nuri/trading/agents/wallstreet.py`). KR opinions therefore do not reach consensus and appear only in the UI ticker detail. Enabling the read path is a follow-up PR.
+2. **`WallStreetAgent` skips `.KS` and `.KQ` tickers** (the skip condition in `nuri/trading/agents/wallstreet.py`). KR opinions therefore do not reach consensus and appear only in the UI ticker detail. Enabling the read path is a follow-up PR.
 3. **The privacy scanner's `BROKER_NAMES_KO`**: The broker names in DB rows match the scanner patterns. The scanner checks only committed code/docs/PRs/commits, not the DB or runtime logs. Test fixtures and docs use synthetic broker names ("Test Securities A" and the like), and this document also refers to brokers generically.
 
 ### Failure modes (STRATEGY §2.6 Surface rung)
@@ -298,7 +298,7 @@ tr_id: FHPTJ04160001
 
 `KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec, safety margin), plus a 1.5s wait and one retry when a rate limit is detected.
 
-203 KR tickers in the universe × 0.4s ≈ 81 seconds/run.
+The collector requests each held Korean ticker once (`_get_tickers(market="kr")`, portfolio source), so a run takes about 0.4 s × the number of held Korean tickers.
 
 ### Failure modes (STRATEGY §2.6 Surface rung)
 

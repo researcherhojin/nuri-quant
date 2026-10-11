@@ -2,7 +2,7 @@
 
 *English (official) edition: [../RESEARCH_BRIEFING.md](../RESEARCH_BRIEFING.md)*
 
-기준일: 2026-10-08. 현재 작업 트리의 구현을 설명한다. 운영 배포·머지 완료를 뜻하지 않는다.
+기준일: 2026-10-08. 이 문서가 설명하는 구현은 `main` 에 머지돼 있다.
 투자 규칙과 외부 송신 정책의 정본은 [STRATEGY](STRATEGY.md), 실행 구조는 [ARCHITECTURE](ARCHITECTURE.md)다.
 
 ## 화면과 데이터의 경계
@@ -38,7 +38,7 @@ ETF의 상품·구성 자료는 펀드 전용 수집·표시 경로도 사용한
 라우터는 `nuri/api/routes/ticker_research.py`에 있다. 생성 요청은 백그라운드 작업으로 처리하고,
 프로세스 잠금과 DB 작업 임대로 중복 실행을 제한한다. 생성 결과는 `external_analysis`에 저장한다.
 `ready`는 생성·검증 성공, `pending`은 처리 중, `insufficient`는 근거 부족,
-`unavailable`은 생성·검증 실패다. 근거·모델·프롬프트 버전이 달라지면 기존 결과는 `stale`로 취급한다.
+`invalid`는 출처·수치·계획 구분 검사 실패, `unavailable`은 외부 모델 사용 불가 또는 작업 중단이다. 근거·모델·프롬프트 버전이 달라지면 기존 결과는 `stale`로 취급한다.
 실패 시 확인되지 않은 보고서를 정상 본문으로 표시하지 않는다.
 
 수집은 화면의 **최신 자료 갱신** 버튼으로만 시작한다. 페이지를 여는 것만으로는 DB 쓰기나 외부 호출이

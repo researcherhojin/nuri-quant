@@ -62,9 +62,9 @@ KIS 공식 SDK (`pykis` 등)는 `~/KIS/config/kis_devlp.yaml` 경로를 고정�
 **옵션 1 — symlink (권장, 1개 파일)**:
 
 ```bash
-mkdir -p ~/KIS/config ~/KIS/cache
+mkdir -p ~/KIS/config
 ln -sf "$(pwd)/config/kis/kis_devlp.yaml" ~/KIS/config/kis_devlp.yaml
-ln -sf "$(pwd)/config/kis/cache" ~/KIS/cache
+ln -sfn "$(pwd)/config/kis/cache" ~/KIS/cache   # ~/KIS/cache 가 이미 디렉터리면 ln 이 그 안에 링크를 만든다
 ```
 
 **옵션 2 — legacy only (nuri-quant fallback 활용)**:
@@ -168,7 +168,7 @@ KIS 는 토큰 발급을 1분당 1회로 제한하며, 연속 호출은 거부�
 `_is_token_cooldown(payload, status_code)`:
 
 - HTTP **403** → cooldown
-- HTTP 200 + `error_description`에 "1분당" 포함 → cooldown
+- 그 밖의 status 에서 `error_description`에 "1분당" 포함 → cooldown
 - `error_code == "EGW00133"` → cooldown
 
 ## 미국 시세 (EXCD 폴백)
@@ -255,7 +255,7 @@ tr_id: FHKST663300C0
 ### 운영 한계 (Round 2 Codex flagged, 후속 이슈 대상)
 
 1. **`analyst_ratings` 는 여전히 `nuri/core/coverage.py::US_ONLY_TABLES` 에 있다.** KR 행이 DB 에 들어오지만 coverage 통계에는 "(KR n/a — 소스 미지원)" 으로 표시된다. KR 지원 재분류는 후속 PR 대상이다.
-2. **`WallStreetAgent` 는 `.KS` ticker 를 건너뛴다** (`nuri/trading/agents/wallstreet.py` 의 skip 조건). 따라서 KR 의견은 consensus 에 반영되지 않고 UI ticker detail 에만 표시된다. read-path 활성화는 후속 PR 대상이다.
+2. **`WallStreetAgent` 는 `.KS` · `.KQ` ticker 를 건너뛴다** (`nuri/trading/agents/wallstreet.py` 의 skip 조건). 따라서 KR 의견은 consensus 에 반영되지 않고 UI ticker detail 에만 표시된다. read-path 활성화는 후속 PR 대상이다.
 3. **Privacy scanner 의 `BROKER_NAMES_KO`**: DB row 의 broker 이름은 scanner pattern 과 일치한다. scanner 는 committed code/docs/PR/commit 만 검사하고 DB 와 runtime log 는 검사하지 않는다. test fixture 와 docs 에서는 합성 broker 이름("Test Securities A" 등)을 쓰며, 이 문서도 broker 이름을 generic 하게 표기한다.
 
 ### 실패 모드 (STRATEGY §2.6 Surface rung)
@@ -298,7 +298,7 @@ tr_id: FHPTJ04160001
 
 `KIS_REQUEST_INTERVAL_PROD = 0.4s` (2.5 req/sec 안전 마진) + rate limit 감지 시 1.5s 대기 후 1회 재시도.
 
-universe 의 KR ticker 203개 × 0.4s ≈ 81초/run.
+요청은 보유 KR 종목마다 1회다(`_get_tickers(market="kr")`, portfolio source) — run 시간 ≈ 0.4s × 보유 KR 종목 수.
 
 ### 실패 모드 (STRATEGY §2.6 Surface rung)
 

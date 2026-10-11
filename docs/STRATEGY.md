@@ -83,7 +83,7 @@ Minimize dependence on paid APIs / cloud / commercial software. This is not a 10
 | Choice | Why |
 |------|------|
 | SQLite (not Postgres) | No separate server needed. Concurrent reads in WAL mode. Test isolation through `tmp_path`. |
-| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0, replaced `gpt-5.4-nano` on 2026-10-08). Portfolio reports (Tier 2) are **local only** (OpenAI path retired 2026-10-08). User narrative (Tier 1) is not allowed. Local LLMs (Ollama / LM Studio local models) are **on-demand only — always-on operation retired (2026-07-08, #854)**: the trading pipeline is ZERO-LLM, so their contribution is 0 and only their upkeep cost is real. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
+| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0, replaced `gpt-5.4-nano` on 2026-10-08). Portfolio reports (Tier 2) are **local only** (OpenAI path retired 2026-10-08). User narrative (Tier 1) is not allowed. Local LLMs (Ollama / LM Studio local models) are **on-demand only — always-on operation retired (2026-07-08, #854)**: the trading pipeline uses no local LLM, so their contribution is 0 and only their upkeep cost is real. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
 | yfinance | Free data. openbb was removed in #1477 — a lower-bound override erased the exact pin, leaving it dead with no signal for 7 days, and yfinance alone has no gaps. |
 | GitHub Actions | Free for open source. Automates lint + test + coverage + security. |
 
@@ -96,7 +96,7 @@ Minimize dependence on paid APIs / cloud / commercial software. This is not a 10
 | **Surface** | — | Exposes evidence only (UI/reasoning/log). action and confidence unchanged. | Noisy, sparse, insufficient outcome validation. Leaves room for judgment. | PR #301 `divergence_flag`, PR #302 UI badge |
 | **Soft penalty** | down | Deterministic downgrade/reweight (switch to HOLD, confidence cap). Not a block. Config-tunable. | The same opposing signal repeats + clear downside skew, but not universally fatal. | PR #303 `divergence_technical_threshold` (default 80) |
 | **Hard veto** | down | Forces a change of action or blocks it. Config made hard to touch. | Policy level, risk-of-ruin grade. | Risk agent veto, VIX>30 block |
-| **Symmetric amplifier** | up | Post-veto sizing — only for eligible candidates that passed veto/penalty, raises size/confidence when multiple favorable conditions hold at the same time. Cap enforced (baseline × 1.5). | regime + momentum + VIX all favorable. Never fires on a single condition. | Due with E3 (§3.6) |
+| **Symmetric amplifier** | up | Post-veto sizing — only for eligible candidates that passed veto/penalty, raises size/confidence when multiple favorable conditions hold at the same time. Cap enforced (baseline × 1.5). | regime + momentum + VIX all favorable. Never fires on a single condition. | On hold with E3 Phase 3 (§3.6; `symmetric_amplifier.enabled: false`) |
 
 **Operating principles**:
 
@@ -131,7 +131,7 @@ All work goes through the 7 phases **Think → Plan → Build → Review → Tes
 | 3 | **Build** | Plan | Minimal implementation. `config/*.yaml` first (§2.2), cross-stage imports deferred + allowlisted (§2.3), `kst_now()` enforced | Commits on a feature branch | No hardcoding? hook/lint pass? `git branch --show-current` checked? |
 | 4 | **Review** | Feature diff | Codex `/codex review` + Claude self-review. P1 must be resolved | Review log, GATE verdict | All P1 resolved? Reasons for disagreement stated? |
 | 5 | **Test** | Reviewed branch | `make test-fast` + live run of the user workflow (§5.8 #3). Browser QA for UI | Green CI + manual QA log | User command run directly at least once? |
-| 6 | **Ship** | Tested branch | `gh pr merge --squash --delete-branch`. Close the issue. Clean up the branch. Update TODO.md Tier 1 | MERGED PR, CLOSED issue, Tier 1 entry | Tier 1 added? Branch cleaned up? |
+| 6 | **Ship** | Tested branch | `gh pr merge --squash --auto` (the repository deletes the head branch on merge). Close the issue. Clean up the local branch. Update TODO Tier 2 / 3 if the scope shifted | MERGED PR, CLOSED issue | Tier 2 / 3 updated? Local branch cleaned up? |
 | 7 | **Reflect** | Ship result | Surprises, new gotchas, memory update, NEXT_SESSION refresh | NEXT_SESSION updated + fix-pattern gotchas cite `**Test:**` (§5.3.1) | Can the next session start running right away? |
 
 **A failed phase = regress to the previous phase**. When Codex is unavailable, Claude self-review + recovery in the next PR's Review. A trivial chore may compress Think/Plan inline (from Build onward, every phase is followed).
@@ -151,7 +151,7 @@ Only `nuri/core/db/` imports `sqlite3`. Other modules use only `query()`, `query
 
 ### 3.2 10-agent weighted consensus
 
-Independent analysis by 10 agents + a weighted vote. Risk agent veto (SELL + confidence ≥ 80 → overrides the whole result).
+Independent analysis by 10 agents + a weighted vote. Risk agent veto (`alpha_action=FLAT` with confidence ≥ `consensus.risk_veto_threshold`, 80 by default → overrides the whole result; a risk verdict without an alpha action vetoes only when its action is SELL).
 
 **Why**: reduces single-model bias. Loss avoidance takes priority over profit seeking.
 
@@ -313,7 +313,7 @@ Extended from a single-horizon structure, in which `_compute_weights` read only 
 **Current state (2026-05-04 audit)**:
 
 - TAA ✅: `REGIME_ALLOCATION` (`nuri/trading/strategy/longshort.py:24`) — dynamic mapping of 10 regimes × long/short/cash weights.
-- SAA ❌: **long-term target weights** for asset classes (equities/bonds/commodities/REITs) are undefined. `account_strategies` has only single-position / sector caps; there is no asset-class weight rule.
+- SAA ❌: **long-term target weights** for asset classes (equities/bonds/commodities/REITs) are undefined. `account_strategies` has only single-position / sector caps; there is no asset-class weight rule. (Since then defined as `strategic_allocation_targets` in `config/rules.yaml`, read by `nuri/trading/strategy/strategic_allocation.py`.)
 
 **Adopted framework** (Vanguard 2024 + Bernstein equal-weight robustness + Ang factor):
 
@@ -408,9 +408,9 @@ Check these before opening a PR.
 
 | Item | Standard | Current |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 8,862 tests, 435 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 8,866 tests, 435 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | target ≥ 90% | 1,459 tests, 118 files (2026-10-11 full run, including the stock-detail preview coverage additions) |
-| E2E | Core flows | 9 spec files · 78 Playwright tests (2026-10-07, after #1698) |
+| E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |
 | Network | Forbidden | conftest.py mock |
 
@@ -527,7 +527,7 @@ the "cloud primary" decision of #854. Rationale:
 1. **There is no ZDR** — Responses API `store=true` responses could be retrieved again afterwards for both `gpt-5.4-nano` and `gpt-6-luna` (measured).
 2. **The protection was a single environment variable** — `OPENAI_ZDR_APPROVED=1` was a truthy flag that checked no contract,
    and the report input is per-stock PnL % and sell amounts. That one line was the only mechanism sending this data to a provider that retains it.
-3. **It does not contribute to decisions** — the trading pipeline is ZERO-LLM, and the report is narrative. In production the flag
+3. **It does not contribute to decisions** — verdicts call no LLM, and the report is narrative. In production the flag
    was commented out, so it was already blocked.
 
 The report is generated only with a local backend (llama.cpp → localhost Ollama); if none is available, setup instructions are shown. The gateway
@@ -683,7 +683,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 | Subagents (parallel, context isolation) | ✅ codex consult + local-LLM dual | 0 |
 | Skills (reusable templates) | ✅ `make` targets + `nuri-*` skills | 0 |
 | **Agent autonomy (OpenAI 1M LOC)** | ⚠ Human review required (intentionally conservative) | **Gap A** |
-| **Harness-model coupling measurement** | ❌ No telemetry | **Gap B** (Tier 2 P2) |
+| **Harness-model coupling measurement** | ◐ Local-model axis measured since 2026-08-13 (Gap B) | **Gap B** (Tier 2 P2) |
 | **Standardized eval framework (HAL)** | ❌ None | **Gap C** (Tier 3 research) |
 
 **Conclusion**: 7 of 10 frontier recommendations applied. The 3 gaps are in the measurement + decision layer (autonomy / coupling / eval) — **not system code, but a system about the system**. Only Tier 2 P2 (Gap B) has **immediate build value**; the rest are research / policy decisions.
@@ -784,7 +784,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 **Rationale** (each of the 3 holds independently):
 
 1. **There is no signal.** Production ledger (Mac mini), 2026-09-01 ~ 10-05: 50 certifications, 0 CERTIFIED. The callers are only `cli:premarket_brief` 25 · `api:actions:violations` 25. The error-severity failures are `stop_loss` 50 + `position_limit` 2 — if a single holding is below its stop-loss line, the whole portfolio is REJECTED every day. The Tier-1 stop-loss card (`nuri/alerts/risk_signals.py`, per-account `get_stop_loss_for_account`) already reports the same fact per stock.
-2. **Nothing branches on it.** All code that reads the verdict is display-only — brief status color and fields, dashboard health score and violations, the `/engine` card, MCP `siege_status`, `/api/certify` (the dashboard home uses it for the footer quality line) · `/api/remediate` (the remediation plan emits `SELL_ALL`/`REDUCE` and quantities per failed gate but has no frontend consumer — it is exactly the SELL surface the axis invariant is meant to prevent, so it is deleted along with the rest). `config/rules.yaml amplifier.portfolio.requires_certify_pass` has 0 readers, so it is dead config, and the cleanup PR deletes it. The removal tears down a Surface rung of the Escalation Ladder, so there is **0 change in trading behavior**.
+2. **Nothing branches on it.** All code that reads the verdict is display-only — brief status color and fields, dashboard health score and violations, the `/engine` card, MCP `siege_status`, `/api/certify` (the dashboard home uses it for the footer quality line) · `/api/remediate` (the remediation plan emits `SELL_ALL`/`REDUCE` and quantities per failed gate but has no frontend consumer — it is exactly the SELL surface the axis invariant is meant to prevent, so it is deleted along with the rest). `config/rules.yaml amplifier.portfolio.requires_certify_pass` has 0 readers, so it was dead config, and the cleanup PR deleted it. The removal tears down a Surface rung of the Escalation Ladder, so there is **0 change in trading behavior**.
 3. **It has no predictive power.** The 60-month audit in §3.8 closed by failing `CI_upper < 0`, and `position_limit` had the opposite sign. What remains valid is only the weight, sector and leverage limits as prudential constraints, and `rebalance_advisor` — not the certificate — already handles their enforcement.
 
 Codex design consult (2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_CHANGES — agreed to retire the aggregate verdict; do not build a replacement report; detach the frontend before the backend to prevent false REJECTED renders; move the non-SIEGE data under the `siege_gates` key elsewhere.
@@ -797,7 +797,7 @@ Codex design consult (2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_C
 | `sector_limit` (error) | Replaced | `rebalance_advisor` `sector_limit_exceeded`. Same meaning — both sum the portfolio-wide `weight_pct` per sector and compare it against `max_sector_exposure`. Surfaced only as REBALANCE. |
 | `stop_loss` (error) | Replaced | Tier-1 stop-loss card (`risk_signals.py`) + `rebalance_advisor` `stop_loss_exceeded` (per-account strategy). The mechanical `alpha_action=FLAT` path (`nuri/core/axis.py`) is unchanged. |
 | `leverage_ban` (error) | Replaced | `rebalance_advisor` `leverage_etf`. The advisor row carries `SELL_ALL` and a quantity, so the violations surface **strips the execution fields** and emits it only as REBALANCE — no urgent SELL (axis invariant). |
-| `rules_loaded` (error) | Retired | No replacement. The gate that turned a `config/rules.yaml` load failure into a REJECTED for the whole certificate. `remediation.py` already classified it under `_UNRESOLVABLE_GATES` and assigned no action. However, `nuri/core/rules.py::_load_rules` **silently** falls back to a 3-section hardcoded fallback when the file is missing — that fallback is exactly what this gate caught. The backend PR removes the fallback and turns a missing file into an exception at startup — removal done (#1619, `_load_rules` raises `FileNotFoundError`). |
+| `rules_loaded` (error) | Retired | No replacement. The gate that turned a `config/rules.yaml` load failure into a REJECTED for the whole certificate. `remediation.py` already classified it under `_UNRESOLVABLE_GATES` and assigned no action. However, `nuri/core/rules.py::_load_rules` **silently** fell back to a 3-section hardcoded fallback when the file was missing — that fallback is exactly what this gate caught. The backend PR removes the fallback and turns a missing file into an exception at startup — removal done (#1619, `_load_rules` raises `FileNotFoundError`). |
 | `data_fresh` (warning) | Replaced | `nuri/core/freshness.py` SLA (`config/freshness.yaml`, the dashboard verdict stale gate). The freshness-tracked ticker list moves from `siege_gates.asset_classes.*.freshness_*` to a neutral key. |
 | `volatility_gate` (warning) | Retired | No replacement. The brief indicators and MCP `macro_facts` continue to report the VIX facts. |
 | `external_data` (warning) | Retired | No replacement. |
@@ -810,10 +810,10 @@ Codex design consult (2026-10-06, `siege-retire-design-consult`): PROCEED_WITH_C
 
 - **The `certifications` table stays** — migrations are forward-only. It is a historical record whose writing code is gone, and the description of the score time-series boundary in §2.6 is kept as an explanation of that record.
 - **`asset_class_rules`** is not SIEGE's: it is the canonical benchmark classification for measurement mode (§3.11) (`forward_outcome_tracker` · `strategic_allocation`). PR 2 moved it to a top-level key outside `siege_gates`, and moved the classifier to `nuri/core/asset_class.py`. Deleting it would silently contaminate the pre-registered alpha measurement. The cleanup PR moved the freshness-tracked tickers to `freshness_tickers` (read by `collectors/stock.py` · `alerts/data_sanity.py`).
-- **The Stage 4 boundary stays; the name changes.** The `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` that remain in `nuri/trading/engine` are the §2.6 Hard veto / amplifier and decision-recording machinery, not a certifier. With the certificate writer gone, `certify` is a false name, so a follow-up PR renamed it to `decide`, and §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · the cross-import test move with it. Past rows in `pipeline_events` keep `certify` as-is. `certify_position()` in `nuri/trading/strategy/position.py` is the paper `positions` table's own gate, unrelated to the certifier, and outside the scope of the rename.
+- **The Stage 4 boundary stays; the name changes.** The `decisions.py` · `gate.py` · `amplifier_gate.py` · `conflicts.py` · `memory.py` · `thesis_criteria.py` that remain in `nuri/trading/engine` are the decision record, the data-readiness gate, the §2.6 amplifier shadow and their helpers, not a certifier. With the certificate writer gone, `certify` is a false name, so a follow-up PR renamed it to `decide`, and §2.3 · `invariants.md` · `AGENTS.md` · `pipeline.py` · `events.py` · the cross-import test moved with it. Past rows in `pipeline_events` keep `certify` as-is. `certify_position()` in `nuri/trading/strategy/position.py` is the paper `positions` table's own gate, unrelated to the certifier, and outside the scope of the rename.
 - **The audit tools are pinned to a revision.** The last revision of `scripts/analysis/siege_predictivity_audit.py` and the `/nuri-siege-audit` skill is `d8a89ede` (main, 2026-10-06). If §3.8 needs to be re-run, retrieve them with `git show d8a89ede:<path>`.
-- **The backend PR deletes the `certification` policy in `nuri/core/freshness.py` (`config/freshness.yaml` warn 24h / fail 48h).** It is not in `verdict_gate`, so the dashboard verdict is unaffected, but `get_freshness_summary` iterates over every policy and `premarket_brief._brief_color` returns RED if there is even one FAIL — from 48 hours after writes stop, every brief becomes permanently RED with "Certification FAIL". Even if the frontend is detached first, this policy is removed in **the same PR** that cuts the calls to the certifier.
-- **The regime in MCP `macro_facts`** is changed to read from `candidate_runs.regime` (daily, a Tier-1 allowed column) instead of `certifications.regime` — continuing to read a table whose writes have stopped silently freezes the value (the same shape as #1617).
+- **The backend PR deleted the `certification` policy in `nuri/core/freshness.py` (`config/freshness.yaml` warn 24h / fail 48h).** It is not in `verdict_gate`, so the dashboard verdict is unaffected, but `get_freshness_summary` iterates over every policy and `premarket_brief._brief_color` returns RED if there is even one FAIL — from 48 hours after writes stop, every brief becomes permanently RED with "Certification FAIL". Even if the frontend is detached first, this policy was removed in **the same PR** that cut the calls to the certifier.
+- **The regime in MCP `macro_facts`** now reads from `candidate_runs.regime` (daily, a Tier-1 allowed column) instead of `certifications.regime` — continuing to read a table whose writes have stopped silently freezes the value (the same shape as #1617).
 
 **No replacement gate is built.** If a portfolio-level verdict becomes necessary again, do not copy SIEGE's shape; start from a STRATEGY PR that pre-registers the verdict criteria, following the §3.6 precedent.
 

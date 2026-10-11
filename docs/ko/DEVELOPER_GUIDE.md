@@ -15,8 +15,8 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 
 | 패턴 | Detection | 미감지 시 비용 |
 |---|---|---|
-| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | CI roundtrip 1회 ≈ 3 min |
-| Lint stale config | `ruff check` (미커밋 `pyproject.toml` 은 drift check 가 감지) | CI roundtrip 1회 ≈ 3 min |
+| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | CI roundtrip 1회 ≈ 4–5 min |
+| Lint stale config | `ruff check` (미커밋 `pyproject.toml` 은 drift check 가 감지) | CI roundtrip 1회 ≈ 4–5 min |
 | Test isolation flake | `pytest -n auto` (CI 는 fast shard 에서 `-n 8`, #1414) | CI roundtrip 1+ 회 |
 | Atomicity violation | `check_atomic.sh` (multi-commit, 별도 실행) | reset + re-stage cycle |
 
@@ -44,7 +44,7 @@ make setup-hooks     # `make setup` 에 포함 — pre-commit + pre-push 심볼�
 
 1. **Working tree drift accumulation**: 여러 세션에 걸쳐 uncommitted 파일이 20개 이상 쌓이면 CI 는 commit 만 보고 실패한다. **Fix**: 세션 시작 시 `python scripts/verify/check_drift.py`.
 2. **Atomic commit violation**: commit 1 만으로는 suite 가 깨지고 commit 2-3 이 빠진 부분을 채우면 bisect 가 깨진다. **Fix**: 최종 push 전 `bash scripts/verify/check_atomic.sh`.
-3. **CI roundtrip debugging**: push → 3분 대기 → 실패 → 수정을 반복한다. **Fix**: push 전 `bash scripts/dev/ci_local.sh`.
+3. **CI roundtrip debugging**: push → 4–5분 대기 → 실패 → 수정을 반복한다. **Fix**: push 전 `bash scripts/dev/ci_local.sh`.
 4. **Scope creep**: "fix X" 가 "fix X + refactor Y + cleanup Z" 로 커진다. **Fix**: 1 PR = 1 issue, ≤ 3 commits. 새 발견은 새 branch 로.
 5. **Environment-only failures** (Linux CI vs macOS local): **Mitigation**: 로컬에서도 `pytest -n auto`, `tests/conftest.py` 의 `journal_mode=MEMORY` (PR #93), integration test 는 explicit fixture 사용.
 

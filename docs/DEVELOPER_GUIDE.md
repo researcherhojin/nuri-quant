@@ -15,8 +15,8 @@ bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
 
 | Pattern | Detection | Cost if undetected |
 |---|---|---|
-| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | 1 CI roundtrip ≈ 3 min |
-| Lint stale config | `ruff check` (the drift check detects an uncommitted `pyproject.toml`) | 1 CI roundtrip ≈ 3 min |
+| Drift bug (working tree ≠ committed) | `check_drift.py --strict` | 1 CI roundtrip ≈ 4–5 min |
+| Lint stale config | `ruff check` (the drift check detects an uncommitted `pyproject.toml`) | 1 CI roundtrip ≈ 4–5 min |
 | Test isolation flake | `pytest -n auto` (CI uses `-n 8` on the fast shard, #1414) | 1+ CI roundtrips |
 | Atomicity violation | `check_atomic.sh` (multi-commit, run separately) | reset + re-stage cycle |
 
@@ -44,7 +44,7 @@ Do not create `.git/hooks/pre-push` by hand. A manual install does not carry ove
 
 1. **Working tree drift accumulation**: when 20 or more uncommitted files pile up across several sessions, CI sees only the commits and fails. **Fix**: run `python scripts/verify/check_drift.py` at the start of each session.
 2. **Atomic commit violation**: if commit 1 alone breaks the suite and commits 2-3 fill in the missing parts, bisect breaks. **Fix**: run `bash scripts/verify/check_atomic.sh` before the final push.
-3. **CI roundtrip debugging**: a loop of push → wait 3 min → fail → fix. **Fix**: run `bash scripts/dev/ci_local.sh` before pushing.
+3. **CI roundtrip debugging**: a loop of push → wait 4–5 min → fail → fix. **Fix**: run `bash scripts/dev/ci_local.sh` before pushing.
 4. **Scope creep**: "fix X" grows into "fix X + refactor Y + cleanup Z". **Fix**: 1 PR = 1 issue, ≤ 3 commits. New findings go on a new branch.
 5. **Environment-only failures** (Linux CI vs macOS local): **Mitigation**: run `pytest -n auto` locally too, use `journal_mode=MEMORY` in `tests/conftest.py` (PR #93), and give integration tests explicit fixtures.
 

@@ -23,10 +23,10 @@ Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다
 - `make setup`: 2-3분 (deps install + DB init)
 - `make universe-sync-us`: 10-20초 (Wikipedia scrape)
 - `make universe-sync-kr`: 10-30초 (FDR/KRX fetch, 네트워크 불안정 시 skip)
-- `make collect-universe`: 15-20분 (yfinance 746 tickers parallel + pykrx 203 sequential)
-- `make validate-universe`: 3-5초 (DB-only)
+- `make collect-universe`: 15-20분 (US universe 는 yfinance parallel, KR 은 pykrx sequential)
+- `make validate-universe`: 3-5초 (live fetch 포함; DB 만 보는 것은 `make validate-universe-cache`)
 
-**총 예상**: 20-25분 (네트워크 + API 상태 의존).
+**총 예상**: 20-30분 (네트워크 + API 상태 의존).
 
 ---
 
@@ -54,7 +54,7 @@ make collect-universe            # US + KR prices/fundamentals/wallstreet/estima
 make collect-universe-1y         # 1년치 가격 히스토리 backfill (~10-15분)
 
 # 4. 검증
-.venv/bin/python scripts/doc/validate_universe.py         # 5-check coverage gate
+.venv/bin/python scripts/doc/validate_universe.py         # coverage gate: DB check 5개 + 성공한 upstream fetch 마다 1개 (최대 7)
 .venv/bin/python scripts/doc/validate_universe.py --no-fetch  # CI 용 (네트워크 skip)
 make validate-portfolio                                   # portfolio.yaml 각 ticker DB 검증
 
@@ -73,10 +73,10 @@ make start                       # API :8001 + Dashboard :3000
 |------|----------|----------|
 | `make setup` | `=== Sync complete: -N +M ===` (`scripts/ops/import_portfolio.py` 종료 메시지) | ModuleNotFoundError / sqlite 에러 |
 | `make universe-sync-us` | `S&P 500: N종목 fetched` 로그 (N ≈ 500) + diff summary | Wikipedia 403 / HTTP error |
-| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` 로그 (N ≈ 200), 또는 FDR 미설치 시 `KR sync 건너뜀` 경고 + `KR KOSPI 200: ⏭️  건너뜀` | 비정상 traceback |
+| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` 로그 (N ≈ 200), 또는 FDR 미설치·KRX 소스 장애 시 `KR sync 건너뜀` 경고 + `KR KOSPI 200: ⏭️  건너뜀` | 비정상 traceback |
 | `make collect-universe` | `prices [universe]: 100%\|` tqdm 완료 + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5분 / ERROR 500줄 |
-| `make collect-universe-1y` | prices table median rows ≥ 200 (`SELECT COUNT(*) FROM prices WHERE ticker='SPY'`) | rows < 50 |
-| `validate_universe.py` | `Result: 5/5 PASS → exit 0` | `4/5 PASS` 또는 `exit 1` |
+| `make collect-universe-1y` | `prices` 의 SPY 행 ≥ 200 (`SELECT COUNT(*) FROM prices WHERE ticker='SPY'`) | rows < 50 |
+| `validate_universe.py` | 실행된 check 전부 PASS → exit 0 (upstream fetch 둘 다 성공하면 7/7, `--no-fetch` 는 5/5) | FAIL check 가 하나라도 있거나 `exit 1` |
 
 **5/5 PASS 기준값** (2026-04-15 측정):
 
@@ -92,12 +92,12 @@ make start                       # API :8001 + Dashboard :3000
 
 | 증상 | 가능한 원인 | 해결 |
 |------|----------|------|
-| `FileNotFoundError: config/universe.yaml 가 없습니다` | `make setup` 스킵 | `git checkout main -- config/universe.yaml` |
+| `FileNotFoundError: config/universe.yaml 가 없습니다` | tracked 파일이 삭제됨 (`make setup` 이 만들지 않는다) | `git checkout main -- config/universe.yaml` |
 | `YAML 파싱 실패` | 수동 편집 오류 | `git checkout main -- config/universe.yaml` |
 | Wikipedia 403 / timeout | User-Agent blocked | 10분 후 재시도. 계속 실패하면 KR 만 실행 (`.venv/bin/python -m nuri.collectors.universe_sync --market kr`) |
 | pykrx 정지 / 60 tickers 이후 hang | KR rate-limit | 정상 동작. sequential + 0.1s sleep 이 이미 적용돼 있으므로 15-30분 기다린다 |
 | yfinance 대량 404 | ticker delisting (정상) | 최대 5-10% 실패 허용. summary 에 표시된다 |
-| `validate_universe.py` 4/5 PASS | 특정 테이블 coverage 미달 | 해당 collector 재실행 (`make wallstreet` 등) |
+| `validate_universe.py` 의 FAIL check | 특정 테이블 coverage 미달 | 해당 collector 재실행 (`make wallstreet` 등) |
 | Dashboard 500 error | API 서버 미기동 | `make api` 독립 기동 + 로그 확인 |
 | `make collect-universe-1y` 중 OOM | parallel worker 과다 | 기본 10-thread. `nuri/collectors/stock.py` 의 `max_workers=10` 을 조정한다 |
 

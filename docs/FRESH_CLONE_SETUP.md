@@ -23,10 +23,10 @@ This is the procedure for a first install of Nuri-Quant, a reinstall, and onboar
 - `make setup`: 2-3 min (deps install + DB init)
 - `make universe-sync-us`: 10-20 s (Wikipedia scrape)
 - `make universe-sync-kr`: 10-30 s (FDR/KRX fetch; skipped when the network is unstable)
-- `make collect-universe`: 15-20 min (yfinance 746 tickers parallel + pykrx 203 sequential)
-- `make validate-universe`: 3-5 s (DB-only)
+- `make collect-universe`: 15-20 min (yfinance in parallel for the US universe + pykrx sequentially for KR)
+- `make validate-universe`: 3-5 s (includes the live fetch; the DB-only check is `make validate-universe-cache`)
 
-**Total expected**: 20-25 min (depends on network + API state).
+**Total expected**: 20-30 min (depends on network + API state).
 
 ---
 
@@ -54,7 +54,7 @@ make collect-universe            # US + KR prices/fundamentals/wallstreet/estima
 make collect-universe-1y         # backfill 1 year of price history (~10-15 min)
 
 # 4. Validation
-.venv/bin/python scripts/doc/validate_universe.py         # 5-check coverage gate
+.venv/bin/python scripts/doc/validate_universe.py         # coverage gate: 5 DB checks + 1 per successful upstream fetch (up to 7)
 .venv/bin/python scripts/doc/validate_universe.py --no-fetch  # for CI (skips the network)
 make validate-portfolio                                   # check each portfolio.yaml ticker in the DB
 
@@ -73,10 +73,10 @@ These are the outputs to check after each step completes. If a success signal do
 |------|----------|----------|
 | `make setup` | `=== Sync complete: -N +M ===` (the closing message of `scripts/ops/import_portfolio.py`) | ModuleNotFoundError / sqlite error |
 | `make universe-sync-us` | `S&P 500: N종목 fetched` log line (N ≈ 500) + diff summary | Wikipedia 403 / HTTP error |
-| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` log line (N ≈ 200), or, if FDR is not installed, a `KR sync 건너뜀` warning + `KR KOSPI 200: ⏭️  건너뜀` | unexpected traceback |
+| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` log line (N ≈ 200), or, if FDR is not installed or the KRX source fails, a `KR sync 건너뜀` warning + `KR KOSPI 200: ⏭️  건너뜀` | unexpected traceback |
 | `make collect-universe` | `prices [universe]: 100%\|` tqdm completion + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5 min / 500 lines of ERROR |
-| `make collect-universe-1y` | prices table median rows ≥ 200 (`SELECT COUNT(*) FROM prices WHERE ticker='SPY'`) | rows < 50 |
-| `validate_universe.py` | `Result: 5/5 PASS → exit 0` | `4/5 PASS` or `exit 1` |
+| `make collect-universe-1y` | SPY rows in `prices` ≥ 200 (`SELECT COUNT(*) FROM prices WHERE ticker='SPY'`) | rows < 50 |
+| `validate_universe.py` | every executed check PASS → exit 0 (7/7 when both upstream fetches succeed; `--no-fetch`: 5/5) | any FAIL check, or `exit 1` |
 
 **5/5 PASS thresholds** (measured 2026-04-15):
 
@@ -92,12 +92,12 @@ These are the outputs to check after each step completes. If a success signal do
 
 | Symptom | Possible cause | Fix |
 |------|----------|------|
-| `FileNotFoundError: config/universe.yaml 가 없습니다` | `make setup` skipped | `git checkout main -- config/universe.yaml` |
+| `FileNotFoundError: config/universe.yaml 가 없습니다` | the tracked file was deleted (`make setup` does not create it) | `git checkout main -- config/universe.yaml` |
 | `YAML 파싱 실패` | manual editing error | `git checkout main -- config/universe.yaml` |
 | Wikipedia 403 / timeout | User-Agent blocked | Retry after 10 minutes. If it keeps failing, run KR only (`.venv/bin/python -m nuri.collectors.universe_sync --market kr`) |
 | pykrx stall / hang after 60 tickers | KR rate-limit | Normal behavior. Sequential fetching + a 0.1s sleep are already applied, so wait 15-30 minutes |
 | many yfinance 404s | ticker delisting (normal) | Failures of up to 5-10% are acceptable. The summary shows them |
-| `validate_universe.py` 4/5 PASS | coverage below the threshold for a specific table | Rerun the corresponding collector (`make wallstreet`, etc.) |
+| a FAIL check in `validate_universe.py` | coverage below the threshold for a specific table | Rerun the corresponding collector (`make wallstreet`, etc.) |
 | Dashboard 500 error | API server not running | Start `make api` on its own + check the logs |
 | OOM during `make collect-universe-1y` | too many parallel workers | The default is 10 threads. Adjust `max_workers=10` in `nuri/collectors/stock.py` |
 

@@ -2,7 +2,7 @@
 
 *Korean edition: [ko/ARCHITECTURE.md](ko/ARCHITECTURE.md)*
 
-Detailed reference for Nuri-Quant internals: how data moves through the system, what runs when, and where each piece lives. Statements here are checked against the code; the counts that `make verify-doc-counts` pins are marked in [Verifying Numeric Claims](#verifying-numeric-claims). This file is not auto-loaded; read it when working on cross-cutting concerns.
+Detailed reference for Nuri-Quant internals: how data moves through the system, what runs when, and where each piece lives. Statements here are checked against the code; `make verify-doc-counts` checks the counts stated here against the code (its site list is in `scripts/verify/verify_doc_counts.sh`), and [Verifying Numeric Claims](#verifying-numeric-claims) gives the commands that measure them. This file is not auto-loaded; read it when working on cross-cutting concerns.
 
 ## System Flow
 
@@ -47,8 +47,6 @@ flowchart LR
     class YOU human
 ```
 
-| # | Step | Runs as | Reads | Writes |
-|---|------|---------|-------|--------|
 The diagram shows the main path. The table lists each step's inputs and outputs; bookkeeping writes (`collector_runs` and the lifecycle events in `pipeline_events`) are left out.
 
 | # | Step | Runs as | Reads | Writes |
@@ -59,7 +57,7 @@ The diagram shows the main path. The table lists each step's inputs and outputs;
 | 4 | **Decide** | Inside the consensus job: `record_decisions()` receives the results in memory | The consensus results; `pipeline_events` (a recorded regime change, if any); `macro`, `macro_events`, `prices`, `fundamentals`, `estimates` and `portfolio` through the regime, macro-score and price-target helpers | `decisions`, `decision_evidence` |
 | 5 | **BUY candidates** | The `premarket_brief` job | The latest `factors` snapshot, `prices`, `signals`, `portfolio` (holdings are excluded), `pipeline_events` (the re-emit cooldown), `theses` (labels), VIX and the regime inputs | `recommendations` (`source='buy_candidate_emitter'`), `candidate_runs`, `candidate_ledger` |
 | 6 | **Deliver** | Brief jobs, outbox dispatchers, the API, the MCP server | `recommendations`, `decisions`, `macro`, `candidate_runs` and more | Discord messages, `discord_outbox`, `market_postmortem` |
-| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
+| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` (an operate job that seals the ledger) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
 | 8 | **Learn** | The next consensus run | `recommendations.outcome_30d` (provisional `outcome_21d`) with `agent_verdicts` | The agent weights for that run, recomputed each time and kept in the `scoring_detail` of `recommendations` and `decisions` |
 
 **Collect.** Collectors read external APIs on their own schedules and write one table each (some write several). The `technical` collector computes TA-Lib indicators from `prices`. The operator imports holdings from `config/portfolio.yaml` (`scripts/ops/import_portfolio.py`, run by `make setup` or by hand) or edits them through the portfolio API; database triggers log every insert and delete, and every update that changes a quantity, account or ticker, to `portfolio_changes`.
@@ -351,7 +349,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise. Every key is o
 
 - `OPENAI_API_KEY`: the external gateway (`nuri/llm/openai_client.py`): macro headline classification and research briefings
 - `NURI_DISABLE_EXTERNAL_LLM`: set to `1` to turn the external gateway off; callers fall back
-- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (`OLLAMA_HOST` unset disables it and must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.8:27b`)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (an unset `OLLAMA_HOST` disables it, and a set value must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.8:27b`)
 - `LLAMA_MODEL_PATH`, `NURI_LLM_LOCAL_URL`, `NURI_LLM_LOCAL_MODEL`, `NURI_LLM_CODEX_MODEL`: local-model and consult tooling
 
 **API and dashboard**
@@ -482,7 +480,7 @@ data/
 
 ## Testing
 
-8,862 backend tests across 435 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,866 backend tests across 435 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the push-time slow shards (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

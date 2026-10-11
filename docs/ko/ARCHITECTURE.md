@@ -2,7 +2,7 @@
 
 *English (official) edition: [../ARCHITECTURE.md](../ARCHITECTURE.md)*
 
-Nuri-Quant 내부 구조의 상세 참조 문서다. 데이터가 시스템 안에서 어떻게 이동하는지, 무엇이 언제 실행되는지, 각 구성 요소가 어디에 있는지를 다룬다. 이 문서의 서술은 코드와 대조해 확인한 것이다. `make verify-doc-counts` 가 고정하는 수치는 [수치 claim 검증](#수치-claim-검증)에 표시돼 있다. 이 파일은 자동으로 로드되지 않는다. 여러 영역에 걸친 문제를 다룰 때 읽는다.
+Nuri-Quant 내부 구조의 상세 참조 문서다. 데이터가 시스템 안에서 어떻게 이동하는지, 무엇이 언제 실행되는지, 각 구성 요소가 어디에 있는지를 다룬다. 이 문서의 서술은 코드와 대조해 확인한 것이다. `make verify-doc-counts` 가 이 문서의 수치를 코드와 대조하며(검사 위치 목록은 `scripts/verify/verify_doc_counts.sh`), [수치 claim 검증](#수치-claim-검증)에 그 수치를 재는 명령이 있다. 이 파일은 자동으로 로드되지 않는다. 여러 영역에 걸친 문제를 다룰 때 읽는다.
 
 ## 시스템 흐름
 
@@ -47,8 +47,6 @@ flowchart LR
     class YOU human
 ```
 
-| # | 단계 | 실행 주체 | 읽는 것 | 쓰는 것 |
-|---|------|---------|-------|--------|
 다이어그램은 주 경로를 보여 준다. 표는 각 단계의 입력과 출력을 나열하며, 기록 관리용 쓰기(`collector_runs` 와 `pipeline_events` 의 lifecycle event)는 생략했다.
 
 | # | 단계 | 실행 주체 | 읽는 것 | 쓰는 것 |
@@ -59,7 +57,7 @@ flowchart LR
 | 4 | **Decide** | consensus job 내부: `record_decisions()` 가 결과를 메모리로 받는다 | consensus 결과; `pipeline_events` (기록된 regime 변경이 있으면); regime · macro score · price target helper 를 거쳐 읽는 `macro`, `macro_events`, `prices`, `fundamentals`, `estimates`, `portfolio` | `decisions`, `decision_evidence` |
 | 5 | **BUY candidates** | `premarket_brief` job | 최신 `factors` snapshot, `prices`, `signals`, `portfolio` (보유 종목은 제외), `pipeline_events` (재발행 cooldown), `theses` (라벨), VIX 와 regime 입력 | `recommendations` (`source='buy_candidate_emitter'`), `candidate_runs`, `candidate_ledger` |
 | 6 | **Deliver** | brief job, outbox dispatcher, API, MCP server | `recommendations`, `decisions`, `macro`, `candidate_runs` 등 | Discord 메시지, `discord_outbox`, `market_postmortem` |
-| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
+| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` (ledger 를 봉인하는 operate job) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
 | 8 | **Learn** | 다음 consensus 실행 | `agent_verdicts` 와 함께 `recommendations.outcome_30d` (잠정값 `outcome_21d`) | 그 실행의 agent 가중치. 실행마다 다시 계산되며 `recommendations` 와 `decisions` 의 `scoring_detail` 에 보관된다 |
 
 **Collect.** collector 는 각자의 스케줄에 따라 외부 API 를 읽고 각각 테이블 하나에 쓴다(여러 테이블에 쓰는 것도 있다). `technical` collector 는 `prices` 로부터 TA-Lib 지표를 계산한다. 운영자는 `config/portfolio.yaml` 에서 보유 종목을 가져오거나(`scripts/ops/import_portfolio.py`, `make setup` 이 실행하거나 수동으로 실행) portfolio API 로 수정한다. 데이터베이스 trigger 가 모든 insert 와 delete, 그리고 수량·계좌·ticker 를 바꾸는 모든 update 를 `portfolio_changes` 에 기록한다.
@@ -351,7 +349,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 
 - `OPENAI_API_KEY`: 외부 gateway(`nuri/llm/openai_client.py`): macro headline 분류와 리서치 briefing
 - `NURI_DISABLE_EXTERNAL_LLM`: `1` 로 설정하면 외부 gateway 가 꺼지고, 호출자는 fallback 한다
-- `OLLAMA_HOST` / `OLLAMA_MODEL`: 로컬 Ollama server 를 통한 LLM report(`OLLAMA_HOST` 가 설정되지 않으면 꺼지며, localhost 를 가리켜야 한다. `OLLAMA_MODEL` 기본값은 `qwen3.8:27b`)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: 로컬 Ollama server 를 통한 LLM report(`OLLAMA_HOST` 가 설정되지 않으면 꺼지고, 설정한 값은 localhost 를 가리켜야 한다. `OLLAMA_MODEL` 기본값은 `qwen3.8:27b`)
 - `LLAMA_MODEL_PATH`, `NURI_LLM_LOCAL_URL`, `NURI_LLM_LOCAL_MODEL`, `NURI_LLM_CODEX_MODEL`: 로컬 모델과 consult 도구
 
 **API 와 dashboard**
@@ -482,7 +480,7 @@ data/
 
 ## 테스트
 
-8,862 backend tests across 435 files (collection 기준) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-11 의 frontend 전체 실행은 파일 118개에서 테스트 1,459개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+8,866 backend tests across 435 files (collection 기준) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-11 의 frontend 전체 실행은 파일 118개에서 테스트 1,459개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 push 시점의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 

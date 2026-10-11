@@ -2,7 +2,7 @@
 
 *Korean edition: [ko/RESEARCH_BRIEFING.md](ko/RESEARCH_BRIEFING.md)*
 
-As of: 2026-10-08. This document describes the implementation in the current working tree. It does not mean the work is deployed to production or merged.
+As of: 2026-10-08. The implementation it describes is merged into `main`.
 The canonical source for investment rules and the external egress policy is [STRATEGY](STRATEGY.md); for the runtime structure, it is [ARCHITECTURE](ARCHITECTURE.md).
 
 ## Screen and data boundaries
@@ -38,7 +38,7 @@ ETF product and composition data also use a fund-specific collection and display
 The router is in `nuri/api/routes/ticker_research.py`. A generation request runs as a background job,
 and a process lock plus a DB job lease limit duplicate runs. The generated result is stored in `external_analysis`.
 `ready` means generation and validation succeeded, `pending` means in progress, `insufficient` means not enough evidence,
-and `unavailable` means generation or validation failed. When the evidence, the model or the prompt version changes, the existing result is treated as `stale`.
+`invalid` means the output failed the source, number and plan checks, and `unavailable` means the external model was unavailable or the job was interrupted. When the evidence, the model or the prompt version changes, the existing result is treated as `stale`.
 On failure, an unverified report is never shown as a normal body.
 
 Collection starts only from the **Refresh latest data** (최신 자료 갱신) button on the screen. Opening the page alone causes no DB write or external call
