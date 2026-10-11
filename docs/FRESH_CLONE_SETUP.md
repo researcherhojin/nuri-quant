@@ -1,34 +1,36 @@
 # Fresh Clone Setup — End-to-End Verification
 
-Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다. PR CI 가 확인하지 않는 end-to-end 시나리오를 수동으로 검증한다. #272 Phase 5 (2026-04-15) 기준.
+*Korean edition: [ko/FRESH_CLONE_SETUP.md](ko/FRESH_CLONE_SETUP.md)*
 
-> **실행 시점**: fresh clone, 환경 초기화 후, 주요 dependency 업그레이드 후, 분기별 헬스 체크. PR 마다 실행하지 않는다. 네트워크 작업에 20-30분이 걸리고 외부 API 상태에 따라 결과가 달라진다.
+This is the procedure for a first install of Nuri-Quant, a reinstall, and onboarding a new contributor. It manually verifies the end-to-end scenario that PR CI does not check. It reflects #272 Phase 5 (2026-04-15).
+
+> **When to run**: after a fresh clone, after resetting the environment, after a major dependency upgrade, and as a quarterly health check. Do not run it on every PR. The network work takes 20-30 minutes, and the results depend on the state of external APIs.
 
 ---
 
 ## 1. Prerequisites
 
-| 항목 | 필요 버전 | 설치 방법 |
+| Item | Required version | Installation |
 |------|----------|---------|
 | Python | 3.12 | `brew install python@3.12` |
 | uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | TA-Lib (C lib) | latest | `brew install ta-lib` |
 | Node.js | 22+ | `brew install node@22` |
-| Git | any | 이미 있을 것 |
+| Git | any | Probably already installed |
 
-**예상 runtime (M2 Pro 기준)**:
+**Expected runtime (on an M2 Pro)**:
 
-- `make setup`: 2-3분 (deps install + DB init)
-- `make universe-sync-us`: 10-20초 (Wikipedia scrape)
-- `make universe-sync-kr`: 10-30초 (FDR/KRX fetch, 네트워크 불안정 시 skip)
-- `make collect-universe`: 15-20분 (yfinance 746 tickers parallel + pykrx 203 sequential)
-- `make validate-universe`: 3-5초 (DB-only)
+- `make setup`: 2-3 min (deps install + DB init)
+- `make universe-sync-us`: 10-20 s (Wikipedia scrape)
+- `make universe-sync-kr`: 10-30 s (FDR/KRX fetch; skipped when the network is unstable)
+- `make collect-universe`: 15-20 min (yfinance 746 tickers parallel + pykrx 203 sequential)
+- `make validate-universe`: 3-5 s (DB-only)
 
-**총 예상**: 20-25분 (네트워크 + API 상태 의존).
+**Total expected**: 20-25 min (depends on network + API state).
 
 ---
 
-## 2. Fresh Clone Commands (정확한 순서)
+## 2. Fresh Clone Commands (Exact Order)
 
 ```bash
 # 0. Clone + branch
@@ -36,110 +38,110 @@ git clone https://github.com/researcherhojin/nuri-quant.git
 cd nuri-quant
 git checkout main
 
-# 1. 환경 + DB 초기화
-cp config/portfolio.example.yaml config/portfolio.yaml  # make setup 이 import 한다 (없으면 실패, gitignored)
+# 1. Environment + DB initialization
+cp config/portfolio.example.yaml config/portfolio.yaml  # make setup imports it (fails if missing; gitignored)
 make setup                       # venv + deps + DB schema + portfolio import
 cd frontend && npm ci && cd ..   # frontend deps
 
-# 2. Universe 동기화 (선택 — 기본 universe.yaml 이면 skip 가능)
-make universe-sync-us            # dry-run: Wikipedia S&P 500 diff 확인
-make universe-sync-kr            # dry-run: KOSPI 200 diff (finance-datareader 는 기본 의존성)
-make universe-sync-apply         # 실제 universe.yaml 에 적용 (additions only)
+# 2. Universe sync (optional — can be skipped with the default universe.yaml)
+make universe-sync-us            # dry-run: check the Wikipedia S&P 500 diff
+make universe-sync-kr            # dry-run: KOSPI 200 diff (finance-datareader is a default dependency)
+make universe-sync-apply         # apply to the actual universe.yaml (additions only)
 
-# 3. 데이터 수집
-make collect-universe            # US + KR prices/fundamentals/wallstreet/estimates (~15분)
-# 선택: 기술분석용 1y OHLCV 확보 (P1 A 이후 필수)
-make collect-universe-1y         # 1년치 가격 히스토리 backfill (~10-15분)
+# 3. Data collection
+make collect-universe            # US + KR prices/fundamentals/wallstreet/estimates (~15 min)
+# Optional: fetch 1y OHLCV for technical analysis (required after P1 A)
+make collect-universe-1y         # backfill 1 year of price history (~10-15 min)
 
-# 4. 검증
+# 4. Validation
 .venv/bin/python scripts/doc/validate_universe.py         # 5-check coverage gate
-.venv/bin/python scripts/doc/validate_universe.py --no-fetch  # CI 용 (네트워크 skip)
-make validate-portfolio                                   # portfolio.yaml 각 ticker DB 검증
+.venv/bin/python scripts/doc/validate_universe.py --no-fetch  # for CI (skips the network)
+make validate-portfolio                                   # check each portfolio.yaml ticker in the DB
 
-# 5. 서버 기동 (시각 확인)
+# 5. Start the servers (visual check)
 make start                       # API :8001 + Dashboard :3000
-# 브라우저에서 http://localhost:3000 열기
+# Open http://localhost:3000 in a browser
 ```
 
 ---
 
 ## 3. Expected Success Signals
 
-각 스텝 완료 후 확인할 출력이다. 성공 신호가 나오지 않으면 섹션 4 의 triage 를 따른다.
+These are the outputs to check after each step completes. If a success signal does not appear, follow the triage in section 4.
 
-| 스텝 | 성공 신호 | 실패 신호 |
+| Step | Success signal | Failure signal |
 |------|----------|----------|
-| `make setup` | `=== Sync complete: -N +M ===` (`scripts/ops/import_portfolio.py` 종료 메시지) | ModuleNotFoundError / sqlite 에러 |
-| `make universe-sync-us` | `S&P 500: N종목 fetched` 로그 (N ≈ 500) + diff summary | Wikipedia 403 / HTTP error |
-| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` 로그 (N ≈ 200), 또는 FDR 미설치 시 `KR sync 건너뜀` 경고 + `KR KOSPI 200: ⏭️  건너뜀` | 비정상 traceback |
-| `make collect-universe` | `prices [universe]: 100%\|` tqdm 완료 + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5분 / ERROR 500줄 |
+| `make setup` | `=== Sync complete: -N +M ===` (the closing message of `scripts/ops/import_portfolio.py`) | ModuleNotFoundError / sqlite error |
+| `make universe-sync-us` | `S&P 500: N종목 fetched` log line (N ≈ 500) + diff summary | Wikipedia 403 / HTTP error |
+| `make universe-sync-kr` | `KOSPI 200: N종목 fetched` log line (N ≈ 200), or, if FDR is not installed, a `KR sync 건너뜀` warning + `KR KOSPI 200: ⏭️  건너뜀` | unexpected traceback |
+| `make collect-universe` | `prices [universe]: 100%\|` tqdm completion + `수집 결과: ... 성공 / ... 실패` summary | silent hang > 5 min / 500 lines of ERROR |
 | `make collect-universe-1y` | prices table median rows ≥ 200 (`SELECT COUNT(*) FROM prices WHERE ticker='SPY'`) | rows < 50 |
-| `validate_universe.py` | `Result: 5/5 PASS → exit 0` | `4/5 PASS` 또는 `exit 1` |
+| `validate_universe.py` | `Result: 5/5 PASS → exit 0` | `4/5 PASS` or `exit 1` |
 
-**5/5 PASS 기준값** (2026-04-15 측정):
+**5/5 PASS thresholds** (measured 2026-04-15):
 
-- prices ≥ 95% (실측 99%)
-- fundamentals ≥ 80% (실측 99%)
-- analyst_ratings ≥ 70% (실측 97%)
-- insider_trades ≥ 50% (실측 97%)
-- superinvestors ≥ 80% (실측 97%)
+- prices ≥ 95% (measured 99%)
+- fundamentals ≥ 80% (measured 99%)
+- analyst_ratings ≥ 70% (measured 97%)
+- insider_trades ≥ 50% (measured 97%)
+- superinvestors ≥ 80% (measured 97%)
 
 ---
 
 ## 4. Failure Triage
 
-| 증상 | 가능한 원인 | 해결 |
+| Symptom | Possible cause | Fix |
 |------|----------|------|
-| `FileNotFoundError: config/universe.yaml 가 없습니다` | `make setup` 스킵 | `git checkout main -- config/universe.yaml` |
-| `YAML 파싱 실패` | 수동 편집 오류 | `git checkout main -- config/universe.yaml` |
-| Wikipedia 403 / timeout | User-Agent blocked | 10분 후 재시도. 계속 실패하면 KR 만 실행 (`.venv/bin/python -m nuri.collectors.universe_sync --market kr`) |
-| pykrx 정지 / 60 tickers 이후 hang | KR rate-limit | 정상 동작. sequential + 0.1s sleep 이 이미 적용돼 있으므로 15-30분 기다린다 |
-| yfinance 대량 404 | ticker delisting (정상) | 최대 5-10% 실패 허용. summary 에 표시된다 |
-| `validate_universe.py` 4/5 PASS | 특정 테이블 coverage 미달 | 해당 collector 재실행 (`make wallstreet` 등) |
-| Dashboard 500 error | API 서버 미기동 | `make api` 독립 기동 + 로그 확인 |
-| `make collect-universe-1y` 중 OOM | parallel worker 과다 | 기본 10-thread. `nuri/collectors/stock.py` 의 `max_workers=10` 을 조정한다 |
+| `FileNotFoundError: config/universe.yaml 가 없습니다` | `make setup` skipped | `git checkout main -- config/universe.yaml` |
+| `YAML 파싱 실패` | manual editing error | `git checkout main -- config/universe.yaml` |
+| Wikipedia 403 / timeout | User-Agent blocked | Retry after 10 minutes. If it keeps failing, run KR only (`.venv/bin/python -m nuri.collectors.universe_sync --market kr`) |
+| pykrx stall / hang after 60 tickers | KR rate-limit | Normal behavior. Sequential fetching + a 0.1s sleep are already applied, so wait 15-30 minutes |
+| many yfinance 404s | ticker delisting (normal) | Failures of up to 5-10% are acceptable. The summary shows them |
+| `validate_universe.py` 4/5 PASS | coverage below the threshold for a specific table | Rerun the corresponding collector (`make wallstreet`, etc.) |
+| Dashboard 500 error | API server not running | Start `make api` on its own + check the logs |
+| OOM during `make collect-universe-1y` | too many parallel workers | The default is 10 threads. Adjust `max_workers=10` in `nuri/collectors/stock.py` |
 
-**디버그**: `data/reports/YYYY-MM-DD/` 의 최신 리포트를 확인한다. `scripts/doc/validate_universe.py` 는 상세 테이블을 출력한다(지원 플래그: `--no-fetch`, `--format {table,json}`, 기본 table).
+**Debugging**: Check the latest report in `data/reports/YYYY-MM-DD/`. `scripts/doc/validate_universe.py` prints a detailed table (supported flags: `--no-fetch`, `--format {table,json}`; the default is table).
 
 ---
 
-## 5. Cleanup / Reset (rerun 준비)
+## 5. Cleanup / Reset (Preparing a Rerun)
 
 ```bash
-# Level 1: DB 만 리셋 (빠름)
+# Level 1: reset only the DB (fast)
 rm data/portfolio.db
-make setup                       # schema + portfolio 재import
+make setup                       # schema + portfolio re-import
 
-# Level 2: build 아티팩트 포함
+# Level 2: include build artifacts
 make clean-all                   # __pycache__ + build + token cache
 
-# Level 3: 완전 초기화 (deps 재설치 필요)
-make clean-deep                  # clean-all + frontend node_modules/.next + .venv 삭제. interactive 확인
-# 이후: make setup && cd frontend && npm ci
+# Level 3: full reset (deps must be reinstalled)
+make clean-deep                  # clean-all + delete frontend node_modules/.next + .venv; asks for interactive confirmation
+# Afterwards: make setup && cd frontend && npm ci
 ```
 
-**주의**: `config/portfolio.yaml` 은 gitignored 된 사용자 실데이터다. 삭제 전에 백업한다.
+**Caution**: `config/portfolio.yaml` holds the user's real data and is gitignored. Back it up before deleting anything.
 
 ---
 
-## 참고 — Phase 5 QA Scope
+## Note — Phase 5 QA Scope
 
-이 문서는 manual smoke 용이다. PR CI 에 포함된 negative tests:
+This document is for a manual smoke test. The negative tests included in PR CI are:
 
 - `tests/collectors/test_universe_sync.py::TestPhase5NegativeGuardrails` — missing/malformed/empty `universe.yaml` graceful error
-- `tests/integration/test_universe_sync_real.py` — real network integration (marker `integration`, `make test-integration` 로만 실행)
+- `tests/integration/test_universe_sync_real.py` — real network integration (marker `integration`; runs only through `make test-integration`)
 
-**out-of-scope** (별도 PR 후보):
+**Out of scope** (candidates for separate PRs):
 
-- API key 기반 collector 테스트 (현 path 는 모두 keyless)
-- 분기별 자동화 live smoke CI job
-- Dependency drift 감지
+- Tests for API-key-based collectors (every current path is keyless)
+- An automated quarterly live smoke CI job
+- Dependency drift detection
 
 ---
 
 ## 2026-04-29 re-smoke execution log
 
-목적: 2026-04-15 (Phase 5 ship) baseline 이후 2주간 머지된 17 PRs (#479-#502) 뒤 coverage 회귀가 없는지 검증한다. Fresh clone 은 수행하지 않았다. Mac mini 가 24/7 scheduler 로 같은 환경을 매일 돌리고 있어 이를 fresh clone 상당 검증(running smoke)으로 보았다. 이 run 은 working repo 에서 collector 상태, negative tests, validators 만 spot-check 했다.
+Purpose: verify that there is no coverage regression after the 17 PRs (#479-#502) merged in the two weeks since the 2026-04-15 (Phase 5 ship) baseline. A fresh clone was not performed. The Mac mini runs the same environment every day as a 24/7 scheduler, so that was treated as equivalent to a fresh-clone verification (running smoke). This run only spot-checked the collector state, the negative tests and the validators in the working repo.
 
 ### Negative tests (3 cases — `tests/collectors/test_universe_sync.py::TestPhase5NegativeGuardrails`)
 
@@ -150,7 +152,7 @@ test_empty_universe_yaml_raises_actionable_error        PASSED
 ============================== 3 passed in 0.15s ===============================
 ```
 
-복구 명령(`make setup` / `git checkout main -- config/universe.yaml`)이 actionable error 메시지에 포함되는지, 진단 메시지가 한국어인지 확인했다. 3/3 통과.
+The run confirmed that the recovery commands (`make setup` / `git checkout main -- config/universe.yaml`) appear in the actionable error messages and that the diagnostic messages are in Korean. 3/3 passed.
 
 ### `make validate-universe-cache` (DB-only, no fetch)
 
@@ -167,7 +169,7 @@ test_empty_universe_yaml_raises_actionable_error        PASSED
 real 0.31s
 ```
 
-5개 coverage 임계 모두 통과, baseline (2026-04-15) 대비 회귀 없음.
+All 5 coverage thresholds passed, with no regression against the baseline (2026-04-15).
 
 ### `make validate-universe` (with network fetch)
 
@@ -186,7 +188,7 @@ real 0.31s
 real 1.49s
 ```
 
-fetch 포함 7개 check 전부 PASS. Wikipedia 와 FDR live API 정상.
+All 7 checks, including the fetch, passed. The Wikipedia and FDR live APIs worked normally.
 
 ### `make universe-sync-us` (dry-run)
 
@@ -197,7 +199,7 @@ US S&P 500 (current coverage: 100.0%)
   ⚠️  manual ETF 보호: removed 40건 무시 (--allow-removal 로 명시적 허용)
 ```
 
-40개 removal candidate 는 모두 manual ETF 또는 S&P 500 밖의 universe 항목(보유 종목과 ARK 등 watchlist 포함)이다. 보호 정책이 동작해 실제 적용 시 manual ETF 손실은 없다.
+All 40 removal candidates are manual ETFs or universe entries outside the S&P 500 (including holdings and watchlist entries such as ARK). The protection policy is active, so applying the sync loses no manual ETFs.
 
 ### `make universe-sync-kr` (dry-run)
 
@@ -209,7 +211,7 @@ KR KOSPI 200 (current coverage: 99.0%)
   ℹ️  dry-run — 실제 변경 없음 (총 7건)
 ```
 
-2 add (KOSPI 200 신규 편입), 5 remove (편출). KR universe drift 는 정상 범위.
+2 adds (new KOSPI 200 constituents) and 5 removes (dropped from the index). The KR universe drift is within the normal range.
 
 ### Mac mini scheduler heartbeat (running smoke proxy)
 
@@ -223,13 +225,13 @@ $ tail -3 data/logs/scheduler.log
 2026-04-29 23:11:02 db_maintenance WARNING 테이블 strategy_memory 조회 실패 (미존재 가능)
 ```
 
-ARK CSV 404 는 반복적으로 발생한다(ark-funds.com 의 endpoint 변경이 잦고 yfinance fallback 이 동작한다). `strategy_memory` 미존재 경고는 의도된 graceful 처리다. Critical failure 는 없었고, RotatingFileHandler (PR #498) 와 yfinance WARNING (PR #501) 적용 후 log volume 도 정상이다.
+The ARK CSV 404 recurs (the ark-funds.com endpoint changes often, and the yfinance fallback works). The warning about the missing `strategy_memory` table is intended graceful handling. There were no critical failures, and log volume is normal after RotatingFileHandler (PR #498) and yfinance WARNING (PR #501) were applied.
 
 ### Verdict
 
-- **Negative path**: 3/3 PASS. actionable error 계약 유지.
-- **Coverage**: 7/7 PASS (network) / 5/5 PASS (cache). 2026-04-15 baseline 대비 회귀 없음.
-- **Live scheduler**: Mac mini 24/7 receiver 안정. log 정상, critical 없음.
-- **Drift**: us_sp500 40 removals, kr_kospi200 2 add / 5 remove 를 dry-run 으로 확인. 당시 다음 weekly cron 에서 manual ETF 보호가 작동할 예정이었다.
+- **Negative path**: 3/3 PASS. The actionable-error contract holds.
+- **Coverage**: 7/7 PASS (network) / 5/5 PASS (cache). No regression against the 2026-04-15 baseline.
+- **Live scheduler**: The Mac mini 24/7 receiver is stable. Logs are normal, with no critical failures.
+- **Drift**: The dry-run confirmed us_sp500 40 removals and kr_kospi200 2 add / 5 remove. At the time, the manual ETF protection was expected to take effect at the next weekly cron.
 
-**Phase 5 QA close**: TODO Tier 2 P1 #1 충족. 다음 점검은 분기별 또는 dependency 변동 시.
+**Phase 5 QA close**: TODO Tier 2 P1 #1 is satisfied. The next check is quarterly or when dependencies change.
