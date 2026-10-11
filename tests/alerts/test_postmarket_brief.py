@@ -1217,9 +1217,38 @@ class TestRetroLessons:
         assert [fwd for _, fwd in enriched] == [None]
 
     def test_synthesize_retro_llm_disabled_safe(self, monkeypatch):
+        """OLLAMA_HOST 를 지우지 않고 빈 값으로 둔다 (#1781).
+
+        `nuri.llm.report` 는 import 될 때 `load_dotenv()` 를 부른다. 그 import 가 이 테스트 안에서
+        처음 일어나면 개발 머신의 `.env` 가 지운(delenv) OLLAMA_HOST 를 되살리고, 로컬 Ollama 가 떠
+        있으면 실제 모델이 교훈을 돌려줘 실패했다 — CI 엔 `.env` 가 없어 초록이었다. python-dotenv 는
+        이미 있는 키를 덮지 않으므로 빈 값은 되살아나지 않는다. 아래는 그 상황을 결정적으로 재현한다:
+        `.env` 대신 가짜 `load_dotenv`, 로컬 모델 대신 가짜 HTTP 응답. `delenv` 로 되돌리면 실패한다.
+        """
+        import os
+        import sys
+        import types
+
+        import dotenv
+        import requests
+
+        import nuri.llm as llm_pkg
+        import nuri.llm.report as original_report  # 원래 모듈을 먼저 확보한다 (아래 teardown 참고)
         from nuri.alerts import postmarket_brief as pmb
 
-        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+        # report 가 이 테스트 안에서 처음 import 되게 한다. 원래 모듈을 위에서 확보해 두었으므로 teardown 이
+        # 늘 그것으로 되돌린다 — 없던 상태에서 지우면 새로 import 된 모듈이 남는다 (Codex 리뷰).
+        monkeypatch.delitem(sys.modules, "nuri.llm.report")
+        monkeypatch.setattr(llm_pkg, "report", original_report)
+        monkeypatch.setattr(
+            dotenv, "load_dotenv", lambda *a, **k: bool(os.environ.setdefault("OLLAMA_HOST", "http://localhost:11434"))
+        )
+        reply = types.SimpleNamespace(
+            raise_for_status=lambda: None, json=lambda: {"response": "- 변동성 낮을 때 추격 자제"}
+        )
+        monkeypatch.setattr(requests, "post", lambda *a, **k: reply)
+
+        monkeypatch.setenv("OLLAMA_HOST", "")
         out = pmb._synthesize_retro_llm({"vix": 16}, [({"date": "2026-01-05", "vix": 16}, 1.2)])
         assert out == []
 
