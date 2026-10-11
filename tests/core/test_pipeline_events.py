@@ -1,6 +1,8 @@
 """파이프라인 이벤트 저널 + 신선도 + 의존성 + run_step 테스트."""
 
-from datetime import timedelta
+import sys
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 import pytest
 
@@ -18,7 +20,7 @@ from nuri.core.freshness import (
     get_freshness_summary,
 )
 from nuri.core.pipeline import check_dependencies, run_step
-from nuri.core.timezone import kst_now
+from nuri.core.timezone import KST, kst_now
 
 
 @pytest.fixture
@@ -219,16 +221,23 @@ class TestCheckFreshness:
         assert result["age_hours"] <= 24
 
     def test_warn_status(self, db_path):
-        """warn_hours 초과 → WARN."""
-        # 72시간 전 데이터 (prices warn_hours=48, fail_hours=120)
-        now = kst_now()
+        """warn_hours 초과 → WARN.
+
+        72시간 전 데이터 (prices warn_hours=58, fail_hours=120). prices 는
+        `warn_calendar: us_market` 라 주말·NYSE 휴장일이 WARN 나이에서 빠진다(#1677) —
+        실제 시계로 시드하면 72h 창에 주말이 끼는 일~화(KST) 종일 PASS 가 나와 CI 가
+        요일에 따라 깨졌다 (2026-10-11 일요일 run 38129237935). 그래서 휴장일이 안 끼는
+        평일 시각으로 고정한다. 잠금: `TestWarnStatusDoesNotRideTheWallClock`.
+        """
+        now = datetime(2026, 10, 9, 12, 0, tzinfo=KST)  # 금 — 72h 전은 화 12:00, 사이에 휴장일 없음
         old_date = (now - timedelta(hours=72)).strftime("%Y-%m-%d %H:%M:%S")
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
                 ("SPY", old_date, 500.0),
             )
-        result = check_freshness("prices", db_path)
+        with patch("nuri.core.freshness.kst_now", return_value=now):
+            result = check_freshness("prices", db_path)
         assert result["status"] == "WARN"
 
     def test_fail_status(self, db_path):
@@ -284,6 +293,23 @@ class TestCheckFreshness:
 
         results = check_all_freshness(db_path)
         assert {r["key"] for r in results} == set(FRESHNESS_POLICIES)
+
+
+class TestWarnStatusDoesNotRideTheWallClock:
+    """`TestCheckFreshness.test_warn_status` 의 시계 고정 잠금 (tests/CLAUDE.md "Time-bomb" 4차).
+
+    고정을 걷어내 실제 시계로 되돌려도 수~토에는 초록이라, 되돌린 요일에 따라 아무 신호가 없다.
+    그래서 바깥 시계를 주말이 낀 월요일로 돌려 놓고 그 테스트를 직접 부른다 — 고정이 살아 있으면
+    테스트 안쪽 patch 가 이겨 WARN, 빠지면 월요일 시계가 새어 들어와 PASS 로 깨진다.
+    """
+
+    def test_holds_under_a_weekend_spanning_wall_clock(self, db_path, monkeypatch):
+        monday = datetime(2026, 10, 5, 12, 0, tzinfo=KST)  # 72h 창에 토·일이 낀다
+        monkeypatch.setattr(sys.modules[__name__], "kst_now", lambda: monday)
+        monkeypatch.setattr("nuri.core.timezone.kst_now", lambda: monday)
+        monkeypatch.setattr("nuri.core.freshness.kst_now", lambda: monday)
+
+        TestCheckFreshness().test_warn_status(db_path)
 
 
 class TestGetFreshnessSummary:

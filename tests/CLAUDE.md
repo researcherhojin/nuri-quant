@@ -206,6 +206,21 @@ conftest 전역 mock 은 **yfinance 만** 커버. `MacroCollector.collect()` 는
 — 7요일 × n 왕복 잠금. `forward` → `backward` 로 되돌리면 **요일과 무관하게** FAIL.
 파일마다 따로 두는 이유는 2차 발생의 교훈 그대로다(한 경로만 잠그면 나머지는 무방비).
 
+**4차 발생 (2026-10-11) — 정책이 달력을 알게 되자 상대 시각 시드가 요일을 탄 변종.**
+`prices` 에 `warn_calendar: us_market`(#1677)이 붙은 뒤로 주말·NYSE 휴장일이 WARN 나이에서
+빠지는데, WARN 테스트 2개는 실제 시계로 `kst_now() - 72h` 를 시드했다. 72h 창에 주말이 끼면
+면제 후 나이가 `warn_hours`(58) 아래로 내려가 `PASS` 가 된다 — 시드 형식에 따라 창이 다르다:
+datetime 시드(`test_warn_status`)는 일~화 종일, date-only 시드(`test_warn_when_data_is_stale`)는
+월 종일 · 일·화 10시 전(KST). main CI 는 일요일 18:40 에 앞의 것으로 빨갰다(run
+38129237935). **달력 인식 정책의 경계 테스트는 `nuri.core.freshness.kst_now` 를 평일 고정
+시각으로 patch** 하고 시드도 그 시각에서 계산한다.
+- 고정을 걷어내도 **수~토에는 초록**이라, 되돌린 요일에 따라 아무 신호가 없다. 그래서 잠금은
+  바깥 시계(`kst_now` 바인딩 전부)를 주말이 낀 월요일로 돌려 놓고 두 테스트를 직접 부른다 —
+  고정이 살아 있으면 안쪽 patch 가 이겨 WARN, 빠지면 월요일 시계가 새어 들어와 PASS.
+**Test:** `tests/core/test_pipeline_events.py::TestWarnStatusDoesNotRideTheWallClock::test_holds_under_a_weekend_spanning_wall_clock`
+· `tests/core/test_freshness.py::TestWarnWhenStaleDoesNotRideTheWallClock::test_holds_under_a_weekend_spanning_wall_clock`
+— 시계 고정을 되돌리면 **요일과 무관하게** FAIL.
+
 ⚠️ 이 잠금을 짜면서 **문자열 타깃 monkeypatch 가 조용히 no-op** 인 것도 같이 밟았다.
 `monkeypatch.setattr("tests.trading.recommend.test_buy_candidate_emitter.today_kst", …)` 는
 `tests/` 가 패키지가 아니라 같은 파일의 *두 번째 사본*을 import 해 거기를 패치한다 —
