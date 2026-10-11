@@ -854,9 +854,8 @@ def test_profile_failure_without_another_identity_source_propagates(provider, mo
 def test_official_fund_page_failure_is_logged_and_yahoo_holdings_are_used(provider, monkeypatch, caplog):
     """공식 운용사 페이지가 실패하면 경고를 남기고 Yahoo 보유 종목으로 채운다.
 
-    `unavailable` 의 키는 단정하지 않는다 — 지금은 Yahoo 가 채운 뒤에도 일반 "fund" 가 남아
-    화면이 ETF 운용 자료를 없는 것으로 읽는다(프런트 라벨에는 `fund_official` 이 따로 있다).
-    결함 후보라 정답으로 박지 않는다 (#1756).
+    빠진 것은 운용사 공식 자료뿐이라 `fund_official` 로 적는다. 일반 "fund" 를 적으면 화면이
+    Yahoo 보유 종목을 보여주면서 "ETF 운용 자료 없음" 을 함께 띄웠다 (#1756).
     """
     requested = []
 
@@ -879,6 +878,26 @@ def test_official_fund_page_failure_is_logged_and_yahoo_holdings_are_used(provid
     )
     assert data["fund"]["holdings"] == [{"name": "Sample Holding", "weight_pct": 25.0}]
     assert data["profile"]["name"] == "Source Fund"
+    assert data["unavailable"] == ["fund_official"]
+
+
+def test_official_page_and_yahoo_holdings_failures_are_reported_separately(provider, monkeypatch):
+    """둘 다 실패하면 둘 다 적는다 — 공식 자료도, 대체 보유 종목도 없다 (#1756)."""
+
+    class NoHoldings:
+        @property
+        def top_holdings(self):
+            raise RuntimeError("holdings unavailable")
+
+    def unreachable(url, **kwargs):
+        raise requests.ConnectionError("unreachable")
+
+    monkeypatch.setattr(requests, "get", unreachable)
+    provider.info = {"symbol": "NASA", "longName": "Source Fund", "quoteType": "ETF"}
+    provider.funds_data = NoHoldings()
+    data = CompanyResearchCollector().collect(ticker="NASA")[0]
+    assert data["fund"] is None
+    assert data["unavailable"] == ["fund_official", "fund"]
 
 
 def test_etf_without_an_official_adapter_uses_yahoo_top_holdings(provider):

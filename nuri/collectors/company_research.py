@@ -311,7 +311,9 @@ class CompanyResearchCollector(BaseCollector):
                 fund = _collect_tema_fund(symbol)
             except Exception:
                 self.logger.warning("공식 ETF 자료 조회 실패: %s", symbol)
-                missing.append("fund")
+                # 빠진 건 운용사 공식 자료뿐이다 — 아래 Yahoo 대체가 보유 종목을 채우면 일반 "fund" 는
+                # 없지 않다. 화면 라벨도 둘을 나눈다(SOURCE_FIELDS.fund_official, #1756).
+                missing.append("fund_official")
         try:
             info = stock.info or {}
         except Exception:
