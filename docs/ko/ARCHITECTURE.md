@@ -178,7 +178,7 @@ outcome tracking 은 07:05 의 consensus job 보다 앞선 07:02 로 스케줄�
 
 ### 프로세스와 배포
 
-production 은 호스트 한 대에서 launchd(`scripts/launchd/`) 아래 실행된다. scheduler, API, dashboard(`npm run start`), Discord bot, autopull receiver, state replicator, heartbeat watchdog, SRE scan, 매시 service health check(`scripts/ops/health_check.sh`)용 LaunchAgent 가 있고, 여기에 머신 자체를 보고하는 system LaunchDaemon(`system/com.nuri-quant.machine-alive.plist`)이 더해진다.
+production 은 호스트 한 대에서 launchd(`scripts/launchd/`) 아래 실행된다. scheduler, API, dashboard(`npm run start`), Discord bot, autopull receiver, state replicator, heartbeat watchdog, SRE scan 용 LaunchAgent 가 있고, 여기에 머신 자체를 보고하는 system LaunchDaemon(`system/com.nuri-quant.machine-alive.plist`)이 더해진다. `health-check` plist 는 디렉터리에 남아 있지만 설치하지 않는다 — 그 schema·table·writer-role 점검은 SRE detector 로 돈다(#939, #952). `scripts/ops/health_check.sh` 는 Discord `/health` 명령으로 필요할 때 실행된다.
 
 - **Autopull**(`scripts/deploy/autopull_receiver.sh`, 5분마다)은 `origin/main` 으로 fast-forward 하며, dirty tree 나 non-fast-forward 는 거부한다. `pyproject.toml` 이나 `uv.lock` 이 바뀌면 `uv sync` 를 실행하고, `nuri/` 아래 Python 코드나 의존성이 바뀌면 scheduler, API, Discord bot 을 재시작한다. fetch 가 성공하면 각 cycle 은 마지막 `frontend/` commit 이 현재 build 보다 새로울 때 dashboard 도 다시 build 하고 재시작한다(`scripts/deploy/build_frontend.sh`, #1462). build 가 실패한 commit 은 새 `frontend/` commit 이나 `--retry` 가 있기 전까지 재시도하지 않는다. 대기 중인 migration 은 재시작된 scheduler 가 시작할 때 `init_db()` 가 적용한다. autopull 자신은 reminder 로그만 남긴다. `config/` 만 바꾸는 commit 은 아무것도 재시작하지 않는다. `rules.yaml` 과 `agents.yaml` 은 import 시점에 읽히므로 각 프로세스는 다음 재시작 때 이를 반영한다(scheduler 는 매일 08:40 에 스스로 재시작한다).
 - **Replica**(`scripts/deploy/state_replicator.sh`, 매시)는 `VACUUM INTO` snapshot 을 개발 호스트의 `data/replicas/` 로 복사한다. MCP server 가 이를 읽는다.
