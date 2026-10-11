@@ -161,7 +161,7 @@ RULES=$(live_rules_lines)
 # check_claim 이 fail 이 아니라 warn 을 부르고 스크립트는 exit 0 으로 통과한다
 # (실측: 뮤테이션 시 "19 passed, 1 warnings", EXIT 0). 감시가 초록불인 채 죽는다.
 check_claim "collectors"     "$COLL" "nuri/collectors/CLAUDE.md"  '[0-9]+ Data Collectors' || true
-check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collectors \(BaseCollector' || true
+check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collector modules in' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
 check_claim "endpoints"      "$EP"   "nuri/api/CLAUDE.md"         'read surface \([0-9]+ endpoints\)' || true
@@ -198,7 +198,7 @@ check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs
 # 전부 미등록이라 셋 다 48 로 굳어 있었다 (2026-08-03 실측, 실제 49). ARCHITECTURE 만
 # 보던 migrations 누락(#864)과 같은 패턴 — 한 사이트만 등록하면 나머지가 조용히 드리프트한다.
 check_claim "scheduler_jobs"   "$JOBS"  "README.md" \
-    '[0-9]+ (cron jobs · in-process|independent APScheduler jobs|cron entries)' || true
+    '[0-9]+ (cron jobs · in-process|independent cron jobs|cron entries)' || true
 check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 TESTS_BE=$(live_tests_be)
 if [ -n "$TESTS_BE" ]; then

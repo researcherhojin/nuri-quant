@@ -18,7 +18,6 @@ Nuri-Quant reviews a portfolio of US and Korean equities every day. It issues a 
 
 ## Table of Contents
 
-- [Security](#security)
 - [Background](#background)
 - [Install](#install)
 - [Usage](#usage)
@@ -30,16 +29,6 @@ Nuri-Quant reviews a portfolio of US and Korean equities every day. It issues a 
 - [Contributing](#contributing)
 - [License](#license)
 
-## Security
-
-The repository is public; the deployed system runs on a real portfolio.
-
-- A pre-push hook and a required CI check block personal financial data (broker names, account details, ticker and P&L pairs) from entering the repository.
-- Every external LLM call goes through a single module that logs it; the recommendation pipeline itself uses no LLM.
-- The production API binds to `127.0.0.1`.
-
-See [`SECURITY.md`](SECURITY.md) for the security policy and how to report a vulnerability.
-
 ## Background
 
 ### What it does
@@ -47,14 +36,14 @@ See [`SECURITY.md`](SECURITY.md) for the security policy and how to report a vul
 | Task | Output |
 |------|--------|
 | Review every holding, every day | A dated BUY / SELL / HOLD per holding with the agent verdicts, market context and price levels behind it, kept in a decision ledger (`/decisions`) |
-| Grade past recommendations | Realized returns of each decision at 7, 14 and 30 days, against a benchmark where one applies; separately, each agent's 30-day hit rate sets its weight in the next consensus |
+| Grade past recommendations | The raw return of every recommendation at 7 to 90 days, and for each BUY and SELL the 7-, 14- and 30-day return against a benchmark where one applies; each agent's 30-day hit rate adjusts its weight, within a capped range, in the next consensus |
 | Screen the universe | BUY candidates outside the portfolio, scored and gated by [`config/buy_signals.yaml`](config/buy_signals.yaml), with the scanner's observations kept separate from the verdict |
 | Watch the inputs | A freshness SLA per data source, judged against each source's own schedule; when an input of the dashboard verdict fails it, the verdict is replaced by a stale-data notice |
 | Show it on one page | The Overview dashboard (`/`): market indices, regime, macro score, holding reviews, portfolio composition, data freshness and pipeline status, each with its source |
 | Send briefs | A US pre-market brief and US and Korean post-market briefs to Discord |
 | Answer an AI client | A read-only MCP server with candidates, macro facts, freshness and live quotes, and no holdings |
 
-The universe is US equities and the KOSPI 200. Korean prices come from pykrx and fundamentals from yfinance, the KOSPI 200 list from pykrx with a FinanceDataReader fallback, and real-time quotes optionally from the KIS Open API ([`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md)).
+The universe is US equities and the KOSPI 200. Korean prices come from pykrx, the KOSPI 200 list is approximated by the 200 largest KOSPI listings from FinanceDataReader, and Korean fundamentals come from yfinance. When KIS Open API credentials are set, KIS supplies the Korean P/E, P/B and market cap and the optional real-time quotes ([`docs/KIS_INTEGRATION.md`](docs/KIS_INTEGRATION.md)).
 
 ### How it works
 
@@ -83,18 +72,18 @@ flowchart LR
 | Stage | Package | Role |
 |-------|---------|------|
 | **Collect** | `nuri/collectors` | Collects prices, fundamentals, macroeconomic data and news |
-| **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; computes daily factor scores |
+| **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; the daily `factors` job computes factor scores |
 | **Consensus** | `nuri/trading/agents` | Combines the weighted verdicts of 10 rule-based specialist agents per holding, subject to a risk veto |
-| **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and applies the hard-veto gates |
+| **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and price levels |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
-The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent APScheduler jobs, and each job reads its inputs from database tables written by other jobs.
+The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 59 independent cron jobs, plus a one-minute heartbeat, and each job reads its inputs from database tables written by other jobs.
 
 - Scheduling: 59 cron jobs · in-process
 - Storage: SQLite WAL · 63 tables
 - Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the runtime topology, the daily schedule and the scoring model.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the system flow, the runtime topology, the daily schedule and the scoring model.
 
 ## Install
 
@@ -108,13 +97,13 @@ cd frontend && npm ci && cd ..                          # frontend dependencies
 cp .env.example .env                                    # API keys (all optional)
 ```
 
-Every API key is optional; a collector without credentials is skipped. [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) walks through the full setup.
+Every API key is optional; a collector without credentials is skipped or falls back to a keyless source. [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) walks through the full setup.
 
 ## Usage
 
 ```bash
 make start          # API on :8001 (OpenAPI at /docs), dashboard on :3000
-make full-scan      # run all pipeline stages in sequence
+make full-scan      # manual research run: core collectors, signal backtest, consensus, price targets
 make consensus      # run the agent consensus and record decisions
 make test-fast      # backend tests, excluding slow tests
 make verify-all     # pre-push checks: tests, lint, frontend
@@ -125,7 +114,7 @@ Investment rules and thresholds live in [`config/`](config/) (mainly `rules.yaml
 
 ## Tech Stack
 
-<!-- 버전은 메이저(0.x 는 메이저.마이너)만 적는다 — 실제 설치 버전과의 대조는 tests/verify/test_readme_badges.py (#1704) -->
+<!-- Badges show the major version only (major.minor for 0.x); tests/verify/test_readme_badges.py checks them against the installed versions (#1704) -->
 
 **Frontend**<br/>
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
@@ -177,7 +166,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 |--------|-------|
 | Backend tests | 8,799 collected across 433 files |
 | Frontend test files | 118 vitest files |
-| Data collectors | 31 collectors (BaseCollector pattern) |
+| Data collectors | 31 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 59 cron entries |
 | API endpoints | 73 declared in `nuri/api/routes/` |
 | Database | SQLite WAL · 63 tables, 72 forward-only migrations |
@@ -187,7 +176,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 | Document | Contents |
 |----------|----------|
 | [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, decisions and investment rules (authoritative) |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, database, configuration, CI/CD |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System flow, runtime topology and schedule, database, configuration, CI/CD |
 | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | The Overview dashboard: panels, data refresh, responsive layout and verification |
 | [`docs/RESEARCH_BRIEFING.md`](docs/RESEARCH_BRIEFING.md) | Ticker research, public briefing prompts, validation and known limitations |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
