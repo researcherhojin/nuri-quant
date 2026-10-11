@@ -294,9 +294,9 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **근거 (현대 학술 + 공신력 자료, 2020+)**:
 
-- **Ibbotson & Kaplan** (_FAJ_ 2000, Brinson "93%" 해석 정정): 자산 배분은 **return 분산 (variance over time)** 의 ~90% 를 설명 (return **수준** 이 아님). 종목 선택 / market timing 도 cross-sectional 차이의 30-40% 설명. 자주 오용되는 통계 — "자산 배분이 100% 답" 이라는 단순 결론 X.
+- **Ibbotson & Kaplan** (_FAJ_ 2000, Brinson "93%" 해석 정정): 답은 질문에 따라 다르다. policy(자산 배분)는 한 펀드의 **시간에 따른 return 변동**의 약 90% 와 **펀드 간 return 차이**의 약 40% 를 설명하고, 평균적으로 **return 수준**의 약 100% 는 policy return 수준으로 설명된다.
 - **Vardharaj & Fabozzi** (_J. Portfolio Mgmt_ 2007): modern data 재현 — 자산 배분 도미넌스 확인. Brinson 후속.
-- **Andrew Ang** (BlackRock CIO, _Asset Management_ 2014): "Factors are the new asset classes" — momentum / value / quality factor 비중도 자산 배분 차원.
+- **Andrew Ang** (_Asset Management_, Oxford University Press 2014, Columbia Business School 재직 중 저술; 이후 BlackRock Factor-Based Strategies Group 총괄): 중요한 것은 asset class 라벨이 아니라 그것이 대표하는 겹치는 risk 묶음(factor)이다 — momentum / value / quality factor 비중도 자산 배분 차원.
 - **Antti Ilmanen** (AQR, _Investing Amid Low Expected Returns_ **2022**): 2020s 저금리·고밸류 환경 → 60/40 expected return 연 4-5% 로 하락. factor diversification + global tilt 권고.
 - **Vanguard** _Principles for Investing Success_ 4th ed (**2024**) + Capital Markets Model (**VCMM 2024**): 4 원칙 (goals/balance/costs/discipline). 향후 10년 expected return — US equity 3-5% / Intl 7-9% / US bond 4-5%/yr.
 - **Morningstar** _Mind the Gap_ (**2024**) + DALBAR QAIB (**2024**): 투자자 실현 수익 vs 펀드 수익 격차 -1.7%/yr (Morningstar). retail equity vs S&P 500 격차 누적 ~3%/yr (DALBAR, 1994-2023). **discipline (매뉴얼 rebalance) 가 alpha 보다 큰 영향**.
@@ -448,13 +448,17 @@ PR 전에 확인한다.
 
 **권위 있는 차단 기준**: `scripts/verify/check_privacy_leak.py` 가 ground truth 다.
 
+<!-- cspell:disable -->
+
 | 카테고리 | 차단 대상 | 허용 placeholder |
+|---|---|---|
 | Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권, 신영증권, 교보증권, 현대차증권, SK증권, DB금융투자, LS증권, 다올투자증권, iM증권, 부국증권, 유진투자증권, 한양증권, 케이프투자증권, 상상인증권, BNK투자증권, 하이투자증권, 한화투자증권 | `Brokerage Alpha/Beta` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
-<!-- cspell:disable-next-line -->
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha` 등 | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
 | Suspect monetary literal | 7자리 이상 정수 + `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` 키 | round million (`1_000_000`...`100_000_000`) 자동 허용 |
 | **Ticker + PnL 조합** (PR #202) | (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` (`-34% (TEM)`) (b) 인접 `TICKER <signed %>` (`PL +43%`). 소스 + unpushed commit message 스캔. | 규칙 threshold text (`손절 -7%`) ticker 컨텍스트 없으면 통과. `TICKER_FALSE_POSITIVES` frozenset (HWM/SL/MDD/CPI/VIX/BTC/ETH 등 120개). | <!-- privacy-allow: ticker_pnl — §4.4.1 패턴 표 자체 (#981) -->
 | **개인 식별자** (#1557) | 모양만: `<name>ui-Macmini` (한국어 기본 호스트명 로마자) · `<account>@<host>.local` · `/Users/<account>/` · `-Users-<account>-` (Claude 프로젝트 경로). 값은 스캐너에도 테스트에도 적지 않는다 — 정확한 이름은 `tests/test_no_personal_identifiers.py` 가 런타임 조립으로 잠근다. 소스 + `--message` + unpushed commit 스캔. | `user@macmini.local`, `/Users/USER/`, `Test-Macmini` |
+
+<!-- cspell:enable -->
 
 **의도적 제외**: `한국투자증권` (KIS) 은 Open API 통합 대상이다 (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). 자격 증명은 `config/kis/kis_devlp.yaml` 이다 (gitignored by `config/kis/*`, `~/KIS/` legacy 호환).
 
@@ -741,7 +745,7 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 
 - 매 세션 emit한 BUY 후보를 `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only)에 baseline 기록.
 - 다음 세션 진입 시 `scripts/analysis/compare_buy_candidates.py --session N` (tracked infra) 실행 → baseline vs current close + tier별 평균 return.
-- 4주간 누적 → 13 weekly samples → Phase 2c threshold backtest 입력 보강.
+- 4주간 누적 ~~→ 13 weekly samples~~ → Phase 2c threshold backtest 입력 보강 (13 weekly 는 v1 의 C1 sample 이다 — v2 는 104 weekly, §5.11).
 
 **Tier 정의**:
 

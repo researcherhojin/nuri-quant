@@ -5,7 +5,7 @@
 
 자격 증명 우선순위:
     1. .env: KIS_PROD_APP_KEY/SECRET (실전), KIS_PAPER_APP_KEY/SECRET (모의)
-    2. config/kis/kis_devlp.yaml (프로젝트 내 gitignored, KIS Open API SDK 호환)
+    2. config/kis/kis_devlp.yaml (프로젝트 내 gitignored, KIS 공식 샘플 코드와 같은 형식)
     3. ~/KIS/config/kis_devlp.yaml (레거시 위치 fallback, 하위 호환)
 
 기능:
@@ -157,7 +157,7 @@ def load_credentials(mode: str = "prod") -> KISCredentials | None:
     if creds.is_valid():
         return creds
 
-    # YAML fallback (KIS SDK 호환) — module-level KIS_YAML_PATH 사용 (테스트 patch 호환)
+    # YAML fallback (KIS 공식 샘플 코드와 같은 형식) — module-level KIS_YAML_PATH 사용 (테스트 patch 호환)
     if KIS_YAML_PATH.exists():
         try:
             import yaml
