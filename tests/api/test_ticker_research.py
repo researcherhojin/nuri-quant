@@ -1,13 +1,23 @@
 """기업 브리핑은 공급자 신원·보고 기간·결측값을 보존한다."""
 
 import json
-from unittest.mock import MagicMock
+import logging
+from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import MagicMock, PropertyMock
+from urllib.parse import parse_qsl, urlparse
 
 import pandas as pd
 import pytest
+import requests
 
+import nuri.collectors.company_research as research_module
 from nuri.collectors.company_research import CompanyResearchCollector
-from nuri.core.db import get_db
+from nuri.core.db import OperationalError, get_db
+from nuri.core.timezone import kst_now, today_kst
+
+# autouse 스텁이 모듈 속성을 바꾸기 전에 원본을 잡아 둔다 (검색 URL 구성 자체를 검사).
+real_collect_recent_news = research_module._collect_recent_news
 
 
 @pytest.fixture(autouse=True)
@@ -444,3 +454,500 @@ def test_real_collector_stamps_cutoff_after_source_collection(provider, monkeypa
     monkeypatch.setattr("nuri.collectors.company_research.collect_briefing_sources", sources)
     dossier = CompanyResearchCollector().collect(ticker="DEMO")[0]
     assert any(source["source_id"] == "official" for source in public_bundle(dossier)["sources"])
+
+
+# ── 갱신·브리핑 라우트의 경합과 손상 상태 ─────────────────────────────────────
+
+
+def _save_today_dossier():
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO external_analysis(date,source,ticker,data_type,details,collected_at) VALUES(?,?,?,?,?,?)",
+            (
+                today_kst(),
+                "yahoo_finance",
+                "DEMO",
+                "company_research",
+                json.dumps(
+                    {
+                        "ticker": "DEMO",
+                        "schema_version": 6,
+                        "collected_at": kst_now().isoformat(),
+                        "profile": {"name": "Demo Company", "symbol": "DEMO"},
+                    }
+                ),
+                kst_now().isoformat(),
+            ),
+        )
+
+
+def test_collection_finished_by_another_request_is_reused_after_taking_the_lock(client, provider, monkeypatch):
+    import nuri.api.routes.ticker_research as route
+
+    class LockAfterPeer:
+        """첫 확인과 락 획득 사이에 다른 요청이 오늘 자료 저장을 마친 상황."""
+
+        released = False
+
+        def acquire(self, blocking=True):
+            _save_today_dossier()
+            return True
+
+        def release(self):
+            self.released = True
+
+    lock = LockAfterPeer()
+    monkeypatch.setattr(route, "_collection_lock", lock)
+    assert client.post("/api/ticker/DEMO/research/refresh").json() == {"saved": 0, "ticker": "DEMO", "reused": True}
+    assert lock.released
+    provider.history.assert_not_called()
+
+
+def _pending(route, generator, **fields):
+    return {
+        "status": "pending",
+        "evidence_hash": generator.evidence_hash(generator.public_bundle(route._stored_dossier("DEMO"))),
+        "prompt_version": generator.VERSION,
+        "model": generator.MODEL,
+        **fields,
+    }
+
+
+@pytest.mark.parametrize(
+    "started_at,status",
+    [
+        ("now", "pending"),
+        ("31 minutes ago", "unavailable"),
+        ("future", "unavailable"),
+        ("naive", "unavailable"),
+        ("malformed", "unavailable"),
+        ("missing", "unavailable"),
+    ],
+)
+def test_pending_briefing_is_shown_only_while_its_lease_is_alive(client, provider, started_at, status):
+    from nuri.api.routes import ticker_research as route
+    from nuri.llm import research_briefing as generator
+
+    client.post("/api/ticker/DEMO/research/refresh")
+    now = kst_now()
+    stamps = {
+        "now": now.isoformat(),
+        "31 minutes ago": (now - timedelta(minutes=31)).isoformat(),
+        "future": (now + timedelta(minutes=5)).isoformat(),
+        "naive": now.replace(tzinfo=None).isoformat(),
+        "malformed": "yesterday",
+    }
+    fields = {"started_at": stamps[started_at]} if started_at in stamps else {}
+    route._save_briefing("DEMO", _pending(route, generator, **fields))
+    assert client.get("/api/ticker/DEMO/research").json()["public_briefing"]["status"] == status
+
+
+@pytest.mark.parametrize("details", ["{broken", None])
+def test_corrupt_stored_briefing_is_hidden_without_breaking_the_page(client, provider, details):
+    client.post("/api/ticker/DEMO/research/refresh")
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO external_analysis(date,source,ticker,data_type,value,details) VALUES(?,?,?,?,?,?)",
+            (today_kst(), "source_backed_briefing", "DEMO", "public_briefing", "ready", details),
+        )
+    response = client.get("/api/ticker/DEMO/research")
+    assert response.status_code == 200
+    assert response.json()["public_briefing"] is None
+    assert response.json()["dossier"]["profile"]["name"] == "Demo Company"
+
+
+@pytest.mark.parametrize("lease", ["expired", "corrupt"])
+def test_dead_or_corrupt_lease_of_another_ticker_does_not_block_generation(client, provider, monkeypatch, lease):
+    from nuri.api.routes import ticker_research as route
+    from nuri.llm import research_briefing as generator
+
+    client.post("/api/ticker/DEMO/research/refresh")
+    details = (
+        json.dumps({"status": "pending", "started_at": (kst_now() - timedelta(hours=2)).isoformat()})
+        if lease == "expired"
+        else "{broken"
+    )
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO external_analysis(date,source,ticker,data_type,value,details) VALUES(?,?,?,?,?,?)",
+            (today_kst(), "source_backed_briefing", "OTHER", "public_briefing", "pending", details),
+        )
+    generated = MagicMock(return_value={"status": "insufficient"})
+    monkeypatch.setattr(generator, "generate_briefing", generated)
+    monkeypatch.setattr(route._briefing_worker, "submit", lambda fn, *args: fn(*args))
+    assert client.post("/api/ticker/DEMO/research/briefing").status_code == 202
+    generated.assert_called_once()
+    assert not route._briefing_lock.locked()
+
+
+def test_background_failure_releases_the_lock_even_if_its_state_cannot_be_saved(monkeypatch, caplog):
+    from nuri.api.routes import ticker_research as route
+    from nuri.llm import research_briefing as generator
+
+    def locked_database(ticker, result):
+        raise OperationalError("database is locked")
+
+    monkeypatch.setattr(generator, "generate_briefing", MagicMock(side_effect=RuntimeError("generator failed")))
+    monkeypatch.setattr(route, "_save_briefing", locked_database)
+    assert route._briefing_lock.acquire(blocking=False)
+    with caplog.at_level(logging.ERROR, logger=route.__name__):
+        route._build_briefing("DEMO", {"ticker": "DEMO"}, {"status": "pending"})
+    assert not route._briefing_lock.locked()
+    assert "브리핑 실패 상태 저장 오류" in caplog.text
+
+
+# ── 수집기: 뉴스 피드 ────────────────────────────────────────────────────────
+
+
+def _feed_item(
+    title="Sample report", link="https://example.com/report", pub="Mon, 05 Jan 2026 23:00:00 GMT", source=""
+):
+    source_tag = f"<source>{source}</source>" if source else ""
+    return f"<item><title>{title}</title><link>{link}</link>{source_tag}<pubDate>{pub}</pubDate></item>"
+
+
+@pytest.mark.parametrize(
+    "rejected",
+    [
+        _feed_item(pub="Mon, 05 Jan 2026 23:00:00 -0000"),  # RFC 2822 의 시간대 미상
+        _feed_item(link="http://example.com/report"),
+        _feed_item(title=""),
+    ],
+)
+def test_news_feed_drops_items_without_timezone_https_link_or_title(rejected):
+    from nuri.collectors.company_research import parse_news_feed
+
+    kept = _feed_item(title="Kept report", link="https://example.com/kept")
+    records = parse_news_feed(f"<rss><channel>{rejected}{kept}</channel></rss>", "DEMO")
+    assert [record["title"] for record in records] == ["Kept report"]
+
+
+def test_news_feed_keeps_a_title_that_does_not_end_with_the_source_name():
+    from nuri.collectors.company_research import parse_news_feed
+
+    item = _feed_item(title="Publisher reports demand", source="Publisher")
+    (record,) = parse_news_feed(f"<rss><channel>{item}</channel></rss>", "DEMO")
+    assert (record["title"], record["source"]) == ("Publisher reports demand", "Publisher")
+
+
+@pytest.mark.parametrize(
+    "ticker,locale",
+    [
+        ("DEMO", {"hl": "en-US", "gl": "US", "ceid": "US:en"}),
+        ("000001.KS", {"hl": "ko", "gl": "KR", "ceid": "KR:ko"}),
+        ("000001.KQ", {"hl": "ko", "gl": "KR", "ceid": "KR:ko"}),
+    ],
+)
+def test_recent_news_search_quotes_the_verified_name_in_the_market_locale(monkeypatch, ticker, locale):
+    requested = []
+    feed = f"<rss><channel>{_feed_item(title='Sample report - Publisher', source='Publisher')}</channel></rss>"
+
+    def get(url, **kwargs):
+        requested.append((url, kwargs))
+        return SimpleNamespace(text=feed, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(requests, "get", get)
+    records = real_collect_recent_news(ticker, 'Demo "Quoted" Company')
+    ((url, kwargs),) = requested
+    assert kwargs == {"timeout": 15}
+    parsed = urlparse(url)
+    assert (parsed.netloc, parsed.path) == ("news.google.com", "/rss/search")
+    query = f'"Demo Quoted Company" when:{research_module.NEWS_LOOKBACK_DAYS}d'
+    assert dict(parse_qsl(parsed.query)) == {"q": query, **locale}
+    assert [(record["ticker"], record["title"]) for record in records] == [(ticker, "Sample report")]
+
+
+# ── 수집기: 공식 ETF 페이지 어댑터 ──────────────────────────────────────────
+
+
+def test_fund_page_without_details_section_is_not_an_identity_match():
+    with pytest.raises(ValueError, match="identity"):
+        research_module.parse_tema_fund(TEMA_SAMPLE.replace("<h3>Fund Details</h3>", "<h3>Overview</h3>"), "NASA")
+
+
+def test_incomplete_fund_detail_row_does_not_hide_the_others():
+    row = '<div class="box"><div class="col-specification">Inception Date</div></div>'
+    html = TEMA_SAMPLE.replace("<h6>As of January 02, 2026</h6>", "<h6>As of January 02, 2026</h6>" + row)
+    fund = research_module.parse_tema_fund(html, "NASA")
+    assert fund["inception"] is None
+    assert (fund["expense_pct"], fund["aum"]) == (0.5, 1_000_000)
+
+
+def test_fund_valuation_skips_unlabelled_or_unparseable_ratios():
+    characteristics = """<div class="characteristics"><h3>ETF Characteristics</h3><h6>As of January 03, 2026</h6>
+    <div class="box"><div class="col-specification"><span>Price-to-Earnings (P/E)</span></div><div class="col-details">25.5x</div></div>
+    <div class="box"><div class="col-specification"><span>Price-to-Book Value (P/BV)</span></div><div class="col-details">n/a</div></div>
+    <div class="box"><div class="col-specification">Price-to-Sales (P/S)</div><div class="col-details">3.1x</div></div>
+    </div>"""
+    fund = research_module.parse_tema_fund(TEMA_SAMPLE + characteristics, "NASA")
+    assert (fund["pe"], fund["pb"], fund["ps"]) == (25.5, None, None)
+    assert fund["valuation_as_of"] == "2026-01-03"
+
+
+def test_fund_without_holdings_section_has_no_holdings_or_holdings_date():
+    fund = research_module.parse_tema_fund(
+        TEMA_SAMPLE.replace("<h3>Top 10 Holdings</h3>", "<h3>Portfolio</h3>"), "NASA"
+    )
+    assert fund["holdings"] == []
+    assert fund["holdings_as_of"] is None
+
+
+def test_fund_holdings_without_a_valid_percentage_are_dropped():
+    rows = (
+        '<div class="box"><div class="col-specification">Unknown Weight</div><div class="col-details">N/A</div></div>'
+        '<div class="box"><div class="col-specification">Overweight</div><div class="col-details">150%</div></div>'
+        '<div class="box"><div class="col-specification">No Weight</div></div>'
+    )
+    html = TEMA_SAMPLE.replace('<div class="outer-wrap">', '<div class="outer-wrap">' + rows)
+    fund = research_module.parse_tema_fund(html, "NASA")
+    assert fund["holdings"] == [
+        {"name": "Sample Aerospace", "weight_pct": 20},
+        {"name": "Sample Satellite", "weight_pct": 10},
+    ]
+
+
+def test_fund_strategy_is_not_written_without_a_recognised_theme():
+    summary = (
+        "An actively managed portfolio of space exploration, rockets, propulsion systems and satellite technology."
+    )
+    fund = research_module.parse_tema_fund(TEMA_SAMPLE.replace(summary, "A diversified portfolio."), "NASA")
+    assert fund["strategy_text"] is None
+
+
+def test_highlight_explanations_follow_the_described_business():
+    block = """<div class="three-column-block-text">
+    <p>Overview of selected holdings</p>
+    <p>Demo Phone (DPHN) builds a space-based network for unmodified smartphones.</p>
+    <p>Demo Radio (DRAD) supplies RF components for satellite ground stations.</p>
+    <p>Demo Furniture (DFUR) makes office chairs.</p></div>"""
+    highlights = research_module.parse_tema_fund(TEMA_SAMPLE + block, "NASA")["highlights"]
+    assert [item["symbol"] for item in highlights] == ["DPHN", "DRAD", "DFUR"]
+    phone, radio, furniture = (item["explanation"] for item in highlights)
+    assert "스마트폰" in phone and "로켓" not in phone
+    assert "고주파" in radio and "스마트폰" not in radio
+    assert furniture is None
+
+
+def test_faq_entry_without_an_answer_is_not_published():
+    faq = """<div class="faq-accordion-dropdown-section-v2"><h4>Question without an answer?</h4></div>
+    <div class="faq-accordion-dropdown-section-v2"><h4>How does NASA invest in SpaceX?</h4><div class="faq-accordion-content-text">Exposure through a special purpose vehicle.</div></div>"""
+    fund = research_module.parse_tema_fund(TEMA_SAMPLE + faq, "NASA")
+    assert fund["faq"] == [
+        {"question": "How does NASA invest in SpaceX?", "answer": "Exposure through a special purpose vehicle."}
+    ]
+
+
+def test_official_fund_page_is_fetched_from_the_registered_url(monkeypatch):
+    requested = []
+
+    def get(url, **kwargs):
+        requested.append((url, kwargs))
+        return SimpleNamespace(text=TEMA_SAMPLE, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(requests, "get", get)
+    fund = research_module._collect_tema_fund("NASA")
+    assert requested == [(research_module.TEMA_URL, {"timeout": 20})]
+    assert fund["holdings_as_of"] == "2026-01-01"
+
+
+# ── 수집기: 가격·신원·펀드·뉴스 결손 ────────────────────────────────────────
+
+
+def test_absent_price_frame_is_an_empty_history():
+    assert research_module._prices(None) == []
+
+
+@pytest.mark.parametrize("history", [pd.DataFrame(), RuntimeError("timeout")])
+def test_missing_price_history_is_reported_as_unavailable(provider, history):
+    if isinstance(history, Exception):
+        provider.history.side_effect = history
+    else:
+        provider.history.return_value = history
+    result = CompanyResearchCollector().collect(ticker="DEMO")[0]
+    assert result["price_history"] == []
+    assert "prices" in result["unavailable"]
+
+
+def test_price_rows_with_missing_values_are_dropped(provider):
+    index = pd.DatetimeIndex(["2026-01-02", "2026-01-05"]).tz_localize("America/New_York")
+    provider.history.return_value = pd.DataFrame(
+        {
+            "Open": [10.0, 11.0],
+            "High": [12.0, 12.5],
+            "Low": [9.0, 10.5],
+            "Close": [float("nan"), 12.0],
+            "Volume": [100.0, 120.0],
+        },
+        index=index,
+    )
+    result = CompanyResearchCollector().collect(ticker="DEMO")[0]
+    assert [row["date"] for row in result["price_history"]] == ["2026-01-05"]
+
+
+KOREAN_PROFILE = {
+    "name": "샘플기업",
+    "quote_type": "EQUITY",
+    "source_url": "https://stock.naver.com/domestic/stock/000001",
+    "description": "샘플 사업 설명",
+    "exchange": "KS",
+    "fund": None,
+}
+
+
+def test_korean_provider_supplies_identity_when_yahoo_profile_fails(provider, monkeypatch):
+    requested = []
+    monkeypatch.setattr(
+        research_module, "collect_korean_profile", lambda symbol: (requested.append(symbol), KOREAN_PROFILE)[1]
+    )
+    monkeypatch.setattr(type(provider), "info", PropertyMock(side_effect=RuntimeError("provider down")), raising=False)
+    result = CompanyResearchCollector().collect(ticker="000001.ks")[0]
+    assert requested == ["000001.KS"]
+    profile = result["profile"]
+    assert (profile["name"], profile["display_name"], profile["description"]) == (
+        "샘플기업",
+        "샘플기업",
+        "샘플 사업 설명",
+    )
+    assert (profile["country"], profile["currency"], profile["exchange"]) == ("South Korea", "KRW", "KS")
+    assert profile["identity_source_url"] == KOREAN_PROFILE["source_url"]
+    assert "profile" in result["unavailable"]
+
+
+def test_yahoo_profile_for_another_symbol_is_discarded_for_a_korean_listing(provider, monkeypatch):
+    monkeypatch.setattr(research_module, "collect_korean_profile", lambda symbol: KOREAN_PROFILE)
+    provider.info = {
+        "symbol": "OTHER",
+        "longName": "Other Corporation",
+        "sector": "Technology",
+        "longBusinessSummary": "Other business.",
+    }
+    profile = CompanyResearchCollector().collect(ticker="000001.KS")[0]["profile"]
+    assert (profile["name"], profile["description"], profile["sector"]) == ("샘플기업", "샘플 사업 설명", None)
+
+
+def test_korean_provider_failure_is_recorded_and_public_name_drives_news_search(provider, monkeypatch):
+    def unavailable(symbol):
+        raise RuntimeError("provider down")
+
+    names, searched = [], []
+    monkeypatch.setattr(research_module, "collect_korean_profile", unavailable)
+    monkeypatch.setattr(research_module, "public_display_name", lambda symbol: (names.append(symbol), "샘플기업")[1])
+    monkeypatch.setattr(
+        research_module, "_collect_recent_news", lambda ticker, name: (searched.append((ticker, name)), [])[1]
+    )
+    provider.info = {"symbol": "000001.KS", "longName": "Sample Corporation"}
+    result = CompanyResearchCollector().collect(ticker="000001.KS")[0]
+    assert "korean_profile" in result["unavailable"]
+    assert (result["profile"]["name"], result["profile"]["display_name"]) == ("Sample Corporation", "샘플기업")
+    assert result["profile"]["country"] is None
+    assert names == ["000001.KS"]
+    assert searched == [("000001.KS", "샘플기업")]
+
+
+def test_profile_failure_without_another_identity_source_propagates(provider, monkeypatch):
+    monkeypatch.setattr(type(provider), "info", PropertyMock(side_effect=RuntimeError("provider down")), raising=False)
+    with pytest.raises(RuntimeError, match="provider down"):
+        CompanyResearchCollector().collect(ticker="DEMO")
+
+
+def test_official_fund_page_failure_is_logged_and_yahoo_holdings_are_used(provider, monkeypatch, caplog):
+    """공식 운용사 페이지가 실패하면 경고를 남기고 Yahoo 보유 종목으로 채운다.
+
+    `unavailable` 의 키는 단정하지 않는다 — 지금은 Yahoo 가 채운 뒤에도 일반 "fund" 가 남아
+    화면이 ETF 운용 자료를 없는 것으로 읽는다(프런트 라벨에는 `fund_official` 이 따로 있다).
+    결함 후보라 정답으로 박지 않는다 (#1756).
+    """
+    requested = []
+
+    def unreachable(url, **kwargs):
+        requested.append(url)
+        raise requests.ConnectionError("unreachable")
+
+    monkeypatch.setattr(requests, "get", unreachable)
+    provider.info = {"symbol": "NASA", "longName": "Source Fund", "quoteType": "ETF"}
+    provider.funds_data.top_holdings = pd.DataFrame(
+        {"Name": ["Sample Holding"], "Holding Percent": [0.25]}, index=pd.Index(["AAA"])
+    )
+    with caplog.at_level(logging.WARNING, logger="nuri.collectors.company_research"):
+        data = CompanyResearchCollector().collect(ticker="NASA")[0]
+    assert requested == [research_module.TEMA_URL]
+    assert "공식 ETF 자료 조회 실패: NASA" in caplog.text
+    assert (data["fund"]["source_name"], data["fund"]["source_url"]) == (
+        "Yahoo Finance",
+        "https://finance.yahoo.com/quote/NASA/holdings/",
+    )
+    assert data["fund"]["holdings"] == [{"name": "Sample Holding", "weight_pct": 25.0}]
+    assert data["profile"]["name"] == "Source Fund"
+
+
+def test_etf_without_an_official_adapter_uses_yahoo_top_holdings(provider):
+    provider.info = {
+        "symbol": "FUND",
+        "longName": "Sample Fund",
+        "quoteType": "ETF",
+        "currency": "USD",
+        "totalAssets": 5_000_000,
+    }
+    provider.funds_data.top_holdings = pd.DataFrame(
+        {"Name": ["Sample Holding", None, "Unparsed Weight"], "Holding Percent": [0.25, 0.125, "n/a"]},
+        index=pd.Index(["AAA", "BBB", "CCC"]),
+    )
+    data = CompanyResearchCollector().collect(ticker="FUND")[0]
+    fund = data["fund"]
+    assert (fund["source_name"], fund["source_url"]) == (
+        "Yahoo Finance",
+        "https://finance.yahoo.com/quote/FUND/holdings/",
+    )
+    assert (fund["aum"], fund["currency"]) == (5_000_000, "USD")
+    assert fund["holdings"] == [{"name": "Sample Holding", "weight_pct": 25.0}, {"name": "BBB", "weight_pct": 12.5}]
+    assert data["statements"] == {"income": [], "cashflow": [], "balance": []}
+    assert data["business"] is None
+    assert data["unavailable"] == []
+    provider.get_income_stmt.assert_not_called()
+
+
+def test_fund_holdings_failure_is_reported_as_unavailable(provider):
+    class NoHoldings:
+        @property
+        def top_holdings(self):
+            raise RuntimeError("holdings unavailable")
+
+    provider.info = {"symbol": "FUND", "longName": "Sample Fund", "quoteType": "ETF"}
+    provider.funds_data = NoHoldings()
+    data = CompanyResearchCollector().collect(ticker="FUND")[0]
+    assert data["fund"] is None
+    assert data["unavailable"] == ["fund"]
+
+
+def test_yahoo_news_accepts_epoch_dates_and_skips_malformed_items(provider):
+    flat = {
+        "title": "Flat report",
+        "link": "https://example.com/flat",
+        "publisher": "Publisher",
+        "providerPublishTime": int(kst_now().timestamp()),
+    }
+    provider.get_news.return_value = [
+        "not a news item",
+        flat,
+        {**flat, "title": "Zero epoch", "providerPublishTime": 0},
+        {**flat, "title": "Missing epoch", "providerPublishTime": None},
+        {**flat, "title": "Infinite epoch", "providerPublishTime": float("inf")},
+    ]
+    news = CompanyResearchCollector().collect(ticker="DEMO")[0]["news"]
+    # 발행 시각이 없거나 잘못된 기사에 오늘 날짜를 붙이지 않는다.
+    assert [(item["title"], item["date"]) for item in news] == [("Flat report", today_kst())]
+
+
+def test_yahoo_news_failure_is_reported_while_search_results_are_kept(provider, monkeypatch):
+    provider.get_news.side_effect = RuntimeError("rate limited")
+    current = {
+        "date": today_kst(),
+        "title": "Search result",
+        "url": "https://example.com/current",
+        "source": "Publisher",
+    }
+    monkeypatch.setattr(research_module, "_collect_recent_news", lambda ticker, name: [current])
+    result = CompanyResearchCollector().collect(ticker="DEMO")[0]
+    assert result["news"] == [current]
+    assert result["news_check"]["failed_sources"] == ["Yahoo Finance"]
+    assert "news" in result["unavailable"]

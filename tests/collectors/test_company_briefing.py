@@ -1,9 +1,14 @@
 """기업별 고정 문장 없이 공급자 사업 문구를 한국어로 읽는다."""
 
-import pytest
+import json
+from types import SimpleNamespace
 
-from nuri.collectors.company_briefing import describe_business
-from nuri.collectors.korean_research import parse_korean_profile
+import pytest
+import requests
+
+from nuri.collectors import company_briefing
+from nuri.collectors.company_briefing import describe_business, public_display_name
+from nuri.collectors.korean_research import collect_korean_profile, parse_korean_profile
 
 
 def test_automotive_financing_context_depends_on_actual_description():
@@ -82,3 +87,84 @@ def test_asset_type_mismatch_is_not_a_company():
     integration["stockEndType"] = "stock"
     with pytest.raises(ValueError):
         parse_korean_profile("000001.KS", basic, integration)
+
+
+@pytest.fixture
+def name_map(tmp_path, monkeypatch):
+    """`config/kr_ticker_names.json` 은 gitignored 라 CI 에 없다 — 모듈 위치를 tmp 로 옮겨 픽스처 맵을 읽게 한다."""
+    monkeypatch.setattr(company_briefing, "__file__", str(tmp_path / "nuri" / "collectors" / "company_briefing.py"))
+    (tmp_path / "config").mkdir()
+    return tmp_path / "config" / "kr_ticker_names.json"
+
+
+def test_display_name_comes_only_from_a_non_blank_public_map_entry(name_map):
+    name_map.write_text(
+        json.dumps({"000001.KS": "샘플기업", "000002.KQ": "  ", "000003.KS": 3, "DEMO": "Demo Company"})
+    )
+    assert public_display_name("000001.KS") == "샘플기업"
+    assert public_display_name("000002.KQ") is None
+    assert public_display_name("000003.KS") is None
+    assert public_display_name("000004.KS") is None
+    assert public_display_name("DEMO") is None  # 맵에 있어도 국내 심볼이 아니면 읽지 않는다
+
+
+@pytest.mark.parametrize("content", [None, "{broken"])
+def test_missing_or_corrupt_name_map_yields_no_name(name_map, content):
+    if content is not None:
+        name_map.write_text(content)
+    assert public_display_name("000001.KS") is None
+
+
+def test_korean_equity_keeps_provider_identity_without_fund_fields():
+    basic = {
+        "itemCode": "000001",
+        "stockName": "샘플기업",
+        "stockEndType": "stock",
+        "stockExchangeType": {"code": "KQ"},
+    }
+    integration = {"itemCode": "000001", "stockEndType": "stock", "description": "샘플 사업 설명"}
+    assert parse_korean_profile("000001.KQ", basic, integration) == {
+        "name": "샘플기업",
+        "quote_type": "EQUITY",
+        "source_url": "https://stock.naver.com/domestic/stock/000001",
+        "description": "샘플 사업 설명",
+        "exchange": "KQ",
+        "fund": None,
+    }
+
+
+def test_unparseable_provider_numbers_stay_unknown_instead_of_zero():
+    basic, integration = korean_sample()
+    integration["etfKeyIndicator"] = {"totalFee": "-", "nav": None, "deviationRate": "0.25%"}
+    fund = parse_korean_profile("000001.KS", basic, integration)["fund"]
+    assert fund["expense_pct"] is None
+    assert fund["nav"] is None
+    assert fund["deviation_pct"] == 0.25
+
+
+@pytest.mark.parametrize("symbol", ["5930.KS", "000001.KX", "000001", "00000/.KS"])
+def test_unsupported_korean_symbol_is_refused_before_any_request(monkeypatch, symbol):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("network must not be reached")
+
+    monkeypatch.setattr(requests, "get", unexpected)
+    with pytest.raises(ValueError, match="Unsupported Korean symbol"):
+        collect_korean_profile(symbol)
+
+
+def test_korean_profile_reads_both_public_endpoints(monkeypatch):
+    basic, integration = korean_sample()
+    payloads = {"basic": basic, "integration": integration}
+    requested = []
+
+    def get(url, **kwargs):
+        requested.append((url, kwargs))
+        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: payloads[url.rsplit("/", 1)[-1]])
+
+    monkeypatch.setattr(requests, "get", get)
+    result = collect_korean_profile("000001.KS")
+    assert (result["name"], result["quote_type"], result["exchange"]) == ("샘플 ETF", "ETF", "KS")
+    assert requested == [
+        ("https://m.stock.naver.com/api/stock/000001/basic", {"timeout": 8}),
+        ("https://m.stock.naver.com/api/stock/000001/integration", {"timeout": 8}),
+    ]
