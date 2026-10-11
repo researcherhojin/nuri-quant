@@ -1,4 +1,5 @@
 """Tests for external — split from test_api_all.py."""
+
 import asyncio
 import json
 import time as _time
@@ -31,8 +32,10 @@ class TestExternalAPI_R22:
     @pytest.fixture()
     def _client(self, db_path, monkeypatch):
         import nuri.core.db as db_mod
+
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
         from nuri.api.main import app
+
         return TestClient(app)
 
     def test_get_external_summary(self, _client, monkeypatch):
@@ -57,21 +60,27 @@ class TestExternalAPI_R22:
     def test_save_external_data(self, _client, monkeypatch):
         monkeypatch.setattr("nuri.collectors.external.save_external", lambda **kw: True)
         monkeypatch.setattr("nuri.core.db.audit_log", lambda *a, **kw: None)
-        resp = _client.post("/api/external", json={
-            "source": "tipranks",
-            "ticker": "AAPL",
-            "data_type": "consensus",
-            "value": "Strong Buy",
-        })
+        resp = _client.post(
+            "/api/external",
+            json={
+                "source": "tipranks",
+                "ticker": "AAPL",
+                "data_type": "consensus",
+                "value": "Strong Buy",
+            },
+        )
         assert resp.status_code == 200
         assert resp.json()["ok"] is True
 
     def test_save_tipranks_batch(self, _client, monkeypatch):
         monkeypatch.setattr("nuri.collectors.external.save_tipranks", lambda **kw: True)
-        resp = _client.post("/api/external/tipranks", json=[
-            {"ticker": "AAPL", "consensus": "Buy", "target_price": "200.0", "analyst_count": 30},
-            {"ticker": "MSFT", "consensus": "Strong Buy", "target_price": "400.0"},
-        ])
+        resp = _client.post(
+            "/api/external/tipranks",
+            json=[
+                {"ticker": "AAPL", "consensus": "Buy", "target_price": "200.0", "analyst_count": 30},
+                {"ticker": "MSFT", "consensus": "Strong Buy", "target_price": "400.0"},
+            ],
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["saved"] == 2
@@ -83,10 +92,13 @@ class TestExternalAPI_R22:
             return True
 
         monkeypatch.setattr("nuri.collectors.external.save_tipranks", bad_save)
-        resp = _client.post("/api/external/tipranks", json=[
-            {"ticker": "AAPL", "consensus": "Buy", "target_price": "200.0"},
-            {"ticker": "MSFT", "consensus": "Buy", "target_price": "300.0"},
-        ])
+        resp = _client.post(
+            "/api/external/tipranks",
+            json=[
+                {"ticker": "AAPL", "consensus": "Buy", "target_price": "200.0"},
+                {"ticker": "MSFT", "consensus": "Buy", "target_price": "300.0"},
+            ],
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert data["saved"] == 1
