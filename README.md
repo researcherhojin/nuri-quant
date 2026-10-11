@@ -175,7 +175,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,760 collected across 432 files |
+| Backend tests | 8,797 collected across 433 files |
 | Frontend test files | 118 vitest files |
 | Data collectors | 31 collectors (BaseCollector pattern) |
 | Scheduler jobs | 59 cron entries |

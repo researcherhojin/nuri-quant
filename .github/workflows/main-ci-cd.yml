@@ -176,6 +176,17 @@ jobs:
           echo "✓ Paths rewritten to repo-root-relative"
           head -3 coverage/lcov.info
 
+      # Patch Coverage 잡이 Codecov 와 같은 입력으로 patch 를 다시 센다 (#1766)
+      - name: Keep lcov for the patch coverage gate
+        if: needs.changes.outputs.run_frontend == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          # uses steps ignore defaults.run.working-directory — must be repo-root-relative
+          name: frontend-lcov
+          path: frontend/coverage/lcov.info
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload coverage to Codecov
         if: needs.changes.outputs.run_frontend == 'true' && always()
         uses: codecov/codecov-action@v7
@@ -898,6 +909,15 @@ jobs:
           .venv/bin/python -m coverage xml -o coverage.xml
           .venv/bin/python -m coverage report --skip-empty | tail -5
 
+      # Patch Coverage 잡이 Codecov 와 같은 입력으로 patch 를 다시 센다 (#1766)
+      - name: Keep coverage.xml for the patch coverage gate
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-coverage-xml
+          path: coverage.xml
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload merged coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v7
@@ -949,6 +969,85 @@ jobs:
             exit 1
           fi
           echo "✓ backend tests passed (or skipped) — fast=$fast slow=$slow"
+
+  # ── Patch Coverage (#1766) ──
+  # codecov.yml 의 patch target 을 CI 안에서 강제한다. `codecov/patch` 상태를 required 로
+  # 걸지 않는 이유 (2026-10-11 실측): 커버리지 업로드가 없는 PR(문서만, #1752)에는 상태가 아예
+  # 안 붙어 영원히 대기하고, 붙는 PR 도 업로드 처리 뒤 비동기로 붙어 auto-merge 보다 늦다
+  # (#1762 · #1765). Codecov 가 받는 것과 같은 lcov.info · coverage.xml 과 PR diff 로 같은
+  # 셈(hit / (hit + miss + partial))을 한다 — scripts/ci/patch_coverage_gate.py. #1735 · #1758 ·
+  # #1762 · #1765 재생에서 Codecov 와 줄 단위까지 같은 값이 나왔다.
+  # PR 의 백엔드 커버리지는 fast 샤드뿐이다 (slow 는 push 에서만) — Codecov 의 PR patch 도 같다.
+  patch-coverage:
+    name: Patch Coverage
+    needs: [changes, frontend-tests, backend-tests, backend-coverage-merge]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      MEASURE: ${{ github.event_name == 'pull_request' && (needs.changes.outputs.run_backend == 'true' || needs.changes.outputs.run_frontend == 'true') }}
+    steps:
+      - name: Guard — require changes to succeed
+        if: needs.changes.result != 'success'
+        run: |
+          echo "::error::changes job did not succeed (result=${{ needs.changes.result }}) — cannot verify gates"
+          exit 1
+
+      - name: Skip notice (not a PR, or no coverage produced)
+        if: env.MEASURE != 'true'
+        run: echo "✓ No PR coverage to check — patch coverage not affected"
+
+      # 생산 잡이 실패했으면 반쪽 커버리지로 세지 않는다 — 판정 불가로 닫는다. Coverage Aggregate 는
+      # 샤드 하나가 죽어도 남은 artifact 로 합쳐 성공하므로, 샤드 결과를 모은 Backend Tests 까지 본다.
+      - name: Require the coverage producers to succeed
+        if: env.MEASURE == 'true'
+        run: |
+          fe="${{ needs.frontend-tests.result }}"
+          bt="${{ needs.backend-tests.result }}"
+          be="${{ needs.backend-coverage-merge.result }}"
+          if [[ "${{ needs.changes.outputs.run_frontend }}" == "true" && "$fe" != "success" ]]; then
+            echo "::error::frontend coverage unavailable (Frontend Tests result=$fe)"
+            exit 1
+          fi
+          if [[ "${{ needs.changes.outputs.run_backend }}" == "true" && ( "$bt" != "success" || "$be" != "success" ) ]]; then
+            echo "::error::backend coverage unavailable or incomplete (Backend Tests result=$bt, Coverage Aggregate result=$be)"
+            exit 1
+          fi
+          echo "✓ coverage producers: frontend=$fe backend-tests=$bt aggregate=$be"
+
+      # PR 은 merge 커밋을 체크아웃한다 — 첫 부모가 base 라 HEAD^1..HEAD 가 곧 PR diff 다
+      - uses: actions/checkout@v7
+        if: env.MEASURE == 'true'
+        with:
+          fetch-depth: 2
+
+      - name: Download frontend lcov
+        if: env.MEASURE == 'true' && needs.changes.outputs.run_frontend == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: frontend-lcov
+          path: patch-cov/frontend
+
+      - name: Download backend coverage.xml
+        if: env.MEASURE == 'true' && needs.changes.outputs.run_backend == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: backend-coverage-xml
+          path: patch-cov/backend
+
+      - name: Setup backend env (uv + TA-Lib + venv)
+        if: env.MEASURE == 'true'
+        uses: ./.github/actions/setup-backend-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check patch coverage against codecov.yml
+        if: env.MEASURE == 'true'
+        run: |
+          args=()
+          if [[ "${{ needs.changes.outputs.run_frontend }}" == "true" ]]; then args+=(--lcov patch-cov/frontend/lcov.info); fi
+          if [[ "${{ needs.changes.outputs.run_backend }}" == "true" ]]; then args+=(--coverage-xml patch-cov/backend/coverage.xml); fi
+          .venv/bin/python scripts/ci/patch_coverage_gate.py "${args[@]}"
 
   # ─── Security ───
 

@@ -16,7 +16,7 @@ scripts/
 ├── analysis/            # one-off analysis (comparison)
 ├── dev/                 # dev tooling (setup, ci_local, codex review)
 ├── doc/                 # doc count sync + portfolio/universe validation
-├── ci/                  # CI helpers (test duration merge)
+├── ci/                  # CI helpers (test duration merge, patch coverage gate)
 ├── episodes/            # historical experiments (e3_*/e4_*/pr_f_*)
 ├── launchd/             # macOS plist + LaunchAgent/LaunchDaemon install
 ├── hooks/               # git hooks (pre-commit, pre-push)
@@ -122,6 +122,7 @@ scripts/
 | Script | Purpose | Use |
 |---|---|---|
 | `merge_test_durations.py` | CI shard 별 duration 파일 병합 | `make sync-test-durations-from-ci` |
+| `patch_coverage_gate.py` | PR 의 patch coverage 를 `codecov.yml` target 으로 판정 (#1766) | CI `Patch Coverage` |
 
 ## episodes/ — historical experiments (archived)
 

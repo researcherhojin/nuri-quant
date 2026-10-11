@@ -38,6 +38,13 @@ REQUIRED_CHECKS = {
     "Doc Count Drift Check",
     "Privacy Leak Scan",
     "Frontend Lint",
+    # 2026-10-12 실측으로 맞춤 — 위 10개만 적혀 있는 동안 아래 4개는 이 감사 밖이었다
+    "uv.lock Major Boundary",
+    "package-lock.json Major Boundary",
+    "Local-LLM Build Gate",
+    "Quick Checks",
+    # 아직 required 가 아니다(shadow, #1766) — 보호 규칙에 들어가기 전부터 같은 기준으로 감사한다
+    "Patch Coverage",
 }
 
 

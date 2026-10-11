@@ -76,6 +76,8 @@ pytest --cov --cov-branch nuri/api/routes/evidence.py   60  0  28  1   99%   ←
 
 codecov 는 이 파일을 `"lines":7,"hits":6,"misses":0,"partials":1` → **85.71%** 로 보고했다. PR #1123·#1124 가 이 착시로 CI 를 한 바퀴 더 돌았다. **ad-hoc 으로 커버리지를 잴 때는 `--cov-branch` 를 붙일 것** (CI 는 `main-ci-cd.yml` 에서 항상 붙인다).
 
+PR 의 patch 는 CI 의 `Patch Coverage` 잡이 Codecov 와 같은 셈으로 다시 센다 (#1766, `scripts/ci/patch_coverage_gate.py` — #1735 를 재생하면 Codecov 와 똑같이 1621/208/161 이 나온다). 푸시 전에 미리 보려면 `--cov-report=xml` 로 만든 XML 과 vitest 의 `frontend/coverage/lcov.info`(SF 를 `frontend/src/` 로 고친 것)를 넘긴다: `python scripts/ci/patch_coverage_gate.py --coverage-xml coverage.xml --lcov lcov.info --base "$(git merge-base origin/main HEAD)"` (main 이 앞서 나갔으면 `origin/main` 그대로는 그 변경까지 뒤집어 센다). **PR 의 백엔드 커버리지는 fast 샤드뿐이다** — slow 테스트만 닿는 줄은 PR 에서 miss 로 센다(Codecov 의 PR patch 도 같다).
+
 부분 분기는 대개 "루프가 한 바퀴 돌고도 매칭 없이 빠져나가는 arc" 처럼 **테스트가 한 방향만 밟은 조건문**이다. `# pragma: no cover` 는 진짜로 트리거 불가능한 방어 코드에만 쓴다 — 실행 가능한 경로는 테스트로 덮는다.
 
 ## Gotchas
