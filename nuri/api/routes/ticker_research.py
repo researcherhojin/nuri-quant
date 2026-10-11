@@ -159,6 +159,8 @@ def _stored_briefing(ticker: str, dossier: dict | None) -> dict | None:
         return None
     try:
         result = json.loads(rows[0]["details"])
+        if not isinstance(result, dict):
+            return None  # 객체가 아닌 JSON(null · [] · "text")도 손상 행이다 — 페이지 전체를 500 으로 죽이지 않는다 (#1755)
         if (
             result.get("evidence_hash") != evidence_hash(public_bundle(dossier))
             or result.get("prompt_version") != VERSION
