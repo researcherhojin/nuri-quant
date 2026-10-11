@@ -74,21 +74,27 @@ class TestComputeWeightsAllCanonical:
 
 
 class TestLearningMemoryInvalidSchema:
-    def test_invalid_schema_rows_skipped(self, db_path):
-        """`agent_verdicts` 가 list 가 아닌 row → skip (lines 81-82).
+    def test_invalid_schema_rows_skipped(self, db_path, caplog):
+        """`agent_verdicts` 가 list 가 아닌 row → schema skip 으로 세고, 나머지 row 는 정상 집계.
 
-        `_compute_horizon_eligibility` 의 schema gate 가 invalid JSON dict 를 반려.
+        시드 날짜는 오늘 기준이어야 한다 — 쿼리가 `date('now', -lookback)` 창이라 리터럴
+        "2026-04-01" 은 2026-09-28 부터 창 밖으로 밀려 이 테스트가 0행을 읽으며 초록이었다
+        (단언이 `isinstance(elig, dict)` 뿐이라 아무도 몰랐다 — tests/CLAUDE.md time-bomb 계열).
         """
+        import logging
+
         from nuri.core.db.connection import get_db
+        from nuri.core.timezone import today_kst
         from nuri.trading.agents.consensus.learning_memory import _compute_horizon_eligibility
 
+        today = today_kst()
         # 1 invalid (dict, not list) + N valid rows for canonical_30d horizon
         with get_db(db_path) as conn:
             conn.execute(
                 """INSERT INTO recommendations
                    (ticker, action, confidence, agent_verdicts, outcome_30d, date)
                    VALUES (?, ?, ?, ?, ?, ?)""",
-                ("AAA", "BUY", 70, '{"not": "a list"}', 0.05, "2026-04-01"),
+                ("AAA", "BUY", 70, '{"not": "a list"}', 0.05, today),
             )
             for i in range(15):
                 conn.execute(
@@ -101,18 +107,20 @@ class TestLearningMemoryInvalidSchema:
                         70,
                         '[{"agent_name": "technical", "action": "BUY", "confidence": 80}]',
                         0.05,
-                        "2026-04-01",
+                        today,
                     ),
                 )
 
-        # 호출만 정상 통과되면 invalid row 가 skip 된 것 — eligibility map 을 받음.
-        elig = _compute_horizon_eligibility(
-            outcome_col="outcome_30d",
-            adjustment_range=0.30,
-            label="canonical_30d",
-            db_path=db_path,
-        )
-        assert isinstance(elig, dict)
+        with caplog.at_level(logging.INFO, logger="nuri.trading.agents.consensus.learning_memory"):
+            elig = _compute_horizon_eligibility(
+                outcome_col="outcome_30d",
+                adjustment_range=0.30,
+                label="canonical_30d",
+                db_path=db_path,
+            )
+
+        assert "rows_seen=16 rows_parsed=15 rows_skipped_schema=1" in caplog.text
+        assert (elig["technical"].sample_count, elig["technical"].eligible) == (15, True)
 
 
 # ─── presentation: supporters empty / ticker not in external data ──────────
@@ -457,3 +465,45 @@ class TestFutureResultExceptionFallback:
             assert v.action == "HOLD"
             assert v.confidence == 0
             assert "에러:" in v.reasoning
+
+
+# ─── presentation: external rows that render nothing ──────────────────────
+
+
+def test_external_rows_that_render_nothing_leave_no_line(capsys, monkeypatch):
+    """TipRanks 가 아닌 목표가와 모르는 data_type 은 표시하지 않는다 — 그것뿐인 종목은 줄 자체를 내지 않는다."""
+    from nuri.trading.agents.consensus import ConsensusResult, print_consensus
+
+    results = [
+        ConsensusResult(
+            ticker=t,
+            final_action="HOLD",
+            final_confidence=50.0,
+            agreement_rate=0.5,
+            verdicts=[],
+            dissent=[],
+            reasoning="",
+            divergence_flag=False,
+            divergence_reason="",
+            penalty_applied=False,
+            pre_penalty_action="",
+            scoring_detail=None,
+        )
+        for t in ("AAA", "CCC")
+    ]
+
+    def fake_get_external(ticker):
+        if ticker == "AAA":
+            return [
+                {"data_type": "target_price", "source": "tipranks", "numeric_value": 250.0, "value": "250"},
+                {"data_type": "target_price", "source": "other_vendor", "numeric_value": 999.0, "value": "999"},
+            ]
+        return [{"data_type": "news_sentiment", "source": "other_vendor", "value": "positive"}]
+
+    monkeypatch.setattr("nuri.collectors.external.get_external", fake_get_external)
+
+    print_consensus(results, verbose=False)
+
+    section = capsys.readouterr().out.split("External Data (2 tickers)")[1]
+    assert "목표가:$250" in section and "$999" not in section
+    assert "CCC" not in section

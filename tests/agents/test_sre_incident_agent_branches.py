@@ -362,3 +362,46 @@ class TestCliBranches:
         with patch.object(SREIncidentAgent, "run", return_value=warn_result):
             rc = main(["scan"])
         assert rc == 1
+
+
+# ════════════════════════════════════════════════════════════
+# _auto_resolve — 다른 경로가 먼저 닫은 행 / _pid_alive — 남의 프로세스
+# ════════════════════════════════════════════════════════════
+
+
+class TestAutoResolveRace:
+    def test_a_row_another_writer_already_closed_is_not_reported_as_resolved(self, patched_db):
+        """후보 조회와 resolve 사이에 다른 경로(사람 resolve·다른 스캔)가 먼저 닫으면 resolve 는 False 다
+        — 그 행을 '이번에 닫았다' 로 보고하지도, 오류로 세지도 않는다."""
+        from nuri.core.db import get_db, log_incident
+
+        log_incident(
+            incident_type="orphan_run",
+            severity="warning",
+            target="gone-actor",
+            evidence={"seeded": True},
+            db_path=patched_db,
+        )
+        with get_db(patched_db) as conn:
+            conn.execute("UPDATE incidents SET last_detected_at = datetime('now', '-48 hours')")
+
+        with patch("nuri.agents.actors.sre_incident_agent.db_resolve_incident", return_value=False) as resolve:
+            resolved, errors = SREIncidentAgent()._auto_resolve([], failed_detectors=set())
+
+        assert resolve.call_count == 1
+        assert (resolved, errors) == ([], [])
+
+
+class TestPidAlive:
+    def test_a_pid_owned_by_another_user_counts_as_alive(self, monkeypatch):
+        """`kill -0` 이 EPERM 이면 프로세스는 있다 — 남의 빌드 락을 죽은 것으로 보면 진행 중인 빌드를 덮친다."""
+        import os
+
+        from nuri.agents.actors.sre_incident_agent import _pid_alive
+
+        def eperm(pid, sig):
+            raise PermissionError(1, "Operation not permitted")
+
+        monkeypatch.setattr(os, "kill", eperm)
+
+        assert _pid_alive("4242") is True

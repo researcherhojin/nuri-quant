@@ -756,3 +756,33 @@ class TestVerdictBranches:
         assert report["p_value"] < report["p_max"]
         # 통과해도 판정일 전이면 표출은 진행 리포트 — 조기 승격 금지 (§3.11 원안 4번)
         assert report["verdict"] == "PROGRESS_REPORT"
+
+
+# ═══════════════════════════════════════════════════════
+# 치환 후보 자격 · 치환 불가 블록의 null 기여
+# ═══════════════════════════════════════════════════════
+
+
+class TestPlaceboEdges:
+    def test_a_substitute_without_a_price_at_every_window_end_is_not_eligible(self, seeded):
+        """창 끝 가격이 하나라도 없으면 그 ticker 는 블록의 치환 후보가 아니다 — 중간에 터지면 null 이 깨진다."""
+        _seed_prices(seeded, "SHORTLIVED", "2026-07-01", 10, 20.0, 0.001)  # 7/14 에서 끊긴다
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        book = da.PriceBook(db_path=seeded)
+
+        eligible = da._eligible_substitutes(book, da._blocks(s.decisions), 30, "SPY", db_path=seeded)
+
+        assert "SHORTLIVED" not in eligible["TSLA"]
+        assert "AAA" in eligible["TSLA"]
+
+    def test_a_block_without_substitutes_keeps_only_its_own_observed_alphas(self, seeded, monkeypatch):
+        """치환 불가 블록은 **그 블록의** 실측 alpha 만 null 에 남는다 — 다른 ticker 의 실측을 끌어오면
+        null 평균이 실측 쪽으로 이중 편향된다."""
+        s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
+        monkeypatch.setattr(da, "_eligible_substitutes", lambda *a, **k: {"TSLA": [], "NVDA": ["AAA"]})
+
+        r = da.ticker_block_placebo(s, n_perm=3, seed=1, db_path=seeded)
+
+        placebo = da._placebo_alpha(da.PriceBook(db_path=seeded), "AAA", EMIT_1, 30, "SPY")
+        assert r.skipped_blocks == ["TSLA"]
+        assert r.null_means == pytest.approx([(0.05 + 0.08 + 0.03 + placebo) / 4] * 3)
