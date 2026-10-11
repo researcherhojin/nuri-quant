@@ -1,6 +1,14 @@
 // cspell:words MUTUALFUND
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { OVERVIEW, TICKER_PREVIEW as T } from "../src/lib/strings";
+
+// SSR 마크업은 하이드레이션 전에도 aria-selected 를 갖고 있어 "보인다" 가 "하이드레이션 끝" 이 아니다.
+// 그 전에 뒤로 가면 Next 라우터의 첫 커밋(HistoryUpdater 의 replaceState)이 방금 돌아간 기록 항목의
+// URL 을 리로드한 URL 로 덮어쓴다 — CI trace 에서 goBack 이 tab=history 로 간 직후 tab=research 로
+// 돌아왔다 (#1760). 라우트 어나운서는 그 첫 커밋 뒤 effect 에서 붙는다.
+async function hydrated(page: Page) {
+  await page.locator("next-route-announcer").waitFor({ state: "attached" });
+}
 
 test("ticker tab URL survives reload and restores the previous tab with browser Back", async ({ page }) => {
   // CI seed 와 universe.yaml 에 있는 종목만 쓴다 — 로컬 보유 종목은 CI 에 없다
@@ -8,11 +16,19 @@ test("ticker tab URL survives reload and restores the previous tab with browser 
   const main = page.getByRole("main");
 
   await expect(main.getByRole("tab", { name: T.HISTORY })).toHaveAttribute("aria-selected", "true");
+  await hydrated(page);
   await main.getByRole("tab", { name: T.RESEARCH }).click();
   await expect(page).toHaveURL(/bucket=portfolio&tab=research/);
+  // 리로드~뒤로 구간만 CPU 를 6배 늦춰 CI 의 느린 하이드레이션을 결정론적으로 만든다 — 아래 hydrated()
+  // 를 빼면 매번 FAIL 한다(8/8 실측). 대기가 있으면 1초대로 끝난다.
+  const cdp = await page.context().newCDPSession(page);
+
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
   await page.reload();
   await expect(main.getByRole("tab", { name: T.RESEARCH })).toHaveAttribute("aria-selected", "true");
+  await hydrated(page);
   await page.goBack();
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   // URL 먼저 — 실패하면 "뒤로가 안 됐다" 와 "URL 은 바뀌었는데 탭이 안 따라왔다" 를 구분한다 (#1750)
   await expect(page).toHaveURL(/tab=history/);
   await expect(main.getByRole("tab", { name: T.HISTORY })).toHaveAttribute("aria-selected", "true");
