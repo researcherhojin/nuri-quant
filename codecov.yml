@@ -20,7 +20,8 @@ coverage:
         threshold: 1%        # ±1% 이내 변동은 통과
     patch:
       default:
-        target: 100%         # 신규 코드는 전량 테스트 (엄밀 enforce — 미커버 diff 라인 0 허용)
+        target: 100%         # 신규 코드는 전량 테스트 (미커버 diff 라인 0 허용)
+                             # 강제는 CI 의 `Patch Coverage` 잡이 이 값을 읽어서 한다 (#1766)
         threshold: 0%        # 허용범위 없음. 진짜 방어용(트리거 불가) 라인만 `# pragma: no cover`
 
 # Backend = Python (nuri/), Frontend = TypeScript (frontend/src/)
