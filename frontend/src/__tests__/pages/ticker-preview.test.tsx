@@ -5,6 +5,7 @@ import { ResearchTabs } from "@/app/ticker-next/[symbol]/research-tabs";
 import { NewsItem } from "@/app/ticker-next/[symbol]/news-item";
 import { sourceUrl } from "@/app/ticker-next/[symbol]/briefing";
 import Page from "@/app/ticker-next/[symbol]/page";
+import Loading from "@/app/ticker-next/[symbol]/loading";
 import { Inbox } from "@/app/(overview)/inbox";
 import { TICKER_PREVIEW as T, CONSENSUS } from "@/lib/strings";
 
@@ -271,5 +272,77 @@ describe("ticker preview", () => {
 
     expect(within(selected).getByRole("heading")).toHaveTextContent("DEMO");
     expect(screen.getByRole("link", { name: T.BRIEF })).toHaveAttribute("href", "/ticker-next/DEMO?bucket=portfolio");
+  });
+
+  it("returns to Overview itself without a known bucket and flags a partially collected day", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({
+      ticker: "DEMO", today: "2026-01-06", collected_today: true,
+      dossier: { ticker: "DEMO", collected_at: "2026-01-06T09:00:00+09:00", unavailable: ["news"], profile: { name: "Demo Company", symbol: "DEMO" }, statements: { income: [], cashflow: [], balance: [] } },
+      news: [], events: [], fundamentals_history: [] }) } as Response);
+    render(await Page({ params: Promise.resolve({ symbol: "demo" }), searchParams: Promise.resolve({ bucket: "unknown-bucket" }) }));
+    expect(screen.getByRole("link", { name: T.BACK })).toHaveAttribute("href", "/");
+    expect(screen.getByText(T.DAILY_PARTIAL)).toBeInTheDocument();
+    expect(screen.queryByText(T.DAILY_CURRENT)).not.toBeInTheDocument();
+    expect(screen.getByText(T.PARTIAL)).toBeInTheDocument();
+  });
+
+  it("says a fully collected day is current and shows no partial-collection note", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: true, json: async () => ({
+      ticker: "DEMO", today: "2026-01-06", collected_today: true,
+      dossier: { ticker: "DEMO", collected_at: "2026-01-06T09:00:00+09:00", unavailable: [], profile: { name: "Demo Company", symbol: "DEMO" }, statements: { income: [], cashflow: [], balance: [] } },
+      news: [], events: [], fundamentals_history: [] }) } as Response);
+    render(await Page({ params: Promise.resolve({ symbol: "demo" }) }));
+    expect(screen.getByText(T.DAILY_CURRENT)).toBeInTheDocument();
+    expect(screen.queryByText(T.PARTIAL)).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [401, T.COLLECT_AUTH],
+    [403, T.COLLECT_AUTH],
+    [500, T.COLLECT_FAILED],
+  ])("explains a %i collection response without refreshing the page", async (status, message) => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as Response);
+    render(<CollectResearch symbol="DEMO" />);
+    fireEvent.click(screen.getByRole("button", { name: T.COLLECT }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(message));
+    expect(screen.getByRole("button", { name: T.COLLECT })).toBeEnabled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("reports a collection request that never reached the server", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("network down"));
+    render(<CollectResearch symbol="DEMO" />);
+    fireEvent.click(screen.getByRole("button", { name: T.COLLECT }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(T.COLLECT_FAILED));
+    expect(screen.getByRole("button", { name: T.COLLECT })).toBeEnabled();
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("does not add a history entry when the open tab is clicked again", () => {
+    render(<ResearchTabs brief={<p>brief fixture</p>} evidence={<p>evidence fixture</p>} research={<p>research fixture</p>} history={<p>history fixture</p>} />);
+    fireEvent.click(screen.getByRole("tab", { name: T.BRIEF }));
+    expect(window.history.pushState).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: T.BRIEF })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("wraps ArrowLeft to the last tab, jumps Home to the first, and leaves other keys to the browser", () => {
+    render(<ResearchTabs brief={<p>brief fixture</p>} evidence={<p>evidence fixture</p>} research={<p>research fixture</p>} history={<p>history fixture</p>} />);
+    fireEvent.keyDown(screen.getByRole("tab", { name: T.BRIEF }), { key: "ArrowLeft" });
+    expect(window.location.search).toBe("?bucket=portfolio&tab=history");
+    expect(screen.getByRole("tab", { name: T.HISTORY })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("tab", { name: T.HISTORY }), { key: "Home" });
+    expect(window.location.search).toBe("?bucket=portfolio&tab=brief");
+    expect(screen.getByRole("tab", { name: T.BRIEF })).toHaveFocus();
+    const pushes = vi.mocked(window.history.pushState).mock.calls.length;
+
+    // Tab 은 포커스 이동이라 막으면 키보드 사용자가 탭 목록에 갇힌다
+    expect(fireEvent.keyDown(screen.getByRole("tab", { name: T.BRIEF }), { key: "Tab" })).toBe(true);
+    expect(window.history.pushState).toHaveBeenCalledTimes(pushes);
+    expect(screen.getByRole("tab", { name: T.BRIEF })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("announces the loading skeleton as a status", () => {
+    render(<Loading />);
+    expect(screen.getByRole("status", { name: T.LOADING })).toHaveTextContent(T.LOADING);
   });
 });

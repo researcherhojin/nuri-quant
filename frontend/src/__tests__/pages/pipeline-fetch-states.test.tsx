@@ -203,6 +203,141 @@ describe("파이프라인 fetch 3-state (#1250)", () => {
       expect(screen.queryByText(ERRORS.PIPELINE_TIMELINE_FAILED)).not.toBeInTheDocument();
       expect(screen.getByText(new RegExp(PL.NO_EVENTS))).toBeInTheDocument();
     });
+
+    // 나머지 다섯 조합 — 엔드포인트(상태·타임라인·게이트) × 늦게 온 결과(성공·실패). 늦은 응답은
+    // 새 응답과 **다른 데이터**를 실어야 한다: 같으면 토큰 검사를 지워도 화면이 그대로라 잠금이 아니다.
+    const ok = (body: unknown) => Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+
+    function held() {
+      const handle: { resolve: (body: unknown) => void; reject: (error: Error) => void } = { resolve: () => {}, reject: () => {} };
+
+      const promise = new Promise((resolve, reject) => {
+        handle.resolve = (body) => resolve({ ok: true, json: () => Promise.resolve(body) });
+        handle.reject = reject;
+      });
+
+      return { promise, handle };
+    }
+
+    /** 엔드포인트별 응답 순서. 함수는 호출 차수(1부터)를 받는다. */
+    function sequence(routes: { status?: (n: number) => unknown; timeline?: (n: number) => unknown; gate?: (n: number) => unknown }) {
+      const calls = { status: 0, timeline: 0, gate: 0 };
+
+      global.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/api/pipeline/status")) return routes.status ? routes.status(++calls.status) : ok({ steps: okSteps });
+
+        if (url.includes("/api/pipeline/timeline")) return routes.timeline ? routes.timeline(++calls.timeline) : ok({ events: [] });
+
+        return routes.gate ? routes.gate(++calls.gate) : ok(okGates);
+      }) as unknown as typeof fetch;
+    }
+
+    const lateSteps = [
+      { ...okSteps[0], step: "late-a", label: "Late A" },
+      { ...okSteps[0], step: "late-b", label: "Late B" },
+    ];
+
+    it("poll N+1 상태 실패 뒤 도착한 poll N 성공이 배너를 지우거나 노드를 바꾸지 않는다", async () => {
+      const first = held();
+
+      sequence({ status: (n) => (n === 1 ? first.promise : Promise.reject(new Error("network down"))) });
+      await renderPage();
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => {
+        expect(screen.getByText(ERRORS.PIPELINE_STATUS_FAILED)).toBeInTheDocument();
+      });
+      const nodes = screen.getByTestId("flow-nodes").textContent;
+
+      await act(async () => {
+        first.handle.resolve({ steps: lateSteps });
+      });
+      expect(screen.getByText(ERRORS.PIPELINE_STATUS_FAILED)).toBeInTheDocument();
+      expect(screen.getByTestId("flow-nodes").textContent).toBe(nodes);
+      expect(nodes).not.toBe(`${lateSteps.length} nodes`);
+    });
+
+    it("poll N+1 상태 성공 뒤 도착한 poll N 실패가 배너를 띄우지 않는다", async () => {
+      const first = held();
+
+      sequence({ status: (n) => (n === 1 ? first.promise : ok({ steps: okSteps })) });
+      await renderPage();
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("flow-nodes")).toHaveTextContent(`${okSteps.length} nodes`);
+      });
+      await act(async () => {
+        first.handle.reject(new Error("slow request died"));
+      });
+      expect(screen.queryByText(ERRORS.PIPELINE_STATUS_FAILED)).not.toBeInTheDocument();
+    });
+
+    it("poll N+1 타임라인 실패 뒤 도착한 poll N 성공이 실패 패널을 지우지 않는다", async () => {
+      const first = held();
+
+      sequence({ timeline: (n) => (n === 1 ? first.promise : Promise.reject(new Error("network down"))) });
+      await renderPage();
+      await act(async () => {
+        vi.advanceTimersByTime(10_000);
+      });
+      await waitFor(() => {
+        expect(screen.getByText(ERRORS.PIPELINE_TIMELINE_FAILED)).toBeInTheDocument();
+      });
+      await act(async () => {
+        first.handle.resolve({ events: [{ timestamp: "2026-01-01T00:00:00Z", event_type: "success", step: "late-step", payload: null }] });
+      });
+      expect(screen.getByText(ERRORS.PIPELINE_TIMELINE_FAILED)).toBeInTheDocument();
+      expect(screen.queryByText("late-step")).not.toBeInTheDocument();
+    });
+
+    // 게이트는 폴링하지 않는다 — 겹친 요청은 재시도 버튼을 두 번 눌렀을 때 생긴다(실패 상태에서 버튼이 남아 있다).
+    it("두 번째 재시도 실패 뒤 도착한 첫 재시도 성공이 게이트를 바꾸지 않는다", async () => {
+      const retry = held();
+
+      sequence({ gate: (n) => (n === 2 ? retry.promise : Promise.reject(new Error("network down"))) });
+      await renderPage();
+      await waitFor(() => {
+        expect(screen.getByText(ERRORS.PIPELINE_GATE_FAILED)).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: ERRORS.RETRY }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: ERRORS.RETRY }));
+      });
+      await act(async () => {
+        retry.handle.resolve(okGates);
+      });
+      expect(screen.getByText(ERRORS.PIPELINE_GATE_FAILED)).toBeInTheDocument();
+      expect(screen.queryByText("Prices available")).not.toBeInTheDocument();
+    });
+
+    it("두 번째 재시도 성공 뒤 도착한 첫 재시도 실패가 게이트를 실패로 뒤집지 않는다", async () => {
+      const retry = held();
+
+      sequence({ gate: (n) => (n === 1 ? Promise.reject(new Error("network down")) : n === 2 ? retry.promise : ok(okGates)) });
+      await renderPage();
+      await waitFor(() => {
+        expect(screen.getByText(ERRORS.PIPELINE_GATE_FAILED)).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: ERRORS.RETRY }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: ERRORS.RETRY }));
+      });
+      await waitFor(() => {
+        expect(screen.getByText("Prices available")).toBeInTheDocument();
+      });
+      await act(async () => {
+        retry.handle.reject(new Error("slow retry died"));
+      });
+      expect(screen.queryByText(ERRORS.PIPELINE_GATE_FAILED)).not.toBeInTheDocument();
+      expect(screen.getByText("Prices available")).toBeInTheDocument();
+    });
   });
 
   describe("(d) 재시도가 복구한다", () => {

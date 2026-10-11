@@ -31,7 +31,7 @@ export function HoldingReview({ data }: { data: TickerReview }) {
 
 export function Evidence({ data }: { data: TickerReview }) {
   const consensus = data.ticker?.consensus;
-  const verdicts = consensus?.error ? [] : consensus?.verdicts ?? [];
+  const verdicts = consensus?.verdicts ?? [];
 
   return <div className={styles.evidenceFlow}>
     <Panel title={T.DISSENT} icon={<FileText size={17} />}>

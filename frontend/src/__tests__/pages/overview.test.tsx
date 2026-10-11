@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import DashboardNext from "@/app/(overview)/page";
 import Loading from "@/app/(overview)/loading";
 import { readPanel, freshnessSchema } from "@/app/(overview)/data";
-import { OVERVIEW, TICKER_PREVIEW } from "@/lib/strings";
+import { OVERVIEW, SYSTEM_STANCE, TICKER_PREVIEW } from "@/lib/strings";
 import { displayChange, displayShortTime, displayTime } from "@/app/(overview)/format";
 
 const fetchAPI = vi.hoisted(() => vi.fn());
@@ -401,6 +401,51 @@ describe("market and source panels", () => {
     expect(within(screen.getByLabelText("시스템 알림")).getByText(OVERVIEW.UNAVAILABLE)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "시스템 알림 —" })).toBeInTheDocument();
     warn.mockRestore();
+  });
+});
+
+describe("classification and source fallbacks", () => {
+  it("labels a score-less or reason-less classification by its name alone, and an unknown status as unscored", async () => {
+    const candidate = (ticker: string, status: string, threshold: number | null) => ({ ticker, signal: null, score: null, observations: [], system: { status, score: null, threshold, reason: null }, change_1d: null, change_5d: null });
+
+    responses["/api/opportunities"] = { opportunities: [candidate("SCORELESS", "qualified", 70), candidate("PLAIN", "excluded", null), candidate("NEWCODE", "retired_status", null)] };
+    await renderPage({});
+    // 점수·임계·사유가 없으면 "0 / 70" 이나 "· null" 을 지어 붙이지 않는다
+    expect(screen.getByRole("button", { name: SYSTEM_STANCE.QUALIFIED })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SYSTEM_STANCE.EXCLUDED })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: SYSTEM_STANCE.NOT_SCORED })).toBeInTheDocument();
+    // 모르는 분류는 흐린 톤으로 — 톤이 비면 배지가 아무 색도 없이 그려진다
+    const unknown = within(screen.getByLabelText(OVERVIEW.RADAR_PANEL.DETAIL_TITLE("NEWCODE"))).getByText(SYSTEM_STANCE.NOT_SCORED);
+
+    expect(unknown).toHaveAttribute("data-tone", "neutral");
+  });
+
+  it("names an unknown macro input by its key, dates an undated VIX input with a dash, and adds no count to a single source", async () => {
+    responses["/api/dashboard"] = { ...dashboard, macro_inputs: [{ key: "vix", date: null, source: "FRED" }, { key: "new_indicator", date: "2026-01-02", source: "FRED" }] };
+    await renderPage({});
+    const metrics = screen.getByLabelText(OVERVIEW.METRICS.ARIA);
+
+    expect(within(metrics).getByText(`${OVERVIEW.SOURCE_NAME.FRED} · —`)).toBeInTheDocument();
+    const macro = within(metrics).getByRole("heading", { name: OVERVIEW.METRICS.MACRO }).closest("article");
+
+    if (!macro) throw new Error("macro card missing");
+    expect(within(macro).getByText(OVERVIEW.SOURCE_NAME.FRED, { selector: "span" })).toBeInTheDocument();
+    const rows = within(screen.getByLabelText(OVERVIEW.METRICS.MACRO_GUIDE_TITLE)).getAllByRole("row", { hidden: true }).map((row) => row.textContent);
+
+    expect(rows).toContain(`new_indicator${OVERVIEW.SOURCE_NAME.FRED}2026-01-02`);
+  });
+
+  it("dates the action list by its judged items only and says unknown when none carries a date", async () => {
+    const action = (ticker: string, asOf: string | null) => ({ ticker, action: "HOLD", confidence: 1, reasons: [], as_of: asOf });
+
+    responses["/api/actions"] = { urgent: [action("UNDATED", null)], check: [action("DATED", "2025-12-30")], hold: [], portfolio: [] };
+    await renderPage({});
+    expect(within(screen.getByLabelText(OVERVIEW.METRICS.ARIA)).getByText(OVERVIEW.METRICS.ACTIONS_JUDGED_SHORT("12-30"))).toBeInTheDocument();
+    cleanup();
+
+    responses["/api/actions"] = { urgent: [action("UNDATED", null)], check: [], hold: [], portfolio: [] };
+    await renderPage({});
+    expect(within(screen.getByLabelText(OVERVIEW.METRICS.ARIA)).getByText(OVERVIEW.METRICS.ACTIONS_JUDGED_SHORT("—"))).toBeInTheDocument();
   });
 });
 
