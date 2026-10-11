@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GenerateBriefing } from "@/app/ticker-next/[symbol]/generate-briefing";
 import { FundBriefing } from "@/app/ticker-next/[symbol]/fund-briefing";
 import { researchSchema } from "@/app/ticker-next/[symbol]/data";
@@ -68,6 +68,97 @@ describe("브리핑 생성 요청", () => {
     expect(screen.getByRole("status")).toHaveTextContent(T.BRIEFING_BUSY);
     expect(fetcher).toHaveBeenCalledOnce();
     expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["stale research (409)", { ok: false, status: 409 }, T.BRIEFING_STALE_DATA],
+    ["any other HTTP failure", { ok: false, status: 500 }, T.BRIEFING_START_FAILED],
+  ])("explains a rejected start for %s and lets the user try again", async (_, response, message) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    render(<GenerateBriefing symbol="DEMO" />);
+    fireEvent.click(screen.getByRole("button", { name: T.BRIEFING_GENERATE }));
+    expect(await screen.findByRole("status")).toHaveTextContent(message);
+    expect(screen.getByRole("button", { name: T.BRIEFING_GENERATE })).toBeEnabled();
+  });
+
+  it("reports a start request that never reached the server and re-enables the button", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
+    render(<GenerateBriefing symbol="DEMO" />);
+    fireEvent.click(screen.getByRole("button", { name: T.BRIEFING_GENERATE }));
+    expect(await screen.findByRole("status")).toHaveTextContent(T.BRIEFING_START_FAILED);
+    expect(screen.getByRole("button", { name: T.BRIEFING_GENERATE })).toBeEnabled();
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("marks a finished briefing as done and does not offer to generate it again", () => {
+    const fetcher = vi.fn();
+    vi.stubGlobal("fetch", fetcher);
+    render(<GenerateBriefing symbol="DEMO" status="ready" />);
+    expect(screen.getByRole("button", { name: T.BRIEFING_DONE })).toBeDisabled();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe("브리핑 생성 폴링", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+
+  afterEach(() => { vi.useRealTimers(); });
+
+  const pending = { ok: true, json: async () => ({ public_briefing: { status: "pending" } }) };
+
+  async function advance(ms: number) {
+    await act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+  }
+
+  it("keeps polling through a failed lookup and a still-pending briefing, and refreshes only once it is done", async () => {
+    // 실패 응답의 본문이 우연히 "완료" 로 읽혀도 HTTP 실패는 완료가 아니다
+    const failed = { ok: false, status: 500, json: async () => ({ public_briefing: null }) };
+    const done = { ok: true, json: async () => ({ public_briefing: { status: "ready" } }) };
+    const fetcher = vi.fn().mockResolvedValueOnce(failed).mockResolvedValueOnce(pending).mockResolvedValueOnce(done);
+
+    vi.stubGlobal("fetch", fetcher);
+    await act(async () => { render(<GenerateBriefing symbol="DEMO" status="pending" />); });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(router.refresh).not.toHaveBeenCalled();
+    await advance(2500);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(router.refresh).not.toHaveBeenCalled();
+    await advance(2500);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(router.refresh).toHaveBeenCalledOnce();
+    await advance(10_000);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("stops polling after five minutes and tells the user to reload later", async () => {
+    const fetcher = vi.fn().mockResolvedValue(pending);
+
+    vi.stubGlobal("fetch", fetcher);
+    await act(async () => { render(<GenerateBriefing symbol="DEMO" status="pending" />); });
+    await advance(300_000);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    await advance(5000);
+    expect(screen.getByRole("status")).toHaveTextContent(T.BRIEFING_SLOW);
+    const calls = fetcher.mock.calls.length;
+
+    await advance(30_000);
+    expect(fetcher).toHaveBeenCalledTimes(calls);
+    expect(router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("sends no further lookup once the component is gone, even if an in-flight lookup was still pending", async () => {
+    let answer: (value: typeof pending) => void = () => {};
+
+    const fetcher = vi.fn().mockReturnValueOnce(new Promise(resolve => { answer = resolve; }));
+
+    vi.stubGlobal("fetch", fetcher);
+    let view: ReturnType<typeof render> | undefined;
+
+    await act(async () => { view = render(<GenerateBriefing symbol="DEMO" status="pending" />); });
+    view?.unmount();
+    await act(async () => { answer(pending); });
+    await advance(10_000);
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 });
 
