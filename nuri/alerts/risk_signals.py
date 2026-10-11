@@ -191,7 +191,8 @@ def _price_context(
         if r is not None:
             out[label] = r
     high = max(closes)
-    if high:
+    # 0 종가는 위에서 걸러진다 — high 는 늘 양수 (#1765)
+    if high:  # pragma: no branch
         out["drawdown_52w"] = (latest - high) / high * 100
     return out
 

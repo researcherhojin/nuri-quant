@@ -213,7 +213,8 @@ def _build_giveback_payload(sig: dict[str, Any], date: str) -> dict[str, Any]:
     # 반납된 것이고, 그 사실을 그렇게 말하는 게 맞다.
     if current < entry:
         bits.append(f"고점 +{sig['peak_gain_pct']:.0f}% 이익 전량 반납 (진입가 아래)")
-    elif sig.get("given_back_pct") is not None:
+    # trailing 신호면 현재가 < 고점이다 — given_back_pct 가 None 이면 진입가 아래라 위 분기가 먼저 탄다 (#1765)
+    elif sig.get("given_back_pct") is not None:  # pragma: no branch
         bits.append(f"고점 +{sig['peak_gain_pct']:.0f}% 중 {min(sig['given_back_pct'], 100):.0f}% 반납")
     rule = "　" + " · ".join(bits)
 

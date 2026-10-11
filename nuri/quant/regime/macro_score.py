@@ -373,7 +373,8 @@ def compute_macro_score(date: str | None = None, db_path=None) -> MacroScore:
     live = [(n, s) for n, s in parts if n not in unavailable]
     coverage = sum(WEIGHTS[n] for n, _ in live)
 
-    if coverage <= 0:
+    # 이벤트 성분은 결측이 없어(가중 0.10) coverage 가 0 이하가 될 수 없다 — 방어 블록 (#1765)
+    if coverage <= 0:  # pragma: no cover
         # 전 성분 결측 — 점수를 지어내지 않는다. 소비처가 interpretation 으로 판별한다.
         logger.error("매크로 성분이 전부 결측 — 점수 산출 불가")
         total = 0.0

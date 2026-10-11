@@ -107,7 +107,8 @@ def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFr
         # 미관측 측정치 → 그 척도의 중립값 0.5. `skipna` 로 관측된 것만 평균 내면
         # 결측이 보너스가 된다 (`_normalize_quality_columns` 참조).
         df["quality_score"] = df[norm_cols].fillna(0.5).mean(axis=1)
-    else:
+    # 정규화 컬럼은 KR·US 어느 쪽이든 늘 생긴다 — 이 분기는 도달 불가 (#1765)
+    else:  # pragma: no cover
         df["quality_score"] = 0.5
 
     return df.round(4)

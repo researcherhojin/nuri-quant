@@ -102,7 +102,8 @@ function RefreshJobs({ delayedKeys }: { delayedKeys: string[] }) {
 
       const run = runSchema.parse(await response.json());
 
-      setCatalog((value) => value ? { ...value, run } : value);
+      // start() 는 catalog 가 null 인 동안 비활성인 버튼으로만 닿고, catalog 는 null 로 돌아가지 않는다 (#1765)
+      setCatalog((value) => value ? { ...value, run } : /* v8 ignore next */ value);
     } catch {
       setError(T.ERROR_RESPONSE);
     } finally {
