@@ -62,7 +62,8 @@ def generate_report() -> dict:
     if rebalance_info and rebalance_info.get("has_critical"):
         actions = rebalance_info["actions"]
         critical = [a for a in actions if a["severity"] == "critical"][:5]
-        if critical:
+        # has_critical 이 같은 actions 에서 나오므로 critical 은 비지 않는다 (#1765)
+        if critical:  # pragma: no branch
             lines = [
                 f"{'🔴' if a['action'] == 'SELL_ALL' else '🟡'} {a['ticker']} {a['sell_shares']}주 "
                 f"→ {a['reason']} (회수 ~${a['sell_value_usd']:,.0f})"

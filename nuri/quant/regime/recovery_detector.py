@@ -160,7 +160,8 @@ def evaluate_repair_day(as_of_date: str, db_path=None) -> tuple[bool, dict]:
             components["spy_above_20dma"] = bool(spy_now > spy_sma20)
 
         # SPY 3d return > 0
-        if len(spy_df) >= REPAIR_SPY_RETURN_LOOKBACK + 1:
+        # 바깥에서 20행 이상을 확인했다 — 4행 조건은 늘 참 (#1765)
+        if len(spy_df) >= REPAIR_SPY_RETURN_LOOKBACK + 1:  # pragma: no branch
             spy_3d_ago = spy_df["close"].iloc[-(REPAIR_SPY_RETURN_LOOKBACK + 1)]
             if pd.notna(spy_now) and pd.notna(spy_3d_ago) and spy_3d_ago > 0:
                 ret_3d = (spy_now / spy_3d_ago) - 1.0

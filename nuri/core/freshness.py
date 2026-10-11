@@ -460,7 +460,8 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
 
     # 결과에서 값 추출 (MAX() 결과는 첫 번째 컬럼)
     value = None
-    if rows:
+    # 정책 쿼리는 전부 그룹 없는 바깥 집계라 행이 늘 하나다 (#1765)
+    if rows:  # pragma: no branch
         row = rows[0]
         # dict에서 첫 번째 값 추출
         value = list(row.values())[0]

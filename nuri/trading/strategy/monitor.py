@@ -151,9 +151,10 @@ def print_monitor(db_path=None) -> None:
         print(f"    Total: {pnl['total_pnl']:+.1f}% ({pnl['winners']}W / {pnl['losers']}L)")
         print(f"    Long: {pnl['long_pnl']:+.1f}% | Short: {pnl['short_pnl']:+.1f}%")
         print(f"    Core: {pnl['core_pnl']:+.1f}% | Tactical: {pnl['tactical_pnl']:+.1f}%")
-        if pnl["best"]:
+        # 포지션이 있으면 best·worst 는 늘 dict 다 — 거짓 쪽은 도달 불가 (#1765)
+        if pnl["best"]:  # pragma: no branch
             print(f"    Best:  {pnl['best']['ticker']} ({pnl['best']['pnl']:+.1f}%)")
-        if pnl["worst"]:
+        if pnl["worst"]:  # pragma: no branch
             print(f"    Worst: {pnl['worst']['ticker']} ({pnl['worst']['pnl']:+.1f}%)")
         print()
 

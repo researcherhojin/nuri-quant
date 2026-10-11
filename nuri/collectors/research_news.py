@@ -82,7 +82,8 @@ def _publisher_url(url: str) -> str:
     ]
     timestamp = node.get("data-n-a-ts")
     signature = node.get("data-n-a-sg")
-    if not isinstance(timestamp, str) or not isinstance(signature, str):
+    # BeautifulSoup 은 이 속성을 늘 str 로 준다 — isinstance 는 pyright 의 타입 좁히기용이라 raise 는 도달 불가
+    if not isinstance(timestamp, str) or not isinstance(signature, str):  # pragma: no cover
         raise ValueError("Invalid publisher URL attributes")
     arguments = ["garturlreq", context, article_id, int(timestamp), signature]
     response = requests.post(

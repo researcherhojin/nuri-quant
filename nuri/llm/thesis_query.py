@@ -330,7 +330,8 @@ def thesis_query(
     consult_files = sorted(out.glob(f"{today_kst()}_thesis-{ticker.lower()}-{slug}*.md"))
     if consult_files:
         latest = consult_files[-1]
-        if latest != out_path:
+        # consult 파일명 glob 은 out_path 와 겹칠 수 없다 (#1765)
+        if latest != out_path:  # pragma: no branch
             latest.rename(out_path)
     return out_path
 
