@@ -16,6 +16,7 @@ APScheduler 는 `executed successfully` 를 찍었다 — 실패 신호가 아�
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -74,7 +75,9 @@ def world(tmp_path: Path):
     )
     # curl stub — GitHub runs API 에는 CI 판정 JSON 을, 그 밖(대시보드 헬스체크)에는 성공만 돌려준다.
     # 기본 판정은 success (기존 테스트 무영향). CI_STUB_JSON 으로 본문을, CI_STUB_RC 로 본문 **뒤** 종료 코드를 정한다 (#1808).
-    green = '{"workflow_runs": [{"status": "completed", "conclusion": "success"}]}'
+    green = (
+        '{"workflow_runs": [{"event": "push", "head_branch": "main", "status": "completed", "conclusion": "success"}]}'
+    )
     (binz / "curl").write_text(
         "#!/bin/sh\n"
         f'echo "curl $*" >> "{calls}"\n'
@@ -283,6 +286,11 @@ class TestAutopullBuildsTheFrontend:
         )
 
 
+def _runs(*runs: dict) -> str:
+    """runs API 응답 — 각 런은 기본으로 main 의 push 런이다."""
+    return json.dumps({"workflow_runs": [{"event": "push", "head_branch": "main", **r} for r in runs]})
+
+
 def _rev(repo: Path, ref: str = "HEAD") -> str:
     return subprocess.run(
         ["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True
@@ -311,15 +319,15 @@ class TestAutopullWaitsForGreenCi:
         target = _rev(world.origin, "main")
         out = world.run()
         assert _rev(world.work) == target, "CI 가 초록인데 배포하지 않았다"
-        assert f"head_sha={target}" in out, f"당겨올 커밋이 아닌 것의 CI 를 물었다:\n{out}"
+        assert f"head_sha={target}&branch=main" in out, f"당겨올 커밋의 main 런이 아닌 것을 물었다:\n{out}"
 
     def test_running_ci_holds(self, world):
-        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "in_progress", "conclusion": null}]}')
-        assert "main CI = ('in_progress', None)" in log
+        log = self._held(world, CI_STUB_JSON=_runs({"status": "in_progress", "conclusion": None}))
+        assert "main CI = ('push', 'in_progress', None)" in log
 
     def test_red_ci_holds(self, world):
-        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "completed", "conclusion": "failure"}]}')
-        assert "main CI = ('completed', 'failure')" in log
+        log = self._held(world, CI_STUB_JSON=_runs({"status": "completed", "conclusion": "failure"}))
+        assert "main CI = ('push', 'completed', 'failure')" in log
 
     def test_no_run_yet_holds(self, world):
         log = self._held(world, CI_STUB_JSON='{"workflow_runs": []}')
@@ -337,26 +345,48 @@ class TestAutopullWaitsForGreenCi:
 
     def test_success_only_counts_as_a_completed_runs_conclusion(self, world):
         """status 가 success 여도 completed 가 아니면 보류한다 — conclusion 대신 status 를 읽던 판에서 통과했다."""
-        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "success", "conclusion": null}]}')
-        assert "main CI = ('success', None)" in log
+        log = self._held(world, CI_STUB_JSON=_runs({"status": "success", "conclusion": None}))
+        assert "main CI = ('push', 'success', None)" in log
 
     def test_a_conclusion_with_trailing_newlines_is_not_success(self, world):
         """conclusion 이 `success` 뒤에 줄바꿈을 달고 오면 success 가 아니다 — bash 의 $(...) 가 끝 줄바꿈을 지우던 비교에서는 통과했다."""
-        log = self._held(
-            world, CI_STUB_JSON='{"workflow_runs": [{"status": "completed", "conclusion": "success\\n\\n"}]}'
-        )
-        assert "main CI = ('completed', 'success\\n\\n')" in log
+        log = self._held(world, CI_STUB_JSON=_runs({"status": "completed", "conclusion": "success\n\n"}))
+        assert "main CI = ('push', 'completed', 'success\\n\\n')" in log
 
     def test_a_status_padded_to_look_green_holds(self, world):
         """응답 값이 출력 앞머리가 되면 잘림과 NUL 제거로 "green" 을 만들 수 있었다 — 접두사는 응답과 무관해야 한다."""
-        padded = "green" + "\\u0000" * 55
-        log = self._held(
-            world, CI_STUB_JSON='{"workflow_runs": [{"status": "' + padded + '", "conclusion": "failure"}]}'
-        )
-        assert "main CI = ('green" in log
+        log = self._held(world, CI_STUB_JSON=_runs({"status": "green" + "\u0000" * 55, "conclusion": "failure"}))
+        assert "main CI = ('push', 'green" in log
 
     def test_a_held_commit_deploys_once_ci_turns_green(self, world):
-        self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "queued", "conclusion": null}]}')
+        self._held(world, CI_STUB_JSON=_runs({"status": "queued", "conclusion": None}))
         out = world.run()
         assert _rev(world.work) == _rev(world.origin, "main"), "초록이 된 뒤에도 배포하지 않았다"
         assert "kickstart" in out
+
+    def test_a_dispatch_run_counts_even_after_a_cancelled_push_run(self, world):
+        """GITHUB_TOKEN 머지에는 push 런이 없고 catch-up 이 띄운 dispatch 런만 있다 (#1812).
+
+        가장 최근 런 하나만 보면 취소된 push 런과 성공한 dispatch 런이 같이 있을 때 영원히 보류한다.
+        """
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        runs = _runs(
+            {"status": "completed", "conclusion": "cancelled"},
+            {"event": "workflow_dispatch", "status": "completed", "conclusion": "success"},
+        )
+        world.run(CI_STUB_JSON=runs)
+        assert _rev(world.work) == _rev(world.origin, "main"), (
+            f"성공한 dispatch 런을 인정하지 않았다:\n{world.autopull_log()}"
+        )
+
+    def test_a_pull_request_run_does_not_count(self, world):
+        """PR 런은 머지 뒤 트리를 검사한 게 아니다 — `strict` 없이 합쳐진 트리는 main 런만 검사한다."""
+        log = self._held(
+            world, CI_STUB_JSON=_runs({"event": "pull_request", "status": "completed", "conclusion": "success"})
+        )
+        assert "main CI = ('pull_request', 'completed', 'success')" in log
+
+    def test_a_run_on_another_branch_does_not_count(self, world):
+        self._held(
+            world, CI_STUB_JSON=_runs({"head_branch": "feature", "status": "completed", "conclusion": "success"})
+        )

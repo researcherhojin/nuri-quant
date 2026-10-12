@@ -103,15 +103,18 @@ ci_verdict() {
     # curl 의 종료 코드를 따로 본다. 파이프로 바로 넘기면(pipefail 없음) 본문을 받은 뒤 실패한
     # 응답(exit 18 · 28 등)도 그 본문대로 읽힌다.
     body=$(curl -sf -m 20 -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${slug}/actions/workflows/main-ci-cd.yml/runs?head_sha=$1&event=push&per_page=1" 2>/dev/null) \
+        "https://api.github.com/repos/${slug}/actions/workflows/main-ci-cd.yml/runs?head_sha=$1&branch=main&per_page=10" 2>/dev/null) \
         || { echo "unreadable"; return; }
     # 판정은 Python 안에서 정확히 비교한다. ("completed", "success") 일 때만 고정 토큰 "green" 을,
     # 그 밖에는 고정 접두사 "hold " 뒤에 repr 로 escape 한 값을 내보낸다 — 응답에서 온 문자열이
     # 출력의 앞머리가 되지 않으니 어떤 값도 "green" 과 같아질 수 없다. bash 쪽에서 비교하거나 값을
     # 그대로 찍으면 $(...) 가 지우는 끝 줄바꿈 · NUL 로 "success\n" 이나 "green\0…" 가 통과했다
     # (#1808 Codex 리뷰가 재현). f-string 을 안 쓰는 건 venv 가 없을 때의 /usr/bin/python3 (3.9) 때문.
+    # main 의 런이면 push 든, GITHUB_TOKEN 머지에 main-ci-catchup.yml 이 띄운 workflow_dispatch 든
+    # 인정한다 (#1812). 가장 최근 런 하나가 아니라 "그 SHA 의 main 런 중 성공한 것이 있는가" 를
+    # 본다 — 취소된 push 런과 성공한 dispatch 런(또는 그 반대)이 같이 있어도 보류가 끝나도록.
     printf '%s' "$body" \
-        | "$py" -c 'import json, sys; r = (json.load(sys.stdin).get("workflow_runs") or [{}])[0]; s, c = r.get("status"), r.get("conclusion"); print("green" if (s, c) == ("completed", "success") else "hold " + ("no-run" if r == {} else repr((s, c))[:80]))' 2>/dev/null \
+        | "$py" -c 'import json, sys; rs = [r for r in (json.load(sys.stdin).get("workflow_runs") or []) if isinstance(r, dict)]; ok = any((r.get("event") in ("push", "workflow_dispatch"), r.get("head_branch"), r.get("status"), r.get("conclusion")) == (True, "main", "completed", "success") for r in rs); print("green" if ok else "hold " + ("no-run" if not rs else repr(tuple(rs[0].get(k) for k in ("event", "status", "conclusion")))[:80]))' 2>/dev/null \
         || echo "unreadable"
 }
 
