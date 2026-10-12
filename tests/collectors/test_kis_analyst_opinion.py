@@ -830,7 +830,7 @@ class TestMainEntry:
             patch("requests.get", return_value=fake),
             patch("time.sleep"),
         ):
-            sys.modules.pop("nuri.collectors.kis_analyst_opinion", None)
+            monkeypatch.delitem(sys.modules, "nuri.collectors.kis_analyst_opinion", raising=False)
             runpy.run_module("nuri.collectors.kis_analyst_opinion", run_name="__main__")
 
 

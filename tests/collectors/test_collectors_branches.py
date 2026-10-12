@@ -609,8 +609,7 @@ class TestFundamentalBranches:
         # kis_realtime 을 ImportError 유도
         # The import is inside _collect_kr_via_kis: `from nuri.collectors.kis_realtime import (...)`.
         # Sub-module already loaded → must remove from sys.modules + force-fail
-        original_kis = sys.modules.get("nuri.collectors.kis_realtime")
-        sys.modules.pop("nuri.collectors.kis_realtime", None)
+        monkeypatch.delitem(sys.modules, "nuri.collectors.kis_realtime", raising=False)
 
         # builtins.__import__ 를 패치해 해당 import 만 raise
         import builtins
@@ -623,12 +622,8 @@ class TestFundamentalBranches:
             return real_import(name, *args, **kwargs)
 
         monkeypatch.setattr(builtins, "__import__", fake_import)
-        try:
-            with caplog.at_level(logging.WARNING):
-                result = c._collect_kr_via_kis(["005930.KS"], "2026-04-29")
-        finally:
-            if original_kis is not None:
-                sys.modules["nuri.collectors.kis_realtime"] = original_kis
+        with caplog.at_level(logging.WARNING):
+            result = c._collect_kr_via_kis(["005930.KS"], "2026-04-29")
 
         assert result == []
         assert any("KIS module import 실패" in r.message for r in caplog.records)
