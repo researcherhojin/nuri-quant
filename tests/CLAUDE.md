@@ -157,6 +157,18 @@ resilience 테스트에 1곳이 남아 3주 잠복하다 CI 샤드 재구성(#11
 `tests/llm/test_thesis_query.py::test_module_main_guard` carried a module-attribute patch for five months; runpy dropped it and every local run invoked the real thesis query — Codex plus the local LLM, 40 s, and a file under `data/thesis_query/` per run (#1634). CI never noticed because its runners have neither binary and `main()` still returned 0.
 **Test:** `tests/llm/test_thesis_query.py::test_module_main_guard` — asserts the `subprocess.run` stub received the consult command and the temp out-dir.
 
+### `sys.modules` 에서 모듈을 빼는 테스트는 원본부터 import 한다 (#1826)
+
+`monkeypatch.delitem(sys.modules, name, raising=False)` 는 항목이 없으면 **아무것도 기록하지 않고**,
+`monkeypatch.setattr(pkg, sub, getattr(pkg, sub, None), raising=False)` 는 "없음" 을 기록한다. 그래서 그
+테스트가 worker 의 **첫 import** 를 맡으면 teardown 이 패키지 속성만 지우고 새 모듈은 `sys.modules` 에
+남긴다. 그 뒤 문자열 타깃 `monkeypatch.setattr("pkg.sub.attr", …)` 는 패키지 `getattr` 에서 실패하고,
+fallback `__import__` 는 캐시 적중이라 속성을 되살리지 않는다 — `'module' object at pkg.sub has no
+attribute 'sub'`. shard 구성만 바뀐 무관한 PR(#1817)에서 빨간불로 나왔다. 먼저
+`importlib.import_module(name)` 하고 `raising=True` 로 둘 다 기록되게 할 것.
+**Test:** `tests/api/test_pykrx_stub_does_not_leak.py::test_the_first_import_case_leaves_the_package_and_sys_modules_in_agreement`
+— 예전 본문으로 되돌리면 FAIL (직렬 `pytest -n0` 로 이 파일 뒤에 `tests/collectors/test_stock_kr.py` 를 돌리면 12 failed).
+
 ### yfinance is imported inside functions
 
 Collectors do `import yfinance as yf` inside the method (openbb was removed in #1477). `patch("module.yf")` fails; stub the module instead:
