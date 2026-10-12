@@ -599,6 +599,7 @@ def emit_buy_candidates(
         result.blocked_reason = ev.blocked_reason
         return result
     threshold = ev.threshold
+    assert threshold is not None  # 차단되지 않은 평가는 항상 임계를 갖는다 (evaluate_universe)
 
     scored: list[tuple[str, float, dict[str, float], dict[str, float], float | None]] = []
     for ticker, t in ev.tickers.items():

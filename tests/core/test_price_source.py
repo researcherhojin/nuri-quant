@@ -53,6 +53,12 @@ class TestUpsertPricesRecordsTheSource:
         upsert_prices(frame, db_path=db_path, source="pykrx")
         assert (_source(db_path, "AAA"), _source(db_path, "KOSPI")) == ("pykrx", "yfinance")
 
+    def test_rows_without_their_own_source_stay_null_without_an_argument(self, db_path):
+        """인자도 없으면 채울 값이 없다 — 출처 컬럼의 값만 쓰고, 빈 행은 NULL 이다."""
+        frame = pd.concat([pd.DataFrame([_bar("AAA")]), pd.DataFrame([_bar("KOSPI", source="yfinance")])])
+        upsert_prices(frame, db_path=db_path)
+        assert (_source(db_path, "AAA"), _source(db_path, "KOSPI")) == (None, "yfinance")
+
     def test_a_later_writer_replaces_the_source_with_the_row(self, db_path):
         """INSERT OR REPLACE — 같은 (ticker, date) 를 다른 공급자가 덮으면 출처도 그 공급자다."""
         upsert_prices(pd.DataFrame([_bar(close=100.0)]), db_path=db_path, source="kis")

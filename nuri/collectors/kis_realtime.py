@@ -548,9 +548,9 @@ class KISRealtimeCollector(BaseCollector):
         if not incomplete.any():
             return data
         keep = []
-        for idx, row in data.iterrows():
+        for (idx, row), is_incomplete in zip(data.iterrows(), incomplete):
             # 존재가 아니라 **완전성**을 본다 — 같은 날 이 수집기가 먼저 쓴 O/H/L 없는 행은 다음 관측이 갱신해야 한다
-            if incomplete[idx] and query(
+            if is_incomplete and query(
                 "SELECT 1 FROM prices WHERE ticker = ? AND date = ? AND COALESCE(open, 0) != 0 LIMIT 1",
                 (row["ticker"], row["date"]),
             ):

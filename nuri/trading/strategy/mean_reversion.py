@@ -54,7 +54,7 @@ def scan_mean_reversion(
 
         # 지표 계산
         sma20 = pd.Series(close).rolling(20).mean().values
-        std20 = pd.Series(close).rolling(20).std().values
+        std20 = pd.Series(close).rolling(20).std().to_numpy()
         bb_lower = sma20 - 2 * std20
         bb_mid = sma20
 
@@ -107,7 +107,7 @@ def backtest_mean_reversion(
 
         close = df["close"].values
         sma20 = pd.Series(close).rolling(20).mean().values
-        std20 = pd.Series(close).rolling(20).std().values
+        std20 = pd.Series(close).rolling(20).std().to_numpy()
         bb_lower = sma20 - 2 * std20
         bb_mid = sma20
 
