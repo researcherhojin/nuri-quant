@@ -1107,11 +1107,6 @@ class TestComputeAgentAccuracy:
         assert result["technical"]["total"] == 1  # 잘못된 JSON은 무시
 
 
-# ═══════════════════════════════════════════════════════
-# save_agent_accuracy_snapshot 멱등성 테스트
-# ═══════════════════════════════════════════════════════
-
-
 class TestAgentAccuracyOnSellDecisions:
     """`decisions.outcome` 은 그 결정 자신의 방향 기준이다 (#1773).
 
@@ -1148,66 +1143,6 @@ class TestAgentAccuracyOnSellDecisions:
         result = compute_agent_accuracy(db_path)
         assert result["technical"]["total"] == 1
         assert result["technical"]["hits"] == hit
-
-
-class TestSaveAgentAccuracySnapshot:
-    def test_empty_no_snapshot(self, db_path):
-        """완료된 decisions 없으면 스냅샷 0건."""
-        from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
-
-        assert save_agent_accuracy_snapshot(db_path) == 0
-
-    def test_snapshot_saves_to_strategy_memory(self, db_path):
-        """적중률이 strategy_memory에 저장됨."""
-        from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
-
-        _insert_decision_with_outcome(
-            db_path,
-            "NVDA",
-            "BUY",
-            "success",
-            [
-                {"agent_name": "technical", "action": "BUY", "confidence": 80},
-                {"agent_name": "fundamental", "action": "BUY", "confidence": 70},
-            ],
-        )
-
-        count = save_agent_accuracy_snapshot(db_path)
-        assert count == 2  # 2 agents
-
-        rows = query(
-            "SELECT * FROM strategy_memory WHERE signal_id LIKE 'agent_%_accuracy'",
-            db_path=db_path,
-        )
-        assert len(rows) == 2
-
-        tech_row = [r for r in rows if r["signal_id"] == "agent_technical_accuracy"][0]
-        assert tech_row["regime"] == "all"
-        assert tech_row["period"] == "all_time"
-        assert tech_row["win_rate"] == 1.0  # 100% 적중
-
-    def test_snapshot_idempotent(self, db_path):
-        """같은 날 재실행 → 덮어쓰기 (UNIQUE 제약)."""
-        from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
-
-        _insert_decision_with_outcome(
-            db_path,
-            "NVDA",
-            "BUY",
-            "success",
-            [
-                {"agent_name": "technical", "action": "BUY", "confidence": 80},
-            ],
-        )
-
-        save_agent_accuracy_snapshot(db_path)
-        save_agent_accuracy_snapshot(db_path)  # 2회 실행
-
-        rows = query(
-            "SELECT * FROM strategy_memory WHERE signal_id = 'agent_technical_accuracy'",
-            db_path=db_path,
-        )
-        assert len(rows) == 1  # 중복 없음
 
 
 # ═══════════════════════════════════════════════════════
@@ -1479,41 +1414,6 @@ class TestMainCLI:
         assert "technical" in out
         # 100% 적중 → Rate 100.0%
         assert "100.0%" in out
-
-    def test_main_snapshot_persists_and_prints(self, db_path, capsys):
-        """`main(['--snapshot'])` → strategy_memory 저장 + '스냅샷 N건 저장' 메시지."""
-        from nuri.trading.engine.decisions import main
-
-        _insert_decision_with_outcome(
-            db_path,
-            "NVDA",
-            "BUY",
-            "success",
-            [{"agent_name": "technical", "action": "BUY", "confidence": 80}],
-        )
-
-        rc = main(["--snapshot"], db_path=db_path)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "스냅샷 1건 저장 (strategy_memory)" in out
-        rows = query(
-            "SELECT * FROM strategy_memory WHERE signal_id = 'agent_technical_accuracy'",
-            db_path=db_path,
-        )
-        assert len(rows) == 1
-
-    def test_main_snapshot_skipped_when_no_accuracy(self, db_path, capsys):
-        """`main(['--snapshot'])` 에 완료 decision 없으면 save_agent_accuracy_snapshot 미호출.
-
-        empty acc → '완료된 decisions 없음' 만 출력, '스냅샷 N건 저장' 없음.
-        """
-        from nuri.trading.engine.decisions import main
-
-        rc = main(["--snapshot"], db_path=db_path)
-        assert rc == 0
-        out = capsys.readouterr().out
-        assert "완료된 decisions 없음" in out
-        assert "스냅샷" not in out
 
     def test_main_summary(self, db_path, capsys):
         """`main(['--summary'])` → '의사결정 요약: total=N, pending=N, ...' 출력."""

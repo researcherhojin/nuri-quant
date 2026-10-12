@@ -717,7 +717,7 @@ class TestWriteHeartbeat_PipelineApi:
 
 
 class TestSchedulerDecisions:
-    """Tests for decision_outcomes and agent_accuracy schedule entries."""
+    """Tests for the decision_pnl and alpha_tracking schedule entries."""
 
     def test_decision_pnl_and_alpha_in_schedules(self):
         """SCHEDULES에 decision_pnl(raw P&L) + alpha_tracking(realized alpha) 엔트리 존재."""
@@ -726,13 +726,6 @@ class TestSchedulerDecisions:
         names = [s["name"] for s in SCHEDULES]
         assert "decision_pnl" in names
         assert "alpha_tracking" in names  # ForwardOutcomeTracker → decision_outcomes 테이블
-
-    def test_agent_accuracy_in_schedules(self):
-        """SCHEDULES에 agent_accuracy 엔트리 존재."""
-        from nuri.scheduler import SCHEDULES
-
-        names = [s["name"] for s in SCHEDULES]
-        assert "agent_accuracy" in names
 
     def test_decision_pnl_cron(self):
         """decision_pnl: 매일 07:00 KST."""
@@ -766,13 +759,6 @@ class TestSchedulerDecisions:
 
         assert any(s["name"] == "alpha_tracking" for s in SCHEDULES), "scheduler canonical alpha_tracking job 부재"
 
-    def test_agent_accuracy_cron(self):
-        """agent_accuracy: 일요일 08:00 KST."""
-        from nuri.scheduler import SCHEDULES
-
-        entry = next(s for s in SCHEDULES if s["name"] == "agent_accuracy")
-        assert entry["cron"] == "0 8 * * 0"
-
     def test_run_collector_decision_pnl(self):
         """_run_collector('decision_pnl') dispatches to track_decision_outcomes (raw P&L)."""
         from nuri.scheduler import _run_collector
@@ -795,14 +781,6 @@ class TestSchedulerDecisions:
         mock_cls.return_value.run.assert_called_once()
         # scan action 으로 호출됐는지
         assert mock_cls.return_value.run.call_args[0][0]["action"] == "scan"
-
-    def test_run_collector_agent_accuracy(self):
-        """_run_collector dispatches to save_agent_accuracy_snapshot."""
-        from nuri.scheduler import _run_collector
-
-        with patch("nuri.trading.engine.decisions.save_agent_accuracy_snapshot", return_value=5) as mock_fn:
-            _run_collector("agent_accuracy")
-        mock_fn.assert_called_once()
 
     def test_run_collector_recommendation_outcomes(self):
         """_run_collector dispatches to tracker.track_outcomes (#899)."""

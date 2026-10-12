@@ -57,7 +57,7 @@ The diagram shows the main path. The table lists each step's inputs and outputs;
 | 4 | **Decide** | Inside the consensus job: `record_decisions()` receives the results in memory | The consensus results; `pipeline_events` (a recorded regime change, if any); `macro`, `macro_events`, `prices`, `fundamentals`, `estimates` and `portfolio` through the regime, macro-score and price-target helpers | `decisions`, `decision_evidence` |
 | 5 | **BUY candidates** | The `premarket_brief` job | The latest `factors` snapshot, `prices`, `signals`, `portfolio` (holdings are excluded), `pipeline_events` (the re-emit cooldown), `theses` (labels), VIX and the regime inputs | `recommendations` (`source='buy_candidate_emitter'`), `candidate_runs`, `candidate_ledger` |
 | 6 | **Deliver** | Brief jobs, outbox dispatchers, the API, the MCP server | `recommendations`, `decisions`, `macro`, `candidate_runs` and more | Discord messages, `discord_outbox`, `market_postmortem` |
-| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` (an operate job that seals the ledger) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
+| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`; `alpha_report` (an operate job that seals the ledger) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `recommendation_seals` |
 | 8 | **Learn** | The next consensus run | `recommendations.outcome_30d` (provisional `outcome_21d`) with `agent_verdicts` | The agent weights for that run, recomputed each time and kept in the `scoring_detail` of `recommendations` and `decisions` |
 
 **Collect.** Collectors read external APIs on their own schedules and write one table each (some write several). The `technical` collector computes TA-Lib indicators from `prices`. The operator imports holdings from `config/portfolio.yaml` (`scripts/ops/import_portfolio.py`, run by `make setup` or by hand) or edits them through the portfolio API; database triggers log every insert and delete, and every update that changes a quantity, account or ticker, to `portfolio_changes`.
@@ -142,7 +142,7 @@ Every job reads its inputs from the database and writes its results back. The th
 | **Analyze** | 1 job: `factors` at `10 8 * * *` | `prices`, `signals`, `fundamentals`, `macro` | `factors` |
 | **Consensus** | 1 job: `consensus` at `5 7 * * *` | `portfolio`, collector tables, `recommendations.outcome_30d` / `outcome_21d` (for weights) | `recommendations` with `agent_verdicts` |
 | **Decide** | No dedicated job; `record_decisions()` runs inside the consensus job (see above) | Consensus result, handed over in memory; the market-context tables listed in [System Flow](#system-flow) | `decisions`, `decision_evidence` |
-| **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory` |
+| **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict` |
 
 The stage directories are `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine` and `nuri/trading/recommend`. Imports that cross these boundaries are allowed only inside function bodies, never at module level, and each one must be listed in an allowlist with a stated reason. `tests/core/test_cross_stage_imports.py` enforces this in both directions.
 
@@ -324,7 +324,7 @@ cache states and known limitations.
 
 ## Scheduler
 
-`nuri/scheduler.py` defines 59 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are host-local (KST on the production host) unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A job's pipeline stage comes from `_STAGE_OF_JOB`, and only staged jobs record lifecycle events. Cron jobs allow a 5-minute misfire grace, and a fire time missed while the process is down is not run later. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
+`nuri/scheduler.py` defines 58 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are host-local (KST on the production host) unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A job's pipeline stage comes from `_STAGE_OF_JOB`, and only staged jobs record lifecycle events. Cron jobs allow a 5-minute misfire grace, and a fire time missed while the process is down is not run later. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
 
 ## Environment Variables
 
@@ -388,7 +388,7 @@ The total table count appears once, in the [Runtime Topology](#runtime-topology)
 | `decision_outcomes` | Forward-outcome ledger: realized return, benchmark return, alpha and hit threshold at 7/14/30 days |
 | `positions` | Long/Short strategy positions |
 | `swing_trades` | Market-wide swing trade positions |
-| `strategy_memory` | Snapshots, one set per date: signal performance from the newest `signal_results.csv` (weekly `memory_snapshot`) and per-agent accuracy (weekly `agent_accuracy`) |
+| `strategy_memory` | Snapshots, one set per date: signal performance from the newest `signal_results.csv` (weekly `memory_snapshot`). The `agent_<name>_accuracy` rows with regime `all` are history from a weekly job retired in #1772 |
 | `analyst_ratings` | Upgrade/downgrade history |
 | `earnings_surprises` | EPS actual vs estimate |
 | `insider_trades` | Insider buy/sell transactions |
@@ -411,7 +411,7 @@ The `recommendations`, `decisions` and `agent_decisions` tables look redundant b
 Why all three coexist:
 
 - `recommendations` is the user-facing contract; its format must not break.
-- `decisions` is the research dataset: it keeps each decision's full context, and its `agent_verdicts` and `outcome` feed the weekly agent-accuracy snapshot.
+- `decisions` is the research dataset: it keeps each decision's full context. `python -m nuri.trading.engine.decisions --accuracy` scores its `agent_verdicts` against the realized 90-day return (`pnl_90d`) on demand; nothing stores the result.
 - `agent_decisions` anchors the forward-outcome ledger: `decision_id` joins to `decision_outcomes` for the #529 closed-loop validation, and the same schema can hold DecisionCompiler's audited state machine when that path runs.
 
 The overlap between `decisions` and `agent_decisions` is intentional. Removing either would lose research expressiveness or the outcome ledger's anchor.
@@ -480,7 +480,7 @@ data/
 
 ## Testing
 
-8,866 backend tests across 435 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,857 backend tests across 435 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the push-time slow shards (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

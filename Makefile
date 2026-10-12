@@ -425,8 +425,8 @@ gate: ## Run trading gate engine (signal aggregation + 10-gate filter)
 strategic-rebalance: ## Strategic Asset Allocation drift advisor (STRATEGY §3.10). usage: make strategic-rebalance STRATEGY=core. rc=0 OK / rc=1 REBALANCE
 	$(PYTHON) -m nuri.trading.strategy.strategic_allocation --strategy $(or $(STRATEGY),core)
 
-track-decisions: ## Track decision outcomes + snapshot to memory (closed loop)
-	$(PYTHON) -m nuri.trading.engine.decisions --track --snapshot
+track-decisions: ## Track decision P&L (7/30/60/90d)
+	$(PYTHON) -m nuri.trading.engine.decisions --track
 
 
 # ═══════════════════════════════════════════════════════════════

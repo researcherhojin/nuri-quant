@@ -132,7 +132,6 @@ _STAGE_OF_JOB = {
     "decision_pnl": "track",
     "recommendation_outcomes": "track",
     "alpha_tracking": "track",
-    "agent_accuracy": "track",
 }
 
 
@@ -315,12 +314,6 @@ def _dispatch_collector(name: str, **kwargs):
         # 아직 30일이 안 지나 measure 가 0 이다 — 측정만 세면 그 구간 전체가
         # `rows_collected=0` 인 no-op 으로 기록돼, 이 PR 이 없애려는 상태 그대로다.
         return int(out.get("synced_from_recommendations", 0)) + int(out.get("n_measurements", 0))
-    elif name == "agent_accuracy":
-        from nuri.trading.engine.decisions import save_agent_accuracy_snapshot
-
-        n = save_agent_accuracy_snapshot()
-        logger.info(f"[agent_accuracy] {n}건 저장")
-        return n
     elif name == "consensus":
         # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
         # recommendation_outcomes(07:02) 가 outcome_30d 를 채우면 _compute_weights 가 가중치를 조정한다.
@@ -1008,8 +1001,6 @@ SCHEDULES = [
     {"name": "thesis_criteria", "func": _run_collector, "args": ("thesis_criteria",), "cron": "20 8 * * *"},
     # 수집 데이터 타당성 점검 (07:20 — US 종가·KR 전일 수집이 모두 끝난 뒤).
     {"name": "data_sanity", "func": _run_data_sanity, "args": (), "cron": "20 7 * * *"},
-    # Agent accuracy 스냅샷 (주 1회 일요일 08:00)
-    {"name": "agent_accuracy", "func": _run_collector, "args": ("agent_accuracy",), "cron": "0 8 * * 0"},
     # 일일 리포트 (매일 08:00)
     {"name": "daily_report", "func": _run_report, "args": (), "cron": "0 8 * * *"},
     # Pre-market brief (평일 US/Eastern 09:00 — pre-market 30분 전).
