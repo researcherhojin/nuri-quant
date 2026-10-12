@@ -30,7 +30,7 @@ class NYSEHolidayCalendar(AbstractHolidayCalendar):
         + [
             r
             for r in USFederalHolidayCalendar.rules
-            if r.name not in ("New Year's Day", "Columbus Day", "Veterans Day")
+            if r.name not in ("New Year's Day", "Columbus Day", "Veterans Day")  # pyright: ignore[reportAttributeAccessIssue]  # stubs 의 Holiday 에 name 이 없다
         ]
         + [GoodFriday]
     )
@@ -39,7 +39,10 @@ class NYSEHolidayCalendar(AbstractHolidayCalendar):
 def nyse_holidays(start: date, end: date) -> set[date]:
     """[start, end] 안의 NYSE 휴장일 (주말 제외)."""
     # stubs 가 holidays() 원소를 NaT 가능으로 잡는다 — isinstance 로 date 만 남겨 타입을 확정한다
-    days = [pd.Timestamp(ts).to_pydatetime().date() for ts in NYSEHolidayCalendar().holidays(start=start, end=end)]
+    days = [
+        pd.Timestamp(ts).to_pydatetime().date()
+        for ts in NYSEHolidayCalendar().holidays(start=pd.Timestamp(start), end=pd.Timestamp(end))
+    ]
     return {d for d in days if isinstance(d, date)}
 
 

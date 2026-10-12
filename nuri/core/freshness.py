@@ -312,7 +312,7 @@ def _us_federal_holidays(start: date, end: date) -> list[date]:
     import pandas as pd
     from pandas.tseries.holiday import USFederalHolidayCalendar
 
-    days = USFederalHolidayCalendar().holidays(start=start, end=end)
+    days = USFederalHolidayCalendar().holidays(start=pd.Timestamp(start), end=pd.Timestamp(end))
     # stubs 가 holidays() 원소를 NaT 가능으로 잡는다 — isinstance 로 date 만 남겨 타입을 확정한다
     dates = [pd.Timestamp(d).to_pydatetime().date() for d in days]
     return [d for d in dates if isinstance(d, date) and start < d < end]

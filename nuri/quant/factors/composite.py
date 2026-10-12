@@ -6,6 +6,7 @@
 
 import logging
 from datetime import date
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -119,9 +120,10 @@ def compute_composite() -> pd.DataFrame:
         # 0.5 대입은 **백분위 정규화 이후에야** 중립이다 (#1102). min-max 시절 확장된
         # value 분포의 중앙값은 0.0923 이라 0.5 는 92 백분위였다 — fundamentals 가 없다는
         # 이유만으로 상위 8% 에 앉았다. 백분위 척도에서는 0.5 가 정의상 중앙값이다.
-        m = momentum.loc[ticker, "momentum_score"] if ticker in momentum.index else 0.5
-        v = value.loc[ticker, "value_score"] if ticker in value.index else 0.5
-        q = quality.loc[ticker, "quality_score"] if ticker in quality.index else 0.5
+        # stubs 는 .loc[행, 열] 을 문자열·날짜까지 포함한 Scalar 로 본다 — 세 점수 컬럼은 계산상 float 다
+        m = cast(float, momentum.loc[ticker, "momentum_score"]) if ticker in momentum.index else 0.5
+        v = cast(float, value.loc[ticker, "value_score"]) if ticker in value.index else 0.5
+        q = cast(float, quality.loc[ticker, "quality_score"]) if ticker in quality.index else 0.5
         s = fg_score  # 시장 전체 센티먼트 (미상이면 None)
 
         composite = m * weights["momentum"] + v * weights["value"] + q * weights["quality"]

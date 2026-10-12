@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 
@@ -66,7 +67,8 @@ def get_exchange_rate(db_path=None) -> float:
 
         df = yf.download("KRW=X", period="5d", progress=False)
         if df is not None and not df.empty:
-            close = df["Close"]
+            # stubs 는 df["Close"] 를 Series 로만 본다 — 신형 yfinance 의 MultiIndex 컬럼이면 DataFrame 이다
+            close = cast("pd.Series | pd.DataFrame", df["Close"])
             if isinstance(close, pd.DataFrame):  # 신형 yfinance 는 단일 종목도 MultiIndex 컬럼 → 첫 컬럼
                 close = close.iloc[:, 0]
             close = close.dropna()  # squeeze() 는 1행 결과를 스칼라로 만들어 iloc 이 죽는다 (Codex P2)

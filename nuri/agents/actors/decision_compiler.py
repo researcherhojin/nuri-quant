@@ -404,7 +404,7 @@ class DecisionCompiler(Actor):
 
         head_bits = [f"{mark} {ticker} · {action}".strip()]
         position = payload.get("position")
-        if position:
+        if isinstance(position, str) and position:
             head_bits.append(
                 {"new": "신규", "held": "보유", "held/winner": "보유·수익", "held/loser": "보유·손실"}.get(
                     position, position

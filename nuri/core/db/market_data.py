@@ -31,7 +31,7 @@ def upsert_prices(df: pd.DataFrame, db_path: Optional[Path] = None, source: Opti
         return 0
     if "source" not in df.columns:
         df = df.assign(source=source)
-    else:
+    elif source is not None:
         # concat 으로 섞인 프레임은 출처가 없는 쪽이 NaN 이다 — 그대로 쓰면 NULL 이 이전 출처까지 지운다
         df = df.assign(source=df["source"].where(df["source"].notna(), source))
     with get_db(db_path) as conn:

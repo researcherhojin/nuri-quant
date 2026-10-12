@@ -94,11 +94,12 @@ def _sweep() -> list[dict]:
         tree = ast.parse(f.read_text(encoding="utf-8"))
         toplevel = {id(n) for n in tree.body}
         for node in ast.walk(tree):
-            mods: list[str] = []
             if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
                 mods = [node.module]
             elif isinstance(node, ast.Import):
                 mods = [a.name for a in node.names]
+            else:
+                continue
             for m in mods:
                 tgt = _stage_of_module(m)
                 if tgt and tgt != src:
