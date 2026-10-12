@@ -62,10 +62,12 @@ Branch protection on `main` requires these 14 checks (authoritative list:
 | uv.lock Major Boundary / package-lock.json Major Boundary | a lock file does not cross a major version (or a 0.x boundary for direct dependencies) unnoticed. Escape hatch: the `lock-bump-reviewed` label, read from the API, so adding it later and re-running the failed job is enough |
 
 `required_status_checks.strict` is off: a PR merges once its own checks pass,
-without first catching up with `main`. The combined tree is checked by the
-push run on `main`, and the Mac mini deploys a commit only after that run
-succeeds (`scripts/deploy/autopull_receiver.sh`, #1808). A PR that conflicts
-with `main` still needs a rebase.
+without first catching up with `main`. The combined tree is checked by main CI
+for that commit, and the Mac mini deploys a commit only after such a run
+succeeds (`scripts/deploy/autopull_receiver.sh`, #1808). That run is the push
+run, except for a merge made with `GITHUB_TOKEN` (Dependabot auto-merge), which
+starts no workflows at all: the hourly `main-ci-catchup.yml` dispatches main CI
+for such a commit (#1812). A PR that conflicts with `main` still needs a rebase.
 
 ### Advisory
 
@@ -145,7 +147,9 @@ Dependabot opens weekly PRs for `uv` and npm and monthly ones for GitHub Actions
 whose lock file stays inside the major boundary. Lock-file PRs that change the
 same part of a lock file conflict once one of them merges; Dependabot rebases
 those itself (`@dependabot rebase` asks for it sooner). `@dependabot recreate` force-pushes and turns
-auto-merge off. Details and the gotchas behind the lock gates:
+auto-merge off. Auto-merged PRs start no workflows when they merge, so they get
+neither a push run nor the PR-close cache cleanup; the catch-up above and a
+daily sweep in `cache-cleanup.yml` cover both (#1812). Details and the gotchas behind the lock gates:
 `.claude/rules/ci-deps.md`.
 
 ## Where to put new code

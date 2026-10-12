@@ -1,0 +1,42 @@
+# GITHUB_TOKEN 이 한 머지에 main CI 를 대신 띄운다 (#1812).
+#
+# dependabot-auto-merge.yml 이 GITHUB_TOKEN 으로 켠 auto-merge 는 github-actions[bot] 의
+# 머지가 되고, GitHub 는 GITHUB_TOKEN 이 일으킨 이벤트로는 워크플로를 시작하지 않는다
+# (예외는 workflow_dispatch · repository_dispatch). 그래서 그 머지 커밋에는 main push CI 가
+# 없고, autopull 의 CI 게이트(#1809)는 그 커밋을 배포하지 않고 계속 보류한다. 이 워크플로가
+# 매시간 main HEAD 를 보고, 런이 하나도 없으면 workflow_dispatch 로 main CI 를 띄운다 —
+# 판단 규칙은 scripts/ci/main_ci_catchup.sh 머리말.
+#
+# - cron 은 정시 · */N 을 피해 :37 분 (heartbeat-watch.yml 과 같은 이유 — 혼잡 분은 지연 · 드롭된다).
+# - ⚠️ 신규 워크플로의 schedule 은 등록이 늦거나 안 될 수 있다 (heartbeat-watch.yml 머리말의
+#   2026-08-29 기록). 머지 뒤 schedule 이벤트가 실제로 뜨는지 `gh run list -w main-ci-catchup.yml
+#   -e schedule` 로 확인할 것 — dispatch 성공은 cron 등록의 증거가 아니다.
+name: Main CI Catch-up
+
+on:
+  schedule:
+    - cron: "37 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: main-ci-catchup
+  cancel-in-progress: false
+
+jobs:
+  catchup:
+    name: Dispatch main CI for an untested HEAD
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Dispatch main-ci-cd when main HEAD has no run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/main_ci_catchup.sh

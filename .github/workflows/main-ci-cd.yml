@@ -13,8 +13,10 @@ on:
 permissions:
   contents: read
 
+# 그룹에 이벤트를 넣어 main-ci-catchup.yml 의 workflow_dispatch 런이 같은 main 의 push 런을
+# 취소하지 않게 한다 (#1812). PR 은 ref 마다 이벤트가 하나라 예전과 똑같이 동작한다.
 concurrency:
-  group: "ci-${{ github.ref }}"
+  group: "ci-${{ github.ref }}-${{ github.event_name }}"
   cancel-in-progress: true
 
 env:
@@ -802,19 +804,21 @@ jobs:
           retention-days: 7
           include-hidden-files: true
 
-  # ── Backend Slow Tests — isolated, push-only ──
+  # ── Backend Slow Tests — isolated, every non-PR run ──
   # Runs the 23 @pytest.mark.slow tests (mostly LLM/scheduler) in a single
-  # unsharded job. Push-only: PRs deliberately skip slow tests, matching
-  # pre-split behavior (see STRATEGY §4.1 — slow excluded from PR CI).
+  # unsharded job. PRs deliberately skip slow tests, matching pre-split
+  # behavior (see STRATEGY §4.1 — slow excluded from PR CI). Push runs and the
+  # catch-up's workflow_dispatch runs on main (#1812) both run them.
   # Coverage uploaded with flag `backend-slow` so Codecov merges with the
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
     name: Backend Tests · Slow ${{ matrix.shard }}
     needs: changes
-    # Push-only (strict). workflow_dispatch and schedule won't run slow.
+    # Every non-PR event: push, and the workflow_dispatch that main-ci-catchup.yml
+    # starts for a commit merged by GITHUB_TOKEN, which got no push run (#1812).
     # PR deliberately skips slow (matches pre-split behavior, STRATEGY §4.1).
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
