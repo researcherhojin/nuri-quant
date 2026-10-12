@@ -912,7 +912,7 @@ class TestAccountLabels:
     def test_custom_label_field_overrides_strategy(self, monkeypatch):
         """#214 polish: `label` field in portfolio.yaml overrides the strategy default.
 
-        Lets users put custom display names (e.g. 'Toss', '호진 메인') in their
+        Lets users put custom display names (e.g. 'Toss', '메인 계좌') in their
         own gitignored yaml without any personal data reaching the code.
         """
         from nuri.api.routes.dashboard import _get_account_labels

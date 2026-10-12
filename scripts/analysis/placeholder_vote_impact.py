@@ -155,7 +155,7 @@ def classify(verdict: dict) -> tuple[bool, bool]:
         return True, False
     if agent == "smart_money" and reason and all(STALE_NOTE.search(s.strip()) for s in reason.split(";")):
         return False, True  # 전 소스가 낡아 제외됐다 — 근거 0 으로 낸 자리표시자
-    if reason in PLACEHOLDER_REASONS.get(agent, frozenset()):
+    if reason in PLACEHOLDER_REASONS.get(agent or "", set()):
         if (agent, reason) in CURRENT_CODE_ZEROED:
             points = verdict.get("data_points") or {}
             if any(points.get(k) is not None for k in FUNDAMENTAL_FIELDS):
@@ -250,6 +250,8 @@ def rescore(row: dict) -> RowResult | None:
     v_current = _build_consensus(row["ticker"], current, weights)
     v_excluded = _build_consensus(row["ticker"], live, weights)
 
+    # _build_consensus 는 항상 scoring_detail 을 채운다 — 모델 타입이 Optional 이라 여기서 좁힌다
+    assert v_current.scoring_detail is not None and v_excluded.scoring_detail is not None
     total_current = sum(v_current.scoring_detail["action_scores"].values())
     total_excluded = sum(v_excluded.scoring_detail["action_scores"].values())
     # V2 (중간안) — 분자는 자리표시자 없이, 분모는 그대로. 방향은 V1 과 같고 확신도만 희석된다.

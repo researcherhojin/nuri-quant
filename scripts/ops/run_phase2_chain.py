@@ -75,6 +75,7 @@ def fetch_macro_features(start_date: str = "2025-01-01") -> pd.DataFrame:
     pivot["yield_curve_slope"] = pivot["us_10y_yield"] - pivot["us_2y_yield"]
     # forward-fill macro values to align dates
     pivot = pivot[["vix_z", "yield_curve_slope"]].ffill().dropna()
+    assert isinstance(pivot, pd.DataFrame)  # 열 목록 인덱싱이라 DataFrame — stub 의 Series 합집합을 좁힌다
     return pivot
 
 

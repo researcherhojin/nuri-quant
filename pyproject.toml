@@ -6,11 +6,11 @@ readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [
-    { name = "Hojin Lee", email = "researcher.hojin@gmail.com" },
+    { name = "Nuri-Quant contributors" },
 ]
 keywords = [
     "quant", "investment", "portfolio", "backtest",
-    "siege", "trading", "fintech",
+    "trading", "fintech",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
