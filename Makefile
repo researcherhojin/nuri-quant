@@ -8,7 +8,7 @@
 PYTHON = .venv/bin/python
 
 .PHONY: help \
-        setup test test-fast test-slow ci-cov ci-cov-detail lint lint-fix verify-quick verify-all verify verify-fast \
+        setup migrate test test-fast test-slow ci-cov ci-cov-detail lint lint-fix verify-quick verify-all verify verify-fast \
         collect collect-kis collect-kis-check wallstreet filings \
         analyze report report-llm \
         validate regime recommend gate consensus track-decisions \
@@ -28,7 +28,7 @@ PYTHON = .venv/bin/python
 help:
 	@echo "Nuri-Quant Makefile — 카테고리별 주요 명령"
 	@echo ""
-	@echo "  Setup:        make setup"
+	@echo "  Setup:        make setup, make migrate"
 	@echo "  Test/Lint:    make test, make test-fast, make lint, make lint-fix, make lint-sh"
 	@echo "  Verify:       make verify-help    (4 tiers — 사다리가 아니라 서로 다른 것을 본다. 목적으로 고를 것)"
 	@echo "  Data:         make collect, make collect-kis, make wallstreet, make filings"
@@ -79,6 +79,9 @@ setup:
 
 setup-hooks: ## Install repo-tracked git hooks (pre-commit auto-fix). Idempotent.
 	bash scripts/dev/install_hooks.sh
+
+migrate: ## Apply pending DB migrations. Idempotent — the production scheduler does the same at startup.
+	$(PYTHON) scripts/db/migrate.py --quiet
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -286,6 +289,12 @@ verify:          ## pre-release — verify.py full, includes backtest (213s)
 # ═══════════════════════════════════════════════════════════════
 # DATA COLLECTION (Phase A)
 # ═══════════════════════════════════════════════════════════════
+# 수집·스캔 전에 migration 을 적용한다 (#1828). 수집기는 init_db() 를 부르지 않아서, 뒤처진 dev DB
+# 에서는 새 컬럼을 쓰는 수집기가 실패했다 (2026-10-12 전체 사이클: prices.source). 프로덕션은
+# 스케줄러가 기동할 때 init_db() 를 부른다. `collect:` 줄에 붙이지 않고 따로 적는 이유:
+# maintenance_auditor 가 `^collect:\n` 을 그대로 읽는다. Test: tests/scripts/test_make_migrate.py
+collect quick-scan full-scan: migrate
+
 collect:
 	$(PYTHON) -m nuri.collectors.stock
 	$(PYTHON) -m nuri.collectors.stock --source freshness   # #453 — freshness_tickers pass (SPY/TLT/GC=F)
