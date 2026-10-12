@@ -8,16 +8,13 @@ recommendations·decisions 행을 덮어쓴다.
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from nuri.core.db import DatabaseError, query
 from nuri.core.timezone import sqlite_utc_to_kst_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
-
-# 타임라인 `?step=` 필터의 어휘 — 레거시 6-step 이라 이벤트 어휘와 다르다 (#1785).
-VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
 # Frontend PipelineStep presentation (frontend/src/app/pipeline/page.tsx expects this shape).
 # `nuri/core/events.PIPELINE_STEPS` 와 같은 5 stage 어휘 (#921).
@@ -156,8 +153,9 @@ def get_pipeline_timeline(
     """최근 N개 파이프라인 이벤트 타임라인."""
     from nuri.core.events import get_timeline
 
-    if step and step not in VALID_STEPS:
-        raise HTTPException(status_code=400, detail=f"Invalid step: {step}. Valid: {', '.join(VALID_STEPS)}")
+    # `step` 은 `pipeline_events.step` 의 어떤 값이든 받는다 — 5 스테이지와 도메인 이벤트
+    # (holdings_monitor 의 `recommend`, `alpha_report` …). 정적 허용 목록은 레거시 6-step 으로 낡아
+    # 실제 스테이지를 400 으로 막았다 (#1785). 모르는 값은 빈 목록이다 (파라미터 바인딩이라 안전).
     events = get_timeline(limit=limit, step=step)
     for event in events:
         event["timestamp"] = sqlite_utc_to_kst_iso(event.get("timestamp"))

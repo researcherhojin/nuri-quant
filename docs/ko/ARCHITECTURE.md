@@ -278,7 +278,7 @@ regime 은 scheduled job 이 저장하지 않고 각 소비처가 필요할 때 
 Pipeline 제어 API(`nuri/api/routes/pipeline.py`, `nuri/api/routes/pipeline_refresh.py`):
 
 - `GET /api/pipeline/status`: 5개 스테이지의 lifecycle 상태와 기록 건수. Decide 는 `execution_mode` 와 별도의 최신 ledger `artifact`(date/count/status)도 싣는다
-- `GET /api/pipeline/timeline`: event log
+- `GET /api/pipeline/timeline`: event log. `?step=` 는 `pipeline_events.step` 의 어떤 값이든 받고(5개 스테이지와 `recommend`·`alpha_report` 같은 도메인 스텝), 모르는 값이면 빈 목록이다
 - `GET /api/freshness`: 데이터 freshness 보고
 - `GET /api/pipeline/refresh`: 지원하는 data-refresh job 과 프로세스 로컬 요청 상태
 - `POST /api/pipeline/refresh`: 인증이 필요한 background 데이터 수집/재계산. HTTP 202, 순서가 정해진 job, lifecycle event, heavy slot. consensus, 결정 기록, outcome tracking 은 실행하지 않는다.
