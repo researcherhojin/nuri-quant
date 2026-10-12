@@ -381,7 +381,7 @@ class TestDiscordMainEntry:
         monkeypatch.setattr(sys, "argv", ["nuri.alerts.discord_bot", "--webhook", "--message", "ping"])
 
         # Force re-execution; pop cached module so module-level code re-runs.
-        sys.modules.pop("nuri.alerts.discord_bot", None)
+        monkeypatch.delitem(sys.modules, "nuri.alerts.discord_bot", raising=False)
         runpy.run_module("nuri.alerts.discord_bot", run_name="__main__")
 
         assert len(calls) == 1
@@ -394,7 +394,7 @@ class TestDiscordMainEntry:
         import sys
 
         monkeypatch.setattr(sys, "argv", ["nuri.alerts.discord_bot"])
-        sys.modules.pop("nuri.alerts.discord_bot", None)
+        monkeypatch.delitem(sys.modules, "nuri.alerts.discord_bot", raising=False)
         runpy.run_module("nuri.alerts.discord_bot", run_name="__main__")
 
         out = capsys.readouterr().out

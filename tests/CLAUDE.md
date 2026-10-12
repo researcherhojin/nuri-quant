@@ -168,6 +168,11 @@ attribute 'sub'`. shard 구성만 바뀐 무관한 PR(#1817)에서 빨간불로 
 `importlib.import_module(name)` 하고 `raising=True` 로 둘 다 기록되게 할 것.
 **Test:** `tests/api/test_pykrx_stub_does_not_leak.py::test_the_first_import_case_leaves_the_package_and_sys_modules_in_agreement`
 — 예전 본문으로 되돌리면 FAIL (직렬 `pytest -n0` 로 이 파일 뒤에 `tests/collectors/test_stock_kr.py` 를 돌리면 12 failed).
+반대 방향도 있다: `sys.modules.pop(name, None)` 만 하고 되돌리지 않으면, 이미 import 돼 있던 worker 에서
+모듈은 `sys.modules` 에서 사라지고 패키지 속성만 남는다 — 다음 import 가 두 번째 사본을 만든다. `runpy` 로
+main 을 재실행하는 테스트 3개가 그랬다 (#1842). `nuri.*` 를 빼거나 바꾸는 건 `monkeypatch.delitem` /
+`setitem` 으로만 한다.
+**Test:** `tests/test_no_raw_sys_modules_surgery.py` — raw `pop` · `del` · 대입을 AST 로 막는다(사유 있는 예외만 `ALLOWED`).
 
 ### 저장소 파일을 훑는 테스트는 gitignore 된 로컬 파일을 걸러야 한다 (#1838)
 
