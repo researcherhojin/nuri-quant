@@ -103,6 +103,39 @@ class TestSignals:
         assert "scorecard" in data
         assert data["date"] == "2026-05-04"
 
+    @pytest.mark.parametrize("cell", ["", "inf", "-inf"])
+    def test_scorecard_non_finite_total_cell_is_null(self, client, monkeypatch, tmp_path, cell):
+        """total 행의 NaN·±inf 는 null 로 나간다 — NaN 만 있고 inf 가 없어도 (#1829).
+
+        예전 변환(`replace([inf, -inf], None)` → `where(notna, None)`)은 inf 가 있을 때만 컬럼을
+        object 로 바꿨다. inf 가 없으면 float64 컬럼의 NaN 이 남아 `JSONResponse`(allow_nan=False)
+        직렬화가 실패했다 — 대시보드 signals 페이지가 그 응답을 받는다.
+        """
+        report_root = tmp_path / "reports"
+        sub = report_root / "2026-05-04"
+        sub.mkdir(parents=True)
+        (sub / "signal_scorecard.csv").write_text(f"ticker,score,hit_rate\n,75.0,{cell}\nAAPL,80.0,0.6\n")
+
+        def fake_path(arg):
+            class _W:
+                @property
+                def parent(self):
+                    return self
+
+                def __truediv__(self, other):
+                    return _Mid() if other == "data" else tmp_path / other
+
+            class _Mid:
+                def __truediv__(self, other):
+                    return report_root if other == "reports" else tmp_path / other
+
+            return _W()
+
+        monkeypatch.setattr("pathlib.Path", fake_path)
+        r = client.get("/api/scorecard")
+        assert r.status_code == 200
+        assert r.json()["scorecard"] == [{"score": 75.0, "hit_rate": None}]
+
     def test_scorecard_dir_exists_but_no_csv(self, client, monkeypatch, tmp_path):
         """dir 존재 but csv 없음 → 'csv 없음' 메시지 (line 47)."""
         report_root = tmp_path / "reports"

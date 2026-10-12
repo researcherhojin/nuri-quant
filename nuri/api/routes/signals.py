@@ -27,6 +27,7 @@ def get_candidates(days: int = Query(5, ge=1, le=30)):
 @router.get("/scorecard")
 def get_scorecard():
     """시그널 스코어카드 (최신 CSV)."""
+    import math
     from pathlib import Path
 
     import pandas as pd
@@ -40,11 +41,14 @@ def get_scorecard():
         if csv.exists():
             df = pd.read_csv(csv)
             total = df[df["ticker"].isna()].drop(columns=["ticker"])
-            # inf/NaN → None (JSON 직렬화 호환)
-            total = total.replace([float("inf"), float("-inf")], None)
-            total = total.where(total.notna(), None)
+            # NaN·±inf → None (JSON 직렬화 호환). 값마다 판정한다 — 프레임 단위 replace/where 는 dtype 에
+            # 따라 결과가 달라서, inf 가 없는 float 컬럼의 NaN 을 그대로 남겼다 (#1829).
+            records = [
+                {k: None if isinstance(v, float) and not math.isfinite(v) else v for k, v in row.items()}
+                for row in total.to_dict(orient="records")
+            ]
             return {
-                "scorecard": total.to_dict(orient="records"),
+                "scorecard": records,
                 "date": d.name,
             }
 
