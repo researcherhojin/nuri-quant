@@ -225,7 +225,7 @@ $ tail -3 data/logs/scheduler.log
 2026-04-29 23:11:02 db_maintenance WARNING 테이블 strategy_memory 조회 실패 (미존재 가능)
 ```
 
-ARK CSV 404 는 반복적으로 발생한다(ark-funds.com 의 endpoint 변경이 잦고 yfinance fallback 이 동작한다). `strategy_memory` 미존재 경고는 의도된 graceful 처리다. Critical failure 는 없었고, RotatingFileHandler (PR #498) 와 yfinance WARNING (PR #501) 적용 후 log volume 도 정상이다.
+ARK CSV 404 는 반복적으로 발생한다(ark-funds.com 의 endpoint 변경이 잦고 yfinance fallback 이 동작한다). `strategy_memory` 경고는 테이블 미존재가 아니었다. 보존 정책이 없는 컬럼을 가리켜 주간 job 이 한 번도 정리하지 못한 것이다. `strategy_memory` 는 append-only 라 #1786 에서 정책을 걷어냈다. Critical failure 는 없었고, RotatingFileHandler (PR #498) 와 yfinance WARNING (PR #501) 적용 후 log volume 도 정상이다.
 
 ### Verdict
 

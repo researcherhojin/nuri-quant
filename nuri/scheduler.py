@@ -509,7 +509,7 @@ def _run_backup():
 
 
 def _run_db_maintenance():
-    """DB 유지보수 — 오래된 데이터 정리 + VACUUM."""
+    """DB 유지보수 — WAL checkpoint + VACUUM. 행은 지우지 않는다 (#1786)."""
     try:
         from scripts.db.maintenance import run_maintenance
 

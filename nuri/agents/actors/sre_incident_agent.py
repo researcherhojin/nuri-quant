@@ -145,7 +145,7 @@ SIGNAL_EVAL_GRACE_HOUR = 12
 SIGNAL_EVAL_WEEKDAYS = (1, 2, 3, 4, 5)
 # §3.11 월간 alpha 리포트 미발화 임계 (#894). 월 1회 발화라 한 달(31일)로는
 # 정상 주기와 구분이 안 된다 — 한 주기를 통째로 놓친 게 확실해지는 35일.
-# pipeline_events 보존 90일(scripts/db/maintenance.py)이라 이 창은 안전하다.
+# pipeline_events 는 append-only 라 지워지지 않으므로 (scripts/db/maintenance.py, #1786) 이 창은 안전하다.
 ALPHA_REPORT_STALE_DAYS = 35
 
 HEARTBEAT_PATH = Path(__file__).resolve().parents[3] / "data" / ".scheduler_heartbeat"
