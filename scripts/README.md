@@ -59,7 +59,7 @@ scripts/
 
 | Script | Purpose | Use |
 |---|---|---|
-| `migrate.py` | schema migration runner | `make setup` 내부 (`$(PYTHON) scripts/db/migrate.py`) |
+| `migrate.py` | schema migration runner | `make migrate` (`--quiet`, `collect` · `quick-scan` · `full-scan` 이 먼저 부른다, #1828) · `make setup` 내부 |
 | `maintenance.py` | WAL checkpoint + VACUUM; deletes no rows (the tables it once pruned are append-only, #1786) | apscheduler weekly (Sun 03:00) |
 | `backup.sh` | SQLite backup → `data/backups/` | `make backup` |
 | `restore.sh` | restore from backup | `bash scripts/db/restore.sh <snapshot>` |

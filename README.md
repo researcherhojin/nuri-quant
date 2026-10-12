@@ -104,6 +104,7 @@ Every API key is optional; a collector without credentials is skipped or falls b
 ```bash
 make start          # API on :8001 (OpenAPI at /docs), dashboard on :3000
 make full-scan      # manual research run: core collectors, signal backtest, consensus, price targets
+make migrate        # apply pending database migrations; collect and the scan targets run it first
 make consensus      # run the agent consensus and record decisions
 make test-fast      # backend tests, excluding slow tests
 make verify-all     # pre-push checks: tests, lint, frontend
@@ -166,7 +167,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,874 collected across 437 files |
+| Backend tests | 8,879 collected across 438 files |
 | Frontend test files | 117 vitest files |
 | Data collectors | 31 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 58 cron entries |
