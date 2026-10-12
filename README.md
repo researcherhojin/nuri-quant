@@ -36,7 +36,7 @@ Nuri-Quant reviews a portfolio of US and Korean equities every day. It issues a 
 | Task | Output |
 |------|--------|
 | Review every holding, every day | A dated BUY / SELL / HOLD per holding with the agent verdicts, market context and price levels behind it, kept in a decision ledger (`/decisions`) |
-| Grade past recommendations | The raw return of every recommendation at 7 to 90 days, and for each BUY and SELL the 7-, 14- and 30-day return against a benchmark where one applies; each agent's 30-day hit rate adjusts its weight, within a capped range, in the next consensus |
+| Grade past recommendations | The raw return of every recommendation at 7 to 90 days, and for each BUY and SELL the 7-, 14- and 30-day return against a benchmark where one applies; in the next consensus each agent is weighted by its 30-day hit rate within a capped range (by its 21-day rate while 30-day samples are too few, at its default weight while both are), and the weights are then normalized together |
 | Screen the universe | BUY candidates outside the portfolio, scored and gated by [`config/buy_signals.yaml`](config/buy_signals.yaml), with the scanner's observations kept separate from the verdict |
 | Watch the inputs | A freshness SLA per data source, judged against each source's own schedule; when an input of the dashboard verdict fails it, the verdict is replaced by a stale-data notice |
 | Show it on one page | The Overview dashboard (`/`): market indices, regime, macro score, holding reviews, portfolio composition, data freshness and pipeline status, each with its source |
@@ -109,6 +109,8 @@ make test-fast      # backend tests, excluding slow tests
 make verify-all     # pre-push checks: tests, lint, frontend
 make help           # list all targets
 ```
+
+`make full-scan` ends by sending a summary to Discord when `DISCORD_WEBHOOK_URL` is set, and to Telegram when both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set; leave them unset on a development machine so that only the production host posts.
 
 Investment rules and thresholds live in [`config/`](config/) (mainly `rules.yaml`); their rationale is in [`docs/STRATEGY.md`](docs/STRATEGY.md). Optional LLM features and their data-egress rules are described in §4.4.3 of the same document.
 
