@@ -3,11 +3,12 @@ import type { NextRequest } from "next/server";
 import { hashToken, timingSafeEqual } from "@/lib/auth-token";
 
 /**
- * Dashboard 인증 미들웨어.
+ * Dashboard 인증 proxy (Next 16 에서 `middleware` 파일 규칙이 `proxy` 로 바뀌었다, #1806).
+ * proxy 는 항상 Node.js runtime 에서 돈다 — runtime 설정은 넣으면 빌드가 실패한다.
  * DASHBOARD_PASSWORD 설정 시 활성화, 미설정 시 공개 (개발 모드).
  * 쿠키에는 HMAC-SHA256 토큰 저장 (서버 secret으로 키잉).
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const password = process.env.DASHBOARD_PASSWORD;
 
   // 비밀번호 미설정 → 인증 없이 통과

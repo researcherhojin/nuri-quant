@@ -12,7 +12,7 @@ vi.mock("next/server", () => {
   };
 });
 
-describe("middleware", () => {
+describe("proxy", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
@@ -21,7 +21,7 @@ describe("middleware", () => {
 
   it("passes through when no DASHBOARD_PASSWORD set", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const request = {
       nextUrl: { pathname: "/" },
@@ -29,13 +29,13 @@ describe("middleware", () => {
       url: "http://localhost:3000/",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
   it("passes through for /login path", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const request = {
       nextUrl: { pathname: "/login" },
@@ -43,13 +43,13 @@ describe("middleware", () => {
       url: "http://localhost:3000/login",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
   it("passes through for /api/auth path", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const request = {
       nextUrl: { pathname: "/api/auth" },
@@ -57,13 +57,13 @@ describe("middleware", () => {
       url: "http://localhost:3000/api/auth",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
   it("redirects to /login when no auth cookie", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const request = {
       nextUrl: { pathname: "/dashboard" },
@@ -71,7 +71,7 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result.type).toBe("redirect");
   });
 
@@ -80,7 +80,7 @@ describe("middleware", () => {
     // #1136: 앰비언트 환경에 기대지 않는다 — AUTH_SECRET 을 명시 stub 해야
     // 러너 환경에 AUTH_SECRET 이 있어도(래퍼 프로세스 등) 결과가 갈리지 않는다.
     vi.stubEnv("AUTH_SECRET", "test-auth-secret");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     // Generate the expected token using the same HMAC scheme as the
     // production auth-token helper. The body of the hash is the static
@@ -97,14 +97,14 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
   it("falls back to DASHBOARD_PASSWORD as HMAC key when AUTH_SECRET is empty", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
     vi.stubEnv("AUTH_SECRET", "");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const expectedToken = createHmac("sha256", "secret123")
       .update("nuri-auth-token:v1")
@@ -116,13 +116,13 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result).toEqual({ type: "next" });
   });
 
   it("redirects with wrong auth cookie", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
-    const { middleware } = await import("@/middleware");
+    const { proxy } = await import("@/proxy");
 
     const request = {
       nextUrl: { pathname: "/dashboard" },
@@ -130,12 +130,12 @@ describe("middleware", () => {
       url: "http://localhost:3000/dashboard",
     };
 
-    const result = await middleware(request as unknown as NextRequest);
+    const result = await proxy(request as unknown as NextRequest);
     expect(result.type).toBe("redirect");
   });
 
   it("exports correct matcher config", async () => {
-    const { config } = await import("@/middleware");
+    const { config } = await import("@/proxy");
     expect(config.matcher).toBeDefined();
     expect(config.matcher.length).toBeGreaterThan(0);
   });
