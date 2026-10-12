@@ -1,4 +1,4 @@
-# 기계 밖 감시의 감시 절반 — dead-man heartbeat staleness 검사 (#1191 옵션 C).
+# 기계 밖 감시의 보조 경로 — dead-man heartbeat staleness 검사 (#1191 옵션 C, #1848).
 #
 # mini 의 스케줄러가 10분마다 `refs/nuri/heartbeat-mini` (커스텀 ref) 를 갱신한다
 # (`nuri/alerts/offbox_heartbeat.py`). 이 워크플로는 GitHub 쪽에서 그 커밋
@@ -6,21 +6,26 @@
 # mini 는 인바운드 불가(사설망, API 127.0.0.1 전용)라 pull 감시가 불가능하고,
 # 송신자의 어떤 사망도 "침묵" 으로 수렴하는 dead-man 구조가 유일한 형태다.
 #
-# - 임계 45분 = ping 10분 × 4~5회 결손 여유. 배포의 scheduler bounce(~수 분)와
-#   Actions cron 지연(공식적으로 best-effort, 수십 분 늦을 수 있음)을 흡수한다.
-# - 침묵이 지속되면 20분 주기로 알림이 반복된다 — 진행 중 prod 장애의 리마인더는
-#   #ops 의 역할이라 의도된 동작이다 (stateless 라 dedupe 상태를 두지 않는다).
+# - ⚠️ 이것만으로는 탐지가 수 시간 늦는다 (#1848). cron 은 20분이지만 GitHub 은 이 레포의
+#   schedule 을 하루 3~8회만 실행했고(2026-09-03 ~ 10-11; 10-12 에는 런 간격 7시간 16분),
+#   주간 cron(Stale Issues)도 6~9시간 늦게 돌았다. 45분 임계는 이 워크플로가 **돌 때만**
+#   평가되고, 2026-09-06 장애(#1443)의 알림도 2.9시간 뒤에 왔다. 그래서 주 경로는 외부
+#   dead-man 서비스다 — 스케줄러 job 과 머신 LaunchDaemon 이 각자 자기 check 에 ping 하고
+#   서비스가 침묵을 재서 알린다 (URL 은 mini 의 `~/.config/nuri-quant/*.url`). 이
+#   워크플로는 두 ref 를 조합한 분류 문구를 주는 보조 경로로 남는다.
+# - 임계 45분 = 송신 10분 × 4~5회 결손 여유 — 배포의 scheduler bounce(~수 분)를 흡수한다.
+#   외부 서비스의 check 도 같은 잣대(period 10분 + grace 35분)로 맞춘다.
+# - 침묵이 지속되면 런마다 알림이 반복된다 — 진행 중 prod 장애의 리마인더는 #ops 의
+#   역할이라 의도된 동작이다 (stateless 라 dedupe 상태를 두지 않는다). 간격은 cron 이 아니라
+#   GitHub 이 실제로 런을 시작하는 간격이다.
 # - 공개 레포의 스케줄 워크플로는 60일 무활동 시 자동 비활성화된다 — 이 레포는
 #   일상 커밋이 있어 해당 없음. 장기 방치 시 이 줄이 그 이유를 알려줄 것.
-# - ⚠️ 신규 워크플로의 schedule 은 등록에 실패할 수 있다 — 최초 머지(2026-08-29
-#   11:09Z) 후 3시간 동안 schedule 이벤트 0회였고, 같은 레포의 주간 cron(Stale
-#   Issues)은 정상이었다. 주석-only 재푸시(#1327)로도 1시간 내 미발화 → `on.schedule`
-#   블록 자체를 바꾸는 이 커밋이 2차 재등록 유도다. cron 이 `*/20`(=:00/:20/:40)이
-#   아니라 7/27/47분인 이유: GitHub 공식 문서가 정시 등 혼잡 분을 피하라고 권고하고
-#   (`*/N` 은 고부하 시 지연·드롭), 20분 간격 자체는 유지해 45분 임계와의 관계
-#   (4~5회 결손 여유)를 바꾸지 않는다. 이 파일을 고칠 일이 생기면 머지 후 schedule
-#   이벤트가 실제로 뜨는지까지 확인할 것 — dispatch 성공은 cron 등록의 증거가
-#   아니다 (green dead gate 의 Actions 판).
+# - 최초 머지(2026-08-29 11:09Z) 후 3시간 동안 schedule 이벤트가 0회라 등록 실패로 보고 주석-only
+#   재푸시(#1327)와 `on.schedule` 블록 변경으로 재등록을 유도했다. 위 실행률로 보면 그 0회는
+#   등록 실패의 증거가 아니었다 (#1840 정정 코멘트). cron 이 `*/20`(=:00/:20/:40)이 아니라
+#   7/27/47분인 이유: GitHub 공식 문서가 정시 등 혼잡 분을 피하라고 권고한다(`*/N` 은 고부하 시
+#   지연·드롭). schedule 이 도는지는 `gh run list -w heartbeat-watch.yml -e schedule` 로 하루
+#   이상 보고 판단할 것 — dispatch 성공은 cron 등록의 증거가 아니다 (green dead gate 의 Actions 판).
 name: Heartbeat Watch
 
 on:

@@ -10,8 +10,11 @@ gui LaunchAgent 는 어떤 것도(watchdog 포함) 로그인 세션과 함께 �
   `refs/nuri/heartbeat-mini` (커스텀 ref — 브랜치 아님) 로 push. 로그인 세션 소멸·머신 다운·네트워크
   단절·스케줄러 사망 **전부가 "침묵" 으로 수렴**한다 — 송신자가 죽는 것이 곧
   신호라서, 송신자를 살리려는 어떤 장치도 필요 없다 (dead-man 패턴).
-- **감시(기계 밖)**: `.github/workflows/heartbeat-watch.yml` 이 ref 의 커밋 시각
-  staleness 를 검사해 임계 초과 시 `#ops` webhook 으로 알린다.
+- **감시(기계 밖)**: 두 겹이다 (#1848). 주 경로는 외부 dead-man 서비스 — 같은 job 이
+  `ping_deadman()` 으로 10분마다 ping 하고, 서비스가 ping 의 침묵을 재서 알린다.
+  `.github/workflows/heartbeat-watch.yml` 은 ref 의 커밋 시각 staleness 로 분류된 알림을
+  보내는 보조 경로다 — GitHub 은 이 레포의 schedule 을 하루 3~8회만 실행해
+  (2026-09-03 ~ 10-11 실측) 그것만으로는 탐지가 수 시간 늦는다.
 
 ## ⚠️ 정정 — "FileVault 라서 LaunchDaemon 이관은 무효" 는 **틀렸다** (#1443)
 
@@ -43,8 +46,14 @@ gui LaunchAgent 는 어떤 것도(watchdog 포함) 로그인 세션과 함께 �
   branch protection 이 지킨다. 키 부재/만료도 침묵 → 감시자가 잡는다.
 - **빈-트리 + 무부모 커밋을 force-push** — 브랜치가 커밋 1개로 고정되어 히스토리가
   자라지 않는다 (10분 간격 = 연 5만 커밋을 체인으로 쌓지 않기 위해).
-- **push 실패는 조용히 실패해도 안전하다** — 실패 = 침묵 = 알림. 여기서 재시도나
-  경보를 쌓으면 감시자와 역할이 겹치고, #894 계열(관측이 본 작업을 게이트)로 간다.
+- **push · ping 실패는 로그만 남긴다** — 실패 = 침묵이고, 침묵을 알리는 것은 감시자의
+  몫이다. 그 전제는 감시자가 제때 돈다는 것인데 GitHub schedule 하나로는 성립하지
+  않았다(#1848) — 외부 서비스가 주 경로인 이유다. 여기서 재시도나 경보를 쌓으면
+  감시자와 역할이 겹치고, #894 계열(관측이 본 작업을 게이트)로 간다.
+- **ping URL 은 mini 에만 있는 파일**(`PING_URL_FILE`, 0600) — `.env` 는 MBP 와 sync
+  되므로 거기 두면 MBP 의 ping 이 죽은 mini 를 가린다. role 게이트 + mini 전용 비밀로,
+  deploy key 와 같은 이중 잠금이다. URL 을 아는 사람은 누구나 침묵을 가릴 수 있으므로
+  URL 도, URL 이 섞일 수 있는 예외 문구도 로그에 남기지 않는다.
 """
 
 from __future__ import annotations
@@ -52,6 +61,8 @@ from __future__ import annotations
 import logging
 import subprocess
 from pathlib import Path
+
+import requests
 
 from nuri.alerts.alpha_report import is_production
 
@@ -70,6 +81,10 @@ REMOTE_URL = "git@github.com:researcherhojin/nuri-quant.git"
 
 #: repo 한정 write deploy key (mini 에만 존재, 2026-08-29 등록 id 161664449).
 DEPLOY_KEY = Path.home() / ".ssh" / "nuri_heartbeat_deploy"
+
+#: 외부 dead-man 서비스의 ping URL 한 줄 (#1848). mini 에만 있는 0600 파일 — 모듈
+#: 독스트링 마지막 항목. 머신 LaunchDaemon 은 같은 디렉터리의 deadman-machine.url 을 쓴다.
+PING_URL_FILE = Path.home() / ".config" / "nuri-quant" / "deadman-scheduler.url"
 
 #: 커밋 ident — 실 이메일을 쓰지 않는다 (author 익명화 방침).
 _IDENT_ENV = {
@@ -129,13 +144,53 @@ def send_heartbeat(repo_root: Path | None = None, remote_url: str | None = None)
         return None
 
 
+def ping_deadman(url_file: Path | None = None) -> bool:
+    """외부 dead-man 서비스에 "스케줄러가 살아 있다" 를 알린다 (#1848). 보냈으면 True.
+
+    ref push 와 독립이다 — 스케줄러가 둘을 따로 부르므로 GitHub 이 죽어도 ping 은 나가고,
+    서비스가 죽어도 push 는 나간다. 파일이 없으면 미설정으로 보고 아무것도 보내지 않는다.
+    """
+    if not is_production():
+        logger.debug("[offbox_heartbeat] NURI_ROLE != production — dead-man ping skip")
+        return False
+    path = url_file or PING_URL_FILE
+    try:
+        url = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        url = ""
+    if not url:
+        logger.info(f"[offbox_heartbeat] dead-man ping 미설정 — {path} 없음 또는 빈 파일 (#1848)")
+        return False
+    try:
+        requests.get(url, timeout=(5, 10)).raise_for_status()
+    except requests.RequestException as e:
+        # requests 의 예외 문구에는 URL 이 들어간다 — 타입과 상태 코드만 남긴다.
+        status = getattr(e.response, "status_code", None)
+        logger.error(
+            f"[offbox_heartbeat] dead-man ping 실패 ({type(e).__name__} {status or '-'}) — 서비스가 침묵으로 탐지"
+        )
+        return False
+    logger.info("[offbox_heartbeat] dead-man ping ok")
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
-    """CLI: `python -m nuri.alerts.offbox_heartbeat send` — 배포 후 수동 검증용."""
+    """CLI: `python -m nuri.alerts.offbox_heartbeat send|ping` — 배포 후 수동 검증용.
+
+    ssh 로 부르면 launchd plist 의 `NURI_ROLE` 이 없으므로 `NURI_ROLE=production` 을 앞에 붙인다.
+    """
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=["send"])
-    parser.parse_args(argv)
+    parser.add_argument("action", choices=["send", "ping"])
+    args = parser.parse_args(argv)
+
+    if args.action == "ping":
+        if ping_deadman():
+            print("dead-man ping ok")
+            return 0
+        print("skip 또는 실패 — NURI_ROLE/설정 파일/로그 확인")
+        return 1
 
     sha = send_heartbeat()
     if sha:

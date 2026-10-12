@@ -841,6 +841,36 @@ class TestRunOffboxHeartbeat:
         errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
         assert errors == ["[offbox_heartbeat] 실행 실패: network down"]
 
+    def test_the_dead_man_ping_runs_even_when_the_push_raises(self):
+        """한쪽 예외가 다른 쪽을 막으면 두 감시 경로가 같이 침묵한다 (#1848)."""
+        from nuri.scheduler import _run_offbox_heartbeat
+
+        with (
+            patch("nuri.alerts.offbox_heartbeat.send_heartbeat", side_effect=OSError("network down")),
+            patch("nuri.alerts.offbox_heartbeat.ping_deadman") as ping,
+        ):
+            _run_offbox_heartbeat()
+
+        ping.assert_called_once_with()
+
+    def test_a_ping_exception_is_logged_by_type_only(self, caplog):
+        """예외 문구에 ping URL(비밀)이 섞일 수 있다 — 타입만 남긴다."""
+        import logging
+
+        from nuri.scheduler import _run_offbox_heartbeat
+
+        secret = "https://hc-ping.example/" + "scheduler-test-uuid"
+        with (
+            patch("nuri.alerts.offbox_heartbeat.send_heartbeat"),
+            patch("nuri.alerts.offbox_heartbeat.ping_deadman", side_effect=RuntimeError(f"boom {secret}")),
+            caplog.at_level(logging.ERROR, logger="nuri.scheduler"),
+        ):
+            _run_offbox_heartbeat()  # must not raise
+
+        errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
+        assert errors == ["[offbox_heartbeat] dead-man ping 실행 실패: RuntimeError"]
+        assert secret not in caplog.text
+
 
 class TestPruneReports:
     """`_prune_reports` — 보존 규칙은 모듈 기본값(30일 · 소비 산출물 최신 보존)을 그대로 쓴다."""
