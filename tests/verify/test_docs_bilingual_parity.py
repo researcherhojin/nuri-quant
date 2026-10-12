@@ -15,6 +15,8 @@ rich ← yfinance · edgartools 를 거쳐 설치되는 전이 의존성이라, 
 from __future__ import annotations
 
 import re
+import subprocess
+import sys
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -44,7 +46,20 @@ EXTERNAL = ("http://", "https://", "mailto:")
 
 
 def _pairs() -> list[str]:
-    return sorted(p.name for p in DOCS.glob("*.md") if p.name not in KOREAN_ONLY)
+    names = sorted(p.name for p in DOCS.glob("*.md") if p.name not in KOREAN_ONLY)
+    # gitignore 된 로컬 전용 문서(`docs/TODO.md` 등)는 공개판이 아니라 짝이 없다. 그 파일이 있는
+    # 체크아웃(메인 체크아웃)에서만 42 개가 실패하고 테스트 수가 문서 수치와 어긋났다 (#1838).
+    # 추적 여부가 아니라 ignore 여부로 거른다 — `git add` 전의 새 공개 문서도 검사 대상이어야 한다.
+    probe = subprocess.run(
+        ["git", "check-ignore", "--stdin"],
+        input="\n".join(f"docs/{n}" for n in names),
+        cwd=DOCS.parent,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    ignored = set(probe.stdout.split())
+    return [n for n in names if f"docs/{n}" not in ignored]
 
 
 def _plain(inline) -> str:
@@ -209,3 +224,16 @@ class TestTheSweepHasEyes:
         index = _anchor_index(doc.read_text(encoding="utf-8"))
         assert _destination(doc, "#daily-schedule") != _destination(doc, "#scoring-model")
         assert _destination(doc, "#daily-schedule") == f"docs/ARCHITECTURE.md#<heading {index['daily-schedule']}>"
+
+
+def test_gitignored_local_docs_are_not_paired(tmp_path, monkeypatch):
+    """gitignore 된 로컬 문서는 짝 검사 대상이 아니고, `git add` 전의 새 공개 문서는 대상이다 (#1838)."""
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    (tmp_path / ".gitignore").write_text("docs/LOCAL.md\n")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    for name in ("PUBLIC.md", "LOCAL.md", "NEW.md"):
+        (docs / name).write_text("# t\n")
+    subprocess.run(["git", "add", ".gitignore", "docs/PUBLIC.md"], cwd=tmp_path, check=True)
+    monkeypatch.setattr(sys.modules[__name__], "DOCS", docs)
+    assert _pairs() == ["NEW.md", "PUBLIC.md"]
