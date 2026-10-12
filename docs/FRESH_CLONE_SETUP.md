@@ -225,7 +225,7 @@ $ tail -3 data/logs/scheduler.log
 2026-04-29 23:11:02 db_maintenance WARNING 테이블 strategy_memory 조회 실패 (미존재 가능)
 ```
 
-The ARK CSV 404 recurs (the ark-funds.com endpoint changes often, and the yfinance fallback works). The warning about the missing `strategy_memory` table is intended graceful handling. There were no critical failures, and log volume is normal after RotatingFileHandler (PR #498) and yfinance WARNING (PR #501) were applied.
+The ARK CSV 404 recurs (the ark-funds.com endpoint changes often, and the yfinance fallback works). The `strategy_memory` warning was not a missing table: the retention policy named a column that does not exist, so the weekly job never pruned it. #1786 removed the policy, because `strategy_memory` is append-only. There were no critical failures, and log volume is normal after RotatingFileHandler (PR #498) and yfinance WARNING (PR #501) were applied.
 
 ### Verdict
 

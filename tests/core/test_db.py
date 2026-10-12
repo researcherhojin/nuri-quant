@@ -585,8 +585,24 @@ class TestMigration23ShortHorizonOutcomes:
 
 
 class TestDbMaintenance:
-    def test_dry_run(self, db_path, monkeypatch):
-        """dry-run 모드에서 데이터 삭제 없음."""
+    def test_dry_run_leaves_everything(self, db_path, monkeypatch):
+        """dry-run 은 checkpoint·VACUUM 도 하지 않고 끝난다."""
+        import nuri.core.db as db_mod
+
+        monkeypatch.setattr(db_mod, "DB_PATH", db_path)
+
+        from scripts.db.maintenance import run_maintenance
+
+        run_maintenance(dry_run=True)
+        assert query("SELECT COUNT(*) AS c FROM pipeline_events", db_path=db_path)[0]["c"] == 0
+
+    def test_the_job_deletes_no_rows(self, db_path, monkeypatch):
+        """유지보수는 행을 지우지 않는다 — 대상 테이블이 전부 append-only 계약이다 (#1786).
+
+        pipeline_events 는 STRATEGY §2.4 의 append-only journal, strategy_memory 는 append-only
+        learning memory 다. 예전 보존 정책(90일 · 365일)은 버그로 한 번도 커밋되지 않았는데,
+        버그만 고쳤다면 이 계약을 처음으로 깼다. 오래된 행을 심고 실제 실행 뒤에도 남는지 본다.
+        """
         import nuri.core.db as db_mod
 
         monkeypatch.setattr(db_mod, "DB_PATH", db_path)
@@ -595,15 +611,19 @@ class TestDbMaintenance:
 
         with get_db(db_path) as conn:
             conn.execute(
-                "INSERT INTO pipeline_events (step, event_type, timestamp) VALUES (?, ?, datetime('now', '-120 days'))",
-                ("collect", "step_completed"),
+                "INSERT INTO pipeline_events (step, event_type, timestamp) VALUES ('collect', 'step_completed', "
+                "datetime('now', '-400 days'))"
+            )
+            conn.execute(
+                "INSERT INTO strategy_memory (snapshot_date, signal_id, regime, period, trades, win_rate, "
+                "profit_factor, avg_return) VALUES (date('now', '-400 days'), 'old', NULL, 'all_time', 1, 0.5, 1.0, 0.0)"
             )
 
         from scripts.db.maintenance import run_maintenance
 
-        run_maintenance(dry_run=True)
-        rows = query("SELECT COUNT(*) as c FROM pipeline_events", db_path=db_path)
-        assert rows[0]["c"] == 1  # dry-run이므로 삭제 안 됨
+        run_maintenance(dry_run=False)
+        assert query("SELECT COUNT(*) AS c FROM pipeline_events", db_path=db_path)[0]["c"] == 1
+        assert query("SELECT COUNT(*) AS c FROM strategy_memory", db_path=db_path)[0]["c"] == 1
 
     def test_scheduler_db_maintenance_runs(self, db_path, monkeypatch):
         """스케줄러 _run_db_maintenance가 정상 실행."""
