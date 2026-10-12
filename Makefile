@@ -180,13 +180,16 @@ lint-sh: ## Shell script lint via shellcheck (brew install shellcheck)
 	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed: brew install shellcheck"; exit 1; }
 	find scripts -name '*.sh' -exec shellcheck --source-path=SCRIPTDIR --external-sources {} +
 
-typecheck: ## Pyright static type-check across nuri/, tests/, scripts/ (advisory; severity 8 only)
+# CI Backend Lint · pre-push ratchet(check_pyright_diff.py) 과 같은 핀 (#1831) — tests/scripts/test_pyright_gate.py 가 대조
+PYRIGHT_VERSION := 1.1.414
+
+typecheck: ## Pyright across nuri/, tests/, scripts/ with the CI pin; fails on any error, like CI Backend Lint
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
-	npx --yes -p pyright pyright nuri/ tests/ scripts/ --outputjson 2>/dev/null | \
+	npx --yes -p pyright@$(PYRIGHT_VERSION) pyright nuri/ tests/ scripts/ --outputjson 2>/dev/null | \
 		.venv/bin/python -c "import json,sys; d=json.load(sys.stdin); diags=[x for x in d.get('generalDiagnostics',[]) if x.get('severity')=='error']; \
 		print(f'pyright: {len(diags)} error(s) across {len({x[\"file\"] for x in diags})} files'); \
 		[print(f'  {x[\"file\"]}:{x[\"range\"][\"start\"][\"line\"]+1} [{x.get(\"rule\",\"?\")}]: {x[\"message\"].splitlines()[0]}') for x in diags[:50]]; \
-		sys.exit(1 if diags else 0)" || true
+		sys.exit(1 if diags else 0)"
 
 spellcheck: ## cspell check (uses .cspell.json — add words there for false positives)
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }

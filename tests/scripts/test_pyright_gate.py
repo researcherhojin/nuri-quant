@@ -70,6 +70,13 @@ def test_the_ratchet_invokes_the_pinned_version(monkeypatch):
     assert calls[0][:5] == ["npx", "--yes", "-p", f"pyright@{ratchet.PYRIGHT_VERSION}", "pyright"], calls
 
 
+def test_make_typecheck_runs_the_ci_pin_and_fails_on_errors():
+    """`make typecheck` 이 다른 버전을 돌리거나 `|| true` 로 오류를 삼키면 로컬 확인이 CI 판정과 어긋난다 (#1845)."""
+    dry = subprocess.run(["make", "-n", "typecheck"], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout
+    assert f"npx --yes -p pyright@{ratchet.PYRIGHT_VERSION} pyright " in dry, dry
+    assert "|| true" not in dry, dry
+
+
 def test_a_pyright_config_change_triggers_the_backend_jobs():
     """설정만 바꾼 PR 이 검사를 건너뛰면, 그 설정이 만든 오류가 다음 .py PR 을 빨갛게 만든다 (#1562 와 같은 형태)."""
     steps = _jobs()["changes"]["steps"]

@@ -96,6 +96,7 @@ make setup                                   # venv + deps + DB + portfolio impo
 make test-fast                               # backend tests, slow-marked excluded (81.2s)
 .venv/bin/python -m pytest <path>::<test> -v # single test
 make lint                                    # ruff
+make typecheck                               # pyright, same pin as CI Backend Lint (0 errors required)
 make verify-quick                            # pre-commit smoke (84.9s)
 make verify-all                              # tests + lint + frontend (320.8s)
 make verify-doc-counts                       # README/docs numbers vs code
