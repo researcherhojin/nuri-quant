@@ -30,8 +30,7 @@
 #
 # 이 비트는 앱이 어떻게 깨지든 살아 있어야 한다. venv · DB · nuri import · 설정 로딩
 # 어느 것에도 기대지 않는다 — 의존성이 늘수록 "머신은 살아 있다" 가 "앱이 살아 있다"
-# 로 미끄러지고, 그러면 두 신호를 나눈 의미가 없어진다. git 과 deploy key, 그리고
-# dead-man ping 용 curl 과 URL 파일(#1848)뿐이다.
+# 로 미끄러지고, 그러면 두 신호를 나눈 의미가 없어진다. git 과 deploy key 뿐이다.
 #
 # ## 설치
 #
@@ -48,38 +47,6 @@ REF="refs/nuri/machine-mini"
 # 히스토리가 자라지 않는다 (offbox_heartbeat 와 같은 이유).
 EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 DEPLOY_KEY="${NURI_HEARTBEAT_KEY:-$HOME/.ssh/nuri_heartbeat_deploy}"
-PING_FILE="${NURI_DEADMAN_MACHINE_URL_FILE:-$HOME/.config/nuri-quant/deadman-machine.url}"
-
-# 외부 dead-man 서비스 ping (#1848) — 기계 밖 감시의 주 경로. GitHub 은 이 레포의 schedule 을
-# 하루 3~8회만 실행해 heartbeat-watch 하나로는 탐지가 수 시간 늦는다. `cd "$REPO"` 와 git 보다
-# **먼저**, push 성공과 무관하게 보낸다: GitHub·deploy key 가 깨지거나 체크아웃이 옮겨져
-# REPO 가 옛 경로를 가리켜도 머신은 살아 있다. 한계: 이 스크립트와 launchd 의
-# WorkingDirectory 는 체크아웃 안에 있다 — 체크아웃이 통째로 사라지면 데몬이 아예 못 떠서
-# ping 도 멎는다 (그때는 스케줄러도 죽어 두 check 가 같이 down 이지만 머신은 켜져 있다).
-# URL 은 mini 에만 있는 0600 파일에 둔다 — .env 는 MBP 와 sync 되므로 MBP 의 ping 이 죽은
-# mini 를 가릴 수 있다. URL 을 아는 사람은 누구나 침묵을 가릴 수 있으므로 출력하지 않는다:
-# curl 은 -s 로 진단을 끄고(실패는 종료 코드로만 남긴다), `bash -x` 로 돌려도 트레이스에
-# 찍히지 않게 이 블록에서만 xtrace 를 껐다가 되돌린다.
-case $- in *x*) xtrace=1 ;; *) xtrace=0 ;; esac
-{ set +x; } 2>/dev/null
-if [ -r "$PING_FILE" ]; then
-    ping_url=$(head -n 1 "$PING_FILE" | tr -d '[:space:]')
-    if [ -n "$ping_url" ]; then
-        rc=0
-        curl -sf -o /dev/null --connect-timeout 5 -m 10 "$ping_url" || rc=$?
-        if [ "$rc" -eq 0 ]; then
-            echo "machine-alive: dead-man ping ok"
-        else
-            echo "machine-alive: dead-man ping failed (curl exit $rc)"
-        fi
-    else
-        echo "machine-alive: dead-man ping not configured ($PING_FILE is empty)"
-    fi
-else
-    echo "machine-alive: dead-man ping not configured ($PING_FILE missing)"
-fi
-unset ping_url
-if [ "$xtrace" = 1 ]; then set -x; fi
 
 cd "$REPO"
 
