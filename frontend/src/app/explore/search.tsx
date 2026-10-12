@@ -32,16 +32,11 @@ export function ExploreSearch() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // Debounced search
+  // Debounced search — 빈 입력의 정리는 handleQueryChange 가 한다 (effect 안의 동기 setState 는 연쇄 렌더)
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (query.trim().length === 0) {
-      setResults([]);
-      setOpen(false);
-
-      return;
-    }
+    if (query.trim().length === 0) return;
 
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
@@ -62,18 +57,25 @@ export function ExploreSearch() {
     }, 250);
   }, [query]);
 
+  function handleQueryChange(value: string) {
+    setQuery(value);
+
+    if (value.trim().length === 0) {
+      setResults([]);
+      setOpen(false);
+    }
+  }
+
   function handleSelect(ticker: string) {
-    setOpen(false);
-    setQuery("");
+    handleQueryChange("");
     router.push(`/ticker/${ticker}`);
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && query.trim()) {
       // Direct navigation for exact ticker input
-      setOpen(false);
       const t = query.trim().toUpperCase();
-      setQuery("");
+      handleQueryChange("");
       router.push(`/ticker/${t}`);
     }
 
@@ -89,7 +91,7 @@ export function ExploreSearch() {
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => handleQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setOpen(true)}
           placeholder={EXPLORE.SEARCH_PLACEHOLDER}
