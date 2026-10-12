@@ -20,6 +20,7 @@ make verify-all
 ## Manual checklist
 
 - [ ] `make lint` passes (ruff check)
+- [ ] `make typecheck` passes (pyright with the CI pin; CI `Backend Lint` blocks on any error)
 - [ ] `make test` passes (integration 테스트는 addopts 로 제외, xdist parallel)
 - [ ] Numbers changed? → `grep -ri "old_value"` across CLAUDE.md, README.md, STRATEGY.md
 - [ ] New rule or threshold? → Added to `config/rules.yaml` or `config/agents.yaml`, not hardcoded

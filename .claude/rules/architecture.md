@@ -17,7 +17,7 @@
 
 `make help` for full target inventory. Daily essentials:
 
-- Setup: `make setup` (1회) — venv + deps + DB init + portfolio import
+- Setup: `make setup` (1회) — venv + deps + DB init + portfolio import / `make migrate` — pull 로 들어온 migration 적용 (`collect`·`quick-scan`·`full-scan` 은 이걸 먼저 돈다, #1830)
 - Daily: `make quick-scan` (수집 + 분석 + consensus + 가격타겟, dev 축약본) / `make full-scan` (8-phase) / `make consensus` — 단계 수는 세지 않는다. 예전에 "~2분 4-step" 이라 적혀 있었는데 타깃은 8개를 돌리고 있었고, 어떤 게이트도 이 숫자를 검사하지 않아 조용히 낡았다. 실제 목록은 `Makefile` 의 `quick-scan:` 을 볼 것
 - Reactive: `make recommend` (BUY candidates + tracker) / `/nuri-thesis <T>` skill (`nuri/llm/thesis_query.py`) / `make earnings-preview ticker=<T>`
 - LLM consult dual-archive: `make llm-consult slug=<kebab> prompt=<file>`

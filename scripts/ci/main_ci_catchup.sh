@@ -8,7 +8,8 @@
 # 2026-10-12 실측: github-actions[bot] 이 머지한 6건(#1801–#1803 · #1792–#1794)의 머지 커밋에
 # main CI 가 0회였다. autopull 의 CI 게이트(#1809)는 그런 커밋을 "no-run" 으로 계속 보류한다.
 #
-# main-ci-catchup.yml 이 매시간 부른다. 하는 일은 하나뿐이다:
+# main-ci-catchup.yml 의 schedule 런과 손 dispatch 가 부른다 (cron 은 매시간이지만 GitHub 은 schedule 을
+# 일부만 시작한다 — 워크플로 머리말). 하는 일은 하나뿐이다:
 #   - HEAD 커밋이 CATCHUP_MIN_AGE_SECONDS(기본 600)보다 새로우면 손대지 않는다 — 사람이 머지한
 #     커밋의 push 런이 아직 안 생겼을 수 있고, push 런과 dispatch 런은 같은 concurrency 그룹
 #     (ci-refs/heads/main)이라 서로를 취소한다.
