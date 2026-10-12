@@ -99,7 +99,7 @@ Two things that do **not** work, already tried (#913):
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **272**.
+should be **271** (2026-10-12).
 
 ## E2E (Playwright) — runs against the real backend, gated by CI since #1234
 

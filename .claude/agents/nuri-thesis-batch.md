@@ -1,6 +1,6 @@
 ---
 name: nuri-thesis-batch
-description: Run thesis_query (Issue #508) on multiple tickers in parallel — useful for portfolio-wide review, watchlist analysis, or post-earnings reaction sweep. Each ticker gets its own DB context fetch + LLM synthesis. Output: data/thesis_query/{date}_{ticker}_*.md per ticker. Use when user asks "analyze my watchlist", "thesis on M7", "post-earnings sweep". Do NOT use for single ticker (call `.venv/bin/python -m nuri.llm.thesis_query --ticker X` directly).
+description: "Run thesis_query (Issue #508) on multiple tickers in parallel — useful for portfolio-wide review, watchlist analysis, or post-earnings reaction sweep. Each ticker gets its own DB context fetch + LLM synthesis. Output: data/thesis_query/{date}_{ticker}_*.md per ticker. Use when user asks \"analyze my watchlist\", \"thesis on M7\", \"post-earnings sweep\". Do NOT use for single ticker (call `.venv/bin/python -m nuri.llm.thesis_query --ticker X` directly)."
 tools: Bash, Read, Glob
 model: inherit
 ---
