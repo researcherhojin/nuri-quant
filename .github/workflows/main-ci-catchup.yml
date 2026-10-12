@@ -4,15 +4,19 @@
 # 머지가 되고, GitHub 는 GITHUB_TOKEN 이 일으킨 이벤트로는 워크플로를 시작하지 않는다
 # (예외는 workflow_dispatch · repository_dispatch). 그래서 그 머지 커밋에는 main push CI 가
 # 없고, autopull 의 CI 게이트(#1809)는 그 커밋을 배포하지 않고 계속 보류한다. 이 워크플로가
-# 매시간 main HEAD 를 보고, 런이 하나도 없으면 workflow_dispatch 로 main CI 를 띄운다 —
-# 판단 규칙은 scripts/ci/main_ci_catchup.sh 머리말.
+# schedule 이 돌 때마다 main HEAD 를 보고, 런이 하나도 없으면 workflow_dispatch 로 main CI 를
+# 띄운다 — 판단 규칙은 scripts/ci/main_ci_catchup.sh 머리말.
 #
 # - cron 은 정시 · */N 을 피해 :53 분 (heartbeat-watch.yml 과 같은 이유 — 혼잡 분은 지연 · 드롭된다).
-# - ⚠️ 신규 워크플로의 schedule 은 등록이 늦거나 안 될 수 있다 (heartbeat-watch.yml 머리말의
-#   2026-08-29 기록). 머지 뒤 schedule 이벤트가 실제로 뜨는지 `gh run list -w main-ci-catchup.yml
-#   -e schedule` 로 확인할 것 — dispatch 성공은 cron 등록의 증거가 아니다.
-#   실제로 첫 등록(2026-10-12 05:07Z, `37 * * * *`)은 05:37 · 06:37 · 07:37 세 슬롯 모두 schedule
-#   이벤트 0회였다 — heartbeat-watch.yml 전례대로 `on.schedule` 블록 자체를 바꿔 재등록을 유도한다.
+# - ⚠️ cron 은 매시간이지만 GitHub 은 이 레포의 schedule 이벤트를 일부만 실행한다 — heartbeat-watch.yml
+#   의 20분 cron(하루 72 슬롯)이 2026-09-03 ~ 10-11 에 하루 3~8회만 돌았다. 그래서 bot 머지는 이
+#   dispatch 를 몇 시간 기다릴 수 있다.
+# - 첫 cron(`37 * * * *`, 2026-10-12 05:07Z)의 05:37 · 06:37 · 07:37 세 슬롯이 0회라 미등록으로 보고
+#   :53 으로 옮겼지만(#1840/#1841), 같은 시간대에 heartbeat-watch 도 0회였다 — 미등록의 증거가 아니다.
+#   그렇다고 등록이 확인된 것도 아니다: :53 첫 슬롯(08:53Z)까지 이 워크플로의 schedule 런은 0회다.
+#   등록 여부는 `gh run list -w main-ci-catchup.yml -e schedule` 에 런이 하나라도 뜨는지로 판단하고,
+#   0회가 이어지면 하루 이상 지켜본 뒤 같은 기간의 heartbeat-watch schedule 런과 대조할 것.
+#   dispatch 성공은 cron 등록의 증거가 아니다.
 name: Main CI Catch-up
 
 on:

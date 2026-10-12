@@ -31,6 +31,7 @@ description: Code review checklist. Use when asked to "review", "리뷰", "코�
 ## Quality
 
 - [ ] `make lint` clean
+- [ ] `make typecheck` clean (pyright 0 errors; CI `Backend Lint` blocks on any, #1831)
 - [ ] Tests cover the changed code (not just passing)
 - [ ] No dead code, unused imports, or commented-out blocks
 - [ ] Korean comments, English variable/function names
