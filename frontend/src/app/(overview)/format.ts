@@ -29,9 +29,10 @@ export function displayShortTime(value: string | null | undefined): string | nul
 
   if (!Number.isFinite(date.getTime())) return null;
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  // 유효한 날짜면 네 part 가 항상 있다 — 못 찾을 때의 fallback 은 도달 불가라 두지 않는다
+  const part = Object.fromEntries(parts.map((p) => [p.type, p.value]));
 
-  return `${part("month")}-${part("day")} ${part("hour")}:${part("minute")}`;
+  return `${part.month}-${part.day} ${part.hour}:${part.minute}`;
 }
 
 export function displayChange(value: number | null | undefined, fixed?: number): string {
