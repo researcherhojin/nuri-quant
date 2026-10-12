@@ -422,6 +422,7 @@ class TestRegimeStatsConfidencePath:
         assert rsi
         c = rsi[0]
         # 0.8 * 60 + min(4.0/5.0, 1.0) * 40 = 48 + 32 = 80
+        assert c.scoring_detail is not None
         assert c.scoring_detail["base_confidence"] == pytest.approx(80.0)
         assert c.scoring_detail["regime_win_rate"] == pytest.approx(0.8)
         assert c.scoring_detail["regime_pf"] == pytest.approx(4.0)
@@ -459,6 +460,7 @@ class TestDriftMultiplierApplied:
         rsi = [c for c in result if c.signal_id == "rsi_oversold"]
         assert rsi
         c = rsi[0]
+        assert c.scoring_detail is not None
         assert c.scoring_detail["drift_multiplier"] == 0.3
         assert c.scoring_detail["drift_status"] == "critical"
         # Line 379-380: notes 에 drift 표시

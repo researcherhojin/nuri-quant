@@ -41,6 +41,7 @@ class TestTwoAxes:
         """
         verdicts = [v("a0", "BUY", 80), v("risk", "HOLD", 0, abstained=False)]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is True
         assert r.scoring_detail["abstained_agents"] == []
         assert r.agreement_rate == pytest.approx(0.5)  # live 2 개, BUY 동의 1
@@ -53,6 +54,7 @@ class TestTwoAxes:
             v("crypto", "HOLD", 0, abstained=True),
         ]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["degraded_agents"] == ["a1"]
         assert r.scoring_detail["abstained_agents"] == ["crypto"]
 
@@ -95,6 +97,7 @@ class TestAbstainedExcludedFromPanel:
         때문이다(#1437). 기권 여부는 별도 필드로 노출하고, 소비자가 둘을 조합한다.
         """
         r = _build_consensus("TEST", [v("a0", "HOLD", 60), v("sm", "HOLD", 37.5, abstained=True)], WEIGHTS)
+        assert r.scoring_detail is not None
         contrib = {c["agent_name"]: c for c in r.scoring_detail["contributions"]}
         # 기권이지만 HOLD 점수에 실제로 기여했으므로 True 여야 한다
         assert contrib["sm"]["counted_for_basis_action"] is True
@@ -116,6 +119,8 @@ class TestAbstainedExcludedFromPanel:
         live = _build_consensus("TEST", [*opinions, v("crypto", "HOLD", 37.5)], WEIGHTS)
         flagged = _build_consensus("TEST", [*opinions, v("crypto", "HOLD", 37.5, abstained=True)], WEIGHTS)
 
+        assert flagged.scoring_detail is not None
+        assert live.scoring_detail is not None
         assert flagged.scoring_detail["action_scores"] == live.scoring_detail["action_scores"]
         assert flagged.final_action == live.final_action == "HOLD"
         assert flagged.final_confidence == pytest.approx(live.final_confidence)
@@ -131,10 +136,12 @@ class TestAbstainedExcludedFromPanel:
             v("retail", "HOLD", 0, abstained=True),
         ]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["panel_coverage"] == pytest.approx(0.5)
 
     def test_abstaining_risk_marks_veto_unavailable(self):
         r = _build_consensus("TEST", [v("a0", "BUY", 80), v("risk", "HOLD", 0, abstained=True)], WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is False
 
 
@@ -157,6 +164,7 @@ class TestNoBehaviourChange:
             "TEST", [v("crypto", "HOLD", 0, abstained=True), v("retail", "HOLD", 0, abstained=True)], WEIGHTS
         )
         assert r.agreement_rate == 0
+        assert r.scoring_detail is not None
         assert r.scoring_detail["panel_coverage"] == 0.0
 
 
@@ -318,6 +326,7 @@ class TestFailureIsNeverReportedAsAbstention:
         verdict = agent.analyze("TESTTICKER", db_path=db)
         assert verdict.degraded is True, f"손절선을 못 봤는데 살아있는 판단으로 나갔다: {verdict.reasoning!r}"
         r = _build_consensus("TEST", [v("a0", "BUY", 80), verdict], WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is False
 
     def test_a_failed_freshness_probe_does_not_claim_staleness(self):
@@ -388,6 +397,7 @@ class TestFailureIsNeverReportedAsAbstention:
         agent = RiskAgent()
         agent._safe_query = lambda sql, params=(), db_path=None: QueryRows(failed=True)
         r = _build_consensus("TEST", [v("a0", "BUY", 80), agent.analyze("TESTTICKER")], WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is False
         assert r.scoring_detail["degraded_agents"] == ["risk"]
 
@@ -405,6 +415,7 @@ class TestFailureIsNeverReportedAsAbstention:
         assert verdict.degraded is False and verdict.abstained is False
         assert verdict.reasoning == "리스크 정상"
         r = _build_consensus("TEST", [v("a0", "BUY", 80), verdict], WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is True
 
     def test_a_row_of_nulls_is_not_an_opinion(self, tmp_path):

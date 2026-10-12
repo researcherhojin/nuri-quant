@@ -83,7 +83,7 @@ class TestPrevCloseZero:
     def _make_regimes_with_zero_close(self, n=30):
         """prev_row.close == 0 강제."""
         dates = pd.bdate_range("2024-01-02", periods=n)
-        closes = list(np.linspace(100, 110, n))
+        closes = np.linspace(100, 110, n).tolist()
         # 5번째 row 의 close=0 → i=6 에서 prev_row.close == 0
         closes[5] = 0.0
         return pd.DataFrame(

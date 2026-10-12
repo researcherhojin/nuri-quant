@@ -277,6 +277,7 @@ class TestTheFirewallActuallyBlocksNow:
 
         result = self._check(st)
 
+        assert result.outcome is not None
         assert result.outcome.value == "block", f"실 상태에서 과대 매수가 통과했다: {result.output}"
         fired = {b.get("type") for b in (result.output.get("blocks") or [])}
         # 이 둘은 **실 포지션이 있어야** 발화한다 — 허구의 `positions={}` 에서는 계산 자체가 안 된다.
@@ -293,6 +294,7 @@ class TestTheFirewallActuallyBlocksNow:
 
         result = self._check(fiction)
 
+        assert result.outcome is not None
         assert result.outcome.value != "block", (
             "허구 상태에서도 막혔다 — 이 카나리아의 전제가 깨졌으니 위 테스트의 의미를 재확인할 것"
         )
@@ -307,13 +309,15 @@ class TestTheFirewallActuallyBlocksNow:
         """
         known = self._state(tmp_path)
         assert known["cash"] == 5000.0
-        assert self._check(known).outcome.value == "block"
+        outcome = self._check(known).outcome
+        assert outcome is not None and outcome.value == "block"
 
         blind = portfolio_state(config_path=tmp_path / "does-not-exist.yaml")
         assert blind["cash"] == 0.0
 
         result = self._check(blind)
 
+        assert result.outcome is not None
         assert result.outcome.value == "block", f"현금을 못 읽자 차단이 통과로 뒤집혔다: {result.output}"
         assert "cash_reserve" in {b.get("type") for b in (result.output.get("blocks") or [])}
 

@@ -88,7 +88,9 @@ def _installed(source: str, package: str) -> str:
     if source == "python-version":
         return (REPO_ROOT / ".python-version").read_text().strip()
     workflow = (REPO_ROOT / ".github/workflows/main-ci-cd.yml").read_text()
-    return re.search(r'NODE_VERSION:\s*"(\d+)"', workflow).group(1)
+    m = re.search(r'NODE_VERSION:\s*"(\d+)"', workflow)
+    assert m, "main-ci-cd.yml 에서 NODE_VERSION 을 못 찾았다"
+    return m.group(1)
 
 
 class TestTechStackBadges:

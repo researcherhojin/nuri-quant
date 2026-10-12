@@ -109,6 +109,7 @@ class TestCashBalances:
 
         # holdings 46, cash 54 → 46% / 54%
         result = _compute_actual_allocation([{"value": 4600}], 5400)
+        assert result is not None
         assert result["long"] == 46
         assert result["cash"] == 54
         assert result["short"] == 0
@@ -119,6 +120,7 @@ class TestCashBalances:
 
         # 333/1000 = 33.3%, 667/1000 = 66.7% → round(33.3)=33, cash=67
         result = _compute_actual_allocation([{"value": 333}], 667)
+        assert result is not None
         assert result["long"] + result["cash"] == 100
 
     def test_get_cash_balances_missing_yaml(self, tmp_path, monkeypatch):

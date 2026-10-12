@@ -228,6 +228,7 @@ class TestFetchQuote:
             patch.dict("sys.modules", {"yfinance": yf}),
         ):
             q = lp.fetch_quote("SPY")
+        assert q is not None
         assert q["price"] == 775.74 and q["previous_close"] == 769.86
         assert q["change_pct"] == 0.76 and q["market_open"] is False
         assert q["currency"] == "USD" and q["source"] == "yfinance"
@@ -259,6 +260,7 @@ class TestFetchQuote:
         yf = self._yf(last_price=10.0, regular_market_previous_close=None, currency="USD", exchange="X")
         with patch.object(lp, "is_market_open_for", return_value=True), patch.dict("sys.modules", {"yfinance": yf}):
             q = lp.fetch_quote("ABC")
+        assert q is not None
         assert q["change_pct"] is None and q["previous_close"] is None and q["market_open"] is True
 
     @pytest.mark.parametrize("last_price", [None, 0.0, -1.0])

@@ -41,7 +41,8 @@ class TestComputeLeadership:
         # 3종목 cross-sectional rank → 33.33 / 66.67 / 100
         assert df.loc["WINNER", "rs_percentile"] == pytest.approx(100.0)
         assert df.loc["LOSER", "rs_percentile"] == pytest.approx(33.33, abs=0.1)
-        assert df.loc["WINNER", "rs_percentile"] > df.loc["FLAT", "rs_percentile"] > df.loc["LOSER", "rs_percentile"]
+        rs = df["rs_percentile"]
+        assert rs["WINNER"] > rs["FLAT"] > rs["LOSER"]
 
     def test_120d_floor_excludes_short_history(self, db_path):
         rows = []
@@ -60,7 +61,7 @@ class TestComputeLeadership:
         _seed(db_path, _series("CALM", [100] * 15, [1000] * 15))  # 평탄
 
         df = compute_leadership(lookback=10, surge_window=3, db_path=db_path)
-        assert df.loc["SURGE", "dollar_volume_surge"] > 1.5
+        assert df["dollar_volume_surge"]["SURGE"] > 1.5
         assert df.loc["CALM", "dollar_volume_surge"] == pytest.approx(1.0, abs=0.01)
 
     def test_surge_is_currency_agnostic_ratio(self, db_path):

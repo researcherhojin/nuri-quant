@@ -1288,6 +1288,7 @@ class TestRecordDecisionRegimeEvidence:
         dec_id = record_decision(result, db_path)
 
         decision = get_decision_with_evidence(dec_id, db_path)
+        assert decision is not None
         regime_evidence = [e for e in decision["evidence"] if e["source_type"] == "regime"]
         assert len(regime_evidence) == 1
         assert regime_evidence[0]["source_key"] == "current"

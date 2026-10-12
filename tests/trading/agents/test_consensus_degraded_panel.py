@@ -48,6 +48,7 @@ class TestDegradedRiskAgentIsVisible:
             _v("fundamental", "BUY", 80),
         ]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is False, (
             "risk 가 죽었는데 거부권이 '가용' 으로 기록되면 열화가 사후에 안 보인다"
         )
@@ -57,6 +58,7 @@ class TestDegradedRiskAgentIsVisible:
     def test_live_risk_agent_marks_the_veto_available(self):
         verdicts = [_v("risk", "HOLD", 40), _v("technical", "BUY", 90)]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_available"] is True
 
     def test_a_live_risk_agent_can_still_veto(self):
@@ -64,6 +66,7 @@ class TestDegradedRiskAgentIsVisible:
         verdicts = [_v("risk", "SELL", 90, alpha="FLAT"), _v("technical", "BUY", 95)]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
         assert r.final_action == "SELL"
+        assert r.scoring_detail is not None
         assert r.scoring_detail["risk_veto_fired"] is True
 
 
@@ -79,6 +82,7 @@ class TestAgreementRateExcludesDeadAgents:
         r = _build_consensus("TEST", verdicts, WEIGHTS)
         assert r.final_action == "HOLD"
         assert r.agreement_rate == 1.0  # 살아있는 2개 모두 HOLD → 2/2
+        assert r.scoring_detail is not None
         assert r.scoring_detail["panel_coverage"] == 0.5
         # 죽은 둘을 세면 4/4 로 똑같이 1.0 이 나오므로, coverage 가 구분자다.
 
@@ -95,6 +99,7 @@ class TestAgreementRateExcludesDeadAgents:
         ]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
         assert r.final_action == "HOLD"
+        assert r.scoring_detail is not None
         dead = next(c for c in r.scoring_detail["contributions"] if c["agent_name"] == "risk")
         assert dead["degraded"] is True
         assert dead["counted_for_basis_action"] is False, (
@@ -114,6 +119,7 @@ class TestHealthyPanelIsUnchanged:
     def test_no_degradation_means_full_coverage(self):
         verdicts = [_v("technical", "BUY", 90), _v("risk", "HOLD", 40), _v("macro", "BUY", 70)]
         r = _build_consensus("TEST", verdicts, WEIGHTS)
+        assert r.scoring_detail is not None
         assert r.scoring_detail["panel_coverage"] == 1.0
         assert r.scoring_detail["degraded_agents"] == []
         assert r.agreement_rate == round(2 / 3, 2)

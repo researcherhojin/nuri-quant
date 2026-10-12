@@ -716,6 +716,7 @@ class TestRealSdkWireContract:
         )
 
         assert isinstance(resp.choices[0].message.content, str)
+        assert resp.usage is not None
         assert (resp.usage.prompt_tokens, resp.usage.completion_tokens) == (11, 7)
 
     def test_audit_row_is_written_through_the_real_sdk_path(self, db_path):

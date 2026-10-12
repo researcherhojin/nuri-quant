@@ -21,14 +21,13 @@
   "venv": ".venv",
   "executionEnvironments": [
     {
-      // 테스트는 mock · 일부만 채운 dict · 일부러 틀린 인자(에러 경로)를 쓴다 (#644). 이 다섯 규칙을
-      // 켜면 tests 오류가 40 → 240 건이 되고, 늘어난 200 건이 전부 그런 의도된 패턴이다 (2026-10-12 실측).
+      // 테스트는 mock · 일부만 채운 dict · 일부러 틀린 인자(에러 경로)를 쓴다 (#644). 그래서 규칙을 꺼
+      // 뒀는데, 다 의도된 패턴은 아니었다 — Optional 결과를 확인 없이 쓰는 테스트가 섞여 있었다.
+      // 규칙 하나씩 고쳐서 켠다 (#1834): reportOperatorIssue · reportCallIssue ·
+      // reportOptionalMemberAccess 는 22 건, reportOptionalSubscript 는 71 건을 고치고 켰다.
+      // 남은 하나를 켜면 tests 오류가 148 건이다 (2026-10-12, pyright 1.1.414).
       "root": "tests",
-      "reportOperatorIssue": "none",
-      "reportArgumentType": "none",
-      "reportCallIssue": "none",
-      "reportOptionalSubscript": "none",
-      "reportOptionalMemberAccess": "none"
+      "reportArgumentType": "none"
     }
   ]
 }

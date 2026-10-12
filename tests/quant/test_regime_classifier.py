@@ -1018,7 +1018,7 @@ class TestClassifierMissingBranches:
             }
         )
         # past_idx = 260 - 200 = 60. iloc[60] sma 를 NaN 으로
-        df.iloc[60, df.columns.get_loc("sma50")] = float("nan")
+        df.loc[df.index[60], "sma50"] = float("nan")
         assert _detect_recovery(df) is False
 
     def test_detect_sector_rotation_no_etf_data(self, db_path):
@@ -1189,7 +1189,7 @@ class TestClassifierHysteresisRecentTrendsEmpty:
         )
         # 마지막 5일 sma 일부 NaN — line 397 continue 분기 hit (전부는 아님)
         for k in range(2, 5):
-            df.iloc[-k, df.columns.get_loc("sma50")] = float("nan")
+            df.loc[df.index[-k], "sma50"] = float("nan")
 
         monkeypatch.setattr(cls, "_load_spy_series", lambda date=None, db_path=None: df)
         monkeypatch.setattr(cls, "_get_vix", lambda date=None, db_path=None: 15.0)
