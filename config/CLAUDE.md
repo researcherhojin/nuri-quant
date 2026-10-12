@@ -4,19 +4,26 @@
 
 ## File inventory
 
-| File | Lines | Purpose | Loader |
-|------|-------|---------|--------|
-| `rules.yaml` | 551 | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `freshness_tickers`) | `nuri/core/rules.py` |
-| `agents.yaml` | 241 | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
-| `signals.yaml` | 221 | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
-| `buy_signals.yaml` | 214 | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
-| `alerts.yaml` | 48 | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
-| `freshness.yaml` | 31 | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
-| `stock_types.yaml` | 49 | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
-| `universe.yaml` | 761 | 752 tickers: `us_core` (91) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
-| `portfolio.example.yaml` | 39 | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
-| `portfolio.yaml` | user | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/ops/import_portfolio.py` |
-| `kis/` | — | KIS Open API credentials directory — **gitignored** (`kis_devlp.yaml`, token cache). `.gitkeep` only is tracked. Legacy `~/KIS/` also supported for backward compat | `nuri/collectors/kis_*.py` |
+| File | Purpose | Loader |
+|------|---------|--------|
+| `rules.yaml` | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `freshness_tickers`) | `nuri/core/rules.py` |
+| `agents.yaml` | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
+| `signals.yaml` | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
+| `buy_signals.yaml` | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
+| `alerts.yaml` | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
+| `freshness.yaml` | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
+| `stock_types.yaml` | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
+| `universe.yaml` | 752 tickers: `us_core` (91) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
+| `portfolio.example.yaml` | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
+| `portfolio.yaml` | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/ops/import_portfolio.py` |
+| `walkforward.yaml` | Strategy walk-forward validation — pre-registered parameters (P1b). Frozen: a change is a new pre-registration, not an edit | `nuri/quant/validation/strategy_walkforward.py` + `champion_gate.py` |
+| `walkforward_variants.yaml` | Pre-registered variant edge search (#706), frozen before the results. Its `theory` strings are a historical record: v0's "p=0.169" is the value commit `15f774f` retracted (permutation null degenerated; corrected 0.791 — `nuri/core/db/provenance.py`) | `nuri/quant/validation/variant_walkforward.py` |
+| `walkforward_exits.yaml` | P4 exit-rule validation (#713) — frozen pre-registered parameters | `nuri/quant/validation/exit_walkforward.py` |
+| `walkforward_exits_growth.yaml` | #715 leader-exit growth-conditional validation — frozen pre-registered parameters | `nuri/quant/validation/exit_walkforward.py` |
+| `eval/thesis_prompts.yaml` | Frozen prompts for the `thesis_query` model A/B eval (synthetic data only). Add, never edit or delete — a change makes earlier measurements incomparable | `scripts/dev/llm_ab_eval.py` |
+| `kis/` | KIS Open API credentials directory — **gitignored** (`kis_devlp.yaml`, token cache). `.gitkeep` only is tracked. Legacy `~/KIS/` also supported for backward compat | `nuri/collectors/kis_*.py` |
+
+**Provenance closure.** `rules.yaml`, `agents.yaml`, `signals.yaml` and the four `walkforward*.yaml` files are hashed byte for byte into `execution_config_sha_v1` (`nuri/core/db/provenance.py`), which `backtests`, `walkforward_runs` and `recommendations` rows carry. Any edit, comments included, gives later rows a new sha — so do not touch the frozen files to fix prose. Line counts are not listed here: `wc -l config/*.yaml` is always current, and the column drifted on every edit.
 
 ## Change procedure
 

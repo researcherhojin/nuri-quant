@@ -62,7 +62,6 @@ print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE typ
 # tests/verify/test_doc_claim_parity.py 가 두 목록의 포함관계를 잠근다.
 live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py || true; }
 live_scheduler_jobs() { grep -cE '"cron":' nuri/scheduler.py || true; }
-live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
 
 # pytest 는 수집 요약을 두 형식으로 낸다:
 #   "7371/7380 tests collected (9 deselected)"  ← **deselect 가 있을 때만**
@@ -178,7 +177,6 @@ update_claim live_scheduler_jobs docs/ko/ARCHITECTURE.md       '[0-9]+ cron jobs
 update_claim live_scheduler_jobs README.md                     '[0-9]+ cron jobs · in-process'
 update_claim live_scheduler_jobs README.md                     '[0-9]+ independent cron jobs'
 update_claim live_scheduler_jobs README.md                     '[0-9]+ cron entries'
-update_claim live_rules_lines    config/CLAUDE.md              '\| [0-9]+ \| Investment rules'
 
 # Pytest collect count — runs pytest which is slow; do last so failures above
 # don't waste the call. Updates any "[0-9,]+ backend tests" / "[0-9,]+ tests,"
