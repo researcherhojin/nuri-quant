@@ -20,7 +20,7 @@ nuri/collectors/
 ### 우선순위
 
 1. **`.env` 파일** (권장 — git ignored)
-2. **`config/kis/kis_devlp.yaml`** (프로젝트 내 gitignored, KIS Open API SDK 호환)
+2. **`config/kis/kis_devlp.yaml`** (프로젝트 내 gitignored, KIS 공식 샘플 코드와 같은 형식)
 3. **`~/KIS/config/kis_devlp.yaml`** (레거시 위치, 하위 호환 fallback)
 
 ### .env 변수
@@ -42,7 +42,7 @@ KIS_HTS_ID=your_hts_id
 
 ### YAML fallback (`config/kis/kis_devlp.yaml`)
 
-KIS Open API 공식 SDK 와 호환되는 형식이다. 프로젝트 내 `config/kis/` 하위(gitignored)에 두는 것을 권장하며, 레거시 위치 `~/KIS/config/kis_devlp.yaml` 도 자동 감지한다.
+KIS 공식 샘플 코드가 읽는 형식이다. 프로젝트 내 `config/kis/` 하위(gitignored)에 두는 것을 권장하며, 레거시 위치 `~/KIS/config/kis_devlp.yaml` 도 자동 감지한다.
 
 ```yaml
 my_app: "실전 앱키"
@@ -55,9 +55,9 @@ my_paper_stock: "1000000"       # 모의 종합계좌
 my_prod: "01"                    # 종합계좌 (01) / 선물옵션 (03) / 해외선물옵션 (08)
 ```
 
-#### KIS Open API 공식 SDK와 동시 사용 시
+#### KIS 공식 샘플 코드와 동시 사용 시
 
-KIS 공식 SDK (`pykis` 등)는 `~/KIS/config/kis_devlp.yaml` 경로를 고정으로 사용한다. nuri-quant 와 공식 SDK 를 함께 쓰려면 두 위치 모두에서 파일을 읽을 수 있어야 한다.
+KIS 공식 샘플 코드(koreainvestment/open-trading-api 의 `kis_auth.py`)는 기본적으로 `~/KIS/config/kis_devlp.yaml` 을 읽는다. nuri-quant 와 샘플 코드를 함께 쓰려면 두 위치 모두에서 파일을 읽을 수 있어야 한다.
 
 **옵션 1 — symlink (권장, 1개 파일)**:
 
@@ -68,9 +68,9 @@ ln -sfn "$(pwd)/config/kis/cache" ~/KIS/cache   # ~/KIS/cache 가 이미 디렉�
 ```
 
 **옵션 2 — legacy only (nuri-quant fallback 활용)**:
-`~/KIS/config/kis_devlp.yaml` 에 파일을 두고 `config/kis/` 에 yaml 을 두지 않으면 nuri-quant 가 legacy 경로에서 자격 증명을 읽는다. SDK 는 기본 경로에서 읽는다. token cache 는 이 경우에도 `config/kis/cache/` 를 쓴다.
+`~/KIS/config/kis_devlp.yaml` 에 파일을 두고 `config/kis/` 에 yaml 을 두지 않으면 nuri-quant 가 legacy 경로에서 자격 증명을 읽는다. 샘플 코드는 기본 경로에서 읽는다. token cache 는 이 경우에도 `config/kis/cache/` 를 쓴다.
 
-**옵션 3 — SDK 미사용**: nuri-quant 만 쓰면 `config/kis/` 만으로 충분하다.
+**옵션 3 — nuri-quant 만 사용**: nuri-quant 만 쓰면 `config/kis/` 만으로 충분하다.
 
 ## 사용법
 

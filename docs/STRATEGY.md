@@ -294,9 +294,9 @@ Extended from a single-horizon structure, in which `_compute_weights` read only 
 
 **Basis (modern academic + authoritative sources, 2020+)**:
 
-- **Ibbotson & Kaplan** (_FAJ_ 2000, correcting the reading of Brinson's "93%"): asset allocation explains ~90% of **return variance (variance over time)** (not the return **level**). Security selection / market timing also explain 30-40% of cross-sectional differences. A frequently misused statistic — not the simple conclusion that "asset allocation is 100% of the answer".
+- **Ibbotson & Kaplan** (_FAJ_ 2000, correcting the reading of Brinson's "93%"): the answer depends on the question. Policy (asset allocation) explains about 90% of a fund's **return variability over time** and about 40% of the **variation in returns among funds**, and on average about 100% of the **return level** is explained by the policy return level.
 - **Vardharaj & Fabozzi** (_J. Portfolio Mgmt_ 2007): replication on modern data — confirms the dominance of asset allocation. A Brinson follow-up.
-- **Andrew Ang** (BlackRock CIO, _Asset Management_ 2014): "Factors are the new asset classes" — momentum / value / quality factor weights are also an asset-allocation dimension.
+- **Andrew Ang** (_Asset Management_, Oxford University Press 2014, written at Columbia Business School; he later led BlackRock's Factor-Based Strategies Group): what matters is not asset-class labels but the bundles of overlapping risks (factors) they represent — so momentum / value / quality factor weights are also an asset-allocation dimension.
 - **Antti Ilmanen** (AQR, _Investing Amid Low Expected Returns_ **2022**): the low-rate, high-valuation environment of the 2020s → 60/40 expected return falls to 4-5% a year. Recommends factor diversification + a global tilt.
 - **Vanguard** _Principles for Investing Success_ 4th ed (**2024**) + Capital Markets Model (**VCMM 2024**): 4 principles (goals/balance/costs/discipline). Expected return over the next 10 years — US equity 3-5% / Intl 7-9% / US bond 4-5%/yr.
 - **Morningstar** _Mind the Gap_ (**2024**) + DALBAR QAIB (**2024**): gap between investors' realized returns and fund returns -1.7%/yr (Morningstar). Cumulative gap between retail equity and the S&P 500 ~3%/yr (DALBAR, 1994-2023). **Discipline (manual rebalance) has a bigger impact than alpha**.
@@ -448,13 +448,17 @@ Check these before opening a PR.
 
 **Authoritative blocking criteria**: `scripts/verify/check_privacy_leak.py` is the ground truth.
 
+<!-- cspell:disable -->
+
 | Category | Blocked | Allowed placeholder |
+|---|---|---|
 | Korean broker name | 카카오페이, 미래에셋, 키움증권, 삼성증권, NH투자증권, 토스증권, KB증권, 신한투자증권, 하나증권, 메리츠증권, 유안타증권, 대신증권, 이베스트투자증권, 흥국증권, IBK투자증권, 신영증권, 교보증권, 현대차증권, SK증권, DB금융투자, LS증권, 다올투자증권, iM증권, 부국증권, 유진투자증권, 한양증권, 케이프투자증권, 상상인증권, BNK투자증권, 하이투자증권, 한화투자증권 | `Brokerage Alpha/Beta`, etc. | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
-<!-- cspell:disable-next-line -->
 | Romanized broker | kakaopay, mirae, kiwoom, samsung_securities, nh_invest, toss_securities, shinhan_invest, hana_securities, meritz_securities (case-insensitive substring) | `brokerage_alpha`, etc. | <!-- privacy-allow: broker_name — §4.4.1 패턴 표 자체 (#981) -->
 | Suspect monetary literal | An integer of 7 or more digits + a `total_invested`/`cash_balance`/`deposit`/`withdraw`/`principal`/`net_worth`/`buying_power` key | Round millions (`1_000_000`...`100_000_000`) are allowed automatically |
 | **Ticker + PnL combination** (PR #202) | (a) `[-+]\d+(\.\d+)?%\s*(TICKER)` (`-34% (TEM)`) (b) adjacent `TICKER <signed %>` (`PL +43%`). Scans source + unpushed commit messages. | Rule threshold text (`손절 -7%`, i.e. "stop-loss -7%") passes when there is no ticker context. `TICKER_FALSE_POSITIVES` frozenset (120 entries, including HWM/SL/MDD/CPI/VIX/BTC/ETH). | <!-- privacy-allow: ticker_pnl — §4.4.1 패턴 표 자체 (#981) -->
 | **Personal identifiers** (#1557) | Shape only: `<name>ui-Macmini` (romanized Korean default hostname) · `<account>@<host>.local` · `/Users/<account>/` · `-Users-<account>-` (Claude project path). The values are written neither in the scanner nor in the tests — `tests/test_no_personal_identifiers.py` locks the exact names by assembling them at runtime. Scans source + `--message` + unpushed commits. | `user@macmini.local`, `/Users/USER/`, `Test-Macmini` |
+
+<!-- cspell:enable -->
 
 **Intentional exclusion**: `한국투자증권` (KIS) is an Open API integration target (`nuri/collectors/kis_*`, `docs/KIS_INTEGRATION.md`). Credentials are in `config/kis/kis_devlp.yaml` (gitignored by `config/kis/*`; `~/KIS/` is legacy-compatible).
 
@@ -741,7 +745,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 
 - Record the BUY candidates emitted in each session as a baseline in `data/reports/buy_tracking/candidate_ledger.jsonl` (gitignored, append-only).
 - On entering the next session, run `scripts/analysis/compare_buy_candidates.py --session N` (tracked infra) → baseline vs current close + average return per tier.
-- Accumulate over 4 weeks → 13 weekly samples → strengthen the Phase 2c threshold backtest input.
+- Accumulate over 4 weeks ~~→ 13 weekly samples~~ → strengthen the Phase 2c threshold backtest input (13 weekly was the v1 C1 sample; v2 uses 104 weekly, §5.11).
 
 **Tier definitions**:
 

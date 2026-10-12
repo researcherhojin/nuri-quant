@@ -20,7 +20,7 @@ nuri/collectors/
 ### Priority order
 
 1. **`.env` file** (recommended — git ignored)
-2. **`config/kis/kis_devlp.yaml`** (gitignored, inside the project; compatible with the KIS Open API SDK)
+2. **`config/kis/kis_devlp.yaml`** (gitignored, inside the project; the format KIS's official sample code reads)
 3. **`~/KIS/config/kis_devlp.yaml`** (legacy location; backward-compatible fallback)
 
 ### .env variables
@@ -42,7 +42,7 @@ KIS_HTS_ID=your_hts_id
 
 ### YAML fallback (`config/kis/kis_devlp.yaml`)
 
-The format is compatible with the official KIS Open API SDK. The recommended location is under `config/kis/` inside the project (gitignored); the legacy location `~/KIS/config/kis_devlp.yaml` is also detected automatically.
+The format is the one KIS's official sample code reads. The recommended location is under `config/kis/` inside the project (gitignored); the legacy location `~/KIS/config/kis_devlp.yaml` is also detected automatically.
 
 ```yaml
 my_app: "실전 앱키"
@@ -55,9 +55,9 @@ my_paper_stock: "1000000"       # Paper comprehensive account
 my_prod: "01"                    # Comprehensive account (01) / futures & options (03) / overseas futures & options (08)
 ```
 
-#### When used alongside the official KIS Open API SDK
+#### When used alongside KIS's official sample code
 
-The official KIS SDK (`pykis` and others) always uses the fixed path `~/KIS/config/kis_devlp.yaml`. To use nuri-quant and the official SDK together, the file must be readable from both locations.
+KIS's official sample code (`kis_auth.py` in koreainvestment/open-trading-api) reads `~/KIS/config/kis_devlp.yaml` by default. To use nuri-quant and the sample code together, the file must be readable from both locations.
 
 **Option 1 — symlink (recommended, one file)**:
 
@@ -68,9 +68,9 @@ ln -sfn "$(pwd)/config/kis/cache" ~/KIS/cache   # if ~/KIS/cache is already a di
 ```
 
 **Option 2 — legacy only (uses the nuri-quant fallback)**:
-If the file is at `~/KIS/config/kis_devlp.yaml` and `config/kis/` holds no YAML file, nuri-quant reads the credentials from the legacy path. The SDK reads from its default path. The token cache still uses `config/kis/cache/` in this case.
+If the file is at `~/KIS/config/kis_devlp.yaml` and `config/kis/` holds no YAML file, nuri-quant reads the credentials from the legacy path. The sample code reads from its default path. The token cache still uses `config/kis/cache/` in this case.
 
-**Option 3 — no SDK**: If you use only nuri-quant, `config/kis/` alone is sufficient.
+**Option 3 — nuri-quant only**: If you use only nuri-quant, `config/kis/` alone is sufficient.
 
 ## Usage
 
