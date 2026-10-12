@@ -842,10 +842,8 @@ def _run_offbox_heartbeat():
     """기계 밖 감시 dead-man heartbeat (#1191 C). 10분 마다.
 
     이 job 의 **침묵**이 신호다 — 스케줄러/로그인 세션/머신/네트워크 중 무엇이
-    죽어도 ping 과 push 가 멎고, 외부 dead-man 서비스(주 경로, #1848)와
-    `.github/workflows/heartbeat-watch.yml`(보조) 이 그 침묵을 잡아 알린다. 둘은 따로
-    시도한다 — 한쪽 예외가 다른 쪽을 막으면 두 감시 경로가 같이 침묵한다. 실패를 여기서
-    복구하려 들지 말 것 (모듈 독스트링 참고).
+    죽어도 push 가 멎고, `.github/workflows/heartbeat-watch.yml` 이 staleness 로
+    잡아 #ops 에 알린다. 실패를 여기서 복구하려 들지 말 것 (모듈 독스트링 참고).
     """
     try:
         from nuri.alerts.offbox_heartbeat import send_heartbeat
@@ -853,13 +851,6 @@ def _run_offbox_heartbeat():
         send_heartbeat()
     except Exception as e:
         logger.error(f"[offbox_heartbeat] 실행 실패: {e}", exc_info=True)
-    try:
-        from nuri.alerts.offbox_heartbeat import ping_deadman
-
-        ping_deadman()
-    except Exception as e:
-        # 예외 문구에 ping URL(비밀)이 섞일 수 있어 타입만 남긴다.
-        logger.error(f"[offbox_heartbeat] dead-man ping 실행 실패: {type(e).__name__}")
 
 
 # ═══════════════════════════════════════════════════════
