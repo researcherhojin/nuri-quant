@@ -8,6 +8,7 @@
 #   1. fetch (실패 시 조용히 retry — 네트워크 끊김 대응)
 #   2. 로컬 HEAD vs origin/main 비교
 #   3. 변경 없으면 종료 (silent)
+#   3b. 새 커밋의 main CI 가 success 가 아니면 보류 — 다음 주기에 다시 본다 (#1808)
 #   4. 변경 있으면 ff-only merge → 비-FF면 거부 + 로그 (수동 처리 유도)
 #   5. 변경된 파일 분석 → dependency/schema 변경 시 경고
 #   6. 상주 python 서비스 재기동 (#1023)
@@ -78,6 +79,45 @@ UPSTREAM=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
 if [ "$BEFORE" = "$UPSTREAM" ]; then
     # 변경 없음 — 조용히 종료 (로그 줄이려고). 프론트 빌드만 확인한다: 최신이면 무출력이고,
     # 지난 주기에 실패했거나 밀렸으면 여기서 따라잡는다.
+    ensure_frontend_build
+    exit 0
+fi
+
+# ── CI 게이트: main CI 가 초록인 커밋만 배포한다 (#1808) ─────────────────────
+# 이 게이트 전에는 branch protection 의 `strict`(PR 이 최신 main 을 포함해야 머지)가 사실상
+# 배포 안전장치였다 — PR CI 가 머지 뒤 트리를 그대로 검사했으니까. `strict` 를 끄면 각자
+# 초록인 두 PR 이 합쳐진 트리는 main push CI 만 검사하므로 여기서 그 결과를 기다린다.
+# 판정할 수 없으면(런 없음 · 진행 중 · API 실패) 배포하지 않고 다음 주기에 다시 본다. 빨간
+# HEAD 는 고치는 커밋이 초록이 될 때까지 보류된다. 수동 배포(`make deploy-mini`)는 거치지 않는다.
+# mini 의 gh 는 로그인돼 있지 않아 공개 REST 를 curl 로 읽는다 — 새 커밋이 있을 때만 부르므로
+# 비인증 한도(시간당 60)에 닿지 않는다.
+# 막는 것: 빨간 · 진행 중 · 아직 없는 런과 API 실패. 막지 않는 것: 응답 본문 자체를 조작할 수 있는
+# 쪽(TLS 를 뚫은 MITM · GitHub 침해) — 그쪽은 정상적인 success 응답을 그대로 보내면 되므로 파싱을
+# 어떻게 고쳐도 소용없다. 그런 입력(본문 속 날 NUL 등)을 겨냥한 수정은 하지 않는다.
+# Test: tests/scripts/test_autopull_restarts_daemons.py::TestAutopullWaitsForGreenCi
+ci_verdict() {
+    local slug py body
+    slug=$(git remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#^.*github\.com[:/]##')
+    py="$REPO/.venv/bin/python"
+    [ -x "$py" ] || py=python3
+    # curl 의 종료 코드를 따로 본다. 파이프로 바로 넘기면(pipefail 없음) 본문을 받은 뒤 실패한
+    # 응답(exit 18 · 28 등)도 그 본문대로 읽힌다.
+    body=$(curl -sf -m 20 -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${slug}/actions/workflows/main-ci-cd.yml/runs?head_sha=$1&event=push&per_page=1" 2>/dev/null) \
+        || { echo "unreadable"; return; }
+    # 판정은 Python 안에서 정확히 비교한다. ("completed", "success") 일 때만 고정 토큰 "green" 을,
+    # 그 밖에는 고정 접두사 "hold " 뒤에 repr 로 escape 한 값을 내보낸다 — 응답에서 온 문자열이
+    # 출력의 앞머리가 되지 않으니 어떤 값도 "green" 과 같아질 수 없다. bash 쪽에서 비교하거나 값을
+    # 그대로 찍으면 $(...) 가 지우는 끝 줄바꿈 · NUL 로 "success\n" 이나 "green\0…" 가 통과했다
+    # (#1808 Codex 리뷰가 재현). f-string 을 안 쓰는 건 venv 가 없을 때의 /usr/bin/python3 (3.9) 때문.
+    printf '%s' "$body" \
+        | "$py" -c 'import json, sys; r = (json.load(sys.stdin).get("workflow_runs") or [{}])[0]; s, c = r.get("status"), r.get("conclusion"); print("green" if (s, c) == ("completed", "success") else "hold " + ("no-run" if r == {} else repr((s, c))[:80]))' 2>/dev/null \
+        || echo "unreadable"
+}
+
+CI_VERDICT=$(ci_verdict "$UPSTREAM")
+if [ "$CI_VERDICT" != "green" ]; then
+    log "hold ${UPSTREAM:0:7}: main CI = ${CI_VERDICT#hold } — 초록이 될 때까지 배포하지 않는다"
     ensure_frontend_build
     exit 0
 fi

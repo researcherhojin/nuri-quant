@@ -72,7 +72,18 @@ def world(tmp_path: Path):
         "fi\n"
         "exit 0\n"
     )
-    (binz / "curl").write_text(f'#!/bin/sh\necho "curl $*" >> "{calls}"\nexit 0\n')
+    # curl stub — GitHub runs API 에는 CI 판정 JSON 을, 그 밖(대시보드 헬스체크)에는 성공만 돌려준다.
+    # 기본 판정은 success (기존 테스트 무영향). CI_STUB_JSON 으로 본문을, CI_STUB_RC 로 본문 **뒤** 종료 코드를 정한다 (#1808).
+    green = '{"workflow_runs": [{"status": "completed", "conclusion": "success"}]}'
+    (binz / "curl").write_text(
+        "#!/bin/sh\n"
+        f'echo "curl $*" >> "{calls}"\n'
+        'case "$*" in *api.github.com*)\n'
+        f"    if [ -n \"$CI_STUB_JSON\" ]; then printf '%s' \"$CI_STUB_JSON\"; else printf '%s' '{green}'; fi\n"
+        '    exit "${CI_STUB_RC:-0}" ;;\n'
+        "esac\n"
+        "exit 0\n"
+    )
     for f in ("launchctl", "uv", "npm", "curl"):
         (binz / f).chmod(0o755)
 
@@ -122,6 +133,7 @@ def world(tmp_path: Path):
             "land": staticmethod(land),
             "run": staticmethod(run),
             "work": work,
+            "origin": origin,
             "autopull_log": staticmethod(autopull_log),
         },
     )
@@ -269,3 +281,82 @@ class TestAutopullBuildsTheFrontend:
         assert "ERROR: frontend 빌드 실패" in world.autopull_log(), (
             "실패가 로그에 없다 — 침묵은 이 이슈가 막으려는 바로 그 형태다\n" + world.autopull_log()
         )
+
+
+def _rev(repo: Path, ref: str = "HEAD") -> str:
+    return subprocess.run(
+        ["git", "rev-parse", ref], cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+class TestAutopullWaitsForGreenCi:
+    """main CI 가 success 인 커밋만 배포한다 (#1808).
+
+    branch protection 의 `strict` 가 켜져 있던 동안은 PR CI 가 머지 뒤 트리를 그대로 검사해서
+    그게 사실상 배포 게이트였다. `strict` 를 끄면 각자 초록인 두 PR 이 합쳐진 트리는 main push
+    CI 만 검사한다 — 이 게이트가 없으면 그 트리가 결과와 무관하게 5분 안에 production 에 깔린다.
+    """
+
+    @staticmethod
+    def _held(world, **env: str) -> str:
+        before = _rev(world.work)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        out = world.run(**env)
+        assert _rev(world.work) == before, f"CI 가 초록이 아닌데 배포했다:\n{world.autopull_log()}"
+        assert "kickstart" not in out, f"배포를 보류했는데 데몬을 재기동했다:\n{out}"
+        return world.autopull_log()
+
+    def test_green_ci_deploys_and_asks_about_the_fetched_commit(self, world):
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        target = _rev(world.origin, "main")
+        out = world.run()
+        assert _rev(world.work) == target, "CI 가 초록인데 배포하지 않았다"
+        assert f"head_sha={target}" in out, f"당겨올 커밋이 아닌 것의 CI 를 물었다:\n{out}"
+
+    def test_running_ci_holds(self, world):
+        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "in_progress", "conclusion": null}]}')
+        assert "main CI = ('in_progress', None)" in log
+
+    def test_red_ci_holds(self, world):
+        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "completed", "conclusion": "failure"}]}')
+        assert "main CI = ('completed', 'failure')" in log
+
+    def test_no_run_yet_holds(self, world):
+        log = self._held(world, CI_STUB_JSON='{"workflow_runs": []}')
+        assert "main CI = no-run" in log
+
+    def test_unreadable_api_holds(self, world):
+        """판정을 못 읽으면 배포하지 않는다 — API 실패를 초록으로 읽으면 게이트가 없는 것과 같다."""
+        log = self._held(world, CI_STUB_JSON=" ", CI_STUB_RC="22")
+        assert "main CI = unreadable" in log
+
+    def test_a_transfer_that_fails_after_a_green_body_holds(self, world):
+        """curl 이 성공 본문을 내보낸 뒤 실패해도(exit 18) 보류한다 — 파이프로 넘기면 본문대로 success 였다."""
+        log = self._held(world, CI_STUB_RC="18")
+        assert "main CI = unreadable" in log
+
+    def test_success_only_counts_as_a_completed_runs_conclusion(self, world):
+        """status 가 success 여도 completed 가 아니면 보류한다 — conclusion 대신 status 를 읽던 판에서 통과했다."""
+        log = self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "success", "conclusion": null}]}')
+        assert "main CI = ('success', None)" in log
+
+    def test_a_conclusion_with_trailing_newlines_is_not_success(self, world):
+        """conclusion 이 `success` 뒤에 줄바꿈을 달고 오면 success 가 아니다 — bash 의 $(...) 가 끝 줄바꿈을 지우던 비교에서는 통과했다."""
+        log = self._held(
+            world, CI_STUB_JSON='{"workflow_runs": [{"status": "completed", "conclusion": "success\\n\\n"}]}'
+        )
+        assert "main CI = ('completed', 'success\\n\\n')" in log
+
+    def test_a_status_padded_to_look_green_holds(self, world):
+        """응답 값이 출력 앞머리가 되면 잘림과 NUL 제거로 "green" 을 만들 수 있었다 — 접두사는 응답과 무관해야 한다."""
+        padded = "green" + "\\u0000" * 55
+        log = self._held(
+            world, CI_STUB_JSON='{"workflow_runs": [{"status": "' + padded + '", "conclusion": "failure"}]}'
+        )
+        assert "main CI = ('green" in log
+
+    def test_a_held_commit_deploys_once_ci_turns_green(self, world):
+        self._held(world, CI_STUB_JSON='{"workflow_runs": [{"status": "queued", "conclusion": null}]}')
+        out = world.run()
+        assert _rev(world.work) == _rev(world.origin, "main"), "초록이 된 뒤에도 배포하지 않았다"
+        assert "kickstart" in out
