@@ -12,6 +12,7 @@ mixed-sample 규칙은 `tests/quant/test_evidence_binding.py`.
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import pytest
 
@@ -34,7 +35,7 @@ def db_path(tmp_path):
 
 
 def _log_wf(db_path, **overrides):
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         run_id="wf-1",
         model_id="hmm-v1",
         fold_spec={"kind": "rolling", "train_size": 100, "test_size": 20, "step": 20},
@@ -60,7 +61,7 @@ def _log_outcome(db_path, **overrides):
         status="emitted",
         db_path=db_path,
     )
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         decision_id="d-1",
         observation_window=7,
         tracked_as_of_date="2026-09-05",
@@ -139,7 +140,7 @@ class TestDecisionCarriesBinding:
         assert row["execution_config_sha_v1"] != "claimed-sha"
 
 
-def _consensus_result(ticker="TEST", action="BUY"):
+def _consensus_result(ticker="TEST", action="BUY") -> Any:
     from types import SimpleNamespace
 
     verdict = SimpleNamespace(

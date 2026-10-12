@@ -160,7 +160,7 @@ class TestAnalystBacktestBranches:
 
         call_count = {"n": 0}
 
-        def stub_query(sql, params=None, db_path=None):
+        def stub_query(sql, params=(), db_path=None):
             # 1st: estimates lookup (allow real)
             # 2nd: price_at lookup (allow real)
             # 3rd: price_after lookup → return empty

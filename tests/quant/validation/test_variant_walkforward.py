@@ -259,9 +259,9 @@ class TestRunner:
     def test_refuses_without_cost_or_fx(self):
         p = _panel()
         with pytest.raises(ValueError, match="cost_bps"):
-            run_variant_search(cost_bps=None, fx_series=_flat_fx(p.index), close=p, vol=_vol_panel(p))
+            run_variant_search(cost_bps=None, fx_series=_flat_fx(p.index), close=p, vol=_vol_panel(p))  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
         with pytest.raises(ValueError, match="fx_series"):
-            run_variant_search(cost_bps=10.0, fx_series=None, close=p, vol=_vol_panel(p))
+            run_variant_search(cost_bps=10.0, fx_series=None, close=p, vol=_vol_panel(p))  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
 
     def test_bonferroni_alpha_excludes_baseline(self):
         p = _panel()
@@ -507,7 +507,7 @@ class TestCLI:
         with get_db(db_path_mp) as conn:
             conn.executemany(
                 "INSERT INTO prices (ticker, date, close, volume) VALUES (?, ?, ?, ?)",
-                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t]), 1e6) for t in p.columns for d in p.index],
+                [(t, d.strftime("%Y-%m-%d"), float(p[t].loc[d]), 1e6) for t in p.columns for d in p.index],
             )
             for d in p.index:
                 conn.execute(

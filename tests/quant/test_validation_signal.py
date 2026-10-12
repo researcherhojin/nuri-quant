@@ -1230,7 +1230,7 @@ class TestMergeDataSignalsException:
         original = sb.query_df
         call_count = {"n": 0}
 
-        def stub(sql, params=None, db_path=None):
+        def stub(sql, params=(), db_path=None):
             call_count["n"] += 1
             # 첫 호출 (insider) 만 raise
             if call_count["n"] == 1:

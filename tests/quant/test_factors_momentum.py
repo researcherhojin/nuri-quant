@@ -73,7 +73,7 @@ class TestMomentum:
 
         df = compute_momentum()
 
-        assert float(df.loc["STALE", "rsi_14"]) == 50, "90일 낡은 RSI 가 현재값으로 쓰였다"
+        assert float(df["rsi_14"].loc["STALE"]) == 50, "90일 낡은 RSI 가 현재값으로 쓰였다"
 
     def test_a_fresh_rsi_is_used(self, db_path_mp):
         """컷오프 안쪽 값은 그대로 쓴다 — 위 테스트가 전부를 50 으로 만드는 걸로 통과하면 안 된다."""
@@ -85,7 +85,7 @@ class TestMomentum:
 
         df = compute_momentum()
 
-        assert float(df.loc["FRESH", "rsi_14"]) == 95.0
+        assert float(df["rsi_14"].loc["FRESH"]) == 95.0
 
     def test_an_rsi_of_zero_is_an_observation_not_a_missing_value(self, db_path_mp):
         """RSI 0.0 이 중립 50 으로 덮이지 않는다 (#1073).
@@ -102,7 +102,7 @@ class TestMomentum:
 
         df = compute_momentum()
 
-        assert float(df.loc["ZERO", "rsi_14"]) == 0.0, "관측된 RSI 0 이 50 으로 덮였다"
+        assert float(df["rsi_14"].loc["ZERO"]) == 0.0, "관측된 RSI 0 이 50 으로 덮였다"
 
     def test_a_null_rsi_does_not_poison_the_score_with_nan(self, db_path_mp):
         """NULL rsi_14 가 NaN 으로 점수에 전파되지 않는다 (#1073).
@@ -121,7 +121,7 @@ class TestMomentum:
 
         df = compute_momentum()
 
-        assert float(df.loc["NULLRSI", "rsi_14"]) == 50
+        assert float(df["rsi_14"].loc["NULLRSI"]) == 50
         assert not bool(df["momentum_score"].isna().any()), "NaN 이 momentum_score 로 전파됐다"
 
     def test_rsi_is_read_in_one_query_not_one_per_ticker(self, db_path_mp):

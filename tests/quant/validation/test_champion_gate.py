@@ -29,7 +29,7 @@ def db_path(tmp_path):
     return p
 
 
-def _variant(name, *, baseline=False, p_value=0.001, eligible=True, holdout=0.8):
+def _variant(name, *, baseline=False, p_value=0.001, eligible=True, holdout: float | None = 0.8):
     return {
         "name": name,
         "baseline": baseline,

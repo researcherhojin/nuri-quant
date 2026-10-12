@@ -92,8 +92,8 @@ class TestComposite:
 
         assert set(tickers) <= set(df.index), f"채점 대상이 누락됐다: {set(df.index)}"
         for t in ("UNHELD1", "UNHELD2"):
-            assert float(df.loc[t, "value_score"]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다 (보유 종목만 계산됨)"
-            assert float(df.loc[t, "quality_score"]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다"
+            assert float(df["value_score"].loc[t]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다 (보유 종목만 계산됨)"
+            assert float(df["quality_score"].loc[t]) != 0.5, f"{t} 가 중립 대입으로 떨어졌다"
         assert df["composite_score"].nunique() > 1
 
     def test_an_empty_price_table_does_not_fall_back_to_holdings(self, db_path_mp):

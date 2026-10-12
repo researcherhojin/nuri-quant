@@ -16,6 +16,7 @@ Test isolation: tmp_path + init_db(path), monkeypatch DB_PATH.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Literal
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
@@ -1256,7 +1257,9 @@ class TestRetroLessons:
         from nuri.alerts import postmarket_brief as pmb
 
         monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
-        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        enriched: list[tuple[dict[str, Any], float | None]] = [
+            ({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)
+        ]
         with patch("nuri.llm.report._generate_ollama", return_value="- 변동성 낮을 때 추격 자제\n- 눌림목 분할 진입"):
             out = pmb._synthesize_retro_llm({"vix": 16, "fear_greed": 60, "regime": "bull"}, enriched)
         assert len(out) == 2 and out[0].startswith("💡") and "추격 자제" in out[0]
@@ -1297,7 +1300,9 @@ class TestRetroLessons:
         from nuri.alerts import postmarket_brief as pmb
 
         monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
-        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        enriched: list[tuple[dict[str, Any], float | None]] = [
+            ({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)
+        ]
         with patch("nuri.llm.report._generate_ollama", return_value="   "):
             assert pmb._synthesize_retro_llm({"vix": 16}, enriched) == []
 
@@ -1312,7 +1317,9 @@ class TestRetroLessons:
         from nuri.alerts import postmarket_brief as pmb
 
         monkeypatch.setenv("OLLAMA_HOST", "http://localhost:11434")
-        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        enriched: list[tuple[dict[str, Any], float | None]] = [
+            ({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)
+        ]
         with patch("nuri.llm.report._generate_ollama", side_effect=RuntimeError("ollama down")):
             assert pmb._synthesize_retro_llm({"vix": 16}, enriched) == []
 
@@ -1383,7 +1390,9 @@ class TestRetroLessons:
         from nuri.alerts import postmarket_brief as pmb
 
         monkeypatch.setenv("OLLAMA_HOST", "http://attacker.example.com:11434")
-        enriched = [({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)]
+        enriched: list[tuple[dict[str, Any], float | None]] = [
+            ({"date": "2026-01-05", "vix": 16, "fear_greed": 60, "regime": "bull"}, 1.2)
+        ]
         with patch("nuri.llm.report._generate_ollama") as gen:
             out = pmb._synthesize_retro_llm({"vix": 16}, enriched)
         assert out == []
@@ -1430,7 +1439,12 @@ class TestRetroLessons:
 # ─── #571 장마감 요약 카드 (구 렌더러가 `? | INFO` 로 버리던 자리) ──────────────
 
 
-def _summary_payload(session="kr", vix_delta=1.3, pnl_pct=-2.1, sector=("XLK", 0.8)):
+def _summary_payload(
+    session: Literal["kr", "us"] = "kr",
+    vix_delta: float | None = 1.3,
+    pnl_pct: float = -2.1,
+    sector: tuple[str, float] | None = ("XLK", 0.8),
+):
     from nuri.alerts import postmarket_brief as pmb
 
     macro = {"vix": {"delta": vix_delta}} if vix_delta is not None else {}

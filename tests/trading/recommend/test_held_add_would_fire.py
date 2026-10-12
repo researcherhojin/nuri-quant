@@ -151,7 +151,7 @@ class TestWouldFire:
         """임계 완화가 current 와 **다른 상위 precedence mode** 를 고를 수 있다 —
         Stage 2 incremental 정의가 mode 무관인 이유 (STRATEGY §3.12 2항)."""
         gates = {"tp1_residual_add": True, "ride_winner": True, "average_down": False}
-        grid = {
+        grid: dict[str, dict[str, float | None]] = {
             "current": dict(CURRENT),
             "abs_60": dict.fromkeys(CURRENT, 60.0),
         }

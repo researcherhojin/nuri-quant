@@ -11,6 +11,7 @@ backtests 테이블은 그동안 writer 부재(Phase 3 placeholder)였다. save_
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -25,7 +26,7 @@ def db_path(tmp_path):
 
 
 def _save_minimal(db_path, **overrides):
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         strategy_id="S",
         start_date="2026-01-01",
         end_date="2026-02-01",

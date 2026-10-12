@@ -41,7 +41,7 @@ class TestQuality:
                 df[col + "_norm"] = 0.5
         norm_cols = [c for c in df.columns if c.endswith("_norm")]
         df["quality_score"] = df[norm_cols].mean(axis=1)
-        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
+        assert float(df["quality_score"].loc["AAPL"]) > float(df["quality_score"].loc["MSFT"])
 
 
 class TestQualityDbRead:
@@ -83,8 +83,8 @@ class TestQualityDbRead:
             "quality_score 가 상수 (이전 0.5 버그 재발) — fundamentals read 로 source 가 되었는지 확인"
         )
         # NVDA (최고 ROE + margin) > AAPL > MSFT 순서 검증
-        assert float(df.loc["NVDA", "quality_score"]) > float(df.loc["AAPL", "quality_score"])
-        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
+        assert float(df["quality_score"].loc["NVDA"]) > float(df["quality_score"].loc["AAPL"])
+        assert float(df["quality_score"].loc["AAPL"]) > float(df["quality_score"].loc["MSFT"])
 
     def test_a_missing_roe_is_not_a_quality_bonus(self, db_path_mp):
         """ROE 가 없다는 이유만으로 최고 퀄리티가 되지 않는다 (#1102).
@@ -100,15 +100,17 @@ class TestQualityDbRead:
         """
         from nuri.quant.factors.quality import compute_quality
 
-        rows = [(f"T{i:02d}", "2026-04-15", 0.05 + i * 0.02, 0.05 + i * 0.03) for i in range(10)]
+        rows: list[tuple[str, str, float | None, float]] = [
+            (f"T{i:02d}", "2026-04-15", 0.05 + i * 0.02, 0.05 + i * 0.03) for i in range(10)
+        ]
         rows.append(("NOROE", "2026-04-15", None, 0.99))  # 최고 마진, ROE 결측
         self._seed_fundamentals(db_path_mp, rows)
 
         df = compute_quality(tickers=[r[0] for r in rows])
 
-        assert float(df.loc["NOROE", "quality_score"]) < 1.0, "결측이 만점을 만들었다"
+        assert float(df["quality_score"].loc["NOROE"]) < 1.0, "결측이 만점을 만들었다"
         best_observed = df.drop(index="NOROE")["quality_score"].max()
-        assert float(df.loc["NOROE", "quality_score"]) <= best_observed + 0.13, (
+        assert float(df["quality_score"].loc["NOROE"]) <= best_observed + 0.13, (
             "두 축을 다 관측한 최상위 종목보다 결측 종목이 크게 앞섰다"
         )
 
@@ -148,7 +150,7 @@ class TestQualityDbRead:
         df = compute_quality(tickers=["AAPL", "MSFT"])
         # min-max 정규화 → AAPL roe=0.30 이 max → AAPL quality_score 가 더 큼.
         # 만약 old row (0.10) 를 사용했다면 MSFT (0.20) 가 더 커진다.
-        assert float(df.loc["AAPL", "quality_score"]) > float(df.loc["MSFT", "quality_score"])
+        assert float(df["quality_score"].loc["AAPL"]) > float(df["quality_score"].loc["MSFT"])
 
     def test_no_tickers_returns_empty(self, db_path_mp, monkeypatch):
         """tickers=None + get_tickers() 가 빈 리스트 → empty df (line 24)."""
@@ -178,7 +180,7 @@ class TestQualityDbRead:
         assert not df.empty
         assert set(df.index) == {"005930.KS", "000660.KS"}
         # 시장 내 정규화 → 고ROE/고마진(005930.KS)이 더 높은 quality
-        assert float(df.loc["005930.KS", "quality_score"]) > float(df.loc["000660.KS", "quality_score"])
+        assert float(df["quality_score"].loc["005930.KS"]) > float(df["quality_score"].loc["000660.KS"])
 
     def test_kr_included_and_normalized_per_market(self, db_path_mp):
         """#757: KR 추가가 US quality_score 를 바꾸지 않는다 (시장별 정규화)."""
@@ -201,9 +203,9 @@ class TestQualityDbRead:
         df_us_only = compute_quality(tickers=us)
 
         assert df_all.loc[kr, "quality_score"].nunique() > 1
-        assert float(df_all.loc["3333.KS", "quality_score"]) > float(df_all.loc["1111.KS", "quality_score"])
+        assert float(df_all["quality_score"].loc["3333.KS"]) > float(df_all["quality_score"].loc["1111.KS"])
         for t in us:
-            assert float(df_all.loc[t, "quality_score"]) == pytest.approx(float(df_us_only.loc[t, "quality_score"]))
+            assert float(df_all["quality_score"].loc[t]) == pytest.approx(float(df_us_only["quality_score"].loc[t]))
 
     def test_normalize_quality_columns_skips_absent_column(self):
         """_normalize_quality_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""

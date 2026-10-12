@@ -3,6 +3,8 @@
   // 뿐이라 scripts 의 오류 7건이 IDE · 전체 실행 어디에도 안 보였다). 오류는 0 이고, CI 의 Backend Lint
   // 가 pyright 1.1.414 로 0 을 강제한다 (#1831). pre-push 의 scripts/verify/check_pyright_diff.py 는
   // 바꾼 줄만 보는 빠른 로컬 사본이다.
+  // tests/ 도 같은 규칙이다. 예전엔 mock 패턴을 이유로 규칙 5개를 꺼 뒀는데(#644), 실제로는 Optional
+  // 결과를 확인 없이 쓰는 테스트가 섞여 있었다 — 고치고 전부 켰다 (#1834).
   "include": ["nuri", "tests", "scripts"],
   "exclude": [
     // 완결된 사전등록 에피소드 스크립트 — 결과가 아카이브된 일회성 실험이라 사후
@@ -18,16 +20,5 @@
   "typeCheckingMode": "basic",
   "extraPaths": ["."],
   "venvPath": ".",
-  "venv": ".venv",
-  "executionEnvironments": [
-    {
-      // 테스트는 mock · 일부만 채운 dict · 일부러 틀린 인자(에러 경로)를 쓴다 (#644). 그래서 규칙을 꺼
-      // 뒀는데, 다 의도된 패턴은 아니었다 — Optional 결과를 확인 없이 쓰는 테스트가 섞여 있었다.
-      // 규칙 하나씩 고쳐서 켠다 (#1834): reportOperatorIssue · reportCallIssue ·
-      // reportOptionalMemberAccess 는 22 건, reportOptionalSubscript 는 71 건을 고치고 켰다.
-      // 남은 하나를 켜면 tests 오류가 148 건이다 (2026-10-12, pyright 1.1.414).
-      "root": "tests",
-      "reportArgumentType": "none"
-    }
-  ]
+  "venv": ".venv"
 }

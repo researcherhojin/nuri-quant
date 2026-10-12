@@ -49,7 +49,7 @@ def _dispatch_branches() -> list[tuple[str, list[ast.stmt]]]:
         test = node.test
         if isinstance(test, ast.Compare) and test.comparators and isinstance(test.comparators[0], ast.Constant):
             job = test.comparators[0].value
-        branches.append((job or "<unknown>", node.body))
+        branches.append((job if isinstance(job, str) and job else "<unknown>", node.body))
         node = node.orelse[0] if len(node.orelse) == 1 else None
     return branches
 
