@@ -533,7 +533,7 @@ PR 전용(`pr-discipline.yml`): commit 수 gate(최대 3 commit, escape 라벨 `
 
 PR 종료 시(`cache-cleanup.yml`): 그 PR 의 `refs/pull/N/merge` ref 아래 저장된 GitHub Actions cache 를 지운다. 10GB repository cache 한도 안에서 살아 있는 `main` cache 를 밀어내지 않게 하기 위해서다. `GITHUB_TOKEN` 이 한 merge(Dependabot auto-merge)는 workflow 를 하나도 시작하지 않으므로, 같은 파일이 하루 한 번 닫힌 PR 전부의 cache 를 쓸어낸다(#1812).
 
-스케줄 실행(`main-ci-catchup.yml`, #1812): 매시간(cron `37 * * * *`) HEAD 가 10분보다 오래됐는데 run 이 하나도 없으면 `main` 에 `main-ci-cd` 를 dispatch 한다. `GITHUB_TOKEN` merge 뒤가 그 경우다. dispatch 된 run 도 slow test 를 돌린다.
+스케줄 실행(`main-ci-catchup.yml`, #1812): 매시간(cron `53 * * * *`. 처음의 `:37` 은 schedule 이 등록되지 않았다, #1840) HEAD 가 10분보다 오래됐는데 run 이 하나도 없으면 `main` 에 `main-ci-cd` 를 dispatch 한다. `GITHUB_TOKEN` merge 뒤가 그 경우다. dispatch 된 run 도 slow test 를 돌린다.
 
 스케줄 실행(`heartbeat-watch.yml`, #1191 option C): 20분마다(cron `7,27,47 * * * *`. 부하가 걸리면 `*/N` 스케줄이 지연되거나 누락될 수 있어 붐비지 않는 분을 쓴다) workflow 가 custom ref 두 개, `refs/nuri/heartbeat-mini`(scheduler)와 `refs/nuri/machine-mini`(머신 LaunchDaemon)를 읽는다. 이들은 branch 가 아닌 ref 이므로 branch 목록에 나타나지 않는다. 각 sender 는 `git push --force` 로 empty-tree commit 을 force-push 해 10분마다 자기 ref 를 갱신한다. scheduler 의 heartbeat 가 45분보다 오래되면 workflow 는 `DISCORD_WEBHOOK_OPS` secret 으로 `#ops` 에 게시한다. 메시지가 scheduler 가 조용하다고 보고할지 머신이 꺼졌다고 보고할지는 머신 ref 의 나이로 정한다. 꺼진 호스트는 스스로를 보고할 수 없으므로 알람은 sender 의 침묵으로 촉발된다.
 
