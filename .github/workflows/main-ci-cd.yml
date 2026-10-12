@@ -698,11 +698,13 @@ jobs:
   # containing slow). Coverage uploaded from both with distinct flags so
   # Codecov merges correctly.
   #
-  # Shard names are "Backend Tests · Fast/Slow <n>" — NOT required checks.
+  # Shard names are "Backend Tests · Fast/Slow" — NOT required checks. The name holds no matrix
+  # expression on purpose: a skipped matrix job (Slow on every PR) is shown with its name
+  # unevaluated, i.e. "Backend Tests · Slow ${{ matrix.shard }}". Running legs show "(1)", "(2)".
   # Only the aggregator name "Backend Tests" is protected.
 
   backend-tests-shard:
-    name: Backend Tests · Fast ${{ matrix.shard }}
+    name: Backend Tests · Fast
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -813,7 +815,7 @@ jobs:
   # fast shards' flag `backend-fast` for full-suite coverage on main.
 
   backend-tests-slow:
-    name: Backend Tests · Slow ${{ matrix.shard }}
+    name: Backend Tests · Slow
     needs: changes
     # Every non-PR event: push, and the workflow_dispatch that main-ci-catchup.yml
     # starts for a commit merged by GITHUB_TOKEN, which got no push run (#1812).
