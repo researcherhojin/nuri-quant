@@ -233,9 +233,9 @@ class TestRunner:
     def test_refuses_without_cost_or_fx(self):
         p = _panel()
         with pytest.raises(ValueError, match="cost_bps"):
-            run_exit_search(cost_bps=None, fx_series=_flat_fx(p.index), close=p, config=SMALL_CFG)
+            run_exit_search(cost_bps=None, fx_series=_flat_fx(p.index), close=p, config=SMALL_CFG)  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
         with pytest.raises(ValueError, match="fx_series"):
-            run_exit_search(cost_bps=10.0, fx_series=None, close=p, config=SMALL_CFG)
+            run_exit_search(cost_bps=10.0, fx_series=None, close=p, config=SMALL_CFG)  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
 
     def test_warmup_must_cover_trail_ma(self):
         # warmup < trail_ma 면 진입 시 MA 미계산 → 사전등록과 다른 룰 평가 → 거부 (codex R2)
@@ -416,7 +416,7 @@ class TestCLI:
         with get_db(db_path_mp) as conn:
             conn.executemany(
                 "INSERT INTO prices (ticker, date, close, volume) VALUES (?, ?, ?, ?)",
-                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t]), 1e6) for t in p.columns for d in p.index],
+                [(t, d.strftime("%Y-%m-%d"), float(p[t].loc[d]), 1e6) for t in p.columns for d in p.index],
             )
             for d in p.index:
                 conn.execute(

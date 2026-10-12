@@ -82,11 +82,11 @@ class TestKnownAnswer:
 class TestMandatoryInputs:
     def test_refuses_without_cost(self):
         with pytest.raises(ValueError, match="cost_bps"):
-            run_strategy_walkforward(cost_bps=None, fx_series=_flat_fx(_panel().index), prices=_panel())
+            run_strategy_walkforward(cost_bps=None, fx_series=_flat_fx(_panel().index), prices=_panel())  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
 
     def test_refuses_without_fx(self):
         with pytest.raises(ValueError, match="fx_series"):
-            run_strategy_walkforward(cost_bps=10.0, fx_series=None, prices=_panel())
+            run_strategy_walkforward(cost_bps=10.0, fx_series=None, prices=_panel())  # pyright: ignore[reportArgumentType]  # 일부러 None — 거부 경로
 
     def test_refuses_too_few_rows(self):
         # < 2 row → 즉시 거부 (empty/단일 row guard)
@@ -181,7 +181,7 @@ class TestIntegration:
         with get_db(db_path_mp) as conn:
             conn.executemany(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
-                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t])) for t in p.columns for d in p.index],
+                [(t, d.strftime("%Y-%m-%d"), float(p[t].loc[d])) for t in p.columns for d in p.index],
             )
         r = run_strategy_walkforward(
             cost_bps=10.0, fx_series=_flat_fx(p.index), config=SMALL_CFG
@@ -199,7 +199,7 @@ class TestIntegration:
         with get_db(db_path_mp) as conn:
             conn.executemany(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
-                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t])) for t in p.columns for d in p.index],
+                [(t, d.strftime("%Y-%m-%d"), float(p[t].loc[d])) for t in p.columns for d in p.index],
             )
         result = run_strategy_walkforward(cost_bps=10.0, fx_series=_flat_fx(p.index))
         assert result["n_folds"] >= 1
@@ -486,7 +486,7 @@ class TestPersistAndValidation:
         with get_db(db_path_mp) as conn:
             conn.executemany(
                 "INSERT INTO prices (ticker, date, close) VALUES (?, ?, ?)",
-                [(t, d.strftime("%Y-%m-%d"), float(p.loc[d, t])) for t in p.columns for d in p.index],
+                [(t, d.strftime("%Y-%m-%d"), float(p[t].loc[d])) for t in p.columns for d in p.index],
             )
             for d in p.index:
                 conn.execute(

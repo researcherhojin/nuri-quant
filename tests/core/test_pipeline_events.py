@@ -569,7 +569,7 @@ class TestEmitEventAlwaysWritesValidJson:
         쿼리가 오염된 행을 스치면서 죽는 것이므로, 스캔 쿼리 자체를 돌려본다.
         """
         for i, payload in enumerate(["skipped", ["a"], 7, None, {"ticker": "AAA"}]):
-            emit_event(f"mixed_{i}", payload=payload, db_path=db_path)
+            emit_event(f"mixed_{i}", payload=payload, db_path=db_path)  # pyright: ignore[reportArgumentType]  # 계약 밖 모양(list·int)도 일부러 넣는다
 
         rows = query(
             """SELECT COUNT(*) AS c FROM pipeline_events

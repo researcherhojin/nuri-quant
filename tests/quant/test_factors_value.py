@@ -42,7 +42,7 @@ class TestValue:
                 df[col + "_norm"] = 0.5
         norm_cols = [c for c in df.columns if c.endswith("_norm")]
         df["value_score"] = df[norm_cols].mean(axis=1)
-        assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
+        assert float(df["value_score"].loc["AAPL"]) > float(df["value_score"].loc["MSFT"])
 
 
 class TestValueDbRead:
@@ -82,8 +82,8 @@ class TestValueDbRead:
             "value_score 가 상수 (이전 0.5 버그 재발) — fundamentals read 로 source 가 되었는지 확인"
         )
         # 낮은 PE/PB = 높은 가치 스코어 (역수 정규화)
-        assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
-        assert float(df.loc["MSFT", "value_score"]) > float(df.loc["NVDA", "value_score"])
+        assert float(df["value_score"].loc["AAPL"]) > float(df["value_score"].loc["MSFT"])
+        assert float(df["value_score"].loc["MSFT"]) > float(df["value_score"].loc["NVDA"])
 
     def test_a_loss_maker_is_not_the_cheapest_stock(self, db_path_mp):
         """음수 PE 가 최고 가치 점수를 받지 않는다 (#1102).
@@ -106,14 +106,14 @@ class TestValueDbRead:
         )
         df = compute_value(tickers=["CHEAP", "MID", "RICH", "LOSS"])
 
-        assert float(df.loc["LOSS", "value_score"]) < float(df.loc["CHEAP", "value_score"]), (
+        assert float(df["value_score"].loc["LOSS"]) < float(df["value_score"].loc["CHEAP"]), (
             "적자기업이 실제 저PE 종목보다 싸다고 채점됐다"
         )
         # 비양수 PE 는 컬럼 수준에서 **관측 불가(NaN)** 로 남고, 중립값 0.5 는 평균 직전에
         # 한 번만 대입된다. 그래서 LOSS 의 value_score 는 (중립 + 실제 PB 순위)/2 다.
         assert pd.isna(df.loc["LOSS", "pe_ratio_norm"]), "비양수 PE 가 관측값 행세를 했다"
-        assert float(df.loc["LOSS", "value_score"]) == pytest.approx(
-            (0.5 + float(df.loc["LOSS", "pb_ratio_norm"])) / 2, abs=1e-4
+        assert float(df["value_score"].loc["LOSS"]) == pytest.approx(
+            (0.5 + float(df["pb_ratio_norm"].loc["LOSS"])) / 2, abs=1e-4
         )
 
     def test_one_extreme_outlier_does_not_flatten_everyone_else(self, db_path_mp):
@@ -182,11 +182,11 @@ class TestValueDbRead:
 
         # KR 차별화 + 시장 내 저PE=고가치
         assert df_all.loc[kr, "value_score"].nunique() > 1
-        assert float(df_all.loc["1111.KS", "value_score"]) > float(df_all.loc["3333.KS", "value_score"])
+        assert float(df_all["value_score"].loc["1111.KS"]) > float(df_all["value_score"].loc["3333.KS"])
 
         # US 불변: KR 을 섞어도 US score 가 그대로 (시장별 정규화 보장)
         for t in us:
-            assert float(df_all.loc[t, "value_score"]) == pytest.approx(float(df_us_only.loc[t, "value_score"]))
+            assert float(df_all["value_score"].loc[t]) == pytest.approx(float(df_us_only["value_score"].loc[t]))
 
     def test_normalize_value_columns_skips_absent_column(self):
         """_normalize_value_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""
@@ -212,7 +212,7 @@ class TestValueDbRead:
         df = compute_value(tickers=["AAPL", "MSFT"])
         # 최신 AAPL (PE 15) 가 MSFT (PE 30) 보다 저평가 → value_score 더 큼.
         # 만약 old row (PE 100) 를 사용했다면 MSFT (PE 30) 가 더 커진다.
-        assert float(df.loc["AAPL", "value_score"]) > float(df.loc["MSFT", "value_score"])
+        assert float(df["value_score"].loc["AAPL"]) > float(df["value_score"].loc["MSFT"])
 
     def test_no_tickers_returns_empty(self, db_path_mp, monkeypatch):
         """get_tickers() 가 빈 리스트 → empty (line 24)."""

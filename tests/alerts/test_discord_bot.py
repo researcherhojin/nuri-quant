@@ -235,7 +235,7 @@ class TestSendBotEmbedConstruction:
         )
         # send_bot does `import discord` inside the function — patch sys.modules
         # so the local import resolves to our fake (CLAUDE.md OpenBB pattern).
-        sys.modules["discord"] = fake  # noqa: B003 (test-only)
+        sys.modules["discord"] = fake  # noqa: B003  # pyright: ignore[reportArgumentType]  # 모듈 대역 (test-only)
         return fake
 
     @pytest.fixture

@@ -364,10 +364,12 @@ def test_generation_is_explicit_cached_and_read_is_side_effect_free(client, prov
 
     assert client.post("/api/ticker/DEMO/research/briefing").status_code == 409
     client.post("/api/ticker/DEMO/research/refresh")
+    dossier = route._stored_dossier("DEMO")
+    assert dossier is not None
     generated = MagicMock(
         return_value={
             "status": "ready",
-            "evidence_hash": generator.evidence_hash(generator.public_bundle(route._stored_dossier("DEMO"))),
+            "evidence_hash": generator.evidence_hash(generator.public_bundle(dossier)),
             "prompt_version": generator.VERSION,
             "model": generator.MODEL,
         }

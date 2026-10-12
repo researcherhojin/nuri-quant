@@ -186,7 +186,7 @@ def _load_accounts() -> dict:
         return {}
 
 
-def get_account_strategy(account: str) -> dict:
+def get_account_strategy(account: str | None) -> dict:
     """계좌명 → 전략 프로파일 반환. portfolio.yaml의 strategy 필드 기준.
 
     id 뿐 아니라 label / name 으로도 조회된다 (#994).

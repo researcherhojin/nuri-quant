@@ -135,7 +135,7 @@ def get_exchange_rate(base: str = "USD", quote: str = "KRW") -> dict[str, Any]:
     return data.get("result", data)
 
 
-def _unwrap_list(data: dict[str, Any], key: str) -> list[dict[str, Any]]:
+def _unwrap_list(data: dict[str, Any] | list[Any], key: str) -> list[dict[str, Any]]:
     """result 언랩 후 list 정규화 — list / {result:[...]} / {result:{key:[...]}} 모두 처리."""
     if isinstance(data, list):
         return data
