@@ -169,6 +169,15 @@ attribute 'sub'`. shard 구성만 바뀐 무관한 PR(#1817)에서 빨간불로 
 **Test:** `tests/api/test_pykrx_stub_does_not_leak.py::test_the_first_import_case_leaves_the_package_and_sys_modules_in_agreement`
 — 예전 본문으로 되돌리면 FAIL (직렬 `pytest -n0` 로 이 파일 뒤에 `tests/collectors/test_stock_kr.py` 를 돌리면 12 failed).
 
+### 저장소 파일을 훑는 테스트는 gitignore 된 로컬 파일을 걸러야 한다 (#1838)
+
+메인 체크아웃에는 worktree·CI·새 clone 에 없는 **gitignore 된 로컬 문서**가 있다(`docs/TODO.md` ·
+`docs/OPERATIONS.md` 등). `DOCS.glob("*.md")` 로 parametrize 하던 bilingual parity 테스트가 그것까지 짝을
+찾다가 메인 체크아웃에서만 42 개 실패했고, 테스트 수가 문서 수치와 어긋나 pre-push 도 막혔다 — CI 는
+초록이었다. 디스크를 훑어 대상을 만들면 `git check-ignore` 로 무시 대상을 뺀다 (추적 여부로 거르면
+`git add` 전의 새 파일이 빠진다).
+**Test:** `tests/verify/test_docs_bilingual_parity.py::test_gitignored_local_docs_are_not_paired`
+
 ### yfinance is imported inside functions
 
 Collectors do `import yfinance as yf` inside the method (openbb was removed in #1477). `patch("module.yf")` fails; stub the module instead:
