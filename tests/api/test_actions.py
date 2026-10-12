@@ -1,4 +1,4 @@
-"""Tests for /api/actions, /api/opportunities, /api/market-context endpoints.
+"""Tests for /api/actions and /api/opportunities endpoints.
 
 Combines integration tests (TestClient) + unit tests (mock-based).
 """
@@ -67,12 +67,6 @@ def fast_client(client, monkeypatch):
     monkeypatch.setattr(actions_mod, "_get_targets_status", lambda: {})
     monkeypatch.setattr(actions_mod, "_get_recent_scan_results", lambda: [])
     monkeypatch.setattr(actions_mod, "_get_improving_signals", lambda: set())
-    monkeypatch.setattr(actions_mod, "_get_macro_events", lambda: [])
-    monkeypatch.setattr(
-        actions_mod,
-        "_get_system_health",
-        lambda: {"regime": {}, "macro": {}, "freshness": {}},
-    )
     return client
 
 
@@ -123,16 +117,6 @@ class TestOpportunitiesEndpoint:
             assert opp["ticker"] not in {"AAPL", "TSLA"}
 
 
-class TestMarketContextEndpoint:
-    def test_returns_structured_response(self, fast_client):
-        resp = fast_client.get("/api/market-context")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "macro_events" in data
-        assert "system_health" in data
-        assert "generated_at" in data
-
-
 # ═══════════════════════════════════════════════════
 # Unit tests — exception fallback + edge paths
 # ═══════════════════════════════════════════════════
@@ -144,7 +128,7 @@ class TestCacheHitPaths:
     def _clear_caches(self):
         from nuri.api.routes import actions
 
-        for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
+        for cache in (actions._actions_cache, actions._opportunities_cache):
             # version 도 같이 비운다 (#1279) — 안 비우면 앞 테스트의 버전이 남아
             # 다음 테스트가 엉뚱하게 hit/miss 한다.
             cache.update({"data": None, "timestamp": 0, "version": None})
@@ -176,18 +160,6 @@ class TestCacheHitPaths:
         result = actions.get_opportunities()
         assert result == fake_result
 
-    def test_market_context_cache_hit(self):
-        import time
-
-        from nuri.api.routes import actions
-
-        self._clear_caches()
-        fake_result = {"macro_events": [], "system_health": {"cached": True}, "generated_at": "test"}
-        actions._market_context_cache["data"] = fake_result
-        actions._market_context_cache["timestamp"] = time.time()
-        result = actions.get_market_context()
-        assert result == fake_result
-
     def test_stale_cache_recomputes(self):
         import time
 
@@ -209,7 +181,7 @@ class TestEndpointExceptionFallbacks:
         """캐시 오염 방지 — 이전 테스트의 캐시가 남아있으면 exception 경로 안 탐."""
         from nuri.api.routes import actions
 
-        for cache in (actions._actions_cache, actions._opportunities_cache, actions._market_context_cache):
+        for cache in (actions._actions_cache, actions._opportunities_cache):
             # version 도 같이 비운다 (#1279) — 안 비우면 앞 테스트의 버전이 남아
             # 다음 테스트가 엉뚱하게 hit/miss 한다.
             cache.update({"data": None, "timestamp": 0, "version": None})
@@ -230,16 +202,6 @@ class TestEndpointExceptionFallbacks:
 
             result = get_opportunities()
             assert result == {"opportunities": []}
-
-    def test_market_context_exception_returns_empty(self):
-        self._clear_caches()
-        with patch("nuri.api.routes.actions._get_macro_events", side_effect=RuntimeError("boom")):
-            from nuri.api.routes.actions import get_market_context
-
-            result = get_market_context()
-            assert result["macro_events"] == []
-            assert result["system_health"] == {}
-            assert "generated_at" in result
 
 
 class TestPortfolioMapMultiAccount:
@@ -798,62 +760,6 @@ class TestGetRecentScanResults:
         from nuri.api.routes.actions import _get_recent_scan_results
 
         assert _get_recent_scan_results() == []
-
-
-class TestGetSystemHealth:
-    @patch("nuri.api.routes.actions.query", return_value=[])
-    def test_returns_all_sections(self, _):
-        with (
-            patch(
-                "nuri.quant.regime.classifier.classify_regime",
-                return_value=SimpleNamespace(regime="recovery", trend="sideways", volatility="high", confidence=0.75),
-            ),
-            patch(
-                "nuri.quant.regime.macro_score.compute_macro_score",
-                return_value=SimpleNamespace(total_score=56, interpretation="Neutral"),
-            ),
-            patch(
-                "nuri.core.freshness.check_all_freshness",
-                return_value=[{"status": "PASS"}, {"status": "WARN"}, {"status": "FAIL"}],
-            ),
-        ):
-            from nuri.api.routes.actions import _get_system_health
-
-            result = _get_system_health()
-            assert result["regime"]["regime"] == "recovery"
-            assert result["macro"]["score"] == 56
-            assert result["freshness"]["fail_count"] == 1
-
-    @patch("nuri.api.routes.actions.query", return_value=[])
-    def test_handles_all_exceptions(self, _):
-        with (
-            patch("nuri.quant.regime.classifier.classify_regime", side_effect=Exception),
-            patch("nuri.quant.regime.macro_score.compute_macro_score", side_effect=Exception),
-            patch("nuri.core.freshness.check_all_freshness", side_effect=Exception),
-        ):
-            from nuri.api.routes.actions import _get_system_health
-
-            result = _get_system_health()
-            assert set(result) == {"regime", "macro", "freshness"}
-
-    @patch("nuri.api.routes.actions.query", return_value=[])
-    def test_classify_regime_returns_none_skips_regime_dict(self, _):
-        """branch 774->785: classify_regime() 가 None 반환 시 health['regime'] 그대로 빈 dict (#611)."""
-        from types import SimpleNamespace
-
-        with (
-            patch("nuri.quant.regime.classifier.classify_regime", return_value=None),
-            patch(
-                "nuri.quant.regime.macro_score.compute_macro_score",
-                return_value=SimpleNamespace(total_score=50, interpretation="Neutral"),
-            ),
-            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
-        ):
-            from nuri.api.routes.actions import _get_system_health
-
-            result = _get_system_health()
-            # regime 은 초기값(빈 dict) 유지 — 774 False 분기 확인
-            assert result["regime"] == {}
 
 
 # ═══════════════════════════════════════════════════
@@ -1869,45 +1775,6 @@ class TestActionsEdgeFallbacks:
             )
         assert act_mod._get_short_interest("AAPL") == 12.5
         assert act_mod._get_short_interest("UNKNOWN") is None
-
-    def test_get_macro_events_basic(self, monkeypatch):
-        """매크로 이벤트 조회 (lines 717-745)."""
-        import nuri.api.routes.actions as act_mod
-
-        rows_returned = [
-            {
-                "category": "macro",
-                "headline": "Fed cut",
-                "sentiment": -0.7,
-                "confidence": 0.8,
-                "published_at": "2026-05-01T10:00:00",
-                "source": "Reuters",
-            },
-            {
-                "category": "macro",
-                "headline": "Fed dovish",
-                "sentiment": 0.6,
-                "confidence": 0.7,
-                "published_at": "2026-05-02T10:00:00",
-                "source": "Bloomberg",
-            },
-            {
-                "category": "macro",
-                "headline": "Inflation data",
-                "sentiment": -0.5,
-                "confidence": 0.6,
-                "published_at": "2026-05-03T10:00:00",
-                "source": "WSJ",
-            },
-        ]
-        monkeypatch.setattr(
-            "nuri.api.routes.actions.query",
-            lambda *a, **kw: rows_returned,
-        )
-        result = act_mod._get_macro_events()
-        # 같은 카테고리 3개 이상 skip → 2개만
-        assert len(result) == 2
-        assert all("category_ko" in r for r in result)
 
     def test_portfolio_map_taxable_then_pension_skipped(self, monkeypatch):
         """taxable row 먼저 → pension row 는 skip (line 610)."""

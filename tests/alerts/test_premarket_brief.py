@@ -646,7 +646,6 @@ class TestPremarketBriefExceptionFallbacks:
                 return_value={"urgent": [], "portfolio": [], "check": [], "hold": []},
             ),
             patch("nuri.api.routes.actions._build_opportunities", return_value=[]),
-            patch("nuri.api.routes.actions._get_macro_events", return_value=[]),
         ):
             ctx = _collect_context()
         assert isinstance(ctx, dict)

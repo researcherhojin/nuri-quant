@@ -11,7 +11,6 @@ import logging
 import math
 import threading
 import time
-from datetime import timedelta
 
 from fastapi import APIRouter, Depends
 
@@ -31,15 +30,12 @@ router = APIRouter(tags=["actions"])
 # 캐시 (5분 TTL) — dashboard.py와 동일 패턴
 CACHE_TTL = 300  # 5분
 # `version` — 포트폴리오가 바뀌면 TTL 이 남아 있어도 캐시를 버린다 (#1279).
-# `_market_context_cache` 는 macro 만 보므로 버전 키가 없다.
 _actions_cache: dict = {"data": None, "timestamp": 0, "version": None}
 _opportunities_cache: dict = {"data": None, "timestamp": 0, "version": None}
-_market_context_cache: dict = {"data": None, "timestamp": 0}
 # single-flight — TTL 만료 시 동시 요청이 전부 재계산하는 걸 막는다 (#1119).
 # `_scan_lock` (아래) 과 같은 이유·같은 패턴이다.
 _actions_lock = threading.Lock()
 _opportunities_lock = threading.Lock()
-_market_context_lock = threading.Lock()
 
 
 def _fresh(cache: dict, now: float, version: str) -> bool:
@@ -452,34 +448,6 @@ def _system_stance(ticker: str, evaluation) -> dict:
         # 내림 — 반올림하면 기준 미달 69.96 이 70.0 으로 나가 "기준 미달 70 / 70" 이 된다 (#1683 Codex P2)
         stance.update(status=t.disposition, score=math.floor(t.score * 10) / 10)
     return stance
-
-
-# ─── /api/market-context ───
-
-
-@router.get("/market-context", dependencies=[Depends(heavy_slot)])
-def get_market_context():
-    """시장 컨텍스트 — 매크로 이벤트 + 시스템 건강 (#137 UI)."""
-    now = time.time()
-    if _market_context_cache["data"] and (now - _market_context_cache["timestamp"]) < CACHE_TTL:
-        return _market_context_cache["data"]
-    try:
-        with _market_context_lock:
-            # double-check — 락을 기다리는 동안 다른 요청이 채웠을 수 있다 (#1119)
-            now = time.time()
-            if _market_context_cache["data"] and (now - _market_context_cache["timestamp"]) < CACHE_TTL:
-                return _market_context_cache["data"]
-            result = {
-                "macro_events": _get_macro_events(),
-                "system_health": _get_system_health(),
-                "generated_at": kst_now().isoformat(),
-            }
-            _market_context_cache["data"] = result
-            _market_context_cache["timestamp"] = time.time()
-            return result
-    except Exception:
-        logger.exception("market-context API error")
-        return {"macro_events": [], "system_health": {}, "generated_at": kst_now().isoformat()}
 
 
 # ─── 내부 헬퍼 ──
@@ -901,100 +869,3 @@ def _get_improving_signals() -> set[str]:
     except Exception:
         pass
     return improving
-
-
-_CATEGORY_KO: dict[str, str] = {
-    "geopolitical_escalation": "지정학 긴장 고조",
-    "geopolitical_de_escalation": "지정학 긴장 완화",
-    "oil_supply_shock": "유가 충격",
-    "trade_war": "무역 분쟁",
-    "fed_dovish": "Fed 완화 시사",
-    "fed_hawkish": "Fed 긴축 시사",
-    "earnings_beat": "실적 호실적",
-    "earnings_miss": "실적 부진",
-    "sector_rally": "섹터 랠리",
-    "demand_growth": "수요 증가",
-    "export_surge": "수출 급증",
-}
-
-
-def _get_macro_events() -> list[dict]:
-    """최근 7일 매크로 이벤트 (category != neutral, confidence >= 0.5).
-
-    headline을 카테고리 한국어 + 원문 요약으로 변환.
-    """
-    cutoff = (kst_now() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%S")
-    rows = query(
-        """
-        SELECT category, headline, sentiment, confidence, published_at, source
-        FROM macro_events
-        WHERE published_at >= ?
-          AND category != 'neutral'
-          AND confidence >= 0.5
-        ORDER BY ABS(sentiment) DESC
-        LIMIT 10
-    """,
-        (cutoff,),
-    )
-    results = []
-    seen_categories: dict[str, int] = {}
-    for r in rows:
-        cat = r["category"] or ""
-        # 같은 카테고리 3개 이상이면 skip (중복 TSMC 뉴스 방지)
-        seen_categories[cat] = seen_categories.get(cat, 0) + 1
-        if seen_categories[cat] > 2:
-            continue
-        ko_label = _CATEGORY_KO.get(cat, cat)
-        results.append(
-            {
-                **dict(r),
-                "category_ko": ko_label,
-            }
-        )
-    return results[:8]
-
-
-def _get_system_health() -> dict:
-    """시스템 건강 요약 — 레짐 / 매크로 / 데이터 신선도 (인증 항목은 #1619 로 제거)."""
-    health = {"regime": {}, "macro": {}, "freshness": {}}
-
-    # 레짐
-    try:
-        from nuri.quant.regime.classifier import classify_regime
-
-        r = classify_regime()
-        if r:
-            health["regime"] = {
-                "regime": r.regime,
-                "trend": r.trend,
-                "volatility": r.volatility,
-                "confidence": round(r.confidence * 100),
-            }
-    except Exception:
-        pass
-
-    # 매크로
-    try:
-        from nuri.quant.regime.macro_score import compute_macro_score
-
-        m = compute_macro_score()
-        health["macro"] = {"score": round(m.total_score), "interpretation": m.interpretation}
-    except Exception:
-        pass
-
-    # 신선도
-    try:
-        from nuri.core.freshness import check_all_freshness
-
-        details = check_all_freshness()
-        fail_count = sum(1 for d in details if d["status"] == "FAIL")
-        warn_count = sum(1 for d in details if d["status"] == "WARN")
-        health["freshness"] = {
-            "status": "FAIL" if fail_count > 0 else "WARN" if warn_count > 0 else "PASS",
-            "fail_count": fail_count,
-            "warn_count": warn_count,
-        }
-    except Exception:
-        pass
-
-    return health

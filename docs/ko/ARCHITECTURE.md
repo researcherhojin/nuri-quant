@@ -306,9 +306,9 @@ consensus 를 결코 다시 실행하지 않는다. 리서치 route 는 `ticker_
 v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치와 공개 브리핑](RESEARCH_BRIEFING.md)을
 참조한다.
 
-## API (72 endpoints)
+## API (70 endpoints)
 
-`nuri/api/routes/` — 72 REST endpoints, 포트 8001. route module 전체의 `@router.get/post/put/delete/patch` decorator 를 센 값이다. `nuri/api/main.py` 가 세 개를 더 선언한다(`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI 의 `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect` 는 제외한다. Swagger UI 는 `http://localhost:8001/docs` 에 있다. Server-sent events 는 `/api/stream` 에서 제공한다(30초 간격). 몇몇 read route 는 저장된 결과를 projection 하지 않고 실시간으로 계산한다: regime, macro score, `/api/opportunities`(BUY 후보 평가를 read-only 로 다시 실행한다), candidate screen.
+`nuri/api/routes/` — 70 REST endpoints, 포트 8001. route module 전체의 `@router.get/post/put/delete/patch` decorator 를 센 값이다. `nuri/api/main.py` 가 세 개를 더 선언한다(`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI 의 `/docs`, `/redoc`, `/openapi.json`, `/docs/oauth2-redirect` 는 제외한다. Swagger UI 는 `http://localhost:8001/docs` 에 있다. Server-sent events 는 `/api/stream` 에서 제공한다(30초 간격). 몇몇 read route 는 저장된 결과를 projection 하지 않고 실시간으로 계산한다: regime, macro score, `/api/opportunities`(BUY 후보 평가를 read-only 로 다시 실행한다), candidate screen.
 
 ### Overview 가 읽는 endpoint
 
@@ -319,7 +319,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 | `/api/opportunities` | GET | portfolio 밖의 후보: scanner 관측(`observations`)과 BUY 후보 emitter 의 분류(`system`: qualified / below_threshold / excluded / blocked / not_scored, #1683) |
 | `/api/backtest/equity` | GET | equity curve, drawdown, 지표(Recharts 용 경량 payload) |
 
-`/api/coverage`(#297)와 `/api/market-context` 는 여전히 제공되지만, #1698 에서 기존 dashboard 가 삭제된 뒤로 이를 호출하는 frontend 코드는 없다.
+`/api/coverage`(#297)와 `/api/market-context` 는 #1816 에서 은퇴했다. #1698 에서 기존 dashboard 가 삭제된 뒤로 아무도 호출하지 않았다. universe coverage 검사는 `scripts/verify/check_universe_coverage.py` 로 남고, Explore 페이지의 `/api/tickers/market-context` 는 별개 route 다.
 
 ## Scheduler
 
@@ -479,7 +479,7 @@ data/
 
 ## 테스트
 
-8,888 backend tests across 438 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+8,874 backend tests across 437 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 

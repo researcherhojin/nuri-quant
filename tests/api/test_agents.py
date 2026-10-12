@@ -352,25 +352,6 @@ class TestRouteCacheSingleFlight:
             lambda *a, **k: [{"ticker": "TST_A"}],
         )
 
-    def test_market_context_cache(self):
-        import nuri.api.routes.actions as m
-
-        def reset():
-            m._market_context_cache["data"] = None
-            m._market_context_cache["timestamp"] = 0
-
-        # 두 함수를 같은 카운터로 patch → 1회 계산 = 2 호출
-        self._race(
-            m.get_market_context,
-            [
-                lambda **kw: patch.object(m, "_get_macro_events", **kw),
-                lambda **kw: patch.object(m, "_get_system_health", **kw),
-            ],
-            [reset],
-            lambda *a, **k: [{"x": 1}],
-            expected_calls=2,
-        )
-
     def test_dashboard_cache(self):
         import nuri.api.routes.dashboard as m
 
