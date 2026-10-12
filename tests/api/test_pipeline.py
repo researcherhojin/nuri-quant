@@ -13,7 +13,6 @@ Both target `nuri/api/routes/pipeline.py` + related pipeline observability modul
 import asyncio
 import json
 import time as _time
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -46,15 +45,10 @@ def db_path(tmp_path):
 
 @pytest.fixture()
 def client(db_path, monkeypatch):
-    """테스트용 DB로 격리된 FastAPI TestClient. Rate limiter 비활성화."""
+    """테스트용 DB로 격리된 FastAPI TestClient."""
     import nuri.core.db as db_mod
 
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-
-    # xdist 병렬 실행 시 rate limiter 간섭 방지 (route-level + app-level)
-    import nuri.api.routes.pipeline as pipeline_mod
-
-    monkeypatch.setattr(pipeline_mod._limiter, "enabled", False)
 
     from nuri.api.main import app
 
@@ -204,100 +198,6 @@ class TestPipelineAPI:
         """Pipeline timeline with invalid step."""
         resp = _client.get("/api/pipeline/timeline?step=invalid")
         assert resp.status_code == 400
-
-    def test_run_step_invalid(self, _client):
-        """Run invalid step."""
-        resp = _client.post("/api/pipeline/invalid_step/run")
-        assert resp.status_code == 400
-
-    def test_run_step_collect(self, _client):
-        """Run collect step (lines 108-110)."""
-        resp = _client.post("/api/pipeline/collect/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "not_implemented" in data.get("detail", "")
-
-    def test_run_step_validate(self, _client, monkeypatch):
-        """Run validate step (lines 108-110)."""
-        monkeypatch.setattr(
-            "nuri.quant.validation.signal_backtest.backtest_signals",
-            lambda: [{"signal": "test"}],
-        )
-        resp = _client.post("/api/pipeline/validate/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "success"
-
-    def test_run_step_classify(self, _client, monkeypatch):
-        """Run classify step (lines 115)."""
-
-        @dataclass
-        class MockRegime:
-            regime: str = "bull_low_vol"
-            trend: str = "bullish"
-            confidence: float = 0.85
-
-        monkeypatch.setattr(
-            "nuri.quant.regime.classifier.classify_regime",
-            lambda: MockRegime(),
-        )
-        resp = _client.post("/api/pipeline/classify/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "bull_low_vol" in data.get("detail", "")
-
-    def test_run_step_classify_none(self, _client, monkeypatch):
-        """Run classify step returns None (line 116)."""
-        monkeypatch.setattr(
-            "nuri.quant.regime.classifier.classify_regime",
-            lambda: None,
-        )
-        resp = _client.post("/api/pipeline/classify/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "unknown" in data.get("detail", "")
-
-    def test_run_step_diagnose(self, _client, monkeypatch):
-        """Run diagnose step (lines 117-120)."""
-        monkeypatch.setattr(
-            "nuri.trading.agents.consensus.analyze_portfolio",
-            lambda: ["r1", "r2"],
-        )
-        resp = _client.post("/api/pipeline/diagnose/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "2 tickers" in data.get("detail", "")
-
-    def test_run_step_recommend(self, _client, monkeypatch):
-        """Run recommend step (lines 121-124)."""
-        monkeypatch.setattr(
-            "nuri.trading.recommend.candidates.screen_candidates",
-            lambda: ["c1"],
-        )
-        resp = _client.post("/api/pipeline/recommend/run")
-        assert resp.status_code == 200
-
-    def test_run_step_track(self, _client, monkeypatch):
-        """Run track step (lines 125-128)."""
-        monkeypatch.setattr(
-            "nuri.trading.recommend.tracker.track_outcomes",
-            lambda: 5,
-        )
-        resp = _client.post("/api/pipeline/track/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "5 recommendations" in data.get("detail", "")
-
-    def test_run_step_exception(self, _client, monkeypatch):
-        """Run step that throws exception (lines 90-93)."""
-        monkeypatch.setattr(
-            "nuri.quant.validation.signal_backtest.backtest_signals",
-            lambda: (_ for _ in ()).throw(RuntimeError("boom")),
-        )
-        resp = _client.post("/api/pipeline/validate/run")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["status"] == "failed"
 
     def test_freshness_endpoint(self, _client):
         """Freshness endpoint."""
@@ -498,46 +398,21 @@ class TestPipelineTimeline:
         assert len(data["events"]) == 2
 
 
-class TestPipelineRun:
-    def test_pipeline_run_classify(self, client, db_path):
-        """classify 스텝 실행 — 데이터 부족이어도 에러 없이 반환."""
-        r = client.post("/api/pipeline/classify/run")
-        assert r.status_code == 200
-        data = r.json()
-        assert "status" in data
-        assert "duration_ms" in data
-        assert data["status"] in ("success", "failed")
+class TestNoRunEndpoint:
+    """대시보드는 스테이지를 실행하지 않는다 (#1778).
 
-    def test_pipeline_run_collect_not_implemented(self, client, db_path):
-        """collect 스텝 → not_implemented."""
-        r = client.post("/api/pipeline/collect/run")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["status"] == "success"
-        assert "not_implemented" in data["detail"]
+    예전 `POST /api/pipeline/{step}/run` 은 레거시 6-step 이름만 받아 라이브 스테이지
+    (analyze·consensus·decide)는 400 이었고, collect 는 아무것도 안 하고 성공 이벤트를
+    남겼다. 실제 잡에 붙이면 같은 날 재실행이 그날의 추천·결정 행을 덮어쓴다 — 실행은
+    스케줄러 몫이다. 다시 붙일 거면 그 문제부터 풀 것.
+    """
 
-    def test_pipeline_run_invalid_step(self, client, db_path):
-        """잘못된 스텝명 → 400."""
-        r = client.post("/api/pipeline/invalid/run")
-        assert r.status_code == 400
-
-    def test_pipeline_run_records_events(self, client, db_path):
-        """스텝 실행 후 이벤트 기록 확인."""
-        # POST 응답 자체를 먼저 검증
-        post_r = client.post("/api/pipeline/collect/run")
-        assert post_r.status_code == 200
-        post_data = post_r.json()
-        assert post_data["status"] == "success"
-
-        # emit_event로 직접 기록 후 조회 (API 경유 대신 직접 검증)
-        from nuri.core.events import emit_event, get_timeline
-
-        emit_event("step_started", step="collect", db_path=db_path)
-        emit_event("step_completed", step="collect", db_path=db_path)
-
-        events = get_timeline(step="collect", db_path=db_path)
-        # 직접 삽입한 2개 + API가 기록한 events
-        assert len(events) >= 2
+    @pytest.mark.parametrize(
+        "step", ["collect", "analyze", "consensus", "decide", "track", "validate", "classify", "diagnose"]
+    )
+    def test_stages_cannot_be_run_from_the_api(self, client, db_path, step):
+        r = client.post(f"/api/pipeline/{step}/run")
+        assert r.status_code == 404
 
 
 class TestFreshness:
@@ -765,13 +640,7 @@ class TestWriteHeartbeat:
         assert (tmp_path / ".hb").exists()
 
 
-class TestPipelineUnknownStep:
-    def test_execute_unknown_step_returns_default(self):
-        """_execute_step('unknown') → 'unknown step' (line 135)."""
-        from nuri.api.routes.pipeline import _execute_step
-
-        assert _execute_step("totally-unknown-xyz") == "unknown step"
-
+class TestPipelineHeartbeatPath:
     def test_get_heartbeat_path_none_falls_back(self, monkeypatch):
         """_HEARTBEAT_PATH=None → derive from __file__ (lines 21-22)."""
         import nuri.api.routes.pipeline as pipe_mod

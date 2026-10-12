@@ -123,14 +123,14 @@ describe("EnginePage", () => {
     render(element);
     const next = screen.getByTestId("gate-next-action-validate"); // ready:false 픽스처
     expect(next).toHaveAttribute("href", "/pipeline");
-    expect(next.textContent).toContain("다음 행동:");
-    expect(next.textContent).toContain("validate");
+    expect(next.textContent).toBe("다음 행동: 파이프라인 확인 →");
     expect(screen.queryByTestId("gate-next-action-collect")).not.toBeInTheDocument(); // ready:true
   });
 
-  // codex R1 P1/P3: gate 어휘(regime)와 step 어휘(classify)는 다르다 — 실제 /api/gate
-  // vocabulary 로 잠근다. regime 게이트가 막힌 화면이 실행 불가한 "regime" 을 광고하면 회귀.
-  it("maps the regime gate to the runnable classify step, generic copy for unknown phases", async () => {
+  // #1778: 대시보드는 스테이지를 실행하지 않는다 — 막힌 게이트는 어떤 phase 든 상태 확인으로
+  // 안내하고 실행을 광고하지 않는다. 예전엔 regime 을 "classify 파이프라인에서 실행" 으로
+  // 매핑했는데, 그 Run 은 라이브 노드에 없는 레거시 스텝 이름이었다.
+  it("points every blocked gate to the pipeline status and advertises no run", async () => {
     const blocked = (phase: string) => ({
       phase, total: 1, passed: 0, score: 0, ready: false,
       conditions: [{ id: `${phase}-1`, phase, description: "d", passed: false, detail: "x" }],
@@ -140,9 +140,8 @@ describe("EnginePage", () => {
     const mod = await import("@/app/engine/page-view");
     render(await mod.GateSection());
     // codex R2: 부분 일치·리터럴 부정은 잠금이 아니다 — 카피 전문을 정확 일치로 잠근다
-    // (regime 광고 회귀는 어떤 형태든 여기서 깨진다)
     const regime = screen.getByTestId("gate-next-action-regime");
-    expect(regime.textContent).toBe("다음 행동: classify 파이프라인에서 실행 →");
+    expect(regime.textContent).toBe("다음 행동: 파이프라인 확인 →");
     const unknown = screen.getByTestId("gate-next-action-mystery");
     expect(unknown.textContent).toBe("다음 행동: 파이프라인 확인 →");
   });

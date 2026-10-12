@@ -86,7 +86,7 @@ describe("pipeline 캔버스는 다크 토큰을 쓴다 (#1253)", () => {
       <PipelineNode
         data={{
           label: "Collect", sub: "", status: "ok", recordCount: 1,
-          lastUpdated: null, stepId: "collect", onRun: vi.fn(), isRunning: false,
+          lastUpdated: null, stepId: "collect",
         }}
       />
     );

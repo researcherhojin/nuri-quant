@@ -27,7 +27,6 @@ HEAVY_PATHS = [
     "/rebalance",
     "/report",
     "/report/context",
-    "/pipeline/{step}/run",
     # 단일-플라이트 캐시 3종 — 콜드 미스 대기자가 lock 에서 스레드를 점유한다 (codex #1239 P1)
     "/dashboard",
     "/actions",

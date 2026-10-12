@@ -2,7 +2,7 @@
 
 ## Scope
 
-The dashboard's read surface (73 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
+The dashboard's read surface (72 endpoints). This layer **queries and renders — it never computes strategy**. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
 
 Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "Server Components Pattern" before touching frontend call sites.
 
@@ -11,7 +11,7 @@ Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "
 - **`/api` prefix lives only in `main.py`.** Route files declare `APIRouter(tags=[...])` with **no prefix** and spell the full sub-path in the decorator (`@router.get("/pipeline/status")`). Sole exception: `routes/learning_memory.py` declares `prefix="/learning-memory"`.
 - `routes/__init__.py` is **empty by design** — no registry. A new router needs two edits in `main.py`: the import block and an `app.include_router(mod.router, prefix="/api")` line. Miss the second and the endpoint 404s while router-level tests still pass — `tests/api/test_routes.py` smoke tests assert the router object exists, not that it is mounted.
 - No lifespan / startup hooks. Only registered exception handler is slowapi's `RateLimitExceeded`.
-- Global limit `60/minute`; `pipeline.py` declares its **own** `Limiter` (`2/minute`) because its endpoints run real work.
+- Global limit `60/minute` (`main.py`). No route declares its own `Limiter`: `pipeline.py` had one (`2/minute`) for its stage-run endpoint, removed in #1778.
 - `X-Frame-Options: SAMEORIGIN` (not DENY) is deliberate — `/evidence` iframes Plotly HTML. Changing it breaks charts (2026-04-20 Playwright audit).
 
 ## Conventions for a new route
@@ -51,7 +51,7 @@ Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "
 - **SSE generators must emit a keepalive under 30 s.** Both streams (`stream.py` `/api/stream`, `agents.py` `/api/consensus/{ticker}/stream`) are reached through the Next `/api/*` rewrite, and that proxy aborts a socket after 30 s with no bytes (`proxy-request.js` — `proxyTimeout || 30000`, and `next.config.ts` sets none). `/api/stream`'s `INTERVAL` is exactly 30, and the consensus stream emits nothing at all while an agent's LLM call is in flight — both sat on or past the threshold. They now interleave `": keepalive\n\n"` SSE comments, which `EventSource` ignores, so no client change was needed. `X-Accel-Buffering: no` on the response is an nginx directive and does nothing for the Node proxy. **Test:** `tests/api/test_stream.py::TestSSEStream::test_no_silent_gap_exceeds_proxy_timeout` + `tests/api/test_agents.py::TestAgentsRoute::test_stream_consensus_keepalive_while_agents_are_slow`
 - **CORS `allow_methods` must track the route surface.** The frontend reaches the API same-origin through the Next rewrite, so preflight never fires in normal use — a missing method fails **only** on cross-origin calls, and never in tests that use `TestClient`. Adding a route with a new HTTP verb means updating `main.py`.
   **Test:** `tests/api/test_main.py::TestApiMain::test_cors_allows_every_mutating_method`
-- **Heavy endpoints run in-process**: `POST /api/pipeline/{step}/run` (backtest / regime / 10-agent consensus), `GET /api/backtest`.
+- **Heavy endpoints run in-process**: `GET /api/backtest`. The dashboard has no stage-run endpoint: stages run only from the scheduler (#1778).
 
 ## Tests
 

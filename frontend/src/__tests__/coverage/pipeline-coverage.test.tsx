@@ -1,19 +1,16 @@
 /**
- * Pipeline page — coverage branches (handleRunStep, setTimeout, running state, error display).
+ * Pipeline page — coverage branches (polling, running state, error display).
  * Split from coverage-push-1.test.tsx (lines 64-211).
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, fireEvent, act } from "@testing-library/react";
+import { render, screen, act } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { ERRORS } from "@/lib/strings";
 
 type PipelineNode = {
   id: string;
   data?: {
     label?: ReactNode;
-    isRunning?: boolean;
     status?: string;
-    onRun?: (id: string) => void;
   };
 };
 
@@ -24,9 +21,7 @@ vi.mock("@xyflow/react", () => ({
         <div key={n.id} data-testid={`node-${n.id}`}>
           {/* Render the custom node type to cover PipelineNode */}
           {n.data?.label}
-          {n.data?.isRunning && <span data-testid={`running-${n.id}`}>running</span>}
           {n.data?.status === "error" && <span data-testid={`error-${n.id}`}>error</span>}
-          <button data-testid={`run-${n.id}`} onClick={() => n.data?.onRun?.(n.id)}>Run</button>
         </div>
       ))}
       {children}
@@ -64,11 +59,7 @@ describe("Pipeline — coverage branches", () => {
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
-      }
-
+    fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
       }
@@ -96,91 +87,6 @@ describe("Pipeline — coverage branches", () => {
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(200); });
     // Pipeline renders with running node data
-    expect(screen.getByTestId("react-flow")).toBeInTheDocument();
-  });
-
-  it("handles run success + setTimeout refresh", async () => {
-    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
-    await act(async () => { render(<PipelinePage />); });
-
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-
-    // Click run on validate step
-    const runBtn = screen.queryByTestId("run-validate");
-
-    if (runBtn) {
-      await act(async () => { fireEvent.click(runBtn); });
-      // setTimeout(fetchStatus, 1000) + setTimeout(fetchTimeline, 1000)
-      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
-    }
-
-    expect(screen.getByTestId("react-flow")).toBeInTheDocument();
-  });
-
-  it("handles run with error response + alert", async () => {
-    const alertMock = vi.fn();
-    vi.stubGlobal("alert", alertMock);
-
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ error: "already running" }) });
-      }
-
-      if (url.includes("/api/pipeline/status")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
-      }
-
-      if (url.includes("/api/pipeline/timeline")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ events: [] }) });
-      }
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-
-    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
-    await act(async () => { render(<PipelinePage />); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-
-    const runBtn = screen.queryByTestId("run-validate");
-
-    if (runBtn) {
-      await act(async () => { fireEvent.click(runBtn); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
-    }
-
-    // alert should be called with error message (F-002: 한국어 실패 프리픽스 + 원문)
-    if (alertMock.mock.calls.length > 0) {
-      expect(alertMock).toHaveBeenCalledWith(`${ERRORS.RUN_FAILED_PREFIX}already running`);
-    }
-
-    vi.unstubAllGlobals();
-  });
-
-  it("handles run POST network failure", async () => {
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return Promise.reject(new Error("network"));
-      }
-
-      if (url.includes("/api/pipeline/status")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: mockStepsWithRunning }) });
-      }
-
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
-    });
-
-    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
-    await act(async () => { render(<PipelinePage />); });
-    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
-
-    const runBtn = screen.queryByTestId("run-validate");
-
-    if (runBtn) {
-      await act(async () => { fireEvent.click(runBtn); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(500); });
-    }
-
-    // Should not crash
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });
 

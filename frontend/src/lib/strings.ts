@@ -234,7 +234,6 @@ export const PIPELINE = {
   LEGEND_RUNNING: "실행 중",
   EVENT_TIMELINE: "이벤트 타임라인",
   NO_EVENTS: "아직 이벤트 없음",
-  RUN_STEP_HINT: "파이프라인 스텝을 실행하세요",
   // design-review F-008: 형제 헤더(이벤트 타임라인)와 언어 일치 + SSoT 로 이동
   GATE_CONDITIONS: "게이트 조건",
   GATE_LOADING: "게이트 조건 로딩 중...",
@@ -244,20 +243,18 @@ export const PIPELINE = {
   GATE_EMPTY: "게이트 조건 없음 — 파이프라인 실행 후 표시됩니다",
   // #1252: 페이지 타이틀 · 실행 버튼 · 노드 카피가 SSoT 밖에 있었다.
   TITLE: "Pipeline",
-  RUN: "실행",
-  RUNNING: "실행 중...",
+  // 폴백 노드 카피 — 라이브 노드는 `nuri/api/routes/pipeline.py` 의 _STEP_LABELS /
+  // _STEP_DESCRIPTIONS 를 그대로 쓴다. 상태 조회가 성공하면 화면이 바뀌지 않도록 같은 문구다.
   NODE_COLLECT: "Collect",
-  NODE_COLLECT_SUB: "15 collectors + 6 sites",
-  NODE_VALIDATE: "Validate",
-  NODE_VALIDATE_SUB: "Signal backtest + scorecard",
-  NODE_CLASSIFY: "Classify",
-  NODE_CLASSIFY_SUB: "6-regime classifier",
-  NODE_DIAGNOSE: "Diagnose",
-  NODE_DIAGNOSE_SUB: "10 agents consensus",
-  NODE_RECOMMEND: "Recommend",
-  NODE_RECOMMEND_SUB: "Buy/sell + price targets",
+  NODE_COLLECT_SUB: "Collector jobs + external sources",
+  NODE_ANALYZE: "Analyze",
+  NODE_ANALYZE_SUB: "Factor composite",
+  NODE_CONSENSUS: "Consensus",
+  NODE_CONSENSUS_SUB: "10 agents weighted vote",
+  NODE_DECIDE: "Decide",
+  NODE_DECIDE_SUB: "Decision record (in-memory hand-off)",
   NODE_TRACK: "Track",
-  NODE_TRACK_SUB: "30/60/90d outcomes",
+  NODE_TRACK_SUB: "7–90d outcomes + alpha",
 } as const;
 
 /* ── Ticker Detail Page ─────────────────────────────────────── */
@@ -431,10 +428,10 @@ export const SCAN = {
 export const ENGINE = {
   CONFLICTS_EMPTY: "시그널 충돌 없음",
   DRIFT_EMPTY: "드리프트 데이터 없음 — make validate 실행 필요",
-  // BLOCKED 게이트의 다음 행동 (phase id = pipeline step id, /api/gate 실측)
+  // BLOCKED 게이트의 다음 행동 — phase 와 무관하게 파이프라인 상태로 안내한다
   NEXT_ACTION_PREFIX: "다음 행동:",
-  NEXT_ACTION_RUN: "파이프라인에서 실행 →",
-  NEXT_ACTION_GENERIC: "파이프라인 확인 →", // 매핑 밖 phase — 실행 불가 이름을 광고하지 않는다
+  // 대시보드는 스테이지를 실행하지 않는다 (#1778) — 막힌 게이트의 다음 행동은 상태 확인이다.
+  NEXT_ACTION_GENERIC: "파이프라인 확인 →",
 } as const;
 
 /* ── Explore Page ───────────────────────────────────────────── */
@@ -493,7 +490,6 @@ export const ERRORS = {
   SCORECARD_FAILED: "스코어카드를 불러오지 못했습니다 — make validate 실행 후 표시됩니다.",
   REPORT_FAILED: "리포트 생성에 실패했습니다 — Ollama·백엔드 상태를 확인한 뒤 다시 시도하세요.",
   COVERAGE_FAILED: "Coverage 확인 실패 — 파이프라인 상태를 확인하세요.",
-  RUN_FAILED_PREFIX: "실행 실패: ",
   // #1250: 파이프라인 3개 fetch 는 실패를 삼켜 빈/로딩 화면으로 렌더했다.
   // 운영자 터미널에서 "백엔드 죽음" 과 "데이터 없음" 이 같은 화면이면 오판을 부른다.
   PIPELINE_STATUS_FAILED: "파이프라인 상태를 불러오지 못했습니다 — 아래 단계는 마지막으로 성공한 조회 기준입니다.",

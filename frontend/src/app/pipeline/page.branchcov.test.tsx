@@ -9,15 +9,15 @@
  *  - PipelineNode 를 source export 후 직접 렌더 → node 본문의 모든 ternary/&& arm.
  *  - @xyflow/react mock 으로 nodeTypes.pipeline(실 PipelineNode) 렌더.
  *  - client PipelinePage + global fetch mock 으로 fetchStatus/Timeline/Gate +
- *    handleRunStep + getNodeStatus + 타임라인/게이트 렌더 분기.
+ *    getNodeStatus + 타임라인/게이트 렌더 분기.
  *  - formatAge/formatTimestamp 의 catch 는 new Date() 가 throw 하는 값(BigInt)으로 강제.
  *
  * BigInt 리터럴 금지(ES2017) → BigInt() 생성자 사용.
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { ERRORS, PIPELINE as PL } from "@/lib/strings";
+import { PIPELINE as PL } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
 type FlowNode = { id: string; type?: string; data?: Record<string, unknown> };
@@ -68,8 +68,6 @@ type NodeData = {
   recordCount: number;
   lastUpdated: string | null;
   stepId: string;
-  onRun: (id: string) => void;
-  isRunning: boolean;
   error?: string | null;
 };
 
@@ -89,8 +87,6 @@ describe("PipelineNode — node-body branch arms", () => {
     recordCount: 0,
     lastUpdated: null,
     stepId: "collect",
-    onRun: vi.fn(),
-    isRunning: false,
     ...over,
   });
 
@@ -103,55 +99,28 @@ describe("PipelineNode — node-body branch arms", () => {
     expect(root.className).not.toContain("shadow-emerald-500/10");
   });
 
-  it("status running → animate-ping span renders (170 ternary true) + button running text (196/201 true)", async () => {
+  it("status running → animate-ping span renders (ternary true)", async () => {
     const PipelineNode = await loadNode();
-    const { container } = render(<PipelineNode data={base({ status: "running", isRunning: true })} />);
-    // 170: status==="running" 이면 animate-ping span 렌더
+    const { container } = render(<PipelineNode data={base({ status: "running" })} />);
+    // status==="running" 이면 animate-ping span 렌더 — 실행 중 표시는 폴링한 상태에서만 온다
     expect(container.querySelector(".animate-ping")).not.toBeNull();
-    // 201: isRunning true → "실행 중..." 텍스트
-    const btn = screen.getByRole("button");
-    expect(btn.textContent).toContain("실행 중");
-    // 196: isRunning true → cursor-wait 클래스
-    expect(btn.className).toContain("cursor-wait");
   });
 
-  it("status NOT running → no animate-ping (170 false) + idle button (196/201 false)", async () => {
+  it("status NOT running → no animate-ping (ternary false)", async () => {
     const PipelineNode = await loadNode();
-    const { container } = render(<PipelineNode data={base({ status: "ok", isRunning: false })} />);
+    const { container } = render(<PipelineNode data={base({ status: "ok" })} />);
     expect(container.querySelector(".animate-ping")).toBeNull();
-    const btn = screen.getByRole("button");
-    expect(btn.textContent).toBe("실행");
-    expect(btn.className).toContain("cursor-pointer");
   });
 
-  it("isRunning false → click calls onRun (190 true arm)", async () => {
+  it("노드에 실행 버튼이 없다 — 대시보드는 스테이지를 실행하지 않는다 (#1778)", async () => {
     const PipelineNode = await loadNode();
-    const onRun = vi.fn();
-    render(<PipelineNode data={base({ isRunning: false, onRun })} />);
-    fireEvent.click(screen.getByRole("button"));
-    expect(onRun).toHaveBeenCalledWith("collect");
-  });
 
-  it("isRunning true → onClick handler's `if(!isRunning)` false-arm, onRun NOT called (190)", async () => {
-    const PipelineNode = await loadNode();
-    const onRun = vi.fn();
-    render(<PipelineNode data={base({ isRunning: true, onRun })} />);
-    const btn = screen.getByRole("button") as HTMLButtonElement;
-    expect(btn).toBeDisabled();
-    // 버튼이 disabled 라 fireEvent.click 은 핸들러를 안 탄다.
-    //  React 가 DOM 노드에 붙여둔 실제 onClick prop 을 꺼내 직접 호출하면
-    //  data.isRunning=true 상태로 핸들러 본문이 실행되어
-    //  `if (!data.isRunning)` false-arm(implicit-else)을 정직하게 커버한다.
-    const propsKey = Object.keys(btn).find((k) => k.startsWith("__reactProps$"));
-    expect(propsKey).toBeTruthy();
-
-    const handler = (btn as unknown as Record<string, { onClick?: (e: unknown) => void }>)[
-      propsKey as string
-    ].onClick;
-
-    expect(handler).toBeTypeOf("function");
-    handler!({ stopPropagation: () => {} });
-    expect(onRun).not.toHaveBeenCalled();
+    // 상태와 무관하게 — running·error 노드도 버튼을 갖지 않는다
+    for (const status of ["ok", "running", "error", "warning"] as const) {
+      const { unmount } = render(<PipelineNode data={base({ status })} />);
+      expect(screen.queryByRole("button"), `${status} 노드에 버튼`).toBeNull();
+      unmount();
+    }
   });
 
   it("status error → error <p> renders with error string (205 && true)", async () => {
@@ -220,13 +189,8 @@ function makeFetch(opts: {
   timelineBody?: unknown;
   gateOk?: boolean;
   gateBody?: unknown;
-  postBody?: unknown;
 }): Mock {
-  return vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-    if (init?.method === "POST") {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(opts.postBody ?? { ok: true }) });
-    }
-
+  return vi.fn().mockImplementation((url: string) => {
     if (url.includes("/api/pipeline/status")) {
       return Promise.resolve({
         ok: opts.statusOk ?? true,
@@ -283,7 +247,7 @@ describe("PipelinePage — fetch & render branch arms", () => {
     await renderPage();
     // DEFAULT_NODES 렌더 (steps.length === 0 분기) → "Collect" 라벨 존재
     await waitFor(() => expect(screen.getAllByText("Collect").length).toBeGreaterThan(0));
-    // 타임라인 빈 상태 메시지 (timeline.length === 0 → NO_EVENTS / RUN_STEP_HINT)
+    // 타임라인 빈 상태 메시지 (timeline.length === 0 → NO_EVENTS)
     expect(screen.getByText(/이벤트 없음/)).toBeInTheDocument();
     // 게이트 빈 상태 — #1250 이후 "로딩 중" 이 아니라 "조건 없음". 성공 응답이 비었을
     // 뿐인데 영원히 로딩으로 보이던 게 원래 증상이다. 리터럴 대신 SSoT 를 쓴다.
@@ -482,78 +446,6 @@ describe("PipelinePage — fetch & render branch arms", () => {
     // ✓ 와 ✗ 글리프 둘 다 (481 ternary)
     expect(screen.getByText("✓")).toBeInTheDocument();
     expect(screen.getByText("✗")).toBeInTheDocument();
-  });
-
-  it("handleRunStep: POST returns error → alert + remove from running (298 true arm)", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
-
-    const steps: Step[] = [
-      {
-        step: "collect",
-        label: "Collect",
-        description: "c",
-        record_count: 1,
-        last_updated: null,
-        status: "idle",
-        started_at: null,
-        error: null,
-      },
-    ];
-
-    global.fetch = makeFetch({
-      statusBody: { steps },
-      timelineBody: { events: [] },
-      gateBody: {},
-      postBody: { error: "run failed" }, // 298: data.error truthy
-    }) as unknown as typeof fetch;
-    await renderPage();
-    await waitFor(() => expect(screen.getByText("Collect")).toBeInTheDocument());
-    // 실행 버튼 클릭 → POST → data.error → alert
-    const btn = screen.getByRole("button");
-    await act(async () => {
-      fireEvent.click(btn);
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(50);
-    });
-    // F-002: 한국어 실패 프리픽스 + 원문
-    expect(alertSpy).toHaveBeenCalledWith(`${ERRORS.RUN_FAILED_PREFIX}run failed`);
-  });
-
-  it("handleRunStep: POST success (298 false arm) schedules refresh", async () => {
-    const steps: Step[] = [
-      {
-        step: "collect",
-        label: "Collect",
-        description: "c",
-        record_count: 1,
-        last_updated: null,
-        status: "idle",
-        started_at: null,
-        error: null,
-      },
-    ];
-
-    const fetchMock = makeFetch({
-      statusBody: { steps },
-      timelineBody: { events: [] },
-      gateBody: {},
-      postBody: { ok: true }, // 298: data.error falsy
-    });
-
-    global.fetch = fetchMock as unknown as typeof fetch;
-    await renderPage();
-    await waitFor(() => expect(screen.getByText("Collect")).toBeInTheDocument());
-    const btn = screen.getByRole("button");
-    await act(async () => {
-      fireEvent.click(btn);
-    });
-    // setTimeout(fetchStatus, 1000) 트리거
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1100);
-    });
-    const postCall = fetchMock.mock.calls.find((c) => (c[1] as RequestInit | undefined)?.method === "POST");
-    expect(postCall).toBeTruthy();
   });
 
   it("10s interval re-fetches status+timeline (useEffect setInterval)", async () => {
