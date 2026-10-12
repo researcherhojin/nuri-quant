@@ -439,7 +439,7 @@ Check these before opening a PR.
 | Item | Standard |
 |---|---|
 | Secrets | `.env`; never committed to git |
-| Authentication | When DASHBOARD_PASSWORD is set, an HMAC-SHA256 keyed token cookie (Edge Runtime compatible) |
+| Authentication | When DASHBOARD_PASSWORD is set, an HMAC-SHA256 keyed token cookie, checked by `frontend/src/proxy.ts` |
 | CI | Trivy CRITICAL → merge blocked |
 | LLM | Sending data to an external LLM is limited to the §4.4.3 whitelist: only public data (Tier 0) is allowed; portfolio (Tier 2), narrative and decision-making (Tier 1) data are forbidden. Everything else uses a local LLM (Ollama / llama.cpp). |
 | **Personal financial data** | Never exposed in commits, PRs, issues, comments, fixtures or CI logs. `config/portfolio.yaml` is gitignored, and its contents must not be tracked either. This covers brokers, quantities, average costs, balances and trade history. |

@@ -1,9 +1,9 @@
 /**
  * Dashboard auth helpers — HMAC-keyed token + constant-time compare.
  *
- * Uses Web Crypto API (Edge Runtime compatible) instead of node:crypto.
- * Next.js 16 middleware runs in Edge Runtime where Node.js built-ins
- * like node:crypto are unavailable.
+ * Uses the Web Crypto API instead of node:crypto. It was chosen when the auth
+ * gate ran as Edge middleware, which has no Node.js built-ins; the gate is now
+ * `src/proxy.ts` on the Node.js runtime (#1806), where Web Crypto works too.
  *
  * Why HMAC instead of SHA256:
  *   The previous implementation stored sha256(password) as the auth cookie.

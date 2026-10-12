@@ -439,7 +439,7 @@ PR 전에 확인한다.
 | 항목 | 기준 |
 |---|---|
 | 시크릿 | `.env`, git 커밋 금지 |
-| 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 쿠키 (Edge Runtime 호환) |
+| 인증 | DASHBOARD_PASSWORD 설정 시 HMAC-SHA256 keyed 토큰 쿠키, `frontend/src/proxy.ts` 가 검사 |
 | CI | Trivy CRITICAL → 머지 차단 |
 | LLM | 외부 LLM 전송은 §4.4.3 화이트리스트 한정: 공개 데이터(Tier 0)만 허용, portfolio(Tier 2)·narrative·의사결정(Tier 1) 금지. 그 밖은 local LLM (Ollama / llama.cpp). |
 | **개인 금융 데이터** | commit·PR·issue·주석·fixture·CI 로그 절대 노출 금지. `config/portfolio.yaml` gitignored 지만 내용도 추적 대상 금지. broker/수량/평단/잔고/매매이력 모두 해당. |
