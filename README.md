@@ -126,7 +126,7 @@ Investment rules and thresholds live in [`config/`](config/) (mainly `rules.yaml
 ![Zod](https://img.shields.io/badge/Zod-4-3E67B1?logo=zod&logoColor=white)
 
 **Backend**<br/>
-![FastAPI](https://img.shields.io/badge/FastAPI-0.142-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.143-009688?logo=fastapi&logoColor=white)
 ![Uvicorn](https://img.shields.io/badge/Uvicorn-0.54-2094F3)
 ![APScheduler](https://img.shields.io/badge/APScheduler-3-4B8BBE)
 ![MCP](https://img.shields.io/badge/MCP-2-000000?logo=modelcontextprotocol&logoColor=white)
