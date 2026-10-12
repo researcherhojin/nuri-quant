@@ -53,7 +53,7 @@ print(sqlite3.connect(_p).execute(\"SELECT COUNT(*) FROM sqlite_master WHERE typ
 " 2>/dev/null || echo ""
 }
 
-# 2026-07-08: migrations / scheduler jobs / rules.yaml lines — previously
+# 2026-07-08: migrations / scheduler jobs (and, until 2026-10-12, rules.yaml lines) — previously
 # manual-tracked (silent drift; migration 44→45 slipped through #863). grep/wc
 # based (no Python) so they HARD-GATE in CI, unlike regimes/db_tables above.
 live_migrations()     { grep -cE '^        [0-9]+,$' nuri/core/db_migrations.py || true; }
@@ -68,7 +68,6 @@ live_tests_be() {
     .venv/bin/python -m pytest tests/ --collect-only -q 2>/dev/null \
         | grep -oE '[0-9]+ tests collected' | head -1 | awk '{print $1}' || echo ""
 }
-live_rules_lines()    { wc -l < config/rules.yaml | tr -d ' '; }
 
 # Extract the target integer from EVERY occurrence of a claim in a file.
 # Strategy: match the claim's context substring, then take the LAST [0-9]+ in
@@ -150,7 +149,6 @@ REGIMES=$(live_regimes)
 DBT=$(live_db_tables)
 MIG=$(live_migrations)
 JOBS=$(live_scheduler_jobs)
-RULES=$(live_rules_lines)
 
 # Claim checks: pattern must uniquely identify the phrase containing the target
 # number. Target is always the LAST [0-9]+ in the matched substring.
@@ -209,7 +207,6 @@ check_claim "scheduler_jobs"   "$JOBS"  "docs/ko/ARCHITECTURE.md" '[0-9]+ cron j
 # 보던 migrations 누락(#864)과 같은 패턴 — 한 사이트만 등록하면 나머지가 조용히 드리프트한다.
 check_claim "scheduler_jobs"   "$JOBS"  "README.md" \
     '[0-9]+ (cron jobs · in-process|independent cron jobs|cron entries)' || true
-check_claim "rules_yaml_lines" "$RULES" "config/CLAUDE.md"     '\| [0-9]+ \| Investment rules' || true
 TESTS_BE=$(live_tests_be)
 if [ -n "$TESTS_BE" ]; then
     check_comma_claim "tests_be" "$TESTS_BE" "docs/ARCHITECTURE.md" '[0-9,]+ backend tests across' || true
