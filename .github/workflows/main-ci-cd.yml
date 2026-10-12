@@ -98,6 +98,8 @@ jobs:
               # 잠금 테스트가 있는 루트 파일 (#1562): .cspell.json 만 바꾼 #1556 이 backend 로
               # 안 잡혀 `test_words_stay_sorted` 가 안 돌았고, main 이 빨간 채 다음 .py PR 이 죽었다.
               - '.cspell.json'
+              # pyright 설정만 바꾼 PR 도 아래 Backend Lint 의 0 오류 검사를 거쳐야 한다 (#1831)
+              - 'pyrightconfig.json'
               - '.gitignore'
               - '.github/CODEOWNERS'
               - '.github/workflows/**'
@@ -367,7 +369,7 @@ jobs:
     # treats as passed → false green.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Guard — require changes to succeed
         if: needs.changes.result != 'success'
@@ -386,6 +388,20 @@ jobs:
         if: needs.changes.outputs.run_backend == 'true'
         with:
           args: "check nuri/ tests/ scripts/"
+
+      # pyright 0 오류 (#1831). venv 가 있어야 pandas-stubs 와 의존성 타입을 읽는다.
+      # 버전은 고정한다 — 새 릴리스가 무관한 PR 을 빨갛게 만들지 않게. 로컬 ratchet
+      # (scripts/verify/check_pyright_diff.py) 과 같은 버전이어야 한다.
+      # Test: tests/scripts/test_pyright_gate.py
+      - name: Setup backend env (uv + TA-Lib + venv)
+        if: needs.changes.outputs.run_backend == 'true'
+        uses: ./.github/actions/setup-backend-env
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Type check (pyright, zero errors)
+        if: needs.changes.outputs.run_backend == 'true'
+        run: npx --yes pyright@1.1.414
 
   # ── Privacy leak scan (#138) ──
   # Always runs (no `needs: changes` gate) — a frontend-only PR could still

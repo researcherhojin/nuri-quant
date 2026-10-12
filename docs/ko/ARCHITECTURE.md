@@ -479,7 +479,7 @@ data/
 
 ## 테스트
 
-8,883 backend tests across 438 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+8,888 backend tests across 439 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 
@@ -519,7 +519,7 @@ find frontend/src/app -name "page.tsx" | wc -l
 
 `main` 으로의 push 와 pull request 에서 실행된다. `Detect Changes` job 이 pull request 가 건드리는 영역을 판별하고, 건드리지 않은 영역의 job 은 바로 통과(fast-pass)해 그 required check 가 계속 보고되게 한다. required 집합은 branch protection 이 정의하며, `.claude/rules/enforcement.md` 가 이를 설명한다.
 
-1. **Lint**: `ruff check nuri/ tests/ scripts/` (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
+1. **Lint**: `ruff check nuri/ tests/ scripts/` + `pyright` with zero errors (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
 2. **Test**: fast shard matrix 에서 xdist 로 pytest 를 돌리고, `main` run(push·dispatch, PR 은 제외)마다 실행되는 slow shard 2개를 더한다(shard 수는 `main-ci-cd.yml` 에서 정의). `Backend Tests` 가 이를 집계하고 `Backend Tests · Coverage Aggregate` 가 coverage 를 합친다. TA-Lib 은 cache 된다. 의존성은 `uv sync --frozen --extra dev` 로 설치하며, `local-llm` extra 는 의도적으로 제외한다(#1406, sdist compile). 별도의 `Local-LLM Build Gate` job(required check)이 lock 된 `llama-cpp-python` 을 한 번 build 하고 import 한다 — PR 에서는 `pyproject.toml`, `uv.lock`, `main-ci-cd.yml` 이 바뀔 때만, PR 이 아닌 실행(main 으로의 push, 수동 dispatch)에서는 매번 실행된다. 테스트별 DB 격리 사본은 `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` 로 tmpfs 에 둔다(#1414). main 으로의 push 에서 도는 shard 는 테스트별 소요 시간도 기록하고(`--store-durations --clean-durations`) `durations-fast-N` artifact 를 업로드한다. `make sync-test-durations-from-ci` 는 최신 실행들로부터 `.test_durations` 를 다시 만든다(fail-closed merge + 실행 간 median, `scripts/ci/merge_test_durations.py`).
 3. **Frontend**: `tsc --noEmit` + coverage 를 포함한 vitest (`Frontend Tests`), production build (`Frontend Build`). Playwright E2E 는 `Frontend E2E` job 에서 실행되며, 이 job 은 required check 가 아니다
 4. **Patch Coverage**: frontend lcov, 합쳐진 backend coverage, pull request diff 로부터 `codecov.yml` patch target 을 다시 계산한다(#1766)
