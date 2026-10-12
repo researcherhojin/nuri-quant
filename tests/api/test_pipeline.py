@@ -194,10 +194,11 @@ class TestPipelineAPI:
         resp = _client.get("/api/pipeline/timeline?limit=10")
         assert resp.status_code == 200
 
-    def test_pipeline_timeline_invalid_step(self, _client):
-        """Pipeline timeline with invalid step."""
+    def test_pipeline_timeline_unknown_step_is_empty(self, _client):
+        """모르는 스텝은 400 이 아니라 빈 목록 (#1785)."""
         resp = _client.get("/api/pipeline/timeline?step=invalid")
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+        assert resp.json()["events"] == []
 
     def test_freshness_endpoint(self, _client):
         """Freshness endpoint."""
@@ -383,10 +384,25 @@ class TestPipelineTimeline:
         assert len(data["events"]) == 1
         assert data["events"][0]["step"] == "collect"
 
-    def test_pipeline_timeline_invalid_step(self, client, db_path):
-        """잘못된 스텝명 → 400."""
-        r = client.get("/api/pipeline/timeline?step=invalid")
-        assert r.status_code == 400
+    def test_pipeline_timeline_filters_any_journal_step(self, client, db_path):
+        """스테이지와 도메인 스텝 모두로 거른다 (#1785).
+
+        정적 허용 목록이 레거시 6-step 이던 동안 `analyze`·`consensus`·`alpha_report` 는 이벤트가
+        있는데도 400 이었고, 아무도 안 쓰는 `classify` 는 통과했다.
+        """
+        from nuri.core.events import emit_event
+
+        for step in ("analyze", "consensus", "alpha_report", "recommend"):
+            emit_event("step_completed", step=step, db_path=db_path)
+
+        for step in ("analyze", "consensus", "alpha_report", "recommend"):
+            r = client.get(f"/api/pipeline/timeline?step={step}")
+            assert r.status_code == 200, step
+            assert [e["step"] for e in r.json()["events"]] == [step]
+
+        r = client.get("/api/pipeline/timeline?step=classify")
+        assert r.status_code == 200
+        assert r.json()["events"] == []
 
     def test_pipeline_timeline_limit(self, client, db_path):
         """limit 파라미터 동작 확인."""

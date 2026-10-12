@@ -278,7 +278,7 @@ Confidence scoring on the [manual research path](#manual-research-path) lives in
 Pipeline control APIs (`nuri/api/routes/pipeline.py` and `nuri/api/routes/pipeline_refresh.py`):
 
 - `GET /api/pipeline/status`: 5-stage lifecycle status and record counts; Decide also carries `execution_mode` and a separate latest-ledger `artifact` (date/count/status)
-- `GET /api/pipeline/timeline`: event log
+- `GET /api/pipeline/timeline`: event log; `?step=` takes any `pipeline_events.step` value (the five stages and domain steps such as `recommend` and `alpha_report`), and an unknown value returns no events
 - `GET /api/freshness`: data freshness report
 - `GET /api/pipeline/refresh`: supported data-refresh jobs and process-local request state
 - `POST /api/pipeline/refresh`: authenticated background data collection/recalculation; HTTP 202, ordered jobs, lifecycle events and a heavy slot. Does not run consensus, decision recording or outcome tracking.
