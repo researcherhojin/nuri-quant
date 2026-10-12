@@ -306,9 +306,9 @@ and generated reports in `external_analysis`, and source registration in `config
 See [Ticker research and public briefings](RESEARCH_BRIEFING.md) for the v9 prompt, evidence checks,
 cache states and known limitations.
 
-## API (72 endpoints)
+## API (70 endpoints)
 
-`nuri/api/routes/` — 72 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across the route modules; `nuri/api/main.py` declares three more (`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). Several read routes compute live rather than project stored results: the regime, the macro score, `/api/opportunities` (it re-runs the BUY-candidate evaluation read-only) and the candidate screen.
+`nuri/api/routes/` — 70 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across the route modules; `nuri/api/main.py` declares three more (`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). Several read routes compute live rather than project stored results: the regime, the macro score, `/api/opportunities` (it re-runs the BUY-candidate evaluation read-only) and the candidate screen.
 
 ### Endpoints the Overview reads
 
@@ -319,7 +319,7 @@ cache states and known limitations.
 | `/api/opportunities` | GET | Candidates outside the portfolio: scanner observations (`observations`) plus the BUY-candidate emitter's classification (`system`: qualified / below_threshold / excluded / blocked / not_scored, #1683) |
 | `/api/backtest/equity` | GET | Equity curve, drawdown and metrics (a lightweight payload for Recharts) |
 
-`/api/coverage` (#297) and `/api/market-context` are still served, but no frontend code calls them since the old dashboard was deleted in #1698.
+`/api/coverage` (#297) and `/api/market-context` were retired in #1816: nothing had called them since the old dashboard was deleted in #1698. The universe coverage check lives on as `scripts/verify/check_universe_coverage.py`, and the Explore page's `/api/tickers/market-context` is a separate route.
 
 ## Scheduler
 
@@ -479,7 +479,7 @@ data/
 
 ## Testing
 
-8,888 backend tests across 438 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,874 backend tests across 437 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the slow shards of `main` runs, push or the catch-up's dispatch (#1812) (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

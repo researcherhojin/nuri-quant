@@ -8,7 +8,6 @@ Single source of truth (codex Plan consult Q2/Scope): 기존 actions API 의
 helper 를 재사용 — 새 로직 추가 없이 composition 만.
 - `_build_actions` — 4-bucket 종합 (stop-loss/portfolio bucket 분리는 PR #429 후)
 - `_build_opportunities` — 비보유 scan candidates
-- `_get_macro_events` — 24h macro events (DB)
 - `discord_bot.send_webhook` — 전송 공통 (daily_report 와 동일 경로)
 
 데이터 출처 (모두 DB):

@@ -29,7 +29,6 @@ from nuri.api.routes import (
     actions,
     agents,
     alpha,
-    coverage,
     dashboard,
     decisions,
     engine,
@@ -117,7 +116,6 @@ app.include_router(portfolio.router, prefix="/api")
 app.include_router(regime.router, prefix="/api")
 app.include_router(signals.router, prefix="/api")
 app.include_router(rebalance.router, prefix="/api")
-app.include_router(coverage.router, prefix="/api")
 app.include_router(engine.router, prefix="/api")
 app.include_router(pipeline.router, prefix="/api")
 app.include_router(pipeline_refresh.router, prefix="/api")
