@@ -7,15 +7,17 @@
 # 매시간 main HEAD 를 보고, 런이 하나도 없으면 workflow_dispatch 로 main CI 를 띄운다 —
 # 판단 규칙은 scripts/ci/main_ci_catchup.sh 머리말.
 #
-# - cron 은 정시 · */N 을 피해 :37 분 (heartbeat-watch.yml 과 같은 이유 — 혼잡 분은 지연 · 드롭된다).
+# - cron 은 정시 · */N 을 피해 :53 분 (heartbeat-watch.yml 과 같은 이유 — 혼잡 분은 지연 · 드롭된다).
 # - ⚠️ 신규 워크플로의 schedule 은 등록이 늦거나 안 될 수 있다 (heartbeat-watch.yml 머리말의
 #   2026-08-29 기록). 머지 뒤 schedule 이벤트가 실제로 뜨는지 `gh run list -w main-ci-catchup.yml
 #   -e schedule` 로 확인할 것 — dispatch 성공은 cron 등록의 증거가 아니다.
+#   실제로 첫 등록(2026-10-12 05:07Z, `37 * * * *`)은 05:37 · 06:37 · 07:37 세 슬롯 모두 schedule
+#   이벤트 0회였다 — heartbeat-watch.yml 전례대로 `on.schedule` 블록 자체를 바꿔 재등록을 유도한다.
 name: Main CI Catch-up
 
 on:
   schedule:
-    - cron: "37 * * * *"
+    - cron: "53 * * * *"
   workflow_dispatch: {}
 
 permissions:
