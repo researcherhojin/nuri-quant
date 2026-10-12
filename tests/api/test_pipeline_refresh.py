@@ -48,6 +48,7 @@ def test_failure_skips_downstream_and_preserves_failed_lifecycle(monkeypatch):
     monkeypatch.setattr(refresh, "_execute", fail)
     tasks = BackgroundTasks()
     run = refresh.start_refresh(refresh.RefreshInput(jobs=["prices", "technical"]), tasks, {"sub": "test"})
+    assert run is not None
     refresh._run_refresh(run["id"], ["prices", "technical"])
     state = refresh.get_refresh()["run"]
     assert state["status"] == "failed"
@@ -68,6 +69,7 @@ def test_full_slots_shed_503_at_admission_not_as_a_failed_run(monkeypatch):
         with pytest.raises(HTTPException) as error:
             refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
         assert error.value.status_code == 503
+        assert error.value.headers is not None
         assert error.value.headers["Retry-After"] == "5"
         assert refresh.get_refresh()["run"] is None
         assert called == []
@@ -83,6 +85,7 @@ def test_slot_taken_at_admission_is_released_after_the_background_run(monkeypatc
     before = limits._heavy_slots._value
     run = refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
     assert limits._heavy_slots._value == before - 1, "접수 시점에 슬롯 하나를 쥔다"
+    assert run is not None
     refresh._run_refresh(run["id"], ["macro"])
     assert limits._heavy_slots._value == before, "실행이 끝나면 놓는다"
 
@@ -108,6 +111,7 @@ def test_permit_is_released_even_if_a_new_admission_replaced_the_state_mid_run(m
         return 1
 
     monkeypatch.setattr(refresh, "_execute", execute_and_get_replaced)
+    assert run is not None
     refresh._run_refresh(run["id"], ["macro"])
     assert limits._heavy_slots._value == before, "바꿔치기 뒤에도 옛 실행의 permit 은 돌아온다"
 
@@ -257,6 +261,7 @@ def test_abandoned_queued_run_returns_its_permit_and_unblocks_the_next_request(m
     assert limits._heavy_slots._value == before
     # 새 요청은 접수된다
     fresh = refresh.start_refresh(refresh.RefreshInput(jobs=["prices"]), BackgroundTasks(), {"sub": "test"})
+    assert fresh is not None
     assert fresh["status"] == "queued"
     assert limits._heavy_slots._value == before - 1
 
@@ -265,6 +270,7 @@ def test_events_carry_job_identity_and_origin(monkeypatch):
     """Codex #1658 P2: macro 단독 갱신이 스케줄러의 collect 성공과 구분되어야 한다."""
     monkeypatch.setattr(refresh, "_execute", lambda key: 1)
     run = refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
+    assert run is not None
     refresh._run_refresh(run["id"], ["macro"])
     rows = query(
         "SELECT event_type, step, payload FROM pipeline_events WHERE event_type LIKE 'refresh_job_%' ORDER BY id"

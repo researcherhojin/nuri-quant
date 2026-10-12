@@ -83,6 +83,7 @@ class TestHeavySlotDependency:
         with pytest.raises(HTTPException) as exc:
             next(heavy_slot())
         assert exc.value.status_code == 503
+        assert exc.value.headers is not None
         assert exc.value.headers["Retry-After"] == "5"
         # 내부 상태를 노출하지 않는 generic 메시지 (이 디렉터리 에러 컨벤션)
         assert "무거운 요청" in exc.value.detail

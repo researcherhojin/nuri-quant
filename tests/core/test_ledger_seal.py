@@ -46,7 +46,9 @@ class TestSealing:
 
     def test_later_runs_extend_the_same_chain(self, db_path):
         _sealed(db_path)
-        first_head = seal.latest_seal(db_path=db_path)["seal_hash"]
+        latest = seal.latest_seal(db_path=db_path)
+        assert latest is not None
+        first_head = latest["seal_hash"]
         assert seal.seal_closed_days("2026-10-08", db_path=db_path) == ["2026-10-07"]
         row = query("SELECT prev_hash FROM recommendation_seals WHERE date = '2026-10-07'", db_path=db_path)[0]
         assert row["prev_hash"] == first_head
@@ -179,6 +181,7 @@ class TestAnchor:
         """남은 체인은 정합하다 — verify() 는 못 본다. DB 밖의 머리와 대조해야 잡힌다."""
         _sealed(db_path)
         anchored = seal.latest_seal(db_path=db_path)
+        assert anchored is not None
         with get_db(db_path) as conn:
             conn.execute("DELETE FROM recommendation_seals WHERE date = ?", (anchored["date"],))
             conn.execute("UPDATE recommendations SET action = 'SELL' WHERE date = ?", (anchored["date"],))
@@ -192,11 +195,13 @@ class TestAnchor:
         with get_db(db_path) as conn:
             conn.execute("DELETE FROM recommendation_seals")
         assert seal.verify(db_path=db_path) == []
+        assert anchored is not None
         assert seal.verify_anchor(anchored["date"], anchored["seal_hash"], db_path=db_path)
 
     def test_untouched_chain_matches_its_anchor(self, db_path):
         _sealed(db_path)
         anchored = seal.latest_seal(db_path=db_path)
+        assert anchored is not None
         assert seal.verify_anchor(anchored["date"], anchored["seal_hash"], db_path=db_path) == []
 
     def test_no_seal_no_anchor(self):

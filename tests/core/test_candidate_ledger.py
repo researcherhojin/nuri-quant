@@ -81,7 +81,9 @@ class TestBlockedDaysAreRecorded:
             skipped={"AAA": "held (보유 중)", "BBB": "cooldown 5d", "CCC": "leverage ETF"},
         )
         record_candidate_run(blocked, "2026-08-18", db_path=db_path)
-        reasons = {r["ticker"]: r["reason"] for r in get_candidate_run("2026-08-18", db_path=db_path)["ledger"]}
+        run = get_candidate_run("2026-08-18", db_path=db_path)
+        assert run is not None
+        reasons = {r["ticker"]: r["reason"] for r in run["ledger"]}
         assert reasons == {"AAA": "held (보유 중)", "BBB": "cooldown 5d", "CCC": "leverage ETF"}
 
     def test_an_empty_run_with_no_skips_still_records(self, db_path):
@@ -104,6 +106,7 @@ class TestDenominator:
         record_candidate_run(r, "2026-08-18", db_path=db_path)
 
         run = get_candidate_run("2026-08-18", db_path=db_path)
+        assert run is not None
         assert (run["n_scored"], run["n_qualified"], run["n_emitted"]) == (200, 0, 0)
         assert run["threshold"] == 70.0
 
@@ -117,13 +120,17 @@ class TestActedIsManual:
     def test_acted_defaults_to_zero(self, db_path):
         """체결을 알 방법이 없다 — `trades` 0행, `first_buy_date` 전부 동일 상수."""
         record_candidate_run(_emitted(), "2026-08-19", db_path=db_path)
-        row = get_candidate_run("2026-08-19", db_path=db_path)["ledger"][0]
+        run = get_candidate_run("2026-08-19", db_path=db_path)
+        assert run is not None
+        row = run["ledger"][0]
         assert row["acted"] == 0 and row["acted_at"] is None
 
     def test_a_person_can_mark_it(self, db_path):
         record_candidate_run(_emitted(), "2026-08-19", db_path=db_path)
         assert mark_acted("2026-08-19", "ZZZZ", db_path=db_path) is True
-        row = get_candidate_run("2026-08-19", db_path=db_path)["ledger"][0]
+        run = get_candidate_run("2026-08-19", db_path=db_path)
+        assert run is not None
+        row = run["ledger"][0]
         assert row["acted"] == 1 and row["acted_at"]
 
     def test_rerunning_the_day_does_not_erase_it(self, db_path):
@@ -135,7 +142,9 @@ class TestActedIsManual:
         mark_acted("2026-08-19", "ZZZZ", db_path=db_path)
         record_candidate_run(_emitted(), "2026-08-19", db_path=db_path)
 
-        row = get_candidate_run("2026-08-19", db_path=db_path)["ledger"][0]
+        run = get_candidate_run("2026-08-19", db_path=db_path)
+        assert run is not None
+        row = run["ledger"][0]
         assert row["acted"] == 1, "재실행이 사람이 켠 체결 표시를 지웠다"
 
     def test_marking_an_unknown_ticker_reports_failure(self, db_path):
@@ -151,6 +160,7 @@ class TestOneRowPerDay:
 
         assert query("SELECT COUNT(*) c FROM candidate_runs", db_path=db_path)[0]["c"] == 1
         run = get_candidate_run("2026-08-19", db_path=db_path)
+        assert run is not None
         assert run["blocked_reason"] is None and run["n_emitted"] == 1
 
     def test_defaults_to_today(self, db_path):
