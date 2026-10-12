@@ -84,10 +84,10 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
 
     const nodeCopy = [
       PIPELINE.TITLE, // codex P3: 타이틀이 빠져 있어 하드코딩 복귀를 못 잡았다
-      PIPELINE.NODE_COLLECT, PIPELINE.NODE_VALIDATE, PIPELINE.NODE_CLASSIFY,
-      PIPELINE.NODE_DIAGNOSE, PIPELINE.NODE_RECOMMEND, PIPELINE.NODE_TRACK,
-      PIPELINE.NODE_COLLECT_SUB, PIPELINE.NODE_VALIDATE_SUB, PIPELINE.NODE_CLASSIFY_SUB,
-      PIPELINE.NODE_DIAGNOSE_SUB, PIPELINE.NODE_RECOMMEND_SUB, PIPELINE.NODE_TRACK_SUB,
+      PIPELINE.NODE_COLLECT, PIPELINE.NODE_ANALYZE, PIPELINE.NODE_CONSENSUS,
+      PIPELINE.NODE_DECIDE, PIPELINE.NODE_TRACK,
+      PIPELINE.NODE_COLLECT_SUB, PIPELINE.NODE_ANALYZE_SUB, PIPELINE.NODE_CONSENSUS_SUB,
+      PIPELINE.NODE_DECIDE_SUB, PIPELINE.NODE_TRACK_SUB,
     ];
 
     const pipeOffenders = nodeCopy.filter((v) => pipe.includes(`"${v}"`));
@@ -123,7 +123,7 @@ describe("사용자 카피는 strings.ts SSoT 를 거친다 (#1252)", () => {
     // 소비자에서 리터럴만 지우고 키를 안 만들면 위 두 검사는 통과한다 — 반대 방향도 본다.
     for (const [group, keys] of [
       [NAV, ["ROUTE_DASHBOARD", "ROUTE_REPORT", "SYSTEM_ONLINE"]],
-      [PIPELINE, ["TITLE", "RUN", "RUNNING", "NODE_COLLECT", "NODE_TRACK_SUB"]],
+      [PIPELINE, ["TITLE", "NODE_COLLECT", "NODE_DECIDE", "NODE_TRACK_SUB"]],
     ] as [Record<string, string>, string[]][]) {
       for (const k of keys) {
         expect(group[k], `${k} 키 부재`).toBeTruthy();

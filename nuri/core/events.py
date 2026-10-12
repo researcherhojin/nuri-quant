@@ -18,8 +18,8 @@ EVENT_TYPES = {
     "step_blocked",
     # warn_only 모드에서 의존성 미충족을 알리되 실행은 막지 않을 때 (#921).
     "step_dependency_warning",
-    # nuri/api/routes/pipeline.py 의 수동 실행 엔드포인트가 쓰는 레거시 철자.
-    # step_completed 와 같은 뜻 — 등재해 스키마를 정직하게 둔다 (#921).
+    # 대시보드 수동 실행 엔드포인트(#1778 에서 제거)가 쓰던 레거시 철자. 프로덕션에 그 행이
+    # 남아 있다. step_completed 와 같은 뜻 — 등재해 스키마를 정직하게 둔다 (#921).
     "step_success",
     "gate_evaluated",
     "regime_changed",
@@ -74,9 +74,8 @@ PIPELINE_STEPS = (
 # 스테이지 "상태"는 lifecycle 이벤트로만 판정해야 한다. 그렇지 않으면
 # get_step_status("recommend") 가 "holdings_monitor_run" 을 status 로 돌려주고,
 # 의존성 체크와 대시보드가 그걸 completed 가 아닌 값으로 읽는다.
-# `step_success` 는 `nuri/api/routes/pipeline.py` 의 수동 실행 엔드포인트가 남기는
-# 레거시 이름이다(같은 뜻, 다른 철자). 빼면 대시보드에서 수동 실행한 스테이지가
-# idle 로 보인다 — 프로덕션에 실제로 6행 있다.
+# `step_success` 는 대시보드 수동 실행 엔드포인트(#1778 에서 제거)가 남긴 레거시
+# 이름이다(같은 뜻, 다른 철자). 그 행이 프로덕션에 6행 남아 있어 읽기 쪽은 계속 받는다.
 _LIFECYCLE_EVENT_TYPES = (
     "step_started",
     "step_completed",

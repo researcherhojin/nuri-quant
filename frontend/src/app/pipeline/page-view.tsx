@@ -13,11 +13,8 @@ import {
 import "@xyflow/react/dist/style.css";
 import {
   BarChart3,
-  Bot,
   Check,
-  CheckCircle2,
   Circle,
-  ClipboardList,
   Cog,
   MapPin,
   Play,
@@ -28,7 +25,7 @@ import {
 import { ERRORS, PIPELINE as PL } from "@/lib/strings";
 import type { JsonValue } from "@/lib/types";
 import { summarizePayload } from "./helpers";
-import { isKeyOf, lookup } from "@/lib/utils";
+import { isKeyOf } from "@/lib/utils";
 
 // design-review F-005: 6노드 선형 DAG 가 피치 300(행폭 ~1,680px)로 캔버스에 fit 되며
 // 0.46배로 축소돼 기본 줌에서 노드 텍스트가 판독 불가였다 — 피치 축소로 fit 배율 회복.
@@ -83,9 +80,6 @@ type PipelineNodeData = {
   recordCount: number;
   lastUpdated: string | null;
   stepId: string;
-  onRun: (stepId: string) => void;
-  isRunning: boolean;
-  href?: string;
   error?: string | null;
 };
 
@@ -108,30 +102,16 @@ const STATUS_BORDER = {
 // lucide 의 LucideIcon 별칭은 TS6 JSX 에서 붕괴 사례가 있어 구체 타입(typeof Search)으로.
 type IconComponent = typeof Search;
 
-// 키 2계보: DEFAULT_NODES 어휘(validate/classify/diagnose/recommend) + 라이브 API 어휘
-// (analyze/consensus/decide — README 스테이지 표). 구 이모지 맵은 후자가 없어 라이브
-// 노드가 무아이콘이었다. 아이콘은 사이드바 아이덴티티와 일치 (Signals=BarChart3,
-// Agents=Users, Decision Engine=Cog).
+// 키는 라이브 API 의 5 스테이지 어휘 (README 스테이지 표, `nuri/core/events.PIPELINE_STEPS`).
+// 폴백 노드도 같은 어휘다 — 예전엔 폴백만 레거시 6-step 이라 키가 두 계보였다 (#1778).
+// 아이콘은 사이드바 아이덴티티와 일치 (Signals=BarChart3, Agents=Users, Decision Engine=Cog).
 const STEP_ICONS = {
   collect: Search,
-  validate: CheckCircle2,
-  classify: BarChart3,
-  diagnose: Bot,
-  recommend: ClipboardList,
   analyze: BarChart3,
   consensus: Users,
   decide: Cog,
   track: MapPin,
 } satisfies Record<string, IconComponent>;
-
-const STEP_LINKS = {
-  collect: "/engine",
-  validate: "/signals",
-  classify: "/strategy",
-  diagnose: "/consensus",
-  recommend: "/targets",
-  track: "/targets",
-} satisfies Record<string, string>;
 
 // 타임라인 이벤트 아이콘
 const EVENT_ICONS = {
@@ -234,25 +214,6 @@ export const PipelineNode = memo(({ data }: { data: PipelineNodeData }) => {
       <p className="text-[10px] text-muted-foreground">{data.sub}</p>
       <p className="text-[10px] text-faint mt-0.5">{formatAge(data.lastUpdated)}</p>
 
-      {/* 실행 버튼 */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-
-          if (!data.isRunning) data.onRun(data.stepId);
-        }}
-        disabled={data.isRunning}
-        className={`
-          mt-2 w-full text-[10px] font-medium py-1 rounded-md border transition-all
-          ${data.isRunning
-            ? "bg-blue-500/10 border-blue-500/20 text-blue-400 cursor-wait"
-            : "bg-muted/50 border-border hover:bg-muted hover:text-foreground text-muted-foreground cursor-pointer"
-          }
-        `}
-      >
-        {data.isRunning ? PL.RUNNING : PL.RUN}
-      </button>
-
       {/* 에러 표시 */}
       {data.status === "error" && (
         <p className="text-[9px] text-red-400/80 mt-1 line-clamp-2" title={String(data.error || "")}>
@@ -285,12 +246,13 @@ const EDGE_STROKE = "var(--input)";
 
 const CANVAS_DOT = "var(--border)";
 
+// 엣지 id 는 노드 id(= 스테이지 이름)를 잇는다. 레거시 6-step id 로 남아 있던 동안 라이브
+// 노드 사이에는 엣지가 하나도 그려지지 않았다 (#1778).
 const EDGES: Edge[] = [
-  { id: "e-collect-validate", source: "collect", target: "validate", animated: true, style: { stroke: EDGE_STROKE } },
-  { id: "e-validate-classify", source: "validate", target: "classify", animated: true, style: { stroke: EDGE_STROKE } },
-  { id: "e-classify-diagnose", source: "classify", target: "diagnose", animated: true, style: { stroke: EDGE_STROKE } },
-  { id: "e-diagnose-recommend", source: "diagnose", target: "recommend", animated: true, style: { stroke: EDGE_STROKE } },
-  { id: "e-recommend-track", source: "recommend", target: "track", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-collect-analyze", source: "collect", target: "analyze", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-analyze-consensus", source: "analyze", target: "consensus", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-consensus-decide", source: "consensus", target: "decide", animated: true, style: { stroke: EDGE_STROKE } },
+  { id: "e-decide-track", source: "decide", target: "track", animated: true, style: { stroke: EDGE_STROKE } },
 ];
 
 // === Fetch 3-state (#1250) ===
@@ -406,38 +368,6 @@ export default function PipelinePage() {
     return () => clearInterval(interval);
   }, [fetchStatus, fetchTimeline, fetchGates]);
 
-  // 스텝 실행
-  const handleRunStep = useCallback((stepId: string) => {
-    setRunningSteps((prev) => new Set([...prev, stepId]));
-
-    fetch(`/api/pipeline/${stepId}/run`, { method: "POST" })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.error) {
-          // 운영자 진단 컨텍스트라 원문을 유지하되, 무엇의 실패인지 한국어로 선행 (F-002)
-          alert(`${ERRORS.RUN_FAILED_PREFIX}${data.error}`);
-          setRunningSteps((prev) => {
-            const next = new Set(prev);
-            next.delete(stepId);
-
-            return next;
-          });
-        }
-
-        // 실행 시작 후 상태 새로고침
-        setTimeout(fetchStatus, 1000);
-        setTimeout(fetchTimeline, 1000);
-      })
-      .catch(() => {
-        setRunningSteps((prev) => {
-          const next = new Set(prev);
-          next.delete(stepId);
-
-          return next;
-        });
-      });
-  }, [fetchStatus, fetchTimeline]);
-
   // 스텝 상태 → 노드 status 변환
   const getNodeStatus = (step: PipelineStep): "ok" | "warning" | "error" | "running" => {
     if (step.status === "running" || runningSteps.has(step.step)) return "running";
@@ -463,19 +393,11 @@ export default function PipelinePage() {
           recordCount: s.record_count,
           lastUpdated: s.last_updated,
           stepId: s.step,
-          onRun: handleRunStep,
-          isRunning: runningSteps.has(s.step),
-          href: lookup(STEP_LINKS, s.step),
+          // API 가 준 실패 사유 — 빠져 있던 동안 에러 노드는 늘 "unknown error" 였다
+          error: s.error,
         } satisfies PipelineNodeData,
       }))
-    : DEFAULT_NODES.map((n) => ({
-        ...n,
-        data: {
-          ...n.data,
-          onRun: handleRunStep,
-          isRunning: false,
-        },
-      }));
+    : DEFAULT_NODES;
 
   const nodeTypes = useCallback(
     () => ({ pipeline: PipelineNode }),
@@ -570,7 +492,7 @@ export default function PipelinePage() {
             <p className="text-xs text-faint py-6 text-center">{PL.TIMELINE_LOADING}</p>
           ) : timeline.length === 0 ? (
             <p className="text-xs text-faint py-6 text-center">
-              {PL.NO_EVENTS} &mdash; {PL.RUN_STEP_HINT}
+              {PL.NO_EVENTS}
             </p>
           ) : (
             <div className="space-y-1.5 max-h-100 overflow-y-auto">
@@ -648,44 +570,18 @@ export default function PipelinePage() {
 }
 
 // === 기본 노드 (API 응답 전) ===
-// onRun·isRunning 은 렌더 시점에 붙는다 (아래 DEFAULT_NODES.map)
-type DefaultNodeData = Omit<PipelineNodeData, "onRun" | "isRunning">;
-
-const DEFAULT_NODES: Node[] = [
-  {
-    id: "collect",
-    type: "pipeline",
-    position: { x: 0, y: 80 },
-    data: { label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "collect", href: "/engine" } satisfies DefaultNodeData,
-  },
-  {
-    id: "validate",
-    type: "pipeline",
-    position: { x: 1 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_VALIDATE, sub: PL.NODE_VALIDATE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "validate", href: "/signals" } satisfies DefaultNodeData,
-  },
-  {
-    id: "classify",
-    type: "pipeline",
-    position: { x: 2 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_CLASSIFY, sub: PL.NODE_CLASSIFY_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "classify", href: "/strategy" } satisfies DefaultNodeData,
-  },
-  {
-    id: "diagnose",
-    type: "pipeline",
-    position: { x: 3 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_DIAGNOSE, sub: PL.NODE_DIAGNOSE_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "diagnose", href: "/consensus" } satisfies DefaultNodeData,
-  },
-  {
-    id: "recommend",
-    type: "pipeline",
-    position: { x: 4 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_RECOMMEND, sub: PL.NODE_RECOMMEND_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "recommend", href: "/targets" } satisfies DefaultNodeData,
-  },
-  {
-    id: "track",
-    type: "pipeline",
-    position: { x: 5 * NODE_PITCH_X, y: 80 },
-    data: { label: PL.NODE_TRACK, sub: PL.NODE_TRACK_SUB, status: "warning", recordCount: 0, lastUpdated: null, stepId: "track", href: "/targets" } satisfies DefaultNodeData,
-  },
+// 대시보드는 스테이지를 실행하지 않는다 — 실행은 스케줄러 몫이고, 노드는 상태만 보여준다 (#1778).
+const DEFAULT_STAGES = [
+  { stepId: "collect", label: PL.NODE_COLLECT, sub: PL.NODE_COLLECT_SUB },
+  { stepId: "analyze", label: PL.NODE_ANALYZE, sub: PL.NODE_ANALYZE_SUB },
+  { stepId: "consensus", label: PL.NODE_CONSENSUS, sub: PL.NODE_CONSENSUS_SUB },
+  { stepId: "decide", label: PL.NODE_DECIDE, sub: PL.NODE_DECIDE_SUB },
+  { stepId: "track", label: PL.NODE_TRACK, sub: PL.NODE_TRACK_SUB },
 ];
+
+const DEFAULT_NODES: Node[] = DEFAULT_STAGES.map((stage, i) => ({
+  id: stage.stepId,
+  type: "pipeline",
+  position: { x: i * NODE_PITCH_X, y: 80 },
+  data: { ...stage, status: "warning", recordCount: 0, lastUpdated: null } satisfies PipelineNodeData,
+}));

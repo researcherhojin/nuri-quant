@@ -432,11 +432,6 @@ class TestDashboardDeeper:
         assert "verdict" in data
         assert "regime" in data
 
-    def test_pipeline_run(self, client):
-        """POST /api/pipeline/{step}/run."""
-        r = client.post("/api/pipeline/collect/run")
-        assert r.status_code in (200, 202, 400, 404)
-
     def test_timeline(self, client):
         r = client.get("/api/pipeline/timeline")
         assert r.status_code == 200

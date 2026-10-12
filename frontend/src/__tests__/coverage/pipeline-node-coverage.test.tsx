@@ -10,7 +10,7 @@
  * intercepts at ReactFlow level).
  */
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import { PIPELINE as PL } from "@/lib/strings";
 import type { ComponentType, ReactNode } from "react";
 
@@ -92,11 +92,7 @@ describe("Pipeline — PipelineNode rendering", () => {
 
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
-      }
-
+    fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes("/api/pipeline/status")) {
         return Promise.resolve({ ok: true, json: () => Promise.resolve({ steps: stepsWithAllStatuses }) });
       }
@@ -140,30 +136,26 @@ describe("Pipeline — PipelineNode rendering", () => {
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
-    // Running node shows "실행 중..." and running indicator
-    await waitFor(() => {
-      const runningTexts = screen.queryAllByText(/실행 중/);
-      expect(runningTexts.length).toBeGreaterThanOrEqual(1);
-    });
+    // 폴링한 running 스텝 1개 → 카운터. /실행 중/ 정규식은 정적 범례에도 걸려 공허하다
+    await waitFor(() => expect(screen.getByText(`1${PL.RUNNING_SUFFIX}`)).toBeInTheDocument());
+    // 에러 노드는 API 가 준 사유를 보여준다 — 예전엔 error 를 넘기지 않아 늘 "unknown error" 였다
+    expect(screen.getByText("timeout: classify failed after 60s")).toBeInTheDocument();
+    expect(screen.queryByText("unknown error")).toBeNull();
   });
 
-  it("clicking run button on node triggers POST", async () => {
+  it("nodes carry no run button and the page never POSTs (#1778)", async () => {
     vi.resetModules();
     const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => { render(<PipelinePage />); });
     await act(async () => { await vi.advanceTimersByTimeAsync(300); });
 
-    // Find run buttons (실행)
-    const runButtons = screen.queryAllByText("실행");
+    // 노드가 실제로 렌더된 뒤에 본다 — 렌더 전이면 "버튼 0개" 가 공허하게 참이다
+    await waitFor(() => expect(screen.getByText("timeout: classify failed after 60s")).toBeInTheDocument());
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
 
-    if (runButtons.length > 0) {
-      await act(async () => { fireEvent.click(runButtons[0]); });
-      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
-
-      // POST should have been called
-      const postCalls = fetchMock.mock.calls.filter((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST");
-      expect(postCalls.length).toBeGreaterThanOrEqual(1);
-    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_500); });
+    const postCalls = fetchMock.mock.calls.filter((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST");
+    expect(postCalls).toHaveLength(0);
   });
 
   it("renders timeline with stderr, command, error, and JSON payloads", async () => {

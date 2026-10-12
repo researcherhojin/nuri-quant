@@ -278,7 +278,6 @@ Confidence scoring on the [manual research path](#manual-research-path) lives in
 Pipeline control APIs (`nuri/api/routes/pipeline.py` and `nuri/api/routes/pipeline_refresh.py`):
 
 - `GET /api/pipeline/status`: 5-stage lifecycle status and record counts; Decide also carries `execution_mode` and a separate latest-ledger `artifact` (date/count/status)
-- `POST /api/pipeline/{step}/run`: a legacy synchronous runner that does not go through `run_step()`. It accepts `collect` (not implemented), `validate` (signal backtest), `classify` (regime), `diagnose` (consensus without saving it), `recommend` (candidate screen) and `track` (recommendation outcomes), not the stage names
 - `GET /api/pipeline/timeline`: event log
 - `GET /api/freshness`: data freshness report
 - `GET /api/pipeline/refresh`: supported data-refresh jobs and process-local request state
@@ -307,9 +306,9 @@ and generated reports in `external_analysis`, and source registration in `config
 See [Ticker research and public briefings](RESEARCH_BRIEFING.md) for the v9 prompt, evidence checks,
 cache states and known limitations.
 
-## API (73 endpoints)
+## API (72 endpoints)
 
-`nuri/api/routes/` — 73 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across the route modules; `nuri/api/main.py` declares three more (`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). Several read routes compute live rather than project stored results: the regime, the macro score, `/api/opportunities` (it re-runs the BUY-candidate evaluation read-only) and the candidate screen.
+`nuri/api/routes/` — 72 REST endpoints on port 8001, counted from `@router.get/post/put/delete/patch` decorators across the route modules; `nuri/api/main.py` declares three more (`GET /`, `GET /api/health`, `POST /api/auth/token`). FastAPI's `/docs`, `/redoc`, `/openapi.json` and `/docs/oauth2-redirect` are excluded. Swagger UI is at `http://localhost:8001/docs`. Server-sent events are served at `/api/stream` (30s interval). Several read routes compute live rather than project stored results: the regime, the macro score, `/api/opportunities` (it re-runs the BUY-candidate evaluation read-only) and the candidate screen.
 
 ### Endpoints the Overview reads
 
@@ -480,7 +479,7 @@ data/
 
 ## Testing
 
-8,857 backend tests across 435 files (collection) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-11 executed 1,459 tests in 118 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,850 backend tests across 435 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the push-time slow shards (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

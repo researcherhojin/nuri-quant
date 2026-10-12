@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
-import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import { PIPELINE as PL, NAV } from "@/lib/strings";
 
 // Mock @xyflow/react
@@ -25,13 +25,13 @@ vi.mock("@/lib/api", () => ({
   fetchAPI: vi.fn(),
 }));
 
+// `GET /api/pipeline/status` 가 실제로 내보내는 5 스테이지 (nuri/core/events.PIPELINE_STEPS)
 const mockSteps = [
-  { step: "collect", label: "Collect", description: "15 collectors", record_count: 25000, last_updated: "2026-03-31T10:00:00", status: "done", started_at: null, error: null },
-  { step: "validate", label: "Validate", description: "Signal backtest", record_count: 150, last_updated: "2026-03-31T09:00:00", status: "done", started_at: null, error: null },
-  { step: "classify", label: "Classify", description: "6-regime classifier", record_count: 30, last_updated: "2026-03-31T08:00:00", status: "idle", started_at: null, error: null },
-  { step: "diagnose", label: "Diagnose", description: "10 agents consensus", record_count: 0, last_updated: null, status: "idle", started_at: null, error: null },
-  { step: "recommend", label: "Recommend", description: "Buy/sell candidates", record_count: 10, last_updated: "2026-03-30T12:00:00", status: "done", started_at: null, error: null },
-  { step: "track", label: "Track", description: "30/60/90d outcomes", record_count: 5, last_updated: "2026-03-30T12:00:00", status: "done", started_at: null, error: null },
+  { step: "collect", label: "Collect", description: "Collector jobs + external sources", record_count: 25000, last_updated: "2026-03-31T10:00:00", status: "done", started_at: null, error: null },
+  { step: "analyze", label: "Analyze", description: "Factor composite", record_count: 150, last_updated: "2026-03-31T09:00:00", status: "done", started_at: null, error: null },
+  { step: "consensus", label: "Consensus", description: "10 agents weighted vote", record_count: 30, last_updated: "2026-03-31T08:00:00", status: "idle", started_at: null, error: null },
+  { step: "decide", label: "Decide", description: "Decision record (in-memory hand-off)", record_count: 0, last_updated: null, status: "idle", started_at: null, error: null },
+  { step: "track", label: "Track", description: "7–90d outcomes + alpha", record_count: 5, last_updated: "2026-03-30T12:00:00", status: "done", started_at: null, error: null },
 ];
 
 const mockTimeline = [
@@ -83,10 +83,6 @@ describe("PipelinePage", () => {
         return Promise.resolve({ ok: true, json: () => Promise.resolve(mockGates) });
       }
 
-      if (url.includes("/api/pipeline/") && url.includes("/run")) {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) });
-      }
-
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -113,23 +109,23 @@ describe("PipelinePage", () => {
     expect(screen.getByTestId("react-flow")).toBeInTheDocument();
   });
 
-  it("renders 6 pipeline nodes from API data", async () => {
+  it("renders the five stage nodes from API data", async () => {
     const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
     // Wait for fetch to complete
     await waitFor(() => {
-      expect(screen.getByTestId("flow-nodes")).toHaveTextContent("6 nodes");
+      expect(screen.getByTestId("flow-nodes")).toHaveTextContent("5 nodes");
     });
   });
 
-  it("renders 5 edges connecting nodes", async () => {
+  it("renders 4 edges chaining the five stages", async () => {
     const PipelinePage = (await import("@/app/pipeline/page-view")).default;
     await act(async () => {
       render(<PipelinePage />);
     });
-    expect(screen.getByTestId("flow-edges")).toHaveTextContent("5 edges");
+    expect(screen.getByTestId("flow-edges")).toHaveTextContent("4 edges");
   });
 
   it("renders status legend", async () => {
@@ -173,9 +169,11 @@ describe("PipelinePage", () => {
       render(<PipelinePage />);
     });
 
+    // 대시보드는 스테이지를 실행하지 않으므로 "실행하세요" 안내도 없다 (#1778)
     await waitFor(() => {
-      expect(screen.getByText(/파이프라인 스텝을 실행하세요/)).toBeInTheDocument();
+      expect(screen.getByText(PL.NO_EVENTS)).toBeInTheDocument();
     });
+    expect(screen.queryByText(/실행하세요/)).toBeNull();
   });
 
   it("renders gate conditions section", async () => {
@@ -210,8 +208,8 @@ describe("PipelinePage", () => {
       render(<PipelinePage />);
     });
 
-    // Default nodes have 6 entries
-    expect(screen.getByTestId("flow-nodes")).toHaveTextContent("6 nodes");
+    // 폴백 노드도 라이브와 같은 5 스테이지다
+    expect(screen.getByTestId("flow-nodes")).toHaveTextContent("5 nodes");
   });
 
   it("fetches pipeline status on mount", async () => {
@@ -225,24 +223,6 @@ describe("PipelinePage", () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/gate"));
   });
 
-  it("handles step run button click", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const PipelinePage = (await import("@/app/pipeline/page-view")).default;
-    await act(async () => {
-      render(<PipelinePage />);
-    });
-
-    // Look for any Run button in the pipeline
-    await waitFor(() => {
-      const buttons = screen.queryAllByText(/Run|실행/);
-
-      if (buttons.length > 0) {
-        fireEvent.click(buttons[0]);
-      }
-    });
-    vi.useRealTimers();
-  });
-
   it("handles fetch error gracefully", async () => {
     fetchMock.mockRejectedValue(new Error("network error"));
     const PipelinePage = (await import("@/app/pipeline/page-view")).default;
@@ -254,11 +234,7 @@ describe("PipelinePage", () => {
   });
 
   it("renders gate conditions when available", async () => {
-    fetchMock.mockImplementation((url: string, opts?: RequestInit) => {
-      if (opts?.method === "POST") {
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "started" }) });
-      }
-
+    fetchMock.mockImplementation((url: string) => {
       if (url.includes("/api/gate")) {
         return Promise.resolve({
           ok: true,

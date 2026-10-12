@@ -1,20 +1,22 @@
-"""Pipeline API — 파이프라인 상태 조회 + 스텝 실행."""
+"""Pipeline API — 파이프라인 상태·타임라인·신선도 조회 (읽기 전용).
+
+스테이지는 스케줄러만 실행한다. 대시보드의 실행 엔드포인트(`POST /pipeline/{step}/run`)는
+#1778 에서 뺐다 — 레거시 6-step 이름만 받아 라이브 스테이지 셋은 400 이었고, collect 는
+아무것도 안 하고 성공 이벤트를 남겼다. 실제 잡을 붙이면 같은 날 재실행이 그날의
+recommendations·decisions 행을 덮어쓴다.
+"""
 
 import logging
-import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from fastapi import APIRouter, HTTPException, Query
 
-from nuri.api.limits import heavy_slot
 from nuri.core.db import DatabaseError, query
 from nuri.core.timezone import sqlite_utc_to_kst_iso
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["pipeline"])
-_limiter = Limiter(key_func=get_remote_address)
 
+# 타임라인 `?step=` 필터의 어휘 — 레거시 6-step 이라 이벤트 어휘와 다르다 (#1785).
 VALID_STEPS = ("collect", "validate", "classify", "diagnose", "recommend", "track")
 
 # Frontend PipelineStep presentation (frontend/src/app/pipeline/page.tsx expects this shape).
@@ -35,8 +37,8 @@ _STEP_DESCRIPTIONS = {
 }
 # core event status -> frontend PipelineStep.status enum (idle|running|done|error).
 # Robust to both vocabularies: canonical EVENT_TYPES (step_completed/...) and the
-# legacy "step_success" emitted by run_pipeline_step + seeds (event-schema drift,
-# normalized at the emit site separately).
+# legacy "step_success" left by the run endpoint removed in #1778 and by seeds
+# (event-schema drift, normalized at the emit site separately).
 _UI_STATUS = {
     "step_started": "running",
     "running": "running",
@@ -162,70 +164,9 @@ def get_pipeline_timeline(
     return {"events": events}
 
 
-@router.post("/pipeline/{step}/run", dependencies=[Depends(heavy_slot)])
-@_limiter.limit("2/minute")
-def run_pipeline_step(step: str, request: Request):
-    """특정 파이프라인 스텝 실행 (동기)."""
-    if step not in VALID_STEPS:
-        raise HTTPException(status_code=400, detail=f"Invalid step: {step}. Valid: {', '.join(VALID_STEPS)}")
-
-    from nuri.core.events import emit_event
-
-    start = time.time()
-    emit_event("step_started", step=step)
-
-    try:
-        detail = _execute_step(step)
-        duration_ms = int((time.time() - start) * 1000)
-        emit_event("step_success", step=step, duration_ms=duration_ms, payload={"detail": detail})
-        return {"status": "success", "duration_ms": duration_ms, "detail": detail}
-    except Exception:
-        # Log full exception (incl. stack) server-side, return generic detail to client
-        # to avoid leaking internals (CodeQL py/stack-trace-exposure). The pipeline event
-        # journal still records the failure for operator audit.
-        duration_ms = int((time.time() - start) * 1000)
-        logger.exception("pipeline step %s failed", step)
-        emit_event("step_failed", step=step, duration_ms=duration_ms, payload={"error": "step execution failed"})
-        return {"status": "failed", "duration_ms": duration_ms, "detail": f"step '{step}' execution failed"}
-
-
 @router.get("/freshness")
 def get_freshness():
     """전체 데이터 신선도 조회."""
     from nuri.core.freshness import get_freshness_summary
 
     return get_freshness_summary()
-
-
-def _execute_step(step: str) -> str:
-    """스텝별 실행 함수 매핑."""
-    if step == "collect":
-        return "not_implemented: collect requires individual collector runs"
-    elif step == "validate":
-        from nuri.quant.validation.signal_backtest import backtest_signals
-
-        result = backtest_signals()
-        return f"signal_backtest: {len(result) if result else 0} signals"
-    elif step == "classify":
-        from nuri.quant.regime.classifier import classify_regime
-
-        r = classify_regime()
-        if r:
-            return f"regime={r.regime}, trend={r.trend}, confidence={r.confidence:.0%}"
-        return "regime=unknown (데이터 부족)"
-    elif step == "diagnose":
-        from nuri.trading.agents.consensus import analyze_portfolio
-
-        results = analyze_portfolio()
-        return f"consensus: {len(results)} tickers analyzed"
-    elif step == "recommend":
-        from nuri.trading.recommend.candidates import screen_candidates
-
-        candidates = screen_candidates()
-        return f"candidates: {len(candidates)} found"
-    elif step == "track":
-        from nuri.trading.recommend.tracker import track_outcomes
-
-        tracked = track_outcomes()
-        return f"tracked: {tracked} recommendations updated"
-    return "unknown step"
