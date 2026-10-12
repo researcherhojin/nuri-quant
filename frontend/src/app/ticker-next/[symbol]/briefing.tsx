@@ -22,7 +22,8 @@ export function Briefing({ data, symbol }: { data: TickerReview; symbol: string 
   const business = dossier?.business;
   const fund = isFund(data);
   const newsCheck = dossier?.news_check;
-  const news = newsCheck ? dossier?.news ?? research?.news ?? [] : [];
+  // news_check 는 research 안에 있으니 research 는 늘 있다 — 타입을 좁히려고 함께 본다
+  const news = newsCheck && research ? dossier?.news ?? research.news : [];
   const statement = dossier?.statements;
   const income = statement?.income[0];
   const previous = statement?.income[1];

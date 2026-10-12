@@ -34,7 +34,8 @@ export function PortfolioPanel({ portfolio, exchangeRate }: { portfolio: Portfol
           <svg viewBox="0 0 140 140" role="img" aria-label={chartAria}>
             <circle cx="70" cy="70" r="56" fill="none" stroke="var(--line)" strokeWidth="13" />
             {total != null && total > 0 && rows.map((row, i) => {
-              const offset = rows.slice(0, i).reduce((sum, item) => sum + (item.weight ?? 0), 0);
+              // total > 0 이면 summarizePortfolio 가 모든 행의 weight 를 채운다 — 0 은 타입용 fallback
+              const offset = rows.slice(0, i).reduce((sum, item) => sum + (item.weight != null ? item.weight : /* v8 ignore next */ 0), 0);
 
               return row.weight != null && row.weight > 0 ? (
                 <circle key={row.key} cx="70" cy="70" r="56" fill="none" stroke={segmentColor(i)} strokeWidth="13" pathLength="100" strokeDasharray={`${row.weight} ${100 - row.weight}`} strokeDashoffset={-offset} transform="rotate(-90 70 70)">
