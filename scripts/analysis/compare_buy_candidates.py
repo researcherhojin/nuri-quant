@@ -38,7 +38,7 @@ def fetch_current(ticker: str, as_of: str | None) -> tuple[float, str]:
         h = yf.Ticker(ticker).history(period="2d", interval="1d")
     if h.empty:
         return 0.0, ""
-    return float(h["Close"].iloc[-1]), h.index[-1].strftime("%Y-%m-%d")
+    return float(h["Close"].iloc[-1]), h.index.to_list()[-1].strftime("%Y-%m-%d")
 
 
 def main() -> None:

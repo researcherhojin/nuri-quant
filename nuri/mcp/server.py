@@ -24,12 +24,13 @@ from nuri.mcp import readmodels, source
 server = MCPServer(
     "nuri-read",
     instructions=(
-        "nuri-quant 시스템 산출물의 비민감(Tier 1) read model. 매매 판단 질문에는 "
-        "추측 대신 이 도구들을 조회할 것. 먼저 data_freshness 로 출처와 신선도를 확인하고, "
-        "stale 이면 결과를 현재 상태로 제시하지 말고 그 사실과 최신 시각을 함께 밝힐 것. "
-        "현재가가 필요하면 저장된 T-1 가격 대신 live_quote 로 직접 조회할 것. "
-        "보유 수량·평단·계좌 정보는 설계상 존재하지 않는다 (Tier 2 별도 이슈). 응답을 "
-        "public 매체(이슈·PR 등)에 옮길 때는 레포 privacy 규칙(ticker+손익% 조합 금지)을 적용할 것."
+        "Non-sensitive (Tier 1) read model of nuri-quant's own outputs. For trading-decision "
+        "questions, query these tools instead of guessing. Call data_freshness first to see the "
+        "source and its freshness; if it is stale, do not present results as current — say so and "
+        "give the latest timestamp. When a current price is needed, use live_quote instead of the "
+        "stored T-1 price. Holding quantities, average costs and account details do not exist here "
+        "by design (Tier 2 is a separate issue). When copying an answer into a public medium "
+        "(issues, PRs), apply the repository privacy rules (no ticker + PnL % combinations)."
     ),
 )
 
