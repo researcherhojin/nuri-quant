@@ -406,47 +406,6 @@ def compute_agent_accuracy(db_path=None) -> dict:
     return result
 
 
-def save_agent_accuracy_snapshot(db_path=None) -> int:
-    """에이전트 적중률을 strategy_memory 테이블에 스냅샷 저장.
-
-    signal_id = "agent_{name}_accuracy", regime = "all", period = "all_time".
-    UNIQUE(snapshot_date, signal_id, regime, period)로 멱등.
-    """
-    from nuri.core.db import get_db
-    from nuri.core.timezone import today_kst
-
-    accuracy = compute_agent_accuracy(db_path=db_path)
-    if not accuracy:
-        return 0
-
-    today = today_kst()
-    records = []
-    for name, stats in accuracy.items():
-        records.append(
-            {
-                "snapshot_date": today,
-                "signal_id": f"agent_{name}_accuracy",
-                "regime": "all",
-                "period": "all_time",
-                "trades": stats["total"],
-                "win_rate": stats["hit_rate"],
-                "profit_factor": stats["weight_adjustment"],  # weight_adjustment 저장
-                "avg_return": 0.0,
-            }
-        )
-
-    with get_db(db_path) as conn:
-        conn.executemany(
-            """INSERT OR REPLACE INTO strategy_memory
-               (snapshot_date, signal_id, regime, period, trades, win_rate, profit_factor, avg_return)
-               VALUES (:snapshot_date, :signal_id, :regime, :period, :trades, :win_rate, :profit_factor, :avg_return)""",
-            records,
-        )
-
-    logger.info(f"에이전트 적중률 스냅샷 {len(records)}건 저장")
-    return len(records)
-
-
 def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
     """가격 타겟 조회. price_targets 모듈 사용."""
     if entry_price <= 0:
@@ -460,7 +419,7 @@ def _get_price_targets(ticker: str, entry_price: float, db_path=None) -> dict:
 
 
 def main(argv: list[str] | None = None, db_path=None) -> int:
-    """CLI entry point — track P&L, compute agent accuracy, snapshot, or summary.
+    """CLI entry point — track P&L, compute agent accuracy, or print a summary.
 
     Args:
         argv: command-line arguments (None → sys.argv[1:])
@@ -478,7 +437,6 @@ def main(argv: list[str] | None = None, db_path=None) -> int:
     parser = argparse.ArgumentParser(description="Nuri-Quant Decision Intelligence")
     parser.add_argument("--track", action="store_true", help="P&L 추적 (7/30/60/90일)")
     parser.add_argument("--accuracy", action="store_true", help="에이전트 적중률 계산")
-    parser.add_argument("--snapshot", action="store_true", help="적중률 스냅샷 저장 (strategy_memory)")
     parser.add_argument("--summary", action="store_true", help="의사결정 요약")
     args = parser.parse_args(argv)
 
@@ -488,7 +446,7 @@ def main(argv: list[str] | None = None, db_path=None) -> int:
         updated = track_decision_outcomes(db_path=db_path)
         print(f"P&L 추적 업데이트: {updated}건")
 
-    if args.accuracy or args.snapshot:
+    if args.accuracy:
         acc = compute_agent_accuracy(db_path=db_path)
         if acc:
             print(f"\n{'=' * 60}")
@@ -504,10 +462,6 @@ def main(argv: list[str] | None = None, db_path=None) -> int:
             print()
         else:
             print("완료된 decisions 없음 (outcome = success/failure 필요)")
-
-        if args.snapshot and acc:
-            n = save_agent_accuracy_snapshot(db_path=db_path)
-            print(f"스냅샷 {n}건 저장 (strategy_memory)")
 
     if args.summary:
         summary = get_decision_summary(db_path=db_path)

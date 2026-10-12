@@ -44,7 +44,7 @@ Past failure modes (archived 2026-04-17):
 
 - The win_rate=0.5, pf=1.0 fallback at `candidates.py:203` emitted at confidence ~45 (removed in B-2)
 - A bug that measured SELL signals in the reverse direction made all of them PF>1 (the B-1 sign-flip fix revealed 0.52–0.60; B-2-ext classifies them as avoid automatically)
-- Learning Memory warming up: recommendations.agent_verdicts has accumulated 144 rows; strategy_memory snapshots are created after outcome_30d is filled → first weight drift expected ~2026-05-17 (TODO.md Tier 1 row 20). Until then, DEFAULT_WEIGHTS is static.
+- Learning Memory warming up: recommendations.agent_verdicts has accumulated 144 rows; the weights read recommendations.outcome_30d, so the first weight drift is expected ~2026-05-17 (TODO.md Tier 1 row 20). Until then, DEFAULT_WEIGHTS is static.
 
 ### 2.2 Mechanical execution
 
@@ -408,7 +408,7 @@ Check these before opening a PR.
 
 | Item | Standard | Current |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 8,866 tests, 435 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 8,857 tests, 435 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | target ≥ 90% | 1,459 tests, 118 files (2026-10-11 full run, including the stock-detail preview coverage additions) |
 | E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |

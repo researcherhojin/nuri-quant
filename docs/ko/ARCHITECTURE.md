@@ -57,7 +57,7 @@ flowchart LR
 | 4 | **Decide** | consensus job 내부: `record_decisions()` 가 결과를 메모리로 받는다 | consensus 결과; `pipeline_events` (기록된 regime 변경이 있으면); regime · macro score · price target helper 를 거쳐 읽는 `macro`, `macro_events`, `prices`, `fundamentals`, `estimates`, `portfolio` | `decisions`, `decision_evidence` |
 | 5 | **BUY candidates** | `premarket_brief` job | 최신 `factors` snapshot, `prices`, `signals`, `portfolio` (보유 종목은 제외), `pipeline_events` (재발행 cooldown), `theses` (라벨), VIX 와 regime 입력 | `recommendations` (`source='buy_candidate_emitter'`), `candidate_runs`, `candidate_ledger` |
 | 6 | **Deliver** | brief job, outbox dispatcher, API, MCP server | `recommendations`, `decisions`, `macro`, `candidate_runs` 등 | Discord 메시지, `discord_outbox`, `market_postmortem` |
-| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy`; `alpha_report` (ledger 를 봉인하는 operate job) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory`, `recommendation_seals` |
+| 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`; `alpha_report` (ledger 를 봉인하는 operate job) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `recommendation_seals` |
 | 8 | **Learn** | 다음 consensus 실행 | `agent_verdicts` 와 함께 `recommendations.outcome_30d` (잠정값 `outcome_21d`) | 그 실행의 agent 가중치. 실행마다 다시 계산되며 `recommendations` 와 `decisions` 의 `scoring_detail` 에 보관된다 |
 
 **Collect.** collector 는 각자의 스케줄에 따라 외부 API 를 읽고 각각 테이블 하나에 쓴다(여러 테이블에 쓰는 것도 있다). `technical` collector 는 `prices` 로부터 TA-Lib 지표를 계산한다. 운영자는 `config/portfolio.yaml` 에서 보유 종목을 가져오거나(`scripts/ops/import_portfolio.py`, `make setup` 이 실행하거나 수동으로 실행) portfolio API 로 수정한다. 데이터베이스 trigger 가 모든 insert 와 delete, 그리고 수량·계좌·ticker 를 바꾸는 모든 update 를 `portfolio_changes` 에 기록한다.
@@ -142,7 +142,7 @@ flowchart TB
 | **Analyze** | job 1개: `10 8 * * *` 에 `factors` | `prices`, `signals`, `fundamentals`, `macro` | `factors` |
 | **Consensus** | job 1개: `5 7 * * *` 에 `consensus` | `portfolio`, collector 테이블, `recommendations.outcome_30d` / `outcome_21d` (가중치용) | `agent_verdicts` 가 담긴 `recommendations` |
 | **Decide** | 전용 job 없음. `record_decisions()` 가 consensus job 안에서 실행된다(위 참조) | 메모리로 넘겨받은 consensus 결과; [시스템 흐름](#시스템-흐름)에 나열한 시장 맥락 테이블 | `decisions`, `decision_evidence` |
-| **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`, `agent_accuracy` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `strategy_memory` |
+| **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking` | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict` |
 
 스테이지 디렉터리는 `nuri/collectors`, `nuri/analysis`, `nuri/trading/agents`, `nuri/trading/engine`, `nuri/trading/recommend` 다. 이 경계를 넘는 import 는 함수 본문 안에서만 허용되고 module level 에서는 절대 허용되지 않으며, 하나하나 이유와 함께 allowlist 에 등재돼야 한다. `tests/core/test_cross_stage_imports.py` 가 이를 양방향으로 강제한다.
 
@@ -324,7 +324,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 
 ## Scheduler
 
-`nuri/scheduler.py` 는 59 cron jobs in the `SCHEDULES` list 를 정의하고, 여기에 1분 간격 `heartbeat` interval job 이 하나 더 있다. 시각은 호스트 로컬 시간이며(production 호스트에서는 KST), job 이 자기 timezone 을 지정한 경우만 다르다(`premarket_brief` 는 `US/Eastern` 으로 실행된다). collector import 는 import 시점의 부작용을 피하려고 `_dispatch_collector()` 안으로 지연된다. job 의 pipeline 스테이지는 `_STAGE_OF_JOB` 에서 오며, 스테이지가 지정된 job 만 lifecycle event 를 기록한다. cron job 은 5분의 misfire grace 를 허용하며, 프로세스가 내려가 있는 동안 놓친 실행 시각은 나중에 실행되지 않는다. 매일 도는 `self_restart` job(08:40 KST)은 누수된 yfinance file descriptor 를 회수하려고 프로세스를 재기동한다. 주간 `prune_reports` job(일요일 03:30 KST)은 30일보다 오래된 `data/reports/` 날짜 디렉터리를 지운다. 단, 가장 최신 디렉터리, 소비되는 산출물(`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — 이들은 수동 `make validate` / `make full-scan` 으로만 다시 생성된다)마다 그것을 담은 가장 최신 디렉터리, 그리고 날짜가 아닌 하위 디렉터리는 남긴다(#1654). `stock_us_freshness` job(06:10 과 06:40 KST, 화요일부터 토요일까지)은 SPY 측정 benchmark 와 `freshness_tickers` 를 최신으로 유지한다(§3.11).
+`nuri/scheduler.py` 는 58 cron jobs in the `SCHEDULES` list 를 정의하고, 여기에 1분 간격 `heartbeat` interval job 이 하나 더 있다. 시각은 호스트 로컬 시간이며(production 호스트에서는 KST), job 이 자기 timezone 을 지정한 경우만 다르다(`premarket_brief` 는 `US/Eastern` 으로 실행된다). collector import 는 import 시점의 부작용을 피하려고 `_dispatch_collector()` 안으로 지연된다. job 의 pipeline 스테이지는 `_STAGE_OF_JOB` 에서 오며, 스테이지가 지정된 job 만 lifecycle event 를 기록한다. cron job 은 5분의 misfire grace 를 허용하며, 프로세스가 내려가 있는 동안 놓친 실행 시각은 나중에 실행되지 않는다. 매일 도는 `self_restart` job(08:40 KST)은 누수된 yfinance file descriptor 를 회수하려고 프로세스를 재기동한다. 주간 `prune_reports` job(일요일 03:30 KST)은 30일보다 오래된 `data/reports/` 날짜 디렉터리를 지운다. 단, 가장 최신 디렉터리, 소비되는 산출물(`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — 이들은 수동 `make validate` / `make full-scan` 으로만 다시 생성된다)마다 그것을 담은 가장 최신 디렉터리, 그리고 날짜가 아닌 하위 디렉터리는 남긴다(#1654). `stock_us_freshness` job(06:10 과 06:40 KST, 화요일부터 토요일까지)은 SPY 측정 benchmark 와 `freshness_tickers` 를 최신으로 유지한다(§3.11).
 
 ## 환경 변수
 
@@ -388,7 +388,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 | `decision_outcomes` | forward-outcome ledger: 7/14/30일 시점의 실현 수익률, benchmark 수익률, alpha, hit threshold |
 | `positions` | Long/Short 전략 position |
 | `swing_trades` | 시장 전반 swing trade position |
-| `strategy_memory` | 날짜당 한 세트의 snapshot: 최신 `signal_results.csv` 기반 시그널 성과(주간 `memory_snapshot`)와 agent 별 정확도(주간 `agent_accuracy`) |
+| `strategy_memory` | 날짜당 한 세트의 snapshot: 최신 `signal_results.csv` 기반 시그널 성과(주간 `memory_snapshot`). regime 이 `all` 인 `agent_<name>_accuracy` 행은 #1772 에서 은퇴한 주간 job 이 남긴 이력이다 |
 | `analyst_ratings` | upgrade/downgrade 이력 |
 | `earnings_surprises` | EPS 실제치 vs 추정치 |
 | `insider_trades` | 내부자 매수/매도 거래 |
@@ -411,7 +411,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 셋이 공존하는 이유:
 
 - `recommendations` 는 사용자에게 보이는 계약이다. 그 형식이 깨지면 안 된다.
-- `decisions` 는 리서치 데이터셋이다. 결정마다 전체 맥락을 보관하며, 그 `agent_verdicts` 와 `outcome` 이 주간 agent 정확도 snapshot 에 들어간다.
+- `decisions` 는 리서치 데이터셋이다. 결정마다 전체 맥락을 보관한다. `python -m nuri.trading.engine.decisions --accuracy` 가 그 `agent_verdicts` 를 실현된 90일 수익률(`pnl_90d`)로 필요할 때 채점하며, 결과를 저장하는 곳은 없다.
 - `agent_decisions` 는 forward-outcome ledger 의 기준점이다. #529 closed-loop 검증을 위해 `decision_id` 가 `decision_outcomes` 와 join 되며, 그 경로가 실행될 때는 같은 schema 가 DecisionCompiler 의 감사된 state machine 을 담을 수 있다.
 
 `decisions` 와 `agent_decisions` 가 겹치는 것은 의도된 것이다. 어느 하나를 없애면 리서치 표현력이나 outcome ledger 의 기준점을 잃는다.
@@ -480,7 +480,7 @@ data/
 
 ## 테스트
 
-8,866 backend tests across 435 files (collection 기준) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-11 의 frontend 전체 실행은 파일 118개에서 테스트 1,459개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+8,857 backend tests across 435 files (collection 기준) + frontend vitest (118 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-11 의 frontend 전체 실행은 파일 118개에서 테스트 1,459개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 push 시점의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 

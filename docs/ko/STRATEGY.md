@@ -44,7 +44,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 - `candidates.py:203` win_rate=0.5, pf=1.0 폴백이 confidence ~45 로 emit (B-2 에서 제거)
 - SELL 시그널 역방향 측정 bug 로 모두 PF>1 (B-1 sign-flip fix 후 0.52–0.60 로 드러남, B-2-ext 에서 avoid 자동 분류)
-- Learning Memory warming up: recommendations.agent_verdicts 144 rows 누적, strategy_memory 스냅샷은 outcome_30d 채워진 후 생성 → 첫 weight drift ~2026-05-17 예상 (TODO.md Tier 1 row 20). 그 전까지 DEFAULT_WEIGHTS 정적.
+- Learning Memory warming up: recommendations.agent_verdicts 144 rows 누적, 가중치는 recommendations.outcome_30d 를 읽으므로 첫 weight drift ~2026-05-17 예상 (TODO.md Tier 1 row 20). 그 전까지 DEFAULT_WEIGHTS 정적.
 
 ### 2.2 기계적 실행 (Mechanical execution)
 
@@ -408,7 +408,7 @@ PR 전에 확인한다.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,866 tests, 435 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 8,857 tests, 435 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | 목표 ≥ 90% | 1,459 tests, 118 files (2026-10-11 전체 실행, 종목 상세 미리보기 커버리지 보강 반영) |
 | E2E | 핵심 flow | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | 필수 | lint + test + coverage + security + privacy |

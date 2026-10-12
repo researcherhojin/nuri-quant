@@ -113,8 +113,8 @@ REGIME_COLUMN_VOCABULARY: dict[str, dict] = {
     },
     "strategy_memory.regime": {
         "vocab": "OUT_OF_VOCAB",
-        "reason": "'all' 집계 sentinel (engine/decisions.py save_agent_accuracy_snapshot) — "
-        "agent accuracy 행은 전 레짐 집계라 UNIQUE 키의 일부로 'all' 을 쓰고, 기간 rollup "
+        "reason": "'all' 집계 sentinel — 은퇴한 주간 agent_accuracy 잡(#1772)이 남긴 이력 행이 "
+        "전 레짐 집계라 UNIQUE 키의 일부로 'all' 을 쓴다(지금 쓰는 곳은 없다). 기간 rollup "
         "은 NULL, per-regime 행만 base regime 을 쓴다 (#1311 추적)",
     },
 }

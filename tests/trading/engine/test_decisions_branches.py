@@ -202,6 +202,6 @@ class TestGetPriceTargets:
 
 # ─────── CLI block (lines 382-418) ────────────────────────────────────
 # `if __name__ == "__main__":` — runpy-mocking known broken (tests/CLAUDE.md
-# "runpy + mock"); each branch (`--track` / `--accuracy` / `--snapshot` / `--summary`)
+# "runpy + mock"); each branch (`--track` / `--accuracy` / `--summary`)
 # delegates to a function fully covered by the unit tests above. Documented as
 # unreachable via in-process patching; coverage gap accepted.
