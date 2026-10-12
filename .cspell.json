@@ -719,6 +719,7 @@
     "pykrx",
     "pylint",
     "pyproject",
+    "pyrightconfig",
     "pytest",
     "pytestmark",
     "pywin",

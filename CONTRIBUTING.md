@@ -50,7 +50,7 @@ Branch protection on `main` requires these 14 checks (authoritative list:
 | Check | What it enforces |
 |-------|------------------|
 | Backend Tests | pytest across fast and slow shards (a separate, non-required job aggregates coverage for Codecov) |
-| Backend Lint | `ruff check` |
+| Backend Lint | `ruff check`, and `pyright` with zero errors (version pinned) |
 | Frontend Tests / Frontend Lint / Frontend Build | vitest, eslint, `next build` |
 | Shell Lint | shellcheck |
 | Privacy Leak Scan | `check_privacy_leak.py` on the checked-out tree |

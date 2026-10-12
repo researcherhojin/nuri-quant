@@ -568,7 +568,7 @@ def _generate_llamacpp(prompt: str) -> str:
     if not LLAMA_MODEL_PATH:
         return ""
     try:
-        from llama_cpp import Llama
+        from llama_cpp import Llama  # pyright: ignore[reportMissingImports]  # CI venv 에는 local-llm extra 가 없다
 
         llm = Llama(model_path=LLAMA_MODEL_PATH, n_ctx=4096, n_gpu_layers=-1, verbose=False)
         # stream=False (default) returns dict; the overloaded signature can

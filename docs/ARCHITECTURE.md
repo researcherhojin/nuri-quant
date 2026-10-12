@@ -479,7 +479,7 @@ data/
 
 ## Testing
 
-8,883 backend tests across 438 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+8,888 backend tests across 439 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the slow shards of `main` runs, push or the catch-up's dispatch (#1812) (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 
@@ -519,7 +519,7 @@ If a count disagrees with this document, fix the document.
 
 On push and pull request to `main`. A `Detect Changes` job decides which areas a pull request touches; the jobs for untouched areas fast-pass so their required checks still report. The required set is defined by branch protection; `.claude/rules/enforcement.md` describes it.
 
-1. **Lint**: `ruff check nuri/ tests/ scripts/` (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
+1. **Lint**: `ruff check nuri/ tests/ scripts/` + `pyright` with zero errors (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
 2. **Test**: pytest with xdist in a fast-shard matrix, plus 2 slow shards that run on every `main` run, push or dispatch, never on PRs (shard counts are defined in `main-ci-cd.yml`); `Backend Tests` aggregates them and `Backend Tests · Coverage Aggregate` combines their coverage. TA-Lib is cached. Dependencies are installed with `uv sync --frozen --extra dev`; the `local-llm` extra is excluded on purpose (#1406, sdist compile). A separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once — on a PR only when `pyproject.toml`, `uv.lock` or `main-ci-cd.yml` changes, and on every non-PR run (push to main, manual dispatch). Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the latest runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).
 3. **Frontend**: `tsc --noEmit` + vitest with coverage (`Frontend Tests`), the production build (`Frontend Build`); Playwright E2E runs in the `Frontend E2E` job, which is not a required check
 4. **Patch Coverage**: recomputes the `codecov.yml` patch target from the frontend lcov, the combined backend coverage and the pull-request diff (#1766)

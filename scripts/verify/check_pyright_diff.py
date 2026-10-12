@@ -40,6 +40,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: diff 기준점 후보. 앞에서부터 해석되는 첫 번째를 쓴다 — clone 상태에 따라 origin/main 이
 #: 없을 수 있고, 그때 "기준을 못 잡았으니 통과" 로 빠지면 게이트가 조용히 사라진다.
 BASE_CANDIDATES = ("origin/main", "main", "HEAD~1")
+# CI 의 Backend Lint 와 같은 버전 — 다르면 로컬은 통과하고 CI 는 막는 (또는 그 반대) 차이가 생긴다.
+# tests/scripts/test_pyright_gate.py 가 두 핀을 대조한다 (#1831).
+PYRIGHT_VERSION = "1.1.414"
 #: git 이 최초 커밋을 diff 할 때 쓰는 빈 트리 해시. 마지막 fallback.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
@@ -102,7 +105,7 @@ def run_pyright(files: list[str]) -> list[dict]:
     """
     try:
         proc = subprocess.run(
-            ["npx", "--yes", "-p", "pyright", "pyright", *files, "--outputjson"],
+            ["npx", "--yes", "-p", f"pyright@{PYRIGHT_VERSION}", "pyright", *files, "--outputjson"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
