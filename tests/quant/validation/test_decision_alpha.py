@@ -155,6 +155,7 @@ class TestFetchSample:
         _seed_decision(seeded, 21, "BBB", "2026-08-25", alpha=None)  # 창 미도래 (as_of 9/1)
         s = da.fetch_sample(db_path=seeded, as_of=AS_OF)
         assert s.n_missing_closed == 1
+        assert s.missing_rate_pct is not None
         assert round(s.missing_rate_pct, 1) == round(1 / 5 * 100, 1)
 
 
@@ -784,5 +785,6 @@ class TestPlaceboEdges:
         r = da.ticker_block_placebo(s, n_perm=3, seed=1, db_path=seeded)
 
         placebo = da._placebo_alpha(da.PriceBook(db_path=seeded), "AAA", EMIT_1, 30, "SPY")
+        assert placebo is not None
         assert r.skipped_blocks == ["TSLA"]
         assert r.null_means == pytest.approx([(0.05 + 0.08 + 0.03 + placebo) / 4] * 3)

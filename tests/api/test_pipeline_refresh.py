@@ -234,6 +234,7 @@ def test_abandoned_queued_run_returns_its_permit_and_unblocks_the_next_request(m
 
     before = limits._heavy_slots._value
     run = refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
+    assert run is not None
     assert "permit" not in run, "내부 플래그는 응답에 나가지 않는다"
     assert limits._heavy_slots._value == before - 1
     # 유예 안: 아직 queued, 두 번째 요청은 409

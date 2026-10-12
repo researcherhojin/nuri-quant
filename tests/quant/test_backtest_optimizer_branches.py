@@ -27,7 +27,7 @@ class TestOptimizeSignalBranches:
         # 90일 prices — close 변동 + 일부 NaN 으로 macd 시리즈도 NaN 발생.
         n = 90
         dates = pd.bdate_range("2024-01-02", periods=n)
-        close = list(np.linspace(100, 130, n))
+        close = np.linspace(100, 130, n).tolist()
         close[50] = float("nan")  # 중간 NaN → macd 도 NaN 전파.
         upsert_prices(
             pd.DataFrame(

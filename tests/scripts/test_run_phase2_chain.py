@@ -25,6 +25,7 @@ def test_run_phase2_chain_importable_with_main():
     p = _REPO / "scripts" / "ops" / "run_phase2_chain.py"
     assert p.exists()
     spec = importlib.util.spec_from_file_location("_run_phase2_chain", p)
+    assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert callable(mod.main)

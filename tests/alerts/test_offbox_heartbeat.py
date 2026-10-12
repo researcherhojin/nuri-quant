@@ -112,6 +112,7 @@ class TestProductionSendsARealHeartbeat:
         work, bare = local_repo_with_bare_remote
 
         sha = send_heartbeat(repo_root=work, remote_url=str(bare))
+        assert sha is not None
         ident = subprocess.run(
             ["git", "show", "-s", "--format=%cn <%ce>", sha],
             cwd=bare,

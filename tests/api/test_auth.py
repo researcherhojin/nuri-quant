@@ -192,6 +192,7 @@ class TestSecretKeyStartupWarning:
 
         path = Path(__file__).resolve().parents[2] / "nuri" / "api" / "main.py"
         spec = importlib.util.spec_from_file_location("nuri_api_main_probe", path)
+        assert spec is not None and spec.loader is not None
         module = importlib.util.module_from_spec(spec)
         with (
             patch.dict("os.environ", env, clear=False),
