@@ -33,6 +33,13 @@ function krName(row: Holding): string | null {
 // (test fixtures can mock either source).
 const FALLBACK_ACCOUNTS = ["test", "demo", "sample"];
 
+async function getHoldings(): Promise<Holding[]> {
+  const res = await fetch(`/api/portfolio`);
+  const data = await res.json();
+
+  return data.holdings || [];
+}
+
 export default function PortfolioPage() {
   return (
     <Suspense fallback={<div className="h-32 bg-muted rounded-sm animate-pulse" />}>
@@ -86,22 +93,24 @@ function PortfolioContent() {
     return fromHoldings.length > 0 ? fromHoldings : FALLBACK_ACCOUNTS;
   }, [holdings]);
 
-  // form.account 기본값을 첫 번째 ACCOUNTS로 자동 설정 (한 번만)
-  useEffect(() => {
-    if (!form.account && ACCOUNTS.length > 0) {
-      setForm((f) => ({ ...f, account: ACCOUNTS[0] }));
-    }
-  }, [ACCOUNTS, form.account]);
+  // 계좌는 고르기 전까지 첫 계좌 — render 에서 유도한다. effect 로 setForm 하던 동안엔 holdings 로드 전의
+  // FALLBACK 계좌가 박혀, 로드 뒤 select 에 없는 계좌가 제출될 수 있었다.
+  const formAccount = form.account || ACCOUNTS[0];
 
-  async function fetchHoldings() {
-    setLoading(true);
-    const res = await fetch(`/api/portfolio`);
-    const data = await res.json();
-    setHoldings(data.holdings || []);
+  function applyHoldings(rows: Holding[]) {
+    setHoldings(rows);
     setLoading(false);
   }
 
-  useEffect(() => { fetchHoldings(); }, []);
+  // 다시 읽기 — 로딩 표시를 켠다
+  function fetchHoldings() {
+    setLoading(true);
+    getHoldings().then(applyHoldings);
+  }
+
+  // 첫 로드 — 표시는 loading 의 초기값(true)이 맡고, 상태는 비동기 콜백에서만 바꾼다
+  // (effect 본문에서 동기 setState 를 하면 연쇄 렌더 — react-hooks/set-state-in-effect)
+  useEffect(() => { getHoldings().then(applyHoldings); }, []);
 
   async function handleLoadSample() {
     setLoadingSample(true);
@@ -134,7 +143,7 @@ function PortfolioContent() {
     const res = await fetch(`/api/portfolio`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, quantity: qty, avg_price: avg }),
+      body: JSON.stringify({ ...form, account: formAccount, quantity: qty, avg_price: avg }),
     });
 
     if (!res.ok) {
@@ -355,7 +364,7 @@ function PortfolioContent() {
         <Card className="bg-card border-border">
           <CardContent className="pt-5">
             <form onSubmit={handleAdd} className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <select value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })}
+              <select value={formAccount} onChange={(e) => setForm({ ...form, account: e.target.value })}
                 className={inputClass}>
                 {ACCOUNTS.map((a) => <option key={a} value={a}>{a}</option>)}
               </select>

@@ -94,6 +94,37 @@ describe("PortfolioPage", () => {
     expect(screen.getByPlaceholderText("Ticker (e.g. AAPL)")).toBeInTheDocument();
   });
 
+  it("defaults the add form to the first loaded account, not a fallback", async () => {
+    // 예전엔 effect 가 holdings 로드 전에 FALLBACK 계좌("test")를 form 에 박았다 — 로드 뒤 select 옵션에는
+    // 없는 계좌인데도 그대로 POST 됐다. 이제 기본값은 render 에서 현재 ACCOUNTS 의 첫 값이다.
+    const fetchMock = mockFetch({
+      holdings: {
+        holdings: [{ ticker: "AAA", account: "alpha-acct", quantity: 1, avg_price: 10, currency: "USD", sector: "X", latest_price: 11, price_date: "2026-03-31" }],
+        count: 1,
+      },
+    });
+
+    global.fetch = fetchMock;
+    render(<PortfolioPage />);
+    await waitFor(() => expect(screen.getByText("AAA")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Add Holding"));
+
+    const [accountSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    expect(accountSelect.value).toBe("alpha-acct");
+
+    fireEvent.change(screen.getByPlaceholderText("Ticker (e.g. AAPL)"), { target: { value: "BBB" } });
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "2" } });
+    fireEvent.change(screen.getByPlaceholderText("Avg Price"), { target: { value: "20" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      const post = fetchMock.mock.calls.find((c: unknown[]) => (c[1] as RequestInit | undefined)?.method === "POST");
+
+      expect(post).toBeDefined();
+      expect(JSON.parse(String((post?.[1] as RequestInit | undefined)?.body)).account).toBe("alpha-acct");
+    });
+  });
+
   it("validates quantity > 0 on add", async () => {
     render(<PortfolioPage />);
     await waitFor(() => expect(screen.getByText("TSLA")).toBeInTheDocument());
