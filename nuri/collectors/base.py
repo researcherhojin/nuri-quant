@@ -4,7 +4,7 @@ BaseCollector — 모든 데이터 수집기의 추상 기반 클래스.
 모든 collector는 이 클래스를 상속하고 collect()와 save()를 구현한다.
 외부에서는 항상 run()을 호출한다.
 
-수집 실패 처리: expected_count를 설정하면 실패율 >10% 시 save를 거부한다.
+수집 실패 처리: expected_count를 설정하면 실패율 >10% 시 save를 거부하고 알린다.
 실패 알림은 `nuri.agents.discord.outbox.stage_ops()` 경유 (Single-writer rule).
 """
 
@@ -17,6 +17,11 @@ import requests
 
 # 실패율 임계값 (10%)
 MAX_FAILURE_RATE = 0.10
+
+# 실패율 가드를 거는 최소 종목 수 — 이보다 작으면 1종목 실패가 곧 10% 초과라 비율이
+# 아무것도 말하지 않는다 (#1872). 가격 수집기(stock / stock_kr)만 읽는다: 기존 3개
+# 수집기는 소규모 집합에서도 가드를 유지한다.
+MIN_GUARDED_TICKERS = 20
 
 # 공통 HTTP 헤더 (모든 collector에서 사용)
 DEFAULT_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
@@ -48,6 +53,18 @@ def fetch_json(url: str, params: dict | None = None, headers: dict | None = None
     resp = requests.get(url, params=params, headers=headers or DEFAULT_HEADERS, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
+
+
+def _collected_count(data: Any) -> int:
+    """실패율 분자 — `ticker` 열이 있으면 종목 수, 없으면 `len(data)`.
+
+    가격 수집기는 종목당 여러 날짜 행을 돌려주므로 행 수를 세면 기대치(종목 수)와
+    단위가 어긋나 가드가 늘 통과한다 (#590/#591 이 가격을 빼 둔 이유, #1872).
+    """
+    columns = getattr(data, "columns", None)
+    if columns is not None and "ticker" in columns:
+        return int(data["ticker"].nunique())
+    return len(data)
 
 
 class CollectionFailureError(Exception):
@@ -92,7 +109,7 @@ class BaseCollector(ABC):
 
                 # 실패율 체크: expected_count 설정 시 + 결과가 리스트/DataFrame일 때
                 if self._expected_count > 0 and hasattr(data, "__len__"):
-                    actual = len(data)
+                    actual = _collected_count(data)
                     failure_rate = 1 - (actual / self._expected_count) if self._expected_count > 0 else 0
                     if failure_rate > MAX_FAILURE_RATE:
                         msg = (
@@ -102,6 +119,10 @@ class BaseCollector(ABC):
                         self.logger.error(msg)
                         if self._failed_tickers:
                             self.logger.error("[%s] 실패 종목: %s", self.name, ", ".join(self._failed_tickers[:10]))
+                        # 거부는 로그만 남기면 조용하다 — collector_health 는 24h 실행의 50% 초과
+                        # 실패만 unhealthy 로 본다. 2026-07~08 fundamental 이 매주 거부되는 동안
+                        # 아무 알림도 없었다 (#1872).
+                        self._send_failure_alert(msg)
                         raise CollectionFailureError(msg)
 
                 count = self.save(data)
