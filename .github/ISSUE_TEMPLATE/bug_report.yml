@@ -27,6 +27,20 @@ body:
       description: Paste relevant error output.
       render: shell
 
+  - type: textarea
+    id: done_when
+    attributes:
+      label: Done when
+      description: Completion criteria, each checkable by a command or a measurement — usually a regression test that fails before the fix. Review judges the diff against every item (STRATEGY.md §2.7).
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Related changes this issue deliberately leaves out.
+
   - type: dropdown
     id: area
     attributes:

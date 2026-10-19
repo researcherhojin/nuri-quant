@@ -5,9 +5,9 @@
 | # | Phase | Output gate (must answer YES to advance) |
 |---|-------|-----------------------------------------|
 | 1 | **Think** | Can I state "왜 지금" in 1 sentence? Literature / root-cause checked? |
-| 2 | **Plan** | Scope unchanged from issue? 1 PR / ≤ 3 commits? Escalation Ladder rung named? |
+| 2 | **Plan** | Scope unchanged from issue? 1 PR / ≤ 3 commits? Escalation Ladder rung named? Issue carries `## Done when` (each item checkable by a command or a measurement) and `## Out of scope`? An older issue without them gets them as a comment before Build |
 | 3 | **Build** | No hardcoded values (config/yaml-driven)? Hook + lint pass? `kst_now()` only? |
-| 4 | **Review** | Codex `/codex review` + Claude self-review. P1 all resolved? Codex unavailable → self-review + recover next PR |
+| 4 | **Review** | Codex `/codex review` + Claude self-review. P1 all resolved? Each `Done when` item judged met / not met against the diff, with the gap stated? Codex unavailable → self-review + recover next PR |
 | 5 | **Test** | `make test-fast` green + at least 1 user-workflow live execution? UI → browser QA |
 | 6 | **Ship** | One push after the local gates, then `gh pr merge --squash --auto` (the repository deletes the head branch on merge). Issue closed. Local branch cleaned. TODO Tier 2 / 3 updated if scope shifted |
 | 7 | **Reflect** | NEXT_SESSION refreshed. New gotcha → Gotcha-Test Pair (§5.3.1) cite. Memory updated if surprising |

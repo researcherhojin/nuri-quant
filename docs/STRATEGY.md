@@ -127,9 +127,9 @@ All work goes through the 7 phases **Think → Plan → Build → Review → Tes
 | # | Phase | Input | Action | Output | Pass gate |
 |---|------|------|------|-------|-----------|
 | 1 | **Think** | Issue/observation/pain point | Problem framing, root cause, literature check (§2.1) | Issue body or `docs/plans/*.md` problem + evidence + constraint | Can "why now" be answered in 1 sentence? |
-| 2 | **Plan** | Think output | Scope, touched files, acceptance, Escalation Ladder (§2.6) level | Draft PR description / `/plan` output | No scope creep? 1 issue = 1 PR? Commits ≤ 3? |
+| 2 | **Plan** | Think output | Scope, touched files, acceptance, Escalation Ladder (§2.6) level | Draft PR description / `/plan` output; `## Done when` + `## Out of scope` in the issue | No scope creep? 1 issue = 1 PR? Commits ≤ 3? Does the issue carry `Done when` items, each checkable by a command or a measurement, and an `Out of scope` list? |
 | 3 | **Build** | Plan | Minimal implementation. `config/*.yaml` first (§2.2), cross-stage imports deferred + allowlisted (§2.3), `kst_now()` enforced | Commits on a feature branch | No hardcoding? hook/lint pass? `git branch --show-current` checked? |
-| 4 | **Review** | Feature diff | Codex `/codex review` + Claude self-review. P1 must be resolved | Review log, GATE verdict | All P1 resolved? Reasons for disagreement stated? |
+| 4 | **Review** | Feature diff | Codex `/codex review` + Claude self-review. P1 must be resolved | Review log, GATE verdict, per-item verdict against `Done when` | All P1 resolved? Reasons for disagreement stated? Every `Done when` item met, or the gap stated? |
 | 5 | **Test** | Reviewed branch | `make test-fast` + live run of the user workflow (§5.8 #3). Browser QA for UI | Green CI + manual QA log | User command run directly at least once? |
 | 6 | **Ship** | Tested branch | `gh pr merge --squash --auto` (the repository deletes the head branch on merge). Close the issue. Clean up the local branch. Update TODO Tier 2 / 3 if the scope shifted | MERGED PR, CLOSED issue | Tier 2 / 3 updated? Local branch cleaned up? |
 | 7 | **Reflect** | Ship result | Surprises, new gotchas, memory update, NEXT_SESSION refresh | NEXT_SESSION updated + fix-pattern gotchas cite `**Test:**` (§5.3.1) | Can the next session start running right away? |

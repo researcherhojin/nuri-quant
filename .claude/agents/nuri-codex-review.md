@@ -19,7 +19,7 @@ model: inherit
 ## Invocation
 
 1. 결정 context 식별 (무엇 / 옵션)
-2. STRATEGY §7.1 / §3.8 / §5.10 등 제약 + 구체 데이터로 prompt 구성
+2. STRATEGY §7.1 / §3.8 / §5.10 등 제약 + 구체 데이터로 prompt 구성. PR 리뷰면 연결된 이슈의 `## Done when` · `## Out of scope` 를 원문 그대로 넣고, `Done when` 항목별 충족/미충족 판정을 요구한다 (§2.7 Review gate)
 3. `scripts/dev/llm_consult.py --codex-only --slug <kebab> --prompt-file <tmp>` 실행
 4. archived markdown 읽고 verdict + rationale + risk 추출
 5. main session 에 3-5문장 요약 (full transcript flood X)

@@ -127,9 +127,9 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | # | 단계 | 입력 | 행동 | 산출물 | 통과 gate |
 |---|------|------|------|-------|-----------|
 | 1 | **Think** | 이슈/관찰/페인포인트 | 문제 framing, root-cause, literature 확인 (§2.1) | 이슈 본문 또는 `docs/plans/*.md` problem + evidence + constraint | "왜 지금" 을 1 문장으로 답 가능? |
-| 2 | **Plan** | Think 산출물 | scope, touched files, acceptance, Escalation Ladder (§2.6) 레벨 | PR description 초안 / `/plan` 출력 | 스코프 팽창 없는가? 이슈 1 = PR 1? 커밋 ≤ 3? |
+| 2 | **Plan** | Think 산출물 | scope, touched files, acceptance, Escalation Ladder (§2.6) 레벨 | PR description 초안 / `/plan` 출력, 이슈의 `## Done when` + `## Out of scope` | 스코프 팽창 없는가? 이슈 1 = PR 1? 커밋 ≤ 3? 이슈에 명령·측정으로 확인 가능한 `Done when` 항목과 `Out of scope` 목록이 있는가? |
 | 3 | **Build** | Plan | 최소 구현. `config/*.yaml` 우선 (§2.2), 교차 스테이지 import 는 deferred + allowlist (§2.3), `kst_now()` 강제 | feature 브랜치 커밋 | hardcode 없는가? hook/lint 통과? `git branch --show-current` 확인? |
-| 4 | **Review** | feature diff | Codex `/codex review` + Claude self-review. P1 해결 필수 | Review log, GATE verdict | P1 전부 해결? disagreement 이유 명시? |
+| 4 | **Review** | feature diff | Codex `/codex review` + Claude self-review. P1 해결 필수 | Review log, GATE verdict, `Done when` 항목별 판정 | P1 전부 해결? disagreement 이유 명시? `Done when` 항목을 전부 충족했는가, 아니면 빈 곳을 밝혔는가? |
 | 5 | **Test** | reviewed 브랜치 | `make test-fast` + 사용자 워크플로 live 실행 (§5.8 #3). UI 면 browser QA | green CI + manual QA 로그 | 사용자 명령 1 회 이상 직접 실행? |
 | 6 | **Ship** | tested 브랜치 | `gh pr merge --squash --auto` (merge 시 레포가 head branch 를 지운다). 이슈 close. 로컬 branch 정리. scope 가 바뀌었으면 TODO Tier 2 / 3 업데이트 | MERGED PR, CLOSED 이슈 | Tier 2 / 3 갱신? 로컬 branch 정리? |
 | 7 | **Reflect** | ship 결과 | 놀라웠던 점, 새 gotcha, 메모리 업데이트, NEXT_SESSION refresh | NEXT_SESSION 갱신 + fix-pattern gotcha 는 `**Test:**` cite (§5.3.1) | 다음 세션이 바로 뛸 수 있는가? |
