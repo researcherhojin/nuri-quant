@@ -18,11 +18,11 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 | Phase | 우리 도구 |
 |---|---|
 | Think | 사용자 질의 / `nuri-codex-review` agent (대형 결정) |
-| Plan | `docs/plans/<issue>_*.md` 작성 (gitignored) |
+| Plan | 이슈 본문에 `## Done when` (항목마다 명령·측정으로 확인 가능) + `## Out of scope` — 없는 옛 이슈는 Build 전에 코멘트로 단다. 긴 설계 메모는 `docs/plans/<issue>_*.md` (gitignored) |
 | Build | code edit + `/nuri-verify` |
-| Review | `/nuri-codex-review` agent / `gstack /codex review` |
+| Review | `/nuri-codex-review` agent / `gstack /codex review` — 이슈의 `Done when` 항목별 met / not met 판정 포함 |
 | Test | `make test-fast` + 사용자 워크플로 1회 실행 |
-| Ship | `gh pr merge --squash --delete-branch` (수동) + `/nuri-deploy` |
+| Ship | local gate 뒤 한 번 push → `gh pr merge --squash --auto` (merge 시 레포가 head branch 를 지운다) + `/nuri-deploy`. 이슈 close · 로컬 branch 정리 · scope 가 바뀌었으면 TODO Tier 2 / 3 갱신 |
 | Reflect | NEXT_SESSION.md 편집 + 신규 gotcha → `/nuri-harness-debug` cite |
 
 ## 사용 흐름
@@ -32,14 +32,16 @@ description: STRATEGY §2.7 7-phase Flow (Think→Plan→Build→Review→Test�
 1. `git log origin/main..HEAD --oneline` (commit 수)
 2. `git status` (작업 상태)
 3. `gh pr view --json state,number 2>/dev/null` (PR 존재 여부)
-4. Phase 추정:
-   - 0 commits + scratch → **Think**
-   - `docs/plans/*.md` 존재 + 0 commits → **Plan**
+4. `gh issue view <N> --json body,comments` (연결 이슈의 `Done when` · `Out of scope` 유무). `<N>` 은 PR 의 `Closes #N` → branch 이름의 이슈 번호 → 사용자에게 질문 순으로 정한다
+5. Phase 추정:
+   - 0 commits + 연결 이슈 없음 → **Think**
+   - 0 commits + 이슈에 `Done when` / `Out of scope` 없음 → **Plan** 미완 (Build 금지)
+   - 0 commits + 둘 다 있음 → **Build** 대기
    - commits + tests 미실행 → **Build / Test**
    - tests green + PR open → **Review**
    - PR approved → **Ship**
    - PR merged 직후 → **Reflect**
-5. Gate 미통과 항목 + 다음 액션 권고를 사용자에게 표시.
+6. Gate 미통과 항목 + 다음 액션 권고를 사용자에게 표시.
 
 ### "Reflect 해야 하나?"
 
