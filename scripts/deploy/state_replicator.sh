@@ -113,8 +113,12 @@ c.close()
         echo "[primary] pushing to $DEV2_HOST"
         # 수신 측 디렉터리를 먼저 만든다 — macOS openrsync 는 목적지 디렉터리를
         # 자동 생성하지 않는다. 없으면 `open: No such file or directory` 로 죽는다 (#947).
-        ssh -o BatchMode=yes "$DEV2_HOST" "mkdir -p '$REMOTE_REPLICAS'" || {
-            echo " ❌ 원격 $REMOTE_REPLICAS 생성 실패 — SSH/권한 확인"
+        # 단 레포 자체는 만들지 않는다 (#1870): MBP 레포가 옮겨졌는데 `DEV2_PATH` 가 옛 경로면
+        # `mkdir -p` 가 그 경로를 통째로 되살려 push 가 아무도 안 읽는 곳에 "성공" 하고,
+        # `.last_push_ok` 가 계속 찍혀 `_detect_replica_stale` 이 울리지 못했다 (75.7 시간).
+        # 여기서 실패하면 마커가 멈춰 그 경보가 산다.
+        ssh -o BatchMode=yes "$DEV2_HOST" "test -e '$REMOTE_REPO/.git' && mkdir -p '$REMOTE_REPLICAS'" || {
+            echo " ❌ 원격 $REMOTE_REPO 가 레포가 아니거나 $REMOTE_REPLICAS 생성 실패 — DEV2_PATH(~/.zshrc) · SSH/권한 확인"
             exit 2
         }
         rsync -avz --partial "$SNAP" "$DEV2_HOST:$REMOTE_REPLICAS/portfolio_${HOSTNAME}.db" || {
