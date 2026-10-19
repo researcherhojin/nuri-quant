@@ -20,7 +20,7 @@ from typing import Optional
 
 import pandas as pd
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import MIN_GUARDED_TICKERS, BaseCollector
 from nuri.core.db import upsert_prices
 
 # freshness extraction — yfinance 가 직접 fetch 못하는 macro/index 식별자.
@@ -74,6 +74,10 @@ class StockCollector(BaseCollector):
             tickers = _load_freshness_tickers()
         else:
             tickers = self._get_tickers(market="us", source=source)
+        # 실패율 가드 기대치 (#1872) — 빈 집합·소규모(portfolio 7 · freshness 3) 는 0 으로
+        # 둬 가드를 끈다. 인스턴스를 재사용하는 호출자(e3_3_backfill)에서 이전 값이 남지
+        # 않도록 모든 경로에서 다시 쓴다.
+        self._expected_count = len(tickers) if len(tickers) >= MIN_GUARDED_TICKERS else 0
         if not tickers:
             self.logger.warning("수집할 미국 종목이 없습니다")
             return pd.DataFrame()

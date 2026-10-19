@@ -20,7 +20,7 @@ from typing import Optional
 import pandas as pd
 from pykrx import stock as krx
 
-from nuri.collectors.base import BaseCollector
+from nuri.collectors.base import MIN_GUARDED_TICKERS, BaseCollector
 from nuri.core.db import upsert_prices
 
 
@@ -83,6 +83,9 @@ class StockKRCollector(BaseCollector):
         # 브리프·타당성 검사가 매일 읽는다.
         reference = _reference_tickers()
         tickers = sorted(set(self._get_tickers(market="kr", source=source)) | set(reference))
+        # 실패율 가드 기대치 (#1872) — 지수 행(KOSPI/KOSDAQ)도 같은 프레임에 들어가므로
+        # 기대치에 더한다. 빼면 지수 2개가 종목 실패 2건을 가린다. 소규모 집합은 가드 끔.
+        self._expected_count = len(tickers) + len(self.INDEX_TICKERS) if len(tickers) >= MIN_GUARDED_TICKERS else 0
         if not tickers:
             self.logger.warning("수집할 한국 종목이 없습니다")
             return pd.DataFrame()
