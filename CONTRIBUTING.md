@@ -67,8 +67,9 @@ for that commit, and the Mac mini deploys a commit only after such a run
 succeeds (`scripts/deploy/autopull_receiver.sh`, #1808). That run is the push
 run, except for a merge made with `GITHUB_TOKEN` (Dependabot auto-merge), which
 starts no workflows at all: each scheduled run of `main-ci-catchup.yml` dispatches
-main CI for such a commit (#1812). GitHub starts only some scheduled runs, and none
-of this one had been observed as of 2026-10-12, so that can take hours or wait for
+main CI for such a commit (#1812). GitHub starts only some scheduled runs: from
+2026-10-12T18:15Z to 2026-10-19T01:52Z this one ran 39 times, all successful,
+a median 3.3 h and at most 8 h apart (#1865), so that can take hours or wait for
 the next human merge. A PR that conflicts with `main` still needs a rebase.
 
 ### Advisory
