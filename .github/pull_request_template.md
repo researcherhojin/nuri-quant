@@ -10,6 +10,13 @@ tree and the commit, non-atomic commits, and scope creep.
 
 -
 
+## Done when
+
+<!-- Copy each `Done when` item from the issue and put its evidence beside it
+(command output, counts, a measurement). Say so for any item not met. -->
+
+- [ ]
+
 ## Test plan
 
 <!-- How did you verify this works? -->

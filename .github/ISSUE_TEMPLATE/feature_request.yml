@@ -18,6 +18,23 @@ body:
     validations:
       required: true
 
+  - type: textarea
+    id: done_when
+    attributes:
+      label: Done when
+      description: Completion criteria, each checkable by a command or a measurement. Review judges the diff against every item (STRATEGY.md §2.7).
+      placeholder: |
+        - `make test-fast` passes, including a new test that fails without the change
+        - `/api/...` returns ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: Related changes this issue deliberately leaves out.
+
   - type: dropdown
     id: area
     attributes:
