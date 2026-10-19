@@ -955,7 +955,7 @@ wheels = [
 
 [[package]]
 name = "edgartools"
-version = "5.61.1"
+version = "5.62.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -980,9 +980,9 @@ dependencies = [
     { name = "truststore" },
     { name = "unidecode" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/e2/e5015733b023d3beb1ecd7e98e9ffd034e312218cffe6a779fdab94ba9d5/edgartools-5.61.1.tar.gz", hash = "sha256:4acbe0c7be55fcd007d4d1c2f2fc679221b28cbdb9a7b5d7fc773b71719eab6a", size = 3251363, upload-time = "2026-10-06T22:29:27.807Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/29/18ee548e2472feab732f92f4207e3100e58c968401934c699d51365f71ac/edgartools-5.62.0.tar.gz", hash = "sha256:f6a66442ff7b82a667348f0fef0ddb595e75f0f68c2faca75202c655175fee53", size = 3254861, upload-time = "2026-10-11T18:22:23.619Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9e/c1/10e2baaeb32364a7147a181de1d22cc1e74eaefb57d54a1aaabfe7e95074/edgartools-5.61.1-py3-none-any.whl", hash = "sha256:8229753d3fb4dfdc865291bf7fd684d11297094b88ec724c919630cf21e81037", size = 3555266, upload-time = "2026-10-06T22:29:25.305Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/be/65806b073f536ab2c21361058904f0dadfef4b198d67d646b81f10f8caa7/edgartools-5.62.0-py3-none-any.whl", hash = "sha256:fff0265b7439cbbc96a395651dba0ca1eac0e093c68297932a0e64e71ffae3f8", size = 3553178, upload-time = "2026-10-11T18:22:22.01Z" },
 ]
 
 [[package]]
