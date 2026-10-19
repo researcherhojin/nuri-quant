@@ -17,6 +17,8 @@
 #   등록 여부는 `gh run list -w main-ci-catchup.yml -e schedule` 에 런이 하나라도 뜨는지로 판단하고,
 #   0회가 이어지면 하루 이상 지켜본 뒤 같은 기간의 heartbeat-watch schedule 런과 대조할 것.
 #   dispatch 성공은 cron 등록의 증거가 아니다.
+#   → 등록 확인: 2026-10-12T18:15Z 첫 schedule 런부터 10-19T01:52Z 까지 39회, 전부 success,
+#     간격 중앙값 3.3h · 최대 8h (#1865).
 name: Main CI Catch-up
 
 on:
