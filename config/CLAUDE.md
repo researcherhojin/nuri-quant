@@ -8,7 +8,7 @@
 |------|---------|--------|
 | `rules.yaml` | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `freshness_tickers`) | `nuri/core/rules.py` |
 | `agents.yaml` | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
-| `signals.yaml` | 22 signal definitions (20 actionable + 2 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
+| `signals.yaml` | 22 signal definitions (19 actionable + 3 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
 | `alerts.yaml` | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
 | `freshness.yaml` | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
