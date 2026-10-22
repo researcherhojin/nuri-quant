@@ -192,19 +192,6 @@ def _check_fear_greed(db_path=None) -> GateCondition:
     )
 
 
-def _check_etf_flows(db_path=None) -> GateCondition:
-    rows = query("SELECT COUNT(DISTINCT date) as c FROM etf_flows", db_path=db_path)
-    count = _safe_count(rows)
-    ok = count >= 2
-    return GateCondition(
-        "etf_flows_history",
-        "collect",
-        "ETF 자금흐름 2일+ (섹터 로테이션 분석용)",
-        ok,
-        f"{count}일" if ok else f"{count}일. python -m nuri.collectors.etf_flows 실행 (주 1회 자동)",
-    )
-
-
 # 전체 조건 목록
 ALL_CHECKS = [
     _check_portfolio,
@@ -216,7 +203,6 @@ ALL_CHECKS = [
     _check_signal_scorecard,
     _check_superinvestor_quarters,
     _check_estimates_accumulation,
-    _check_etf_flows,
 ]
 
 # 단계별 필수 조건

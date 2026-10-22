@@ -144,15 +144,6 @@ class TestScheduler:
             _run_collector("estimates", source="universe")
         mock_collector.run.assert_called_once_with(source="universe")
 
-    def test_run_collector_etf_flows(self):
-        """_run_collector dispatches to EtfFlowsCollector."""
-        from nuri.scheduler import _run_collector
-
-        mock_collector = MagicMock()
-        with patch("nuri.collectors.etf_flows.EtfFlowsCollector", return_value=mock_collector):
-            _run_collector("etf_flows")
-        mock_collector.run.assert_called_once()
-
     def test_run_collector_wallstreet(self):
         """_run_collector dispatches to WallStreetCollector."""
         from nuri.scheduler import _run_collector
@@ -618,7 +609,6 @@ class TestSchedulerLazy_R6:
             "estimates",
             "wallstreet",
             "cboe",
-            "etf_flows",
         ]
         for name in names:
             _run_collector(name)  # lazy import + run() 호출

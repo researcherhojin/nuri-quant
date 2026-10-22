@@ -33,22 +33,10 @@ SUPERINVESTORS = {
     "Vivek Ramaswamy (Strive)": "0001954109",  # Strive Asset Management
 }
 
-#: 대형 은행 13F (#1098). **확신 포트폴리오가 아니다** — 마켓메이킹·수탁·인덱스가
-#: 섞여 있고 분기 공시라 45일 지연된다. 버핏의 NEW 와 JPM 의 NEW 는 같은 뜻이 아니므로
-#: 읽는 쪽에 반드시 그 단서를 붙인다.
-#:
-#: CIK 는 2026-08-18 EDGAR `company_tickers.json` + `submissions` API 로 **직접 확인**했다
-#: (넷 다 13F-HR 실적 있음). 한 분기 포지션 수 실측: JPM 34,064 · BAC 18,318 ·
-#: GS 14,070 · Citi 11,343 — 그래서 `dealer` 로 격리하고 universe 로 좁혀 저장한다.
-BANK_13F = {
-    "JPMorgan Chase": "0000019617",
-    "Bank of America": "0000070858",
-    "Goldman Sachs": "0000886982",
-    "Citigroup": "0000831001",
-}
-
 #: `superinvestors.investor_class` 값. `conviction` 이 기본이라 기존 행과 기존 수집기가
-#: 전부 자동으로 옳은 쪽에 앉는다.
+#: 전부 자동으로 옳은 쪽에 앉는다. `dealer` 는 은행 13F 수집기(#1098)가 쓰던 값이다 — 그 수집기는
+#: 결정 경로 리더가 없어 은퇴했고(#1916), 테이블에는 과거 행만 남는다. 모든 리더가 `conviction`
+#: 으로 거르는 이유가 그 행들이다.
 CONVICTION = "conviction"
 DEALER = "dealer"
 
@@ -65,8 +53,6 @@ class SuperinvestorCollector(BaseCollector):
     #: 서브클래스는 명시로 덮는다.
     investors: Optional[dict] = None
     investor_class: str = CONVICTION
-    #: `None` 이면 전량 저장. set 이면 그 티커만 — 은행 13F 전량 미러를 막는다.
-    universe: Optional[set] = None
 
     def __init__(self, name: str = "superinvestors"):
         super().__init__(name)
@@ -88,10 +74,7 @@ class SuperinvestorCollector(BaseCollector):
         failed: list[str] = []
 
         investors_list = list((self.investors if self.investors is not None else SUPERINVESTORS).items())
-        self.logger.info(
-            f"13F 수집({self.investor_class}): {len(investors_list)}곳, 최근 {num_quarters}분기"
-            + (f", universe {len(self.universe)}종목으로 제한" if self.universe is not None else "")
-        )
+        self.logger.info(f"13F 수집({self.investor_class}): {len(investors_list)}곳, 최근 {num_quarters}분기")
         iterator = tqdm(investors_list, desc="  superinvestors", unit="inv", disable=len(investors_list) < 5)
 
         for investor_name, cik in iterator:
@@ -140,12 +123,6 @@ class SuperinvestorCollector(BaseCollector):
                         ticker = row["Ticker"]
                         if not ticker or pd.isna(ticker):
                             continue
-                        # universe 필터는 **비중 계산 뒤**다. 먼저 걸러 버리면 분모가
-                        # 우리 유니버스 합이 되어 `portfolio_pct` 가 실제 비중보다
-                        # 부풀고, 화면에서 "JPM 포트폴리오의 12%" 같은 거짓이 된다.
-                        if self.universe is not None and ticker not in self.universe:
-                            continue
-
                         pct = row["Value"] / total_value * 100
 
                         results.append(
@@ -213,27 +190,6 @@ def _upsert_superinvestors(records: list[dict], db_path=None) -> int:
             [{"investor_class": CONVICTION, **r} for r in records],
         )
         return len(records)
-
-
-class Bank13FCollector(SuperinvestorCollector):
-    """대형 은행 4곳 13F — `dealer` 로 격리 저장 (#1098).
-
-    같은 테이블에 넣되 `investor_class='dealer'` 라 `smart_money` / `min_superinvestors`
-    같은 확신 신호는 이 행을 보지 못한다. 그 분리가 이 클래스의 존재 이유다 — 섞으면
-    거의 모든 티커가 "슈퍼투자자 4명 보유" 가 되어 그 항의 변별력이 0이 된다.
-
-    universe 로 좁히는 이유: 한 분기 77,795 포지션 중 대부분은 우리가 판단하지 않는
-    종목·채권·옵션이다. 전량 미러는 8분기에 622K 행을 쌓고 어떤 질문에도 답하지 않는다.
-    """
-
-    investors = BANK_13F
-    investor_class = DEALER
-
-    def __init__(self):
-        super().__init__("bank_13f")
-        from nuri.core.coverage import _load_universe
-
-        self.universe = _load_universe()["us"]
 
 
 def detect_changes(investor: str, db_path=None) -> pd.DataFrame:

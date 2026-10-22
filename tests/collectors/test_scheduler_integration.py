@@ -94,14 +94,6 @@ class TestSchedulerRunCollector:
             _run_collector("estimates")
         mock_collector.run.assert_called_once()
 
-    def test_run_collector_etf_flows(self):
-        from nuri.scheduler import _run_collector
-
-        mock_collector = MagicMock()
-        with patch("nuri.collectors.etf_flows.EtfFlowsCollector", return_value=mock_collector):
-            _run_collector("etf_flows")
-        mock_collector.run.assert_called_once()
-
     def test_run_collector_wallstreet(self):
         from nuri.scheduler import _run_collector
 
