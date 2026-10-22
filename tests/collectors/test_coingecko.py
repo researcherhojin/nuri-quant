@@ -43,12 +43,8 @@ class TestCoinGeckoCollector:
         collector = CoinGeckoCollector()
         records = collector.collect()
         indicators = {r["indicator"]: r["value"] for r in records}
-        assert indicators["btc_usd_cg"] == 67500.0
-        assert indicators["btc_market_cap_t"] == pytest.approx(1.32)
-        assert indicators["btc_24h_volume_b"] == pytest.approx(28.5)
-        assert indicators["btc_24h_change_pct"] == -2.35
-        assert indicators["btc_dominance"] == 54.2
-        assert indicators["crypto_total_mcap_t"] == pytest.approx(2.45)
+        # crypto_agent 가 읽는 세 지표만 — 읽는 곳 없는 지표를 다시 쓰기 시작하면 FAIL (#1918).
+        assert indicators == {"btc_usd_cg": 67500.0, "btc_24h_change_pct": -2.35, "btc_dominance": 54.2}
         assert all(r["source"] == "CoinGecko" for r in records)
 
     @patch("nuri.collectors.coingecko.requests.get")

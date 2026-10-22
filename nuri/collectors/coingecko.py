@@ -1,7 +1,8 @@
 """
 CoinGecko BTC/Crypto 리스크 지표 수집기.
 
-BTC 가격, 시가총액, 거래량, 도미넌스 등 암호화폐 리스크 지표 수집.
+BTC 가격, 24시간 변화율, 도미넌스 — `crypto_agent` 가 읽는 세 지표만 수집한다.
+시가총액·거래량·전체 시총·활성 코인 수는 읽는 곳이 없어 #1918 에서 뺐다.
 BTC는 리스크 자산 프록시로 활용 — 급락 시 전반적 위험선호 감소 신호.
 
 무료 API (키 불필요, 분당 10-30회 제한).
@@ -78,8 +79,6 @@ class CoinGeckoCollector(BaseCollector):
         params = {
             "ids": "bitcoin",
             "vs_currencies": "usd",
-            "include_market_cap": "true",
-            "include_24hr_vol": "true",
             "include_24hr_change": "true",
         }
         resp = requests.get(COINGECKO_PRICE_URL, params=params, headers=_CG_HEADERS, timeout=15)
@@ -99,30 +98,6 @@ class CoinGeckoCollector(BaseCollector):
                 }
             )
             self.logger.info("BTC 가격: $%d", int(btc["usd"]))
-
-        if "usd_market_cap" in btc:
-            # 조 단위로 변환 (1T = 1e12)
-            market_cap_t = btc["usd_market_cap"] / 1e12
-            records.append(
-                {
-                    "indicator": "btc_market_cap_t",
-                    "date": today,
-                    "value": round(market_cap_t, 3),
-                    "source": "CoinGecko",
-                }
-            )
-
-        if "usd_24h_vol" in btc:
-            # 십억 단위 (1B = 1e9)
-            vol_b = btc["usd_24h_vol"] / 1e9
-            records.append(
-                {
-                    "indicator": "btc_24h_volume_b",
-                    "date": today,
-                    "value": round(vol_b, 2),
-                    "source": "CoinGecko",
-                }
-            )
 
         if "usd_24h_change" in btc:
             records.append(
@@ -156,31 +131,6 @@ class CoinGeckoCollector(BaseCollector):
                 }
             )
             self.logger.info("BTC 도미넌스: %.1f%%", btc_dom)
-
-        # 총 암호화폐 시가총액 (조 달러)
-        total_mcap = data.get("total_market_cap", {}).get("usd")
-        if total_mcap is not None:
-            total_mcap_t = total_mcap / 1e12
-            records.append(
-                {
-                    "indicator": "crypto_total_mcap_t",
-                    "date": today,
-                    "value": round(total_mcap_t, 3),
-                    "source": "CoinGecko",
-                }
-            )
-
-        # 활성 암호화폐 수
-        active = data.get("active_cryptocurrencies")
-        if active is not None:
-            records.append(
-                {
-                    "indicator": "crypto_active_count",
-                    "date": today,
-                    "value": float(active),
-                    "source": "CoinGecko",
-                }
-            )
 
         return records
 
