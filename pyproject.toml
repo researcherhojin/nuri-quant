@@ -29,6 +29,7 @@ dependencies = [
     "fredapi>=0.5.2",
     "pykrx>=1.2.4",
     "requests>=2.31.0",
+    "certifi>=2026.10.19",  # security floor: compromised root CA removal
     "yfinance>=1.2.1",
     # ─── Analysis + technical indicators ──────────────────────
     "numpy>=1.26.0",
@@ -56,11 +57,10 @@ dependencies = [
     "matplotlib>=3.8.0",
     "mplfinance>=0.12.0",
     # security floor — 하한을 올려야 `uv lock` 재해석이 취약 버전으로 되돌아가지 않는다.
-    # 12.3.0: 13 CVE (heap OOB write in RankFilter/paste/crop/ImageCmsTransform, PDF·JPEG2000
-    # decompression bomb, 폰트 로더 bomb-check 우회 5건). 12.2.0 은 CVE-2026-40192 (FITS GZIP).
+    # 13.0.0: native image storage / JPEG decoder 보안 수정 (#1877).
     # 직접 import 0건이어도 Dependabot direct-scope 와 주간 lag 관측을 여는 direct 선언 — 제거 금지.
     # **Test:** tests/agents/test_maintenance_auditor.py::TestDependencyLag::test_zero_import_direct_deps_stay_in_the_observation_set
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
     "plotly>=5.18.0",
     "seaborn>=0.13.2",
     # ─── Alerts + scheduling ──────────────────────────────────
