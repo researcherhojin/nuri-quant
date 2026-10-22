@@ -118,3 +118,36 @@ def test_threshold_equality_does_not_trigger_a_breach():
     with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
         assert assess_stop_loss("Brokerage Alpha", 100, 93, today_kst())["status"] == "clear"
         assert assess_stop_loss("Brokerage Alpha", 100, 92.99, today_kst())["status"] == "breached"
+
+
+@pytest.mark.parametrize("violation_account", ["Brokerage Alpha", None])
+def test_prudential_violation_respects_account_scope(holdings, monkeypatch, violation_account):
+    holdings(today_kst(), current=100)
+    monkeypatch.setattr(actions, "_get_recommendations", lambda: [dict(ticker="TST_A", action="HOLD", confidence=60)])
+    monkeypatch.setattr(
+        actions,
+        "_get_rule_violations",
+        lambda: [
+            dict(
+                ticker="TST_A",
+                account=violation_account,
+                detail="concentration",
+                condition_id="position_limit_exceeded",
+            )
+        ],
+    )
+    result = actions._build_actions()
+    expected = ["Brokerage Alpha"] if violation_account else ["Brokerage Alpha", "Brokerage Beta"]
+    assert [r["account"] for r in result["portfolio"]] == expected
+    assert not result["urgent"]
+    if violation_account:
+        assert [r["account"] for r in result["hold"]] == ["Brokerage Beta"]
+
+
+def test_violation_account_uses_same_display_label_as_holdings(monkeypatch):
+    monkeypatch.setattr("nuri.api.routes.dashboard._get_account_labels", lambda: {"core": "Brokerage Alpha"})
+    monkeypatch.setattr(
+        "nuri.analysis.rebalance_advisor.detect_violations",
+        lambda: [dict(ticker="TST_A", account="core", violation_type="position_limit_exceeded")],
+    )
+    assert actions._get_rule_violations()[0]["account"] == "Brokerage Alpha"

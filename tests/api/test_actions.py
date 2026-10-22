@@ -538,7 +538,7 @@ class TestGetRuleViolations:
         }
         assert result[0]["detail"] == "종목 비중 18.0% > 한도 15%"
         for v in result:
-            assert set(v) == {"ticker", "detail", "condition_id"}
+            assert set(v) == {"ticker", "detail", "condition_id", "account"}
             assert "SELL" not in str(v)
 
     def test_stop_loss_rows_are_not_duplicated_here(self):

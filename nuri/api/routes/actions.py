@@ -97,8 +97,6 @@ def _build_actions() -> dict:
     targets_status = _get_targets_status()
     portfolio_holdings = _get_portfolio_map()
 
-    violation_tickers = {v["ticker"] for v in rule_violations}
-
     from nuri.core.ticker_names import get_ticker_name
     from nuri.trading.recommend.stop_loss import assess_stop_loss
 
@@ -216,8 +214,15 @@ def _build_actions() -> dict:
         # ── 📊 포트폴리오 리밸런스 (prudential 룰 위반) ──
         # PR A: position_limit/sector_limit 는 "매도 강제" 가 아니라 "리밸런스
         # 권고" — 사용자가 타이밍·수단 결정. 사용자 -₩7M 손실 재발 차단 경로.
-        if ticker in violation_tickers:
-            violation = next(v for v in rule_violations if v["ticker"] == ticker)
+        violation = next(
+            (
+                v
+                for v in rule_violations
+                if v["ticker"] == ticker and (not v.get("account") or v["account"] == account_label)
+            ),
+            None,
+        )
+        if violation is not None:
             item["reasons"].append(f"리밸런스 권고 — {violation['detail']}")
             item["priority"] = "portfolio"
             portfolio.append(item)
@@ -524,20 +529,24 @@ def _get_rule_violations() -> list[dict]:
     SIEGE 인증기(#1619 폐기) 자리다. 의미가 바뀐다: 종목 비중은 (계좌, 종목) 의 계좌 내 비중을
     그 계좌 전략 한도와 비교한다(regime 완화 없음). advisor 행이 싣는 집행 필드(`action` ·
     `sell_shares` · `sell_value_usd`)는 여기서 **벗긴다** — 이 버킷은 `portfolio_action=REBALANCE`
-    만 낸다(축 불변식, `nuri/core/axis.py`). 반환 shape 는 이전과 같다: ticker / detail / condition_id.
+    만 낸다(축 불변식, `nuri/core/axis.py`). 계좌 한정 위반은 표시 라벨을 보존한다.
     """
     violations: list[dict] = []
     try:
         from nuri.analysis.rebalance_advisor import detect_violations
+        from nuri.api.routes.dashboard import _get_account_labels
 
+        labels = _get_account_labels()
         for v in detect_violations():
             if v.get("violation_type") not in _PRUDENTIAL_VIOLATIONS:
                 continue
+            account = v.get("account")
             violations.append(
                 {
                     "ticker": v.get("ticker") or "",
                     "detail": v.get("reason") or v["violation_type"],
                     "condition_id": v["violation_type"],
+                    "account": labels.get(account, account) if isinstance(account, str) else None,
                 }
             )
     except Exception as e:
