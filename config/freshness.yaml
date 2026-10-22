@@ -18,6 +18,7 @@ thresholds:
   decisions_context: { warn_hours: 32, fail_hours: 60 } # 매일 07:05 cron — warn 은 consensus 와 동일. fail 은 (55.08, 79.08) 열린구간이어야 한다: 하루 degradation 최대 나이 55.08h 는 WARN 으로 흡수, 3차 예정 실행(79.08h) 전에는 FAIL (#1261)
   ark: { warn_hours: 168, fail_hours: 336 } # rules.yaml ark.max_source_lag_days 와 동일 (#1145)
   portfolio: { warn_hours: 24, fail_hours: 72 } # import_portfolio.py 매일 수동 실행 가정 (#507)
+  news: { warn_hours: 48, fail_hours: 96 } # 매시 수집, date 는 기사 발행일(KST) → 정상 최대 ~24h. 보유 대형주는 주말에도 대개 기사가 있어 48h 는 이상, 96h 는 연휴를 넘는 정체 (#1921)
 
 # /api/dashboard 한 줄 판단(verdict)이 신선도를 확인하는 입력 목록.
 # 이 중 하나라도 FAIL 이면 "공격 가능" 류 판단 대신 stale 안내를 낸다 (#1180, Surface rung).

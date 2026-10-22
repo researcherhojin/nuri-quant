@@ -299,6 +299,15 @@ FRESHNESS_POLICIES: dict[str, dict] = {
         "query": "SELECT MAX(updated_at) FROM portfolio",
         "label": "포트폴리오 sync",
     },
+    "news": {
+        # #1921: Yahoo `Ticker.news` 가 2026-10-02 부터 예외 없이 빈 목록을 줘서 수집기가 3주 동안
+        # 매시간 0행을 `finished` 로 남겼다 — 실패율에도 collector_runs 에도 안 걸리는 "200 인 채로
+        # 빈" 소스다(`ark` #1145 와 같은 축). 이 테이블은 SELL 촉매 게이트가 읽는다. 수집 대상이
+        # 보유 종목뿐이라 MAX(date) 는 "보유 종목의 최신 기사 날짜" 이고, 보유 대형주는 주말에도
+        # 대개 기사가 나와 이틀 공백이면 이상이다. date 는 기사 발행일(KST 날짜).
+        "query": "SELECT MAX(date) FROM news",
+        "label": "보유 종목 뉴스",
+    },
 }
 
 

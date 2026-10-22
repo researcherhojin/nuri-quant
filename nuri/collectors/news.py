@@ -54,14 +54,24 @@ class NewsCollector(BaseCollector):
             self.logger.info(f"뉴스 {len(records)}건 수집")
         return records
 
+    #: 종목당 요청 기사 수. Search 는 검색어 매칭이라 아래에서 `relatedTickers` 로 다시 거른다.
+    NEWS_COUNT = 20
+
     def _fetch_ticker_news(self, ticker: str) -> list[dict]:
-        """단일 종목 뉴스 (yfinance .news)."""
-        # yfinance 직접 호출 — openbb 1차 경로는 #1477 로 제거
+        """단일 종목 뉴스 (yfinance Search).
+
+        `Ticker.news` 는 2026-10-02 부터 **예외 없이 빈 목록**을 준다 (#1921, yfinance 1.7.0 고정 상태에서
+        Yahoo 쪽 변화) — 수집기는 그걸 "기사 없음" 으로 받아 3주 동안 매시간 0행을 `finished` 로 남겼다.
+        `Search(ticker).news` 는 같은 flat 형식으로 기사를 주지만 검색어 매칭이라 다른 종목 기사가 섞인다.
+        이 테이블은 SELL 촉매 게이트(`core/catalyst.has_recent_catalyst`)가 읽으므로, `relatedTickers` 에
+        그 종목이 **있는** 기사만 남긴다 — 필드가 없는 기사는 관련성을 알 수 없어 버린다.
+        """
         try:
             import yfinance as yf
 
-            raw = yf.Ticker(ticker).news or []
-            return self._parse_yfinance_news(raw, ticker)
+            raw = yf.Search(ticker, news_count=self.NEWS_COUNT).news or []
+            related = [i for i in raw if isinstance(i, dict) and ticker in (i.get("relatedTickers") or [])]
+            return self._parse_yfinance_news(related, ticker)
         except Exception as e:
             self.logger.debug(f"{ticker}: yfinance news 폴백 실패 — {e}")
             return []

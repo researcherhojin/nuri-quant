@@ -104,6 +104,10 @@ class TestFreshnessPolicies:
             "decisions_context",
             "portfolio",
             "ark",
+            # `news` 는 #1921 에서 추가 — Yahoo `Ticker.news` 가 예외 없이 빈 목록을 주기 시작한
+            # 2026-10-02 부터 3주 동안 매시간 0행이 `finished` 로 기록됐다. SELL 촉매 게이트의 입력인데
+            # 정책이 없어 어떤 화면에도 안 떴다.
+            "news",
         }
         assert expected == set(FRESHNESS_POLICIES.keys())
 
