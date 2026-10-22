@@ -788,3 +788,60 @@ class TestPlaceboEdges:
         assert placebo is not None
         assert r.skipped_blocks == ["TSLA"]
         assert r.null_means == pytest.approx([(0.05 + 0.08 + 0.03 + placebo) / 4] * 3)
+
+
+class TestSampleMembershipMatchesFetchSample:
+    """결정 상세 배지(#1909)는 판정 표본과 같은 규칙이어야 한다.
+
+    배지는 화면에 "이 결정이 판정 표본이다" 라고 쓴다. `fetch_sample` 과 한 축이라도 어긋나면
+    화면이 판정과 다른 모집단을 말하고, 그건 §3.11 이 막으려는 사후 해석을 UI 가 대신 하는 셈이다.
+    제외 축마다 한 건씩 심고 두 함수가 같은 집합을 고르는지 본다.
+    """
+
+    @staticmethod
+    def _population(db_path):
+        _seed_decision(db_path, 50, "AAA", EMIT_2, action="SELL", alpha=0.01)
+        _seed_decision(db_path, 51, "BBB", EMIT_2, alpha=0.02)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE recommendations SET source = 'some_writer' WHERE id = 51")
+            conn.commit()
+        _seed_decision(db_path, 52, "CCC", "2026-07-01", alpha=0.03)
+        _seed_decision(db_path, 53, "AAA", "2027-05-20", alpha=0.04)
+        _seed_decision(db_path, 54, "005930.KS", EMIT_1, alpha=0.05)
+        _seed_decision(db_path, 55, "035720.KQ", EMIT_1, alpha=0.06)
+
+    @staticmethod
+    def _rec(db_path, rec_id: int) -> dict:
+        rows = da.query(
+            "SELECT id, date, ticker, action, source FROM recommendations WHERE id = ?", (rec_id,), db_path=db_path
+        )
+        return dict(rows[0])
+
+    def test_judgment_badge_is_exactly_the_adjudication_sample(self, seeded):
+        self._population(seeded)
+        recs = [
+            dict(r) for r in da.query("SELECT id, date, ticker, action, source FROM recommendations", db_path=seeded)
+        ]
+        badge = {f"rec_{r['id']}" for r in recs if da.sample_membership(r)["sample"] == "judgment"}
+        sample = {d["decision_id"] for d in da.fetch_sample(db_path=seeded, as_of=AS_OF).decisions}
+        assert badge == sample == {"rec_1", "rec_2", "rec_3", "rec_4"}
+
+    @pytest.mark.parametrize(
+        ("rec_id", "reason"),
+        [
+            (50, "action SELL"),
+            (51, "source some_writer"),
+            (52, "before declared_date"),
+            (53, "after emit_cutoff_date"),
+            (54, "KR ticker"),
+            (55, "KR ticker"),
+        ],
+    )
+    def test_each_exclusion_is_diagnostic_and_names_its_reason(self, seeded, rec_id, reason):
+        self._population(seeded)
+        m = da.sample_membership(self._rec(seeded, rec_id))
+        assert m["sample"] == "diagnostic"
+        assert any(reason in r for r in m["reasons"]), m["reasons"]
+
+    def test_a_decision_without_a_recommendation_is_untracked(self):
+        assert da.sample_membership(None)["sample"] == "untracked"
