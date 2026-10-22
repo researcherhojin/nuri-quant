@@ -31,3 +31,89 @@ class TestCodexModelIsPinned:
     def test_archive_header_names_the_model_that_ran(self):
         md = llm_consult.render_markdown("slug", "p", {"ok": True, "verdict": "PASS"}, None)
         assert f"## Codex ({llm_consult.CODEX_MODEL})" in md
+
+
+def _load_consult(monkeypatch, **env):
+    import os
+
+    for key in list(os.environ):
+        if key.startswith(("NURI_LLM_LOCAL_", "NURI_LLM_QWEN_")):
+            monkeypatch.delenv(key)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_strata_preset_sends_the_selected_model(monkeypatch):
+    module = _load_consult(monkeypatch, NURI_LLM_LOCAL_BACKEND="strata")
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]}
+    with patch.object(module.requests, "post", return_value=response) as post:
+        assert module.consult_qwen("synthetic")["ok"]
+    assert post.call_args.args == ("http://127.0.0.1:8081/v1/chat/completions",)
+    assert post.call_args.kwargs["json"]["model"] == "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
+    response.raise_for_status.assert_called_once()
+
+
+def test_existing_defaults_and_explicit_overrides(monkeypatch):
+    default = _load_consult(monkeypatch)
+    assert default.LOCAL_URL == "http://127.0.0.1:1234/v1/chat/completions"
+    assert default.LOCAL_MODEL == "lmstudio-community/muse-glimmer-30b"
+    legacy = _load_consult(
+        monkeypatch, NURI_LLM_QWEN_URL="http://localhost:9000/v1/chat/completions", NURI_LLM_QWEN_MODEL="legacy"
+    )
+    assert legacy.LOCAL_MODEL == "legacy"
+    assert legacy.LOCAL_URL == "http://localhost:9000/v1/chat/completions"
+    override = _load_consult(
+        monkeypatch,
+        NURI_LLM_LOCAL_BACKEND="strata",
+        NURI_LLM_LOCAL_MODEL="custom",
+        NURI_LLM_QWEN_MODEL="legacy",
+        NURI_LLM_LOCAL_URL="http://localhost:8082/v1/chat/completions",
+    )
+    assert override.LOCAL_MODEL == "custom"
+    assert override.LOCAL_URL == "http://localhost:8082/v1/chat/completions"
+
+
+def test_incomplete_verdicts_are_not_successful():
+    for content, finish in [
+        ("partial", "length"),
+        ("", "stop"),
+        ("<think>reason only</think>", "stop"),
+        ("text", None),
+    ]:
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"choices": [{"message": {"content": content}, "finish_reason": finish}]}
+        with patch.object(llm_consult.requests, "post", return_value=response):
+            assert not llm_consult.consult_qwen("synthetic")["ok"]
+
+
+def test_http_failure_is_not_parsed_as_a_verdict():
+    import pytest
+    import requests
+
+    response = MagicMock()
+    response.raise_for_status.side_effect = requests.HTTPError("server unavailable")
+    with patch.object(llm_consult.requests, "post", return_value=response), pytest.raises(requests.HTTPError):
+        llm_consult.consult_qwen("synthetic")
+    response.json.assert_not_called()
+
+
+def test_cli_reports_failure_and_archives_result(tmp_path, monkeypatch):
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("synthetic")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["consult", "--qwen-only", "--slug", "smoke", "--prompt-file", str(prompt), "--out-dir", str(tmp_path)],
+    )
+    with (
+        patch.object(llm_consult, "consult_qwen", side_effect=ConnectionError("offline")),
+        patch.object(llm_consult, "consult_codex") as external,
+    ):
+        assert llm_consult.main() == 1
+    external.assert_not_called()
+    assert "**ok:** False" in next(tmp_path.glob("*.md")).read_text()
