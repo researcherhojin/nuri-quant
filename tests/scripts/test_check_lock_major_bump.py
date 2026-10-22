@@ -566,8 +566,15 @@ class TestNpmLockGate:
     def test_the_repo_npm_lock_parses(self):
         from scripts.verify.check_lock_major_bump import parse_npm_lock
 
-        pkgs = parse_npm_lock((REPO_ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8"))
-        assert len(pkgs) >= 700, f"{len(pkgs)}개만 읽었다 — 파서가 눈이 멀었다"
+        raw = (REPO_ROOT / "frontend" / "package-lock.json").read_text(encoding="utf-8")
+        entries = json.loads(raw)["packages"]
+        pkgs = parse_npm_lock(raw)
+        # 의존성 제거로 lock 이 작아져도 유효하다 (#1897). 실제 슬롯과 버전을 모두 확인한다.
+        assert set(pkgs) == set(entries) - {""}, "루트 제외 모든 패키지 슬롯을 보존해야 한다"
+        assert all(pkgs[path] == entries[path]["version"] for path in pkgs)
+        assert "node_modules/next" in pkgs
+        assert "node_modules/@types/react" in pkgs
+        assert any(path.count("node_modules/") > 1 for path in pkgs), "중첩 슬롯도 판정 대상이다"
         assert "" not in pkgs, "루트 항목이 판정 대상에 들어왔다"
 
 
