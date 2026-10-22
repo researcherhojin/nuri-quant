@@ -10,6 +10,7 @@ import pytest
 
 from nuri.alerts import profit_signals as ps
 from nuri.core.db import init_db, upsert_portfolio, upsert_prices
+from nuri.core.timezone import today_kst
 
 
 @pytest.fixture
@@ -36,7 +37,7 @@ def _seed(path, *, ticker, account, avg, peak, current, qty=10):
         path,
     )
     rows = []
-    for date, px in (("2026-03-02", peak), ("2026-07-31", current)):
+    for date, px in (("2026-03-02", peak), (today_kst(), current)):
         rows.append(
             {
                 "ticker": ticker,
@@ -54,7 +55,7 @@ def _seed(path, *, ticker, account, avg, peak, current, qty=10):
 
 def _core(monkeypatch, stop=-30):
     """계좌 전략을 core 로 고정하고 손절선을 넉넉히 — 트레일링만 격리해 본다."""
-    import nuri.alerts.risk_signals as rs
+    import nuri.trading.recommend.stop_loss as rs
 
     monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "core")
     monkeypatch.setattr(rs, "get_account_strategy_name", lambda a: "core")
@@ -117,7 +118,7 @@ def test_below_entry_says_full_giveback_not_over_100_percent(db_path, monkeypatc
 
 
 def test_pension_excluded(db_path, monkeypatch):
-    import nuri.alerts.risk_signals as rs
+    import nuri.trading.recommend.stop_loss as rs
 
     monkeypatch.setattr(ps, "get_account_strategy_name", lambda a: "pension")
     monkeypatch.setattr(rs, "get_account_strategy_name", lambda a: "pension")

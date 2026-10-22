@@ -702,6 +702,7 @@ export const OVERVIEW = {
     QUEUE_ARIA: (bucket: string) => `${bucket} 종목 선택`,
     EVIDENCE_ARIA: "선택한 판단 근거",
     AS_OF: "판정 기준일 · ",
+    UNKNOWN: "판단 불가",
     NO_REASONS: "판단 근거 미제공",
     POSITION: "보유 비중",
     PNL: "평가 손익률",

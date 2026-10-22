@@ -895,6 +895,30 @@ class TestPremarketBriefStatementCoverage:
         assert "미상" in line, f"비중 미상을 표시하지 않는다: {line}"
         assert "None" not in line
 
+    def test_short_ticker_line_survives_unknown_stop_loss_item(self):
+        """손절 판단 불가 항목은 `pnl_pct=None` 이다 (#1874).
+
+        `format_brief_embed` 는 try 로 감싸여 있지 않아 TypeError 가 브리프 생성 전체를 멈춘다.
+        Mutation lock: `pnl_txt` 분기를 지우고 `{pnl:+.1f}%` 로 되돌리면 FAIL.
+        """
+        from nuri.alerts.premarket_brief import _short_ticker_line
+
+        line = _short_ticker_line(
+            {"ticker": "ZZZZ", "action": "UNKNOWN", "confidence": None, "pnl_pct": None, "position_pct": 1.0}
+        )
+        assert "pnl 미상" in line, f"손익 미상을 표시하지 않는다: {line}"
+
+    def test_short_ticker_line_names_the_single_account(self):
+        """항목이 계좌 단위라 같은 티커가 두 줄일 수 있다 — 계좌 라벨로 구분돼야 한다 (#1874)."""
+        from nuri.alerts.premarket_brief import _short_ticker_line
+
+        base = {"ticker": "ZZZZ", "action": "HOLD", "confidence": 70, "pnl_pct": 1.0, "position_pct": 1.0}
+        lines = {
+            _short_ticker_line({**base, "account": a, "accounts": [{"account": a}]})
+            for a in ("Brokerage Alpha", "Brokerage Beta")
+        }
+        assert len(lines) == 2 and all("Brokerage" in line for line in lines)
+
     def test_short_ticker_line_sorts_accounts_with_unknown_weights(self):
         """정렬 키에 None 이 섞이면 파이썬은 float 과 비교하지 못해 TypeError 다.
 

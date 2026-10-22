@@ -15,6 +15,8 @@ import yaml
 
 from nuri.alerts import risk_signals
 from nuri.core.db import init_db, query, upsert_portfolio, upsert_prices
+from nuri.core.timezone import today_kst
+from nuri.trading.recommend import stop_loss
 
 
 def _seed_price(path, ticker, close):
@@ -23,7 +25,7 @@ def _seed_price(path, ticker, close):
             [
                 {
                     "ticker": ticker,
-                    "date": "2026-07-08",
+                    "date": today_kst(),
                     "open": close,
                     "high": close,
                     "low": close,
@@ -54,7 +56,7 @@ def _seed(path, *, ticker, account, avg, current):
             [
                 {
                     "ticker": ticker,
-                    "date": "2026-07-08",
+                    "date": today_kst(),
                     "open": current,
                     "high": current,
                     "low": current,
@@ -73,8 +75,8 @@ def _seed(path, *, ticker, account, avg, current):
 
 def test_breach_detected_when_below_threshold(db_path, monkeypatch):
     # core stop_loss = -7% → avg 100, current 90 = -10% → breach
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
 
     breaches = risk_signals.scan_stop_breaches(db_path=db_path)
@@ -88,8 +90,8 @@ def test_breach_detected_when_below_threshold(db_path, monkeypatch):
 
 def test_no_breach_when_above_threshold(db_path, monkeypatch):
     # avg 100, current 95 = -5% > -7% → no breach
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=95.0)
 
     assert risk_signals.scan_stop_breaches(db_path=db_path) == []
@@ -97,16 +99,16 @@ def test_no_breach_when_above_threshold(db_path, monkeypatch):
 
 def test_pension_account_excluded(db_path, monkeypatch):
     # 깊은 손실이라도 pension 은 daily action 대상 아님 → 제외
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "pension")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -30)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "pension")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -30)
     _seed(db_path, ticker="TST_A", account="Pension Gamma", avg=100.0, current=50.0)
 
     assert risk_signals.scan_stop_breaches(db_path=db_path) == []
 
 
 def test_session_filter_kr_vs_us(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=88.0)
     _seed(db_path, ticker="005930.KS", account="Brokerage Alpha", avg=100.0, current=88.0)
 
@@ -120,8 +122,8 @@ def test_session_filter_kr_vs_us(db_path, monkeypatch):
 
 
 def test_missing_price_skipped(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     # 보유만 있고 prices 없음 → current None → skip (KeyError/crash 없이)
     upsert_portfolio(
         [
@@ -143,16 +145,16 @@ def test_zero_price_skipped_no_false_breach(db_path, monkeypatch):
     """P1 regression — current==0 (상장폐지/거래정지/불량 price) 은 -100% false
     SELL 을 내면 안 됨. risk_agent 와 동일한 truthiness 가드.
     """
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=0.0)
 
     assert risk_signals.scan_stop_breaches(db_path=db_path) == []  # -100% false breach 없음
 
 
 def test_breaches_sorted_worst_first(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)  # -10%
     _seed(db_path, ticker="TST_B", account="Brokerage Alpha", avg=100.0, current=80.0)  # -20%
 
@@ -247,8 +249,8 @@ def test_kosdaq_holding_is_scanned_in_kr_session(db_path, monkeypatch):
 
     `.KS` 만 필터하면 KOSDAQ 보유분이 KR 세션에서 통째로 빠지고 US 세션에 섞인다.
     """
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="900001.KQ", account="Brokerage Alpha", avg=100.0, current=80.0)
 
     kr = risk_signals.scan_stop_breaches("kr", db_path=db_path)
@@ -295,8 +297,8 @@ def test_breach_age_counts_only_the_latest_consecutive_run(db_path):
 
 
 def test_staging_writes_sell_events_to_brief_outbox(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
 
     staged = risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)
@@ -314,8 +316,8 @@ def test_staging_writes_sell_events_to_brief_outbox(db_path, monkeypatch):
 
 
 def test_staging_dedupes_same_ticker_same_day(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
 
     risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path)
@@ -329,8 +331,8 @@ def test_multi_account_same_ticker_distinct_briefs(db_path, monkeypatch):
     """P2-B — 같은 티커가 두 계좌에서 이탈하면 각각 별개 brief (dedupe 로 collapse
     안 됨). 계좌별 avg 가 달라 entry/stop 도 다르므로 하나로 합치면 안 됨.
     """
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     upsert_portfolio(
         [
             {
@@ -419,8 +421,8 @@ def test_e2e_pension_excluded_via_real_helper(db_path):
 
 
 def test_no_breach_stages_nothing(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=99.0)
 
     assert risk_signals.stage_stop_breach_briefs(date="2026-07-08", db_path=db_path) == 0
@@ -433,8 +435,8 @@ def test_cli_dry_run_scans_without_staging(db_path, monkeypatch, capsys):
     import nuri.core.db as db_mod
 
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
 
     rc = risk_signals.main(["--dry-run"])
@@ -450,8 +452,8 @@ def test_cli_stages_when_breach_and_not_dry_run(db_path, monkeypatch, capsys):
     import nuri.core.db as db_mod
 
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=90.0)
 
     rc = risk_signals.main([])
@@ -467,8 +469,8 @@ def test_cli_no_breach_reports_clean(db_path, monkeypatch, capsys):
     import nuri.core.db as db_mod
 
     monkeypatch.setattr(db_mod, "DB_PATH", db_path)
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Brokerage Alpha", avg=100.0, current=99.0)
 
     rc = risk_signals.main([])
@@ -532,8 +534,8 @@ def test_card_shows_account_weight_and_trend():
 
 def test_weight_omitted_for_mixed_currency_account(db_path, monkeypatch):
     """통화가 섞인 계좌는 환율 없이 합산하면 틀린다 — 비중을 아예 빼야 한다."""
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Mixed", avg=100.0, current=80.0)  # USD
     upsert_portfolio(
         [
@@ -557,8 +559,8 @@ def test_weight_omitted_for_mixed_currency_account(db_path, monkeypatch):
 
 
 def test_weight_computed_for_single_currency_account(db_path, monkeypatch):
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)
     _seed(db_path, ticker="TST_A", account="Solo", avg=100.0, current=80.0)  # 10주 × 80 = 800
     upsert_portfolio(
         [

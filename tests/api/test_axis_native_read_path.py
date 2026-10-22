@@ -12,6 +12,8 @@ concentration-only SELL 을 emit 하는 경로가 재도입된 것.
 
 from unittest.mock import patch
 
+from nuri.core.timezone import today_kst
+
 
 class TestActionsReadPathAxisNative:
     """`/api/actions` axis-native routing."""
@@ -47,6 +49,7 @@ class TestActionsReadPathAxisNative:
             ],
             portfolio={
                 "CRASH": {
+                    "price_date": today_kst(),
                     "current_price": 70.0,
                     "avg_price": 100.0,
                     "quantity": 100,
@@ -77,6 +80,7 @@ class TestActionsReadPathAxisNative:
             ],
             portfolio={
                 "LEGACY": {
+                    "price_date": today_kst(),
                     "current_price": 95.0,
                     "avg_price": 100.0,
                     "quantity": 50,
@@ -123,6 +127,7 @@ class TestActionsReadPathAxisNative:
             ],
             portfolio={
                 "BAC": {
+                    "price_date": today_kst(),
                     "current_price": 40.0,
                     "avg_price": 40.5,
                     "quantity": 100,
@@ -163,6 +168,7 @@ class TestActionsReadPathAxisNative:
             ],
             portfolio={
                 "FUTURE": {
+                    "price_date": today_kst(),
                     "current_price": 100.0,
                     "avg_price": 100.0,
                     "quantity": 10,
@@ -204,6 +210,7 @@ class TestActionsReadPathAxisNative:
             ],
             portfolio={
                 "MISWRITE": {
+                    "price_date": today_kst(),
                     "current_price": 100.0,
                     "avg_price": 100.0,
                     "quantity": 10,

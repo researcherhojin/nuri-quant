@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pandas as pd
 
 from nuri.alerts import daily_report, risk_signals
 from nuri.core.db import init_db, upsert_portfolio, upsert_prices
+from nuri.core.timezone import kst_now, today_kst
+from nuri.trading.recommend import stop_loss
 
 
 def test_a_delivered_report_is_not_also_printed(monkeypatch):
@@ -31,8 +35,8 @@ def test_a_bar_that_recovers_between_the_scan_and_its_context_claims_no_breach_d
     손절선 위의 새 봉(97)을 쓰면 경과는 0 이다 — 그때 '1일째' 같은 경과를 지어내지 않고 항목을 뺀다."""
     db_path = tmp_path / "risk.db"
     init_db(db_path)
-    monkeypatch.setattr(risk_signals, "get_account_strategy_name", lambda a: "core")
-    monkeypatch.setattr(risk_signals, "get_stop_loss_for_account", lambda a: -7)  # 손절가 93
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "core")
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda a: -7)  # 손절가 93
     upsert_portfolio(
         [
             {
@@ -46,11 +50,11 @@ def test_a_bar_that_recovers_between_the_scan_and_its_context_claims_no_breach_d
         ],
         db_path,
     )
-    upsert_prices(_bar("TST_A", "2026-07-08", 90.0), db_path)
+    upsert_prices(_bar("TST_A", (kst_now() - timedelta(days=1)).date().isoformat(), 90.0), db_path)
     real_context = risk_signals._price_context
 
     def context_after_a_new_bar(ticker, avg, threshold, db_path=None, lookback=260):
-        upsert_prices(_bar(ticker, "2026-07-09", 97.0), db_path)  # 두 읽기 사이에 도착한 봉
+        upsert_prices(_bar(ticker, today_kst(), 97.0), db_path)  # 두 읽기 사이에 도착한 봉
         return real_context(ticker, avg, threshold, db_path=db_path, lookback=lookback)
 
     monkeypatch.setattr(risk_signals, "_price_context", context_after_a_new_bar)

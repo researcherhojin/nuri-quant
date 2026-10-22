@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { TICKER_PREVIEW } from "../src/lib/strings";
+import { OVERVIEW, TICKER_PREVIEW } from "../src/lib/strings";
 
 for (const [width, height] of [[1280, 720], [1440, 760], [1920, 850], [1920, 1080]]) {
   test(`Overview stays fixed while its panels scroll at ${width}x${height}`, async ({ page }, testInfo) => {
@@ -71,7 +71,7 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [2560, 1440], [3440, 1
       // 행이 하나도 없으면 "잘림 0" 은 공허하다 (Codex #1658 P1 r1·r2) — 범주별로 후보 수를 먼저 잠근다.
       // 파이프라인은 항상 5단계를 그리므로 그것만으로는 표 행·원장 링크의 부재를 못 잡는다. 시드 DB 는
       // 기회 탐색 3종(volume_spike)과 same-date 판정(decision_id) 을 보장한다 (scripts/dev/seed_e2e_db.py).
-      const rows = await dashboard.evaluate(el => {
+      const rows = await dashboard.evaluate((el, noLedgerLabel) => {
         const count = (selector: string) => {
           const all = [...el.querySelectorAll(selector)];
 
@@ -89,18 +89,18 @@ for (const [width, height] of [[1440, 900], [1920, 1080], [2560, 1440], [3440, 1
           // 후보 표만 센다 — 지표 카드 모달의 출처 표(#1682)도 닫힌 채 DOM 에 있어 그냥 "tbody tr" 이면 항상 참이 된다
           table: count('[class*="candidates"] tbody tr'),
           ledger: count('[class*="evidenceLink"]'),
+          noLedger: [...el.querySelectorAll('[class*="basis"]')].filter(node => node.textContent === noLedgerLabel).length,
           queue: el.querySelectorAll('[class*="queue"] button').length,
           emptyBucket: /목록에 현재 표시할 항목이 없습니다/.test(el.textContent ?? ""),
         };
-      });
+      }, OVERVIEW.INBOX_PANEL.NO_LEDGER);
 
       expect(rows.pipeline.total).toBeGreaterThanOrEqual(5);
       expect(rows.table.total).toBeGreaterThanOrEqual(1);
 
-      // 점검 목록은 환경에 따라 비어 있을 수 있다 — `config/portfolio.yaml` 의 실계좌 필터(actions.py)가 시드의
-      // placeholder 계좌를 걸러내면 로컬 시드 실행에서 네 버킷이 모두 빈다 (Codex #1658 r3 P2). CI 는 그 파일이
-      // 없어 BBB SELL 이 urgent 에 들어온다. 항목이 있으면 원장 링크가 보여야 하고, 없으면 빈 상태 문구가 명시돼야 한다.
-      if (rows.queue > 0) expect(rows.ledger.total).toBeGreaterThanOrEqual(1);
+      // 기계적 손절과 판단 불가는 추천 원장을 가리키지 않는다. 링크 또는 명시적
+      // 원장 없음 안내 중 정확히 하나가 보여야 한다 (#1874).
+      if (rows.queue > 0) expect(rows.ledger.total + rows.noLedger).toBe(1);
       else expect(rows.emptyBucket).toBe(true);
       expect([rows.pipeline.hidden, rows.table.hidden, rows.ledger.hidden]).toEqual([0, 0, 0]);
     }
