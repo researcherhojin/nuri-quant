@@ -128,15 +128,7 @@ class TestDiscordBot_R22:
         monkeypatch.setenv("DISCORD_CHANNEL_ID", "0")
         from nuri.alerts.discord_bot import send_bot
 
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(send_bot({"title": "test"}))
+        result = asyncio.run(send_bot({"title": "test"}))
         assert result is False
 
 

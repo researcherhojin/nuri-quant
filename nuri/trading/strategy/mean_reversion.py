@@ -151,12 +151,17 @@ def backtest_mean_reversion(
     wins = [r for r in returns if r > 0]
     losses = [r for r in returns if r <= 0]
 
+    gross_profit = sum(wins)
+    gross_loss = abs(sum(losses))
+    # 무손익 거래만 있으면 0/0은 정의되지 않는다. NaN으로 내보내지 않는다.
+    profit_factor = gross_profit / gross_loss if gross_loss else (float("inf") if gross_profit else None)
+
     return {
         "strategy": "mean_reversion",
         "total_trades": len(returns),
         "win_rate": len(wins) / len(returns),
         "avg_return": np.mean(returns),
-        "profit_factor": sum(wins) / abs(sum(losses)) if losses else float("inf"),
+        "profit_factor": profit_factor,
         "avg_hold_days": np.mean([t["hold_days"] for t in all_trades]),
         "best": max(returns),
         "worst": min(returns),

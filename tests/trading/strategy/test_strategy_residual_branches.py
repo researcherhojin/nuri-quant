@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import warnings
 
 import pandas as pd
 
@@ -26,7 +27,10 @@ def test_a_dip_that_never_reaches_the_mid_band_exits_at_max_hold(db_path):
             [(d.strftime("%Y-%m-%d"), c) for d, c in zip(dates, closes)],
         )
 
-    result = backtest_mean_reversion(max_hold=5, db_path=db_path)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        result = backtest_mean_reversion(max_hold=5, db_path=db_path)
+    assert result["profit_factor"] is None
 
     assert (result["total_trades"], result["avg_hold_days"], result["avg_return"]) == (1, 5.0, 0.0)
 

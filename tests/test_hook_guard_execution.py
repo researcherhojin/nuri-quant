@@ -90,7 +90,8 @@ class TestSqlite3ImportGuard:
     """`import sqlite3` 를 nuri/ 편집에서 차단 (invariants.md DB sole importer)."""
 
     @pytest.fixture(scope="class")
-    def command(self) -> str:
+    @staticmethod
+    def command() -> str:
         return _hook_command("sqlite3 import guard...")
 
     def test_blocks_import_in_nuri_module(self, shell, command):
@@ -141,7 +142,8 @@ class TestPrivacyGuard:
     """ticker+PnL 인라인 작성을 차단 (STRATEGY §4.4.1, PR #202 시그니처)."""
 
     @pytest.fixture(scope="class")
-    def command(self) -> str:
+    @staticmethod
+    def command() -> str:
         return _hook_command("privacy ticker+pnl check...")
 
     @pytest.fixture(autouse=True)

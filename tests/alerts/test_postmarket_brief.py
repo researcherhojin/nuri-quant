@@ -272,7 +272,7 @@ def test_write_brief_survives_stale_input_staging_error(seeded_db, portfolio_yam
         path = write_brief("us", date="2026-05-01")
 
     assert path is not None, "관측 실패가 브리프 생성을 죽였다"
-    conc_spy.assert_called_once(), "앞 tier 실패가 뒤 tier 를 막았다"
+    conc_spy.assert_called_once()  # 앞 tier 실패가 뒤 tier 를 막지 않는다.
 
 
 def test_write_brief_survives_portfolio_drift_staging_error(seeded_db, portfolio_yaml):

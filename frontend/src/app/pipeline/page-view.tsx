@@ -443,7 +443,6 @@ export default function PipelinePage() {
           nodeTypes={nodeTypes()}
           fitView
           fitViewOptions={{ padding: 0.15 }}
-          proOptions={{ hideAttribution: true }}
           minZoom={0.4}
           maxZoom={1.5}
           defaultEdgeOptions={{

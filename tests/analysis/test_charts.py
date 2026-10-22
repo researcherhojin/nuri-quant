@@ -409,7 +409,7 @@ class TestChartsCoverageGaps:
         # Build a 300-row price df to feed query_df
         df_rows = pd.DataFrame(
             {
-                "date": [pd.Timestamp("2024-01-01") + pd.Timedelta(days=i) for i in range(300)],
+                "date": [pd.Timestamp("2024-01-01") + pd.Timedelta(i, unit="D") for i in range(300)],
                 "open": [100.0 + i * 0.1 for i in range(300)],
                 "high": [101.0 + i * 0.1 for i in range(300)],
                 "low": [99.0 + i * 0.1 for i in range(300)],
