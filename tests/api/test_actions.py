@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from nuri.core.db import get_db, init_db
+from nuri.core.timezone import today_kst
 
 
 @pytest.fixture()
@@ -35,11 +36,11 @@ def client(tmp_path, monkeypatch):
             )
             conn.execute(
                 "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("AAPL", "2026-04-13", 155, 160, 150, 158, 1000000),
+                ("AAPL", today_kst(), 155, 160, 150, 158, 1000000),
             )
             conn.execute(
                 "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                ("TSLA", "2026-04-13", 340, 355, 335, 348, 5000000),
+                ("TSLA", today_kst(), 340, 355, 335, 348, 5000000),
             )
             conn.execute(
                 "INSERT INTO macro (indicator, date, value, source) VALUES (?, ?, ?, ?)",
@@ -375,6 +376,7 @@ class TestPRABucketRouting:
             ],
             portfolio_map={
                 "BAC": {
+                    "price_date": today_kst(),
                     "current_price": 40.0,
                     "avg_price": 40.0,
                     "quantity": 100,
@@ -411,6 +413,7 @@ class TestPRABucketRouting:
             rule_violations=[],
             portfolio_map={
                 "CRASH": {
+                    "price_date": today_kst(),
                     "current_price": 70.0,
                     "avg_price": 100.0,
                     "quantity": 100,
@@ -452,6 +455,7 @@ class TestPRABucketRouting:
             ],
             portfolio_map={
                 "HYBRID": {
+                    "price_date": today_kst(),
                     "current_price": 70.0,
                     "avg_price": 100.0,
                     "quantity": 200,
@@ -798,6 +802,7 @@ class TestBuildActionsLogic:
     ):
         return {
             "current_price": price,
+            "price_date": today_kst(),
             "avg_price": avg,
             "quantity": 10,
             "pnl_pct": pnl,
@@ -864,17 +869,17 @@ class TestBuildActionsLogic:
             portfolio={"BAD": self._pf(90, 100, -10, 5)},
         )
         assert len(result["urgent"]) == 1
-        assert "손절선" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in " ".join(result["urgent"][0]["reasons"])
         # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
         # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
-        assert "돌파" in result["urgent"][0]["reasons"][1]
-        assert "근접" not in result["urgent"][0]["reasons"][1]
+        assert "돌파" in " ".join(result["urgent"][0]["reasons"])
+        assert "근접" not in " ".join(result["urgent"][0]["reasons"])
 
     def test_a3_long_term_account_minus_10_not_urgent(self):
         """A-3: long_term 계좌(-20) 의 -10% 손실은 urgent 아님.
         이전 동작(-7 하드코딩): urgent 로 분류 (pension/long_term 계좌에 잘못된 알림).
         Regression lock: threshold 가 하드코딩으로 돌아가면 이 테스트 fail."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-20):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-20):
             result = self._run(
                 [{"ticker": "LTMX", "action": "SELL", "confidence": 70, "agreement": 50}],
                 portfolio={"LTMX": self._pf(90, 100, -10, 5)},
@@ -887,37 +892,37 @@ class TestBuildActionsLogic:
 
     def test_a3_long_term_account_minus_22_urgent(self):
         """A-3: long_term(-20) 계좌 -22% 는 실제 breach → urgent."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-20):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-20):
             result = self._run(
                 [{"ticker": "LTMX", "action": "SELL", "confidence": 80, "agreement": 60}],
                 portfolio={"LTMX": self._pf(78, 100, -22, 5)},
             )
         assert len(result["urgent"]) == 1
-        assert "손절선" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in " ".join(result["urgent"][0]["reasons"])
         # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
         # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
-        assert "돌파" in result["urgent"][0]["reasons"][1]
-        assert "근접" not in result["urgent"][0]["reasons"][1]
-        assert "-20%" in result["urgent"][0]["reasons"][1]
+        assert "돌파" in " ".join(result["urgent"][0]["reasons"])
+        assert "근접" not in " ".join(result["urgent"][0]["reasons"])
+        assert "-20%" in " ".join(result["urgent"][0]["reasons"])
 
     def test_a3_core_account_minus_10_still_urgent(self):
         """A-3: core(-7) 계좌 -10% 는 기존 동작 유지 (regression 방지)."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "BAD", "action": "SELL", "confidence": 70, "agreement": 50}],
                 portfolio={"BAD": self._pf(90, 100, -10, 5)},
             )
         assert len(result["urgent"]) == 1
-        assert "손절선" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in " ".join(result["urgent"][0]["reasons"])
         # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
         # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
-        assert "돌파" in result["urgent"][0]["reasons"][1]
-        assert "근접" not in result["urgent"][0]["reasons"][1]
+        assert "돌파" in " ".join(result["urgent"][0]["reasons"])
+        assert "근접" not in " ".join(result["urgent"][0]["reasons"])
 
     def test_a3_boundary_equality_not_urgent(self):
         """A-3 operator consistency: pnl == threshold 는 urgent 아님 (< 통일,
         certification.py:308 과 일치). A-4 이후 catalyst 없으면 hold 로 강등."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "EDGE", "action": "SELL", "confidence": 65, "agreement": 40}],
                 portfolio={"EDGE": self._pf(93, 100, -7, 5)},
@@ -930,7 +935,7 @@ class TestBuildActionsLogic:
     def test_a4_sell_no_breach_no_catalyst_becomes_hold(self):
         """A-4: non-emergency SELL (pnl > stop-loss threshold) + catalyst 없음 → hold.
         이전 동작: check bucket 에 들어갔음. Regression lock: catalyst gate 제거 시 fail."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "QUIET", "action": "SELL", "confidence": 50, "agreement": 20}],
                 portfolio={"QUIET": self._pf(102, 100, 2, 5)},  # +2% (no breach)
@@ -939,11 +944,11 @@ class TestBuildActionsLogic:
         assert len(result["urgent"]) == 0
         assert len(result["check"]) == 0
         assert len(result["hold"]) == 1
-        assert "SELL 근거 없음" in result["hold"][0]["reasons"][1]
+        assert "SELL 근거 없음" in " ".join(result["hold"][0]["reasons"])
 
     def test_a4_sell_no_breach_with_catalyst_goes_to_check(self):
         """A-4: SELL + catalyst 있으면 check bucket (기존 동작)."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "NEWSY", "action": "SELL", "confidence": 65, "agreement": 40}],
                 portfolio={"NEWSY": self._pf(98, 100, -2, 5)},  # -2% (no breach)
@@ -951,12 +956,12 @@ class TestBuildActionsLogic:
             )
         assert len(result["urgent"]) == 0
         assert len(result["check"]) == 1
-        assert "catalyst: news" in result["check"][0]["reasons"][1]
+        assert "catalyst: news" in " ".join(result["check"][0]["reasons"])
 
     def test_a5_divergence_above_threshold_adds_reason(self):
         """A-5: live price 가 stored 대비 >3% diverge 하면 reason 에 경고 추가.
         NFLX 사례 방지 (stored $97.23 vs live $107.79)."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "NFLX", "action": "SELL", "confidence": 75, "agreement": 60}],
                 portfolio={"NFLX": self._pf(97.23, 100, -2.77, 5)},
@@ -972,7 +977,7 @@ class TestBuildActionsLogic:
 
     def test_a5_divergence_below_threshold_no_reason(self):
         """A-5: divergence < 3% → flag False, 경고 추가 안 함."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "QUIET", "action": "BUY", "confidence": 60, "agreement": 30}],
                 portfolio={"QUIET": self._pf(100, 100, 0, 5)},
@@ -986,7 +991,7 @@ class TestBuildActionsLogic:
     def test_a5_market_closed_sets_none_fields(self):
         """A-5: 시장외 fetch (live_price=None) → divergence fields 가 None/False,
         기존 reason 에 경고 추가 안 함."""
-        with patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7):
+        with patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7):
             result = self._run(
                 [{"ticker": "ZZZ", "action": "BUY", "confidence": 60, "agreement": 30}],
                 portfolio={"ZZZ": self._pf(100, 100, 0, 5)},
@@ -1013,7 +1018,7 @@ class TestBuildActionsLogic:
             patch("nuri.api.routes.actions._get_targets_status", return_value={}),
             patch("nuri.api.routes.actions._get_portfolio_map", return_value={"DUMP": self._pf(90, 100, -10, 5)}),
             patch("nuri.api.routes.actions._get_short_interest", return_value=None),
-            patch("nuri.api.routes.actions.get_stop_loss_for_account", return_value=-7),
+            patch("nuri.trading.recommend.stop_loss.get_stop_loss_for_account", return_value=-7),
             patch("nuri.api.routes.actions.has_recent_catalyst", mock_cat),
             patch("nuri.api.routes.actions.check_divergence", return_value=(False, 0.0, None)),
         ):
@@ -1021,11 +1026,11 @@ class TestBuildActionsLogic:
 
             result = _build_actions()
         assert len(result["urgent"]) == 1
-        assert "손절선" in result["urgent"][0]["reasons"][1]
+        assert "손절선" in " ".join(result["urgent"][0]["reasons"])
         # "근접" 이 아니라 "돌파" 여야 한다 (#994) — 이 분기는 관찰이 아니라
         # 기계적 청산이고, 문구가 행동을 바꾼다 (처분효과).
-        assert "돌파" in result["urgent"][0]["reasons"][1]
-        assert "근접" not in result["urgent"][0]["reasons"][1]
+        assert "돌파" in " ".join(result["urgent"][0]["reasons"])
+        assert "근접" not in " ".join(result["urgent"][0]["reasons"])
         # catalyst 함수 호출 자체가 없어야 함 (breach path 가 먼저 continue)
         mock_cat.assert_not_called()
 
@@ -1044,7 +1049,7 @@ class TestBuildActionsLogic:
             portfolio={"WIN": self._pf(125, 100, 25, 5)},
         )
         assert len(result["check"]) == 1
-        assert "1차 익절" in result["check"][0]["reasons"][0]
+        assert "1차 익절" in " ".join(result["check"][0]["reasons"])
 
     def test_target_2_hit_check(self):
         result = self._run(
@@ -1052,7 +1057,7 @@ class TestBuildActionsLogic:
             targets={("BIG", "Main"): {"stop_loss": 90, "target_1": 120, "target_2": 140}},
             portfolio={"BIG": self._pf(145, 100, 45, 8)},
         )
-        assert "2차 익절" in result["check"][0]["reasons"][0]
+        assert "2차 익절" in " ".join(result["check"][0]["reasons"])
 
     def test_high_short_interest_check(self):
         result = self._run(
@@ -1060,7 +1065,7 @@ class TestBuildActionsLogic:
             portfolio={"SQZ": self._pf(110, 100, 10, 3)},
             short=19.6,
         )
-        assert "공매도" in result["check"][0]["reasons"][0]
+        assert "공매도" in " ".join(result["check"][0]["reasons"])
 
     def test_normal_buy_hold(self):
         result = self._run(
@@ -1068,7 +1073,7 @@ class TestBuildActionsLogic:
             portfolio={"OK": self._pf()},
         )
         assert len(result["hold"]) == 1
-        assert "BUY (conf 60)" in result["hold"][0]["reasons"][0]
+        assert "BUY (conf 60)" in " ".join(result["hold"][0]["reasons"])
 
     def test_pension_filtered_out(self):
         result = self._run(
@@ -1561,7 +1566,17 @@ class TestBuildActionsScoringDetail:
             patch("nuri.api.routes.actions._get_targets_status", return_value={}),
             patch(
                 "nuri.api.routes.actions._get_portfolio_map",
-                return_value={"TSLA": {"account": "Main", "pnl_pct": 5, "position_pct": 10}},
+                return_value={
+                    "TSLA": {
+                        "account": "Main",
+                        "pnl_pct": 5,
+                        "position_pct": 10,
+                        "quantity": 10,
+                        "avg_price": 100,
+                        "current_price": 105,
+                        "price_date": today_kst(),
+                    }
+                },
             ),
             patch("nuri.api.routes.actions._get_short_interest", return_value=None),
         ):
@@ -1887,7 +1902,6 @@ class TestEmitterRowsDoNotPoseAsConsensus:
         import nuri.core.db as dbm
         from nuri.api.routes.actions import _get_recommendations
         from nuri.core.db import init_db
-        from nuri.core.timezone import today_kst
 
         db = tmp_path / "a.db"
         init_db(db)
@@ -1903,7 +1917,6 @@ class TestEmitterRowsDoNotPoseAsConsensus:
         import nuri.core.db as dbm
         from nuri.api.routes.dashboard import _get_latest_actions
         from nuri.core.db import init_db
-        from nuri.core.timezone import today_kst
 
         db = tmp_path / "d.db"
         init_db(db)

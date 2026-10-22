@@ -418,7 +418,6 @@ def _parse_timestamp(value: str) -> datetime:
 def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
     """단일 데이터 소스의 신선도 체크."""
     policy = FRESHNESS_POLICIES[key]
-    now = kst_now()
 
     sql = policy["query"]
     params: tuple = ()
@@ -466,6 +465,13 @@ def check_freshness(key: str, db_path: Optional[Path] = None) -> dict:
         # dict에서 첫 번째 값 추출
         value = list(row.values())[0]
 
+    return check_timestamp_freshness(key, value)
+
+
+def check_timestamp_freshness(key: str, value: object) -> dict:
+    """개별 입력 시각에도 소스와 동일한 신선도 정책을 적용한다."""
+    policy = FRESHNESS_POLICIES[key]
+    now = kst_now()
     if value is None:
         return {
             "key": key,

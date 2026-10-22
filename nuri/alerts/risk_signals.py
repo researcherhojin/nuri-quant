@@ -29,8 +29,6 @@ from nuri.core.rules import (
     BRIEF_BENCHMARK,
     BRIEF_EARNINGS_WINDOW_DAYS,
     BRIEF_SEVERITY_GAP_PCT,
-    get_account_strategy_name,
-    get_stop_loss_for_account,
 )
 from nuri.core.ticker_names import get_ticker_name, is_kr_ticker
 from nuri.core.timezone import today_kst
@@ -43,23 +41,28 @@ Session = Literal["kr", "us"]
 def scan_stop_breaches(
     session: Optional[Session] = None,
     db_path: Optional[Path] = None,
+    *,
+    include_unknown: bool = False,
 ) -> list[dict[str, Any]]:
     """보유 종목 중 손절선 이탈(row PnL < 계좌 threshold) 목록.
 
     Args:
         session: "kr" → `.KS` only, "us" → non-`.KS` only, None → 전체.
         db_path: 테스트 격리용.
+        include_unknown: 가격/원가를 평가할 수 없는 계좌도 REVIEW 대상으로 반환.
 
     Returns:
         [{ticker, account, avg, current, pnl_pct, threshold}] — worst 우선 정렬.
         pension 계좌(장기 buy-and-hold, daily action 대상 아님)는 제외.
     """
+    from nuri.trading.recommend.stop_loss import assess_stop_loss
+
     rows = query(
         """
-        SELECT p.account, p.ticker, p.avg_price, p.quantity, p.currency, pr.close AS current
+        SELECT p.account, p.ticker, p.avg_price, p.quantity, p.currency, pr.close AS current, pr.date AS price_date
         FROM portfolio p
         LEFT JOIN (
-            SELECT ticker, close FROM prices
+            SELECT ticker, close, date FROM prices
             WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
         ) pr ON p.ticker = pr.ticker
         WHERE p.quantity > 0
@@ -77,23 +80,18 @@ def scan_stop_breaches(
             continue
         if session == "us" and is_kr_ticker(ticker):
             continue
-        if get_account_strategy_name(r["account"]) == "pension":
-            continue
-
         avg = r["avg_price"]
         current = r["current"]
-        # avg/current 0·None → 손절 계산 무의미. current==0 (상장폐지/거래정지/
-        # 불량 price) 을 걸러야 (0-avg)/avg = -100% false SELL 방지 (risk_agent
-        # 와 동일하게 truthiness 가드).
-        if not avg or not current:
-            continue
-
-        pnl_pct = (current - avg) / avg * 100
-        threshold = get_stop_loss_for_account(r["account"])
-        if pnl_pct < threshold:
+        assessment = assess_stop_loss(r["account"], avg, current, r.get("price_date"))
+        if assessment["status"] == "unknown" and include_unknown:
+            breaches.append({**assessment, "ticker": ticker, "account": r["account"], "avg": avg, "current": current})
+        if assessment["status"] == "breached":
+            pnl_pct = assessment["pnl_pct"]
+            threshold = assessment["threshold"]
             qty = r["quantity"] or 0
             breaches.append(
                 {
+                    **assessment,
                     "ticker": ticker,
                     "account": r["account"],
                     "avg": float(avg),
@@ -117,7 +115,7 @@ def scan_stop_breaches(
             )
             breaches[-1].update(_market_context(ticker, breaches[-1].get("ret_20d"), today_kst(), db_path=db_path))
 
-    breaches.sort(key=lambda b: b["pnl_pct"])  # 가장 깊은 손실 우선
+    breaches.sort(key=lambda b: (b["pnl_pct"] is None, b["pnl_pct"] or 0))  # 가장 깊은 손실 우선
     return breaches
 
 
@@ -374,15 +372,28 @@ def stage_stop_breach_briefs(
     from nuri.agents.discord.outbox import stage_brief
 
     d = date or today_kst()
-    breaches = scan_stop_breaches(session, db_path=db_path)
+    breaches = scan_stop_breaches(session, db_path=db_path, include_unknown=True)
     staged = 0
     for b in breaches:
-        payload = _build_breach_payload(b, d)
+        unknown = b.get("status") == "unknown"
+        if unknown:
+            payload = {
+                "kind": "REVIEW",
+                "ticker": b["ticker"],
+                "note": b["account"],
+                "summary": b["reason"],
+                "reason": b["reason"],
+                "date": d,
+            }
+        else:
+            payload = _build_breach_payload(b, d)
+            payload["summary"] += f"\n　가격 기준일 {b.get('price_date') or '미상'}"
+        key_prefix = "stop-unknown" if unknown else "stop-breach"
         # dedupe_key 에 account 포함 — 같은 티커가 여러 계좌에서 이탈해도 각각
         # 별개 brief (계좌별 avg 다름). non-None 만 카운트(dedupe skip → None).
         outbox_id = stage_brief(
             payload=payload,
-            dedupe_key=f"stop-breach:{b['ticker']}:{b['account']}:{d}",
+            dedupe_key=f"{key_prefix}:{b['ticker']}:{b['account']}:{d}",
             priority="high",
             actor_name="risk-signals",
             db_path=db_path,
@@ -400,11 +411,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="stage 없이 이탈 목록만 출력")
     args = parser.parse_args(argv)
 
-    breaches = scan_stop_breaches(args.session)
+    breaches = scan_stop_breaches(args.session, include_unknown=True)
     if not breaches:
         print("stop-loss breach 없음")
         return 0
     for b in breaches:
+        if b.get("status") == "unknown":
+            print(f"  {b['ticker']} [{b['account']}] {b['reason']}")
+            continue
         print(
             f"  {b['ticker']} [{b['account']}] {b['pnl_pct']:+.1f}% < {b['threshold']}% (avg {b['avg']:.2f} → {b['current']:.2f})"
         )

@@ -41,7 +41,7 @@ export function Inbox({ actions, initialBucket, initialTicker }: { actions: Acti
               <button key={`${item.ticker}-${item.account}-${itemIndex}`} type="button" aria-pressed={safeIndex === itemIndex} onClick={() => setIndex(itemIndex)}>
                 <span className={styles.queueNumber}>{String(itemIndex + 1).padStart(2, "0")}</span>
                 <span><strong>{item.name || item.ticker}</strong><small>{item.ticker}{item.account ? ` · ${item.account}` : ""}</small></span>
-                <span className={styles.badge} data-tone={bucket === "urgent" ? "danger" : bucket === "portfolio" ? "warning" : "neutral"}>{item.action}</span>
+                <span className={styles.badge} data-tone={bucket === "urgent" ? "danger" : bucket === "portfolio" ? "warning" : "neutral"}>{item.action === "UNKNOWN" ? T.UNKNOWN : item.action}</span>
                 <ChevronRight size={14} aria-hidden="true" />
               </button>
             ))}

@@ -21,7 +21,7 @@ from nuri.core.catalyst import has_recent_catalyst
 from nuri.core.db import query
 from nuri.core.fx import latest_usd_krw_value
 from nuri.core.live_price import DEFAULT_DIVERGENCE_THRESHOLD_PCT, check_divergence
-from nuri.core.rules import SCANNER_OBSERVATIONS, get_stop_loss_for_account
+from nuri.core.rules import SCANNER_OBSERVATIONS
 from nuri.core.timezone import kst_now
 
 logger = logging.getLogger(__name__)
@@ -99,52 +99,41 @@ def _build_actions() -> dict:
 
     violation_tickers = {v["ticker"] for v in rule_violations}
 
-    # 연금 계좌 종목 식별 (월간 리밸런싱 → daily action에서 제외)
-    pension_tickers = {
-        t
-        for t, h in portfolio_holdings.items()
-        if any(kw in (h.get("account") or "").lower() for kw in ("연금", "pension", "irp"))
-    }
-
     from nuri.core.ticker_names import get_ticker_name
+    from nuri.trading.recommend.stop_loss import assess_stop_loss
 
-    seen_tickers: set[str] = set()  # 중복 방지
+    # 추천은 부가 근거다. 평가 대상은 모든 보유 계좌이며 추천 부재로 누락하지 않는다.
+    by_ticker: dict[str, dict] = {}
     for rec in recommendations:
-        ticker = rec["ticker"]
-        # 연금 종목 skip (daily action 불필요)
-        if ticker in pension_tickers:
+        by_ticker.setdefault(rec["ticker"], rec)
+    holdings = [
+        (ticker, account)
+        for ticker, aggregate in portfolio_holdings.items()
+        for account in (aggregate.get("accounts") or [aggregate])
+        if account.get("quantity", 0) > 0
+    ]
+    for ticker, holding in holdings:
+        assessment = assess_stop_loss(
+            holding.get("account", ""),
+            holding.get("avg_price"),
+            holding.get("current_price"),
+            holding.get("price_date"),
+        )
+        if assessment["status"] == "excluded":
             continue
-        # 중복 ticker skip (복수 계좌 동일 종목)
-        if ticker in seen_tickers:
-            continue
-        # 미보유 종목 skip (#998). `recommendations` 는 보유 테이블이 아니라 스캔
-        # 유니버스(AMD·AMZN·INTC…)를 함께 담는다. 걸러내지 않으면 미보유 종목이
-        # `pnl=0 / 비중=0 / 계좌=''` 인 채 "✅ 유지" 로 들어가, **매도한 종목이 아직
-        # 보유 중인 것처럼** 읽힌다 (2026-08-03 실측: hold 6건 중 4건이 미보유,
-        # 그중 하나는 당일 매도한 KB금융). 이 모듈 docstring 이 이미 정한 계약대로
-        # 비보유 종목의 자리는 "🔍 기회 탐색"(`/api/opportunities`) 이다.
-        if ticker not in portfolio_holdings:
-            continue
-        seen_tickers.add(ticker)
-
+        rec = by_ticker.get(ticker, {"action": "UNKNOWN", "confidence": None})
         action = rec["action"]
         # PR B: alpha axis. consensus `save_to_recommendations` 가 PR A 이후 이미
         # write 중. Legacy/pre-migration row 는 None.
         alpha_action = rec.get("alpha_action")
         portfolio_action = rec.get("portfolio_action")
         confidence = rec["confidence"]
-        holding = portfolio_holdings.get(ticker, {})
         # #1279: 기본값 0 을 주지 않는다 — 미상이 보합으로 둔갑하는 지점이었다.
-        pnl_pct = holding.get("pnl_pct")
+        pnl_pct = assessment["pnl_pct"]
         # #1284: 환산 불가면 None 이 온다. #1279 의 `pnl_pct` 와 같은 이유로 0 을 넣지 않는다
         # — 0 은 "비중 없음" 으로 읽히는데 실제로는 "모른다" 이다.
         position_pct = holding.get("position_pct")
-        # 보유 행이 고른 계좌(worst-PnL)와 **같은 계좌**의 타겟을 본다 — 티커로만
-        # 조회하면 둘이 갈라져 서로 다른 원가 기준이 한 줄에 섞인다 (#982).
-        # 계좌 라벨이 없으면 조회 자체를 하지 않는다: 키가 (ticker, None) 이 되면
-        # `_get_targets_status` 가 만드는 어떤 키와도 안 맞아 결과가 항상 빈 dict 다.
-        # 위의 `ticker not in portfolio_holdings` 가드 때문에 실제로는 도달하지 않지만,
-        # 도달 불가를 **타입으로도** 말해두면 이 파일의 진짜 오류가 노이즈에 안 묻힌다.
+        # 계좌별 원가와 같은 계좌의 타겟을 사용한다.
         account_label = holding.get("account")
         target = targets_status.get((ticker, account_label), {}) if account_label else {}
 
@@ -169,11 +158,13 @@ def _build_actions() -> dict:
             "avg_price": holding.get("avg_price"),
             "account": holding.get("account", ""),
             # #527: multi-account 노출. 1 개 계좌면 1-element list, 2+ 면 breakdown.
-            "accounts": holding.get("accounts") or [],
+            "accounts": [holding],
             "stop_loss": target.get("stop_loss"),
             "target_1": target.get("target_1"),
             "target_2": target.get("target_2"),
             "reasons": [],
+            "price_date": assessment["price_date"],
+            "stop_loss_status": assessment["status"],
             # A-2b: `_get_recommendations` 가 parse 해둔 JSON 을 그대로 노출.
             # Frontend (A-2c) 가 actions card 에서 10-agent breakdown + basis/penalty
             # 표시. codex A-2b Round 1 HIGH — `_build_actions` 이 drop 하던 bug fix.
@@ -193,38 +184,22 @@ def _build_actions() -> dict:
                 f"(stored {stored_price:.2f} → live {live_price:.2f}, 임계 {DEFAULT_DIVERGENCE_THRESHOLD_PCT}%)",
             )
 
-        # ── 🔴 즉시 실행 조건 ──
+        item["reasons"].append(f"가격 기준일 {assessment['price_date'] or '미상'}")
+        if assessment["status"] == "unknown":
+            item.update(
+                action="UNKNOWN", alpha_action=None, priority="check", pnl_pct=None, confidence=None, decision_id=None
+            )
+            item["reasons"].append(assessment["reason"])
+            check.append(item)
+            continue
+        if assessment["status"] == "breached":
+            item.update(action="SELL", alpha_action="FLAT", priority="urgent", confidence=None, decision_id=None)
+            item["reasons"].append(assessment["reason"])
+            urgent.append(item)
+            continue
 
-        # 강한 SELL 시그널 — stop-loss breach 는 urgent (alpha-driven, 기계적).
-        # PR B (codex #2): `action == "SELL"` 대신 `is_alpha_flat_sell` 로 전환 —
-        # alpha_action == "FLAT" 명시 OR (back-compat) alpha_action=None +
-        # action="SELL" (pre-migration-22 legacy row). 두 경우 모두 SELL path 진입.
-        #
-        # **Known remaining risk** (PR C strict=True 승격까지 열려있음):
-        # post-migration 에 miswriter 가 `alpha_action=None, action="SELL"` 을 emit
-        # 하면 여전히 SELL path 로 들어간다. PR A (#429) risk_agent 는 concentration
-        # 을 `HOLD + portfolio_action=REBALANCE` 로 emit 해 이 경로에 진입 안 하지만,
-        # 미래의 임의 writer 까지 구조적 차단은 strict=True 승격 후에나 성립. 현 PR B
-        # scope 는 "legacy row 를 깨지 않는 전환" 수준. 승격 조건은 codex Plan Q1-B.
         if is_alpha_flat_sell(alpha_action, action):
             item["reasons"].append(f"10-Agent SELL (conf {confidence})")
-            # A-3: 하드코딩 -7 제거. holding 이 최대 비중 계좌의 row 이므로 그
-            # account 의 strategy stop_loss 와 비교 — pnl_pct 와 cost basis 일치.
-            stop_loss_threshold = get_stop_loss_for_account(holding.get("account"))
-            # 손익을 모르면 돌파를 **주장할 수 없다** (#1279). 미상은 아래 catalyst
-            # 경로로 흘러 "왜 매도?" 맥락을 요구받는다 — 기계적 청산은 측정값에만.
-            if pnl_pct is not None and pnl_pct < stop_loss_threshold:
-                # stop-loss breach — 기계적 실행 (§2.2). catalyst 무관.
-                # "근접" 이 아니라 **돌파**다 (#994). 이 분기 자체가 `pnl_pct <
-                # threshold` — 관찰이 아니라 기계적 청산 신호이고, 초과폭을 같이
-                # 적어야 사용자가 -7% 근처인지 35%p 초과인지 구분한다.
-                over = stop_loss_threshold - pnl_pct  # 임계 대비 초과폭 (%p)
-                item["reasons"].append(
-                    f"손실 {pnl_pct:+.1f}% — 손절선 {stop_loss_threshold}% 돌파 ({over:.1f}%p 초과)",
-                )
-                item["priority"] = "urgent"
-                urgent.append(item)
-                continue
             # A-4: non-emergency SELL 은 catalyst 필요. 없으면 hold bucket 으로
             # 강등 (사용자에게 "왜 매도?" 맥락 없이 urgent 로 올리지 않음).
             has_catalyst, catalyst_reason = has_recent_catalyst(ticker)
@@ -288,6 +263,12 @@ def _build_actions() -> dict:
 
         if promoted:
             item["priority"] = "check"
+            check.append(item)
+            continue
+
+        if ticker not in by_ticker:
+            item["priority"] = "check"
+            item["reasons"].append("손절선 이탈 없음 · 추천 기록 없음 — 판단 확인 필요")
             check.append(item)
             continue
 
@@ -658,12 +639,13 @@ def _get_portfolio_map() -> dict[str, dict]:
     real_accounts = _get_real_accounts()
     rows = query("""
         SELECT p.account, p.ticker, p.quantity, p.avg_price, p.currency,
-               pr.close as current_price
+               pr.close as current_price, pr.date AS price_date
         FROM portfolio p
         LEFT JOIN (
-            SELECT ticker, close FROM prices
+            SELECT ticker, close, date FROM prices
             WHERE (ticker, date) IN (SELECT ticker, MAX(date) FROM prices GROUP BY ticker)
         ) pr ON p.ticker = pr.ticker
+        WHERE p.quantity > 0
     """)
     # #527: stale test/sample/legacy account 의 row 가 합산 비중·pnl 을 왜곡한다.
     # portfolio.yaml 의 substantive accounts 만 본다.
@@ -745,6 +727,7 @@ def _get_portfolio_map() -> dict[str, dict]:
 
         per_account = {
             "account": account_label,
+            "price_date": r.get("price_date"),
             "quantity": r["quantity"],
             "avg_price": avg,
             "current_price": price,

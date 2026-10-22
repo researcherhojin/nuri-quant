@@ -334,6 +334,15 @@ describe("inbox evidence", () => {
     fireEvent.click(screen.getByRole("button", { name: /^유지/ }));
     expect(badge("HOLD")).toHaveAttribute("data-tone", "neutral");
   });
+  it("shows unavailable judgments without a hold or sell badge", () => {
+    const item = { ...base, action: "UNKNOWN", confidence: null, account: "demo-account", reasons: ["판단 불가 — 가격 기준일 미상"] };
+
+    render(<Inbox actions={{ urgent: [], check: [item], hold: [], portfolio: [] }} initialBucket="check" />);
+    expect(screen.getByText("판단 불가", { selector: "[data-tone]" })).toBeInTheDocument();
+    expect(screen.getByText("판단 불가 — 가격 기준일 미상")).toBeInTheDocument();
+    expect(screen.queryByText("HOLD", { selector: "[data-tone]" })).not.toBeInTheDocument();
+    expect(screen.queryByText("SELL", { selector: "[data-tone]" })).not.toBeInTheDocument();
+  });
   it("says reasons are missing rather than rendering an empty list", () => {
     render(<Inbox actions={{ urgent: [base], check: [], hold: [], portfolio: [] }} initialBucket="urgent" />);
     expect(screen.getByText("판단 근거 미제공")).toBeInTheDocument();

@@ -6,6 +6,8 @@
 
 from unittest.mock import patch
 
+from nuri.core.timezone import today_kst
+
 
 def _invoke_build_actions(*, recommendations, siege_violations, portfolio_map, targets_status=None):
     """_build_actions 를 mock 된 helper 로 실행 (TestPRABucketRouting 패턴 재사용)."""
@@ -42,6 +44,7 @@ class TestLeaderTrailWiring:
             siege_violations=[],
             portfolio_map={
                 "GRW": {
+                    "price_date": today_kst(),
                     "current_price": 130.0,
                     "avg_price": 100.0,
                     "quantity": 10,
