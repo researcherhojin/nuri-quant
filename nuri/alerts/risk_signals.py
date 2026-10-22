@@ -29,6 +29,7 @@ from nuri.core.rules import (
     BRIEF_BENCHMARK,
     BRIEF_EARNINGS_WINDOW_DAYS,
     BRIEF_SEVERITY_GAP_PCT,
+    get_real_accounts,
 )
 from nuri.core.ticker_names import get_ticker_name, is_kr_ticker
 from nuri.core.timezone import today_kst
@@ -69,6 +70,10 @@ def scan_stop_breaches(
         """,
         db_path=db_path,
     )
+    # API(`_get_portfolio_map`)와 같은 보유 선택 — 픽스처/stub 계좌 행은 평가하지 않는다 (#1874).
+    real_accounts = get_real_accounts()
+    if real_accounts:
+        rows = [r for r in rows if r["account"] in real_accounts]
     account_totals = _single_currency_account_totals(rows)
 
     breaches: list[dict[str, Any]] = []

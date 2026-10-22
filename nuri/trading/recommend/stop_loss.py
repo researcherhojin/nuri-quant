@@ -21,7 +21,9 @@ def assess_stop_loss(account: str, avg: float | None, current: float | None, pri
     if any(v is None or not math.isfinite(v) or v <= 0 for v in (avg, current)):
         return result
     freshness = check_timestamp_freshness("prices", price_date)
-    if not price_date or freshness["status"] != "PASS":
+    # FAIL 만 낡음이다. 정책 달력이 미국 휴장 기준이라 WARN 까지 막으면 KR 휴장 중
+    # 최신 종가로 성립한 이탈이 "판단 불가" 로 사라진다. 기준일은 항상 함께 표시된다.
+    if not price_date or freshness["status"] == "FAIL":
         return {**result, "reason": f"판단 불가 — 가격 기준일 {price_date or '미상'} ({freshness['message']})"}
     if price_date[:10] > today_kst():
         return {**result, "reason": f"판단 불가 — 미래 가격 기준일 {price_date}"}

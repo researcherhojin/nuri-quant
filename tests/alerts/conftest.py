@@ -10,6 +10,16 @@ import pytest
 from nuri.core.db import init_db, upsert_macro, upsert_portfolio, upsert_prices
 
 
+@pytest.fixture(autouse=True)
+def _no_local_account_filter(monkeypatch):
+    """손절 스캐너가 로컬 `config/portfolio.yaml` 의 실계좌 집합을 읽지 않게 한다 (#1874).
+
+    집합이 비면 필터가 꺼진다 — CI(파일 없음)와 같은 조건이다. 필터 동작 자체는
+    `tests/api/test_stop_loss_consistency.py` 가 명시적으로 검증한다.
+    """
+    monkeypatch.setattr("nuri.alerts.risk_signals.get_real_accounts", lambda: set())
+
+
 @pytest.fixture
 def db_path(tmp_path, monkeypatch):
     """Basic DB fixture with DB_PATH monkeypatched."""

@@ -17,6 +17,7 @@ def holdings(monkeypatch):
     from nuri.trading.recommend import stop_loss
 
     monkeypatch.setattr(actions, "_get_real_accounts", lambda: set())
+    monkeypatch.setattr("nuri.alerts.risk_signals.get_real_accounts", lambda: set())
     monkeypatch.setattr("nuri.api.routes.dashboard._get_account_labels", lambda: {})
     monkeypatch.setattr(actions, "_get_rule_violations", lambda: [])
     monkeypatch.setattr(actions, "_get_targets_status", lambda: {})
@@ -151,3 +152,51 @@ def test_violation_account_uses_same_display_label_as_holdings(monkeypatch):
         lambda: [dict(ticker="TST_A", account="core", violation_type="position_limit_exceeded")],
     )
     assert actions._get_rule_violations()[0]["account"] == "Brokerage Alpha"
+
+
+def test_api_and_brief_select_the_same_real_accounts(holdings, monkeypatch):
+    """스텁 계좌 행은 API 와 브리프 어느 쪽에서도 평가되지 않는다 — 한쪽만 거르면 urgent 가 갈린다."""
+    holdings(today_kst())
+    real = {"Brokerage Beta", "Pension"}
+    monkeypatch.setattr(actions, "_get_real_accounts", lambda: real)
+    monkeypatch.setattr("nuri.alerts.risk_signals.get_real_accounts", lambda: real)
+    monkeypatch.setattr(actions, "_get_recommendations", lambda: [])
+    result = actions._build_actions()
+    assert not result["urgent"] and scan_stop_breaches() == []
+    assert [r["account"] for b in ("urgent", "check", "hold", "portfolio") for r in result[b]] == ["Brokerage Beta"]
+
+
+def test_generated_label_does_not_defeat_pension_exclusion(holdings, monkeypatch):
+    """라벨 없는 연금 계좌는 생성 라벨("Pension")로 표시된다. 전략 조회는 원 계좌 id 로 해야 한다."""
+    from nuri.trading.recommend import stop_loss
+
+    holdings(today_kst())
+    monkeypatch.setattr("nuri.api.routes.dashboard._get_account_labels", lambda: {"Pension": "Main 2"})
+    monkeypatch.setattr(stop_loss, "get_account_strategy_name", lambda a: "pension" if a == "Pension" else "core")
+    monkeypatch.setattr(actions, "_get_recommendations", lambda: [])
+    result = actions._build_actions()
+    accounts = [r["account"] for b in ("urgent", "check", "hold", "portfolio") for r in result[b]]
+    assert "Main 2" not in accounts
+    assert all("account_id" not in a for b in result.values() if isinstance(b, list) for r in b for a in r["accounts"])
+
+
+def test_prudential_violation_sets_rebalance_axis(holdings, monkeypatch):
+    holdings(today_kst(), current=100)
+    monkeypatch.setattr(actions, "_get_recommendations", lambda: [])
+    monkeypatch.setattr(
+        actions,
+        "_get_rule_violations",
+        lambda: [dict(ticker="TST_A", account=None, detail="concentration", condition_id="position_limit_exceeded")],
+    )
+    result = actions._build_actions()
+    assert result["portfolio"] and all(r["portfolio_action"] == "REBALANCE" for r in result["portfolio"])
+
+
+@pytest.mark.parametrize(("status", "expected"), [("WARN", "breached"), ("FAIL", "unknown")])
+def test_only_failed_freshness_is_indeterminate(monkeypatch, status, expected):
+    """WARN 은 미국 휴장 달력 기준이라 KR 휴장 중 정상 종가에도 난다 — 판정을 막는 건 FAIL 뿐."""
+    from nuri.trading.recommend import stop_loss
+
+    monkeypatch.setattr(stop_loss, "check_timestamp_freshness", lambda *_: {"status": status, "message": status})
+    monkeypatch.setattr(stop_loss, "get_stop_loss_for_account", lambda _: -7)
+    assert stop_loss.assess_stop_loss("Brokerage Alpha", 100, 90, today_kst())["status"] == expected

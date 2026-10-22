@@ -112,7 +112,7 @@ def _build_actions() -> dict:
     ]
     for ticker, holding in holdings:
         assessment = assess_stop_loss(
-            holding.get("account", ""),
+            holding.get("account_id") or holding.get("account", ""),
             holding.get("avg_price"),
             holding.get("current_price"),
             holding.get("price_date"),
@@ -156,7 +156,7 @@ def _build_actions() -> dict:
             "avg_price": holding.get("avg_price"),
             "account": holding.get("account", ""),
             # #527: multi-account 노출. 1 개 계좌면 1-element list, 2+ 면 breakdown.
-            "accounts": [holding],
+            "accounts": [{k: v for k, v in holding.items() if k != "account_id"}],
             "stop_loss": target.get("stop_loss"),
             "target_1": target.get("target_1"),
             "target_2": target.get("target_2"),
@@ -224,6 +224,7 @@ def _build_actions() -> dict:
         )
         if violation is not None:
             item["reasons"].append(f"리밸런스 권고 — {violation['detail']}")
+            item["portfolio_action"] = "REBALANCE"
             item["priority"] = "portfolio"
             portfolio.append(item)
             continue
@@ -736,6 +737,8 @@ def _get_portfolio_map() -> dict[str, dict]:
 
         per_account = {
             "account": account_label,
+            # 전략·손절선 조회용 원 계좌 id — 생성 라벨("Pension")은 yaml 키로 역해석되지 않는다.
+            "account_id": r["account"],
             "price_date": r.get("price_date"),
             "quantity": r["quantity"],
             "avg_price": avg,

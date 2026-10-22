@@ -1075,7 +1075,8 @@ class TestBuildActionsLogic:
         assert len(result["hold"]) == 1
         assert "BUY (conf 60)" in " ".join(result["hold"][0]["reasons"])
 
-    def test_pension_filtered_out(self):
+    @patch("nuri.core.rules._load_accounts", return_value={"retirement": {"strategy": "pension", "label": "연금"}})
+    def test_pension_filtered_out(self, _accounts):
         result = self._run(
             [{"ticker": "381170.KS", "action": "BUY", "confidence": 65, "agreement": 20}],
             portfolio={
@@ -1093,7 +1094,8 @@ class TestBuildActionsLogic:
         assert len(result["check"]) == 0
         assert len(result["hold"]) == 0
 
-    def test_irp_filtered_out(self):
+    @patch("nuri.core.rules._load_accounts", return_value={"retirement": {"strategy": "pension", "label": "IRP"}})
+    def test_irp_filtered_out(self, _accounts):
         result = self._run(
             [{"ticker": "448300.KS", "action": "BUY", "confidence": 72, "agreement": 20}],
             portfolio={
@@ -1107,7 +1109,7 @@ class TestBuildActionsLogic:
                 }
             },
         )
-        assert len(result["hold"]) == 0
+        assert all(not result[b] for b in ("urgent", "check", "hold", "portfolio"))
 
     def test_duplicate_ticker_deduped(self):
         result = self._run(

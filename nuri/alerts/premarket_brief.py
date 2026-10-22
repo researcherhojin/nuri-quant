@@ -326,7 +326,9 @@ def _short_ticker_line(item: dict) -> str:
     name = get_ticker_name(t)
     label = f"{name} ({t})" if name else t
     pos_txt = "미상" if pos is None else f"{pos:.1f}%"
-    head = f"{label} ({action} conf {conf}, pnl {pnl:+.1f}%, pos {pos_txt})"
+    # #1874: 손절 판단 불가(UNKNOWN) 항목은 손익을 None 으로 싣는다 — 위 비중과 같은 이유로 "미상".
+    pnl_txt = "미상" if pnl is None else f"{pnl:+.1f}%"
+    head = f"{label} ({action} conf {conf}, pnl {pnl_txt}, pos {pos_txt})"
 
     accounts = item.get("accounts") or []
     if len(accounts) > 1:
@@ -347,6 +349,9 @@ def _short_ticker_line(item: dict) -> str:
             f"{a.get('account', '?')} {_pos(a)}/{a.get('pnl_pct', 0):+.1f}%" for a in sorted_accounts
         )
         return f"{head} [{breakdown}]"
+    # #1874: 항목이 계좌 단위라 같은 티커가 여러 줄일 수 있다 — 계좌를 적어야 구분된다.
+    if item.get("account"):
+        return f"{head} [{item['account']}]"
     return head
 
 
