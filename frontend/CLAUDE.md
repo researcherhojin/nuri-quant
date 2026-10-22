@@ -14,7 +14,7 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
 npm run lint           # eslint && oxlint (anti-slop rules — see "Anti-slop (oxlint)" below)
-npm run test           # vitest run (1450 tests, 117 files)
+npm run test           # vitest run (1457 tests, 117 files — 2026-10-23)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
@@ -63,6 +63,14 @@ live 패널 기준 — 백엔드 합의 산식(scoring.py, degraded 를 분자·
 같은 화면의 `panel_coverage` 와 모순되지 않는다. SELL 은 매수 사다리(Entry/T1/T2)를 렌더하지
 않는 별도 템플릿. **Test:** `src/__tests__/pages/decision-detail.test.tsx` "판정 경로 (#1257)"
 + "codex ship-review 수정 잠금" describe 블록.
+
+**원장 카드 + `측정` 배지 (#1910 API · #1913 화면).** 오른쪽 열의 raw PnL 카드는 벤치마크 미보정
+가격 수익률이라 라벨로 그렇게 밝히고, alpha 는 그 아래 원장 카드(`decision_outcomes` 7/14/30 창)에만
+있다. 대기/가격 결측 구분은 API 의 `pending`(`/api/alpha` 와 같은 lookahead 규칙)을 그대로 쓰고 화면이
+날짜로 다시 세지 않는다. 헤더 배지는 §3.11 표본 소속이고, 백엔드 `decision_alpha.sample_membership` 이
+`fetch_sample` 과 대조 잠금돼 있다. 이 페이지의 "판정"(90일 성공/실패)과 다른 축이라 **"측정"** 이라고
+부른다 — 같은 단어를 쓰면 두 규칙이 하나로 읽힌다. 새 필드가 없는 옛 응답은 카드·배지 없이 그린다.
+**Test:** 같은 파일의 "측정 원장 카드 + 표본 배지 (#1912)" describe 블록.
 
 ## Auth
 
@@ -118,6 +126,8 @@ should be **271** (2026-10-12).
 
 ## Testing Gotchas
 
+- **`next dev` rewrites `frontend/AGENTS.md`.** The block between `<!-- BEGIN:nextjs-agent-rules -->` markers is Next-managed; starting the dev server rewrote its heading from `#` to `##` (2026-10-23). That is where an unexplained one-line diff in a stray worktree came from. Do not commit that diff unless the change is intended — `git restore frontend/AGENTS.md` after a dev-server run. *(facts, no fix)*
+- **`next build` in a git worktree needs a real `node_modules`.** A symlink to the main checkout's `node_modules` fails Turbopack resolution ("Symlink node_modules could not be resolved"); vitest, eslint and `tsc` work through the symlink. Run `npm ci` in the worktree before building. *(facts, no fix)*
 - **vi.mock("recharts") hoisting**: Affects ALL dynamic imports in same vitest worker. Keep recharts-dependent and recharts-free tests in **separate files**. Use `vi.doMock` for per-test control. (#1210 이후 대시보드 트리는 recharts 무관 — price/equity/evidence 차트 테스트에만 해당.)
 - Mock `@/lib/api` + `next/navigation` in all page tests.
 - **`window.localStorage` 는 환경 의존**: 로컬 Node 26 jsdom 엔 **없고**(실험적 webstorage 게터가 `--localstorage-file` 없이 undefined), CI Node 22 jsdom 은 **실동작 스토리지**를 제공해 같은 파일 내 테스트 간 상태가 지속된다. 로컬 초록 ≠ CI 초록 — storage 를 쓰는 테스트는 인메모리 스텁 + `beforeEach` 초기화로 결정론화할 것 (CI run 32814106230, #1212). *(facts, no fix)* — storage 를 쓰던 유일한 소비자(옛 대시보드 액션 목록의 NEW 배지·ack)와 그 잠금 테스트는 #1698 에서 함께 삭제됐다. 새로 storage 를 쓰면 같은 스텁 + 잠금 테스트를 다시 둘 것.
