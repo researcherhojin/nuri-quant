@@ -3,8 +3,8 @@ name: Cache Cleanup
 # 닫힌 PR 의 actions cache 는 재사용될 일이 없는데 ref 별로 남아 repo 10GB 한도를
 # 잠식한다 — 2026-09-02 실측: 닫힌 PR 7개가 6.1GB 를 물고 있어 main 의 살아있는
 # 캐시(venv/uv-tool)가 LRU 로 축출되고 있었다 (총 15.4GB 중 죽은 캐시 14GB).
-# main 의 세대 교체분(uv.lock 해시 키)은 GitHub 의 7일 미사용 자동 축출이 처리하므로
-# 여기서는 PR ref 만 지운다.
+# main 의 세대 교체분(uv.lock 해시 키 · CodeQL overlay)은 7일 미사용 자동 축출을 기다리지
+# 않고 정기 청소에서 계열별 최신만 남긴다 (#1901, scripts/ci/prune_superseded_main_caches.sh).
 #
 # PR 이 닫힐 때의 즉시 삭제는 GITHUB_TOKEN 이 머지한 PR(dependabot auto-merge)에서 시작되지
 # 않는다 — GitHub 는 GITHUB_TOKEN 이 일으킨 이벤트로 워크플로를 띄우지 않는다 (#1812). 그렇게
@@ -50,6 +50,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # 7일 미사용 축출만으로는 main 의 대체된 캐시가 한도를 채운다 (#1901, 2026-10-22 8.1GB).
+      - name: Prune superseded main caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/prune_superseded_main_caches.sh
 
       - name: Delete caches whose PR is closed
         env:
