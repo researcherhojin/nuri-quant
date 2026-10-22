@@ -289,7 +289,7 @@ class TestGenerateLlamacpp:
         monkeypatch.setattr(report_mod, "LLAMA_MODEL_PATH", "/fake/path")
         fake_llama_module = MagicMock()
         # Llama() returns callable; calling it returns iter([]) (not dict) → warning + ""
-        fake_llama_module.Llama = MagicMock(return_value=lambda *a, **kw: iter([]))
+        fake_llama_module.Llama = MagicMock(return_value=MagicMock(return_value=iter([])))
         monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama_module)
         with caplog.at_level(logging.WARNING):
             result = _generate_llamacpp("prompt")
@@ -300,11 +300,52 @@ class TestGenerateLlamacpp:
         monkeypatch.setattr(report_mod, "LLAMA_MODEL_PATH", "/fake/path")
         fake_llama_module = MagicMock()
         fake_llama_module.Llama = MagicMock(
-            return_value=lambda *a, **kw: {"choices": [{"text": "  generated content  "}]}
+            return_value=MagicMock(return_value={"choices": [{"text": "  generated content  "}]})
         )
         monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama_module)
         result = _generate_llamacpp("prompt")
         assert result == "generated content"
+
+    def test_cache_is_disabled_before_inference_without_changing_generation(self, monkeypatch) -> None:
+        """캐시가 켜진 모형도 끈 뒤 정상 추론하며, 비활성화 제거·순서 변경을 검출한다."""
+        monkeypatch.setattr(report_mod, "LLAMA_MODEL_PATH", "/models/test.gguf")
+        calls = []
+
+        class FakeLlama:
+            def __init__(self, **kwargs):
+                self.cache = object()
+                calls.append(("init", kwargs))
+
+            def set_cache(self, cache):
+                self.cache = cache
+                calls.append(("cache", cache))
+
+            def __call__(self, prompt, **kwargs):
+                assert self.cache is None, "추론이 캐시를 읽기 전에 비활성화해야 한다"
+                calls.append(("generate", prompt, kwargs))
+                return {"choices": [{"text": "  local report  "}]}
+
+        fake_module = MagicMock(Llama=FakeLlama)
+        monkeypatch.setitem(sys.modules, "llama_cpp", fake_module)
+        assert _generate_llamacpp("local prompt") == "local report"
+        assert calls == [
+            ("init", {"model_path": "/models/test.gguf", "n_ctx": 4096, "n_gpu_layers": -1, "verbose": False}),
+            ("cache", None),
+            (
+                "generate",
+                "local prompt",
+                {"max_tokens": 1024, "temperature": 0.3, "stop": ["[/DATA]"], "stream": False},
+            ),
+        ]
+
+    def test_cache_disable_failure_does_not_run_inference(self, monkeypatch) -> None:
+        """캐시 비활성화 실패를 무시하고 추론을 계속하지 않는다."""
+        monkeypatch.setattr(report_mod, "LLAMA_MODEL_PATH", "/models/test.gguf")
+        llm = MagicMock()
+        llm.set_cache.side_effect = RuntimeError("cache configuration failed")
+        monkeypatch.setitem(sys.modules, "llama_cpp", MagicMock(Llama=MagicMock(return_value=llm)))
+        assert _generate_llamacpp("local prompt") == ""
+        llm.assert_not_called()
 
     def test_import_error_returns_empty(self, monkeypatch) -> None:
         import builtins
