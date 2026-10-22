@@ -52,7 +52,7 @@ class TestKoreanMarketBranches:
         with get_db(db_path) as conn:
             base = pd.Timestamp("2025-01-01")
             for i in range(40):
-                d = (base + pd.Timedelta(days=i)).strftime("%Y-%m-%d")
+                d = (base + pd.Timedelta(i, unit="D")).strftime("%Y-%m-%d")
                 conn.execute(
                     "INSERT INTO macro (date, indicator, value) VALUES (?, ?, ?)",
                     (d, "usd_krw", 1380.0 + i * 0.5),

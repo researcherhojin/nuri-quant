@@ -66,7 +66,7 @@ class TestNoLookaheadThresholds:
 
         # 과거 60일 VIX = 15, 미래 60일 VIX = 35
         end = pd.Timestamp("2025-06-30")
-        all_dates = pd.bdate_range(end=end + pd.Timedelta(days=120), periods=120)
+        all_dates = pd.bdate_range(end=end + pd.Timedelta(120, unit="D"), periods=120)
         cutoff_date = all_dates[59].strftime("%Y-%m-%d")
         past_dates = [d.strftime("%Y-%m-%d") for d in all_dates[:60]]
         future_dates = [d.strftime("%Y-%m-%d") for d in all_dates[60:]]
@@ -106,7 +106,7 @@ class TestNoLookaheadDataLoaders:
         from nuri.quant.regime.classifier import _get_vix
 
         end = pd.Timestamp("2025-06-30")
-        all_dates = pd.bdate_range(end=end + pd.Timedelta(days=120), periods=120)
+        all_dates = pd.bdate_range(end=end + pd.Timedelta(120, unit="D"), periods=120)
         cutoff_date = all_dates[59].strftime("%Y-%m-%d")
         past_dates = [d.strftime("%Y-%m-%d") for d in all_dates[:60]]
         future_dates = [d.strftime("%Y-%m-%d") for d in all_dates[60:]]
@@ -119,7 +119,7 @@ class TestNoLookaheadDataLoaders:
         from nuri.quant.regime.classifier import _get_fear_greed
 
         end = pd.Timestamp("2025-06-30")
-        all_dates = pd.bdate_range(end=end + pd.Timedelta(days=120), periods=120)
+        all_dates = pd.bdate_range(end=end + pd.Timedelta(120, unit="D"), periods=120)
         cutoff_date = all_dates[59].strftime("%Y-%m-%d")
         past_dates = [d.strftime("%Y-%m-%d") for d in all_dates[:60]]
         future_dates = [d.strftime("%Y-%m-%d") for d in all_dates[60:]]
@@ -137,7 +137,7 @@ class TestNoLookaheadDetectors:
         from nuri.quant.regime.classifier import _detect_stagflation
 
         end = pd.Timestamp("2025-06-30")
-        all_dates = pd.bdate_range(end=end + pd.Timedelta(days=120), periods=120)
+        all_dates = pd.bdate_range(end=end + pd.Timedelta(120, unit="D"), periods=120)
         cutoff_date = all_dates[59].strftime("%Y-%m-%d")
         past_dates = [d.strftime("%Y-%m-%d") for d in all_dates[:60]]
         future_dates = [d.strftime("%Y-%m-%d") for d in all_dates[60:]]
@@ -260,7 +260,7 @@ class TestEndToEndInvariance:
         assert before is not None
 
         # 미래 60일 데이터 삽입 (가격 폭락 + VIX 폭등 + fear_greed 패닉) — 어떤 leak 도 결과를 흔들 것
-        future_dates = pd.bdate_range(start=pd.Timestamp(cutoff_date) + pd.Timedelta(days=1), periods=60)
+        future_dates = pd.bdate_range(start=pd.Timestamp(cutoff_date) + pd.Timedelta(1, unit="D"), periods=60)
         future_close = np.full(60, 50.0)  # SPY 폭락
         df_future = pd.DataFrame({
             "ticker": "SPY",
@@ -373,7 +373,7 @@ class TestEndToEndInvariance:
         assert before is True
 
         # 다양한 future shape 으로 perturbation: XLK 폭등/폭락, SPY 급등 등 4 시나리오
-        future_dates = pd.bdate_range(start=pd.Timestamp(cutoff_date) + pd.Timedelta(days=1), periods=30)
+        future_dates = pd.bdate_range(start=pd.Timestamp(cutoff_date) + pd.Timedelta(1, unit="D"), periods=30)
         for spy_future_val, xlk_future_val in [(100.0, 50.0), (300.0, 200.0), (200.0, 1000.0), (50.0, 0.1)]:
             for ticker, val in [("SPY", spy_future_val), ("XLK", xlk_future_val)]:
                 arr = np.full(30, val)

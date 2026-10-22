@@ -80,7 +80,7 @@ class TestAuth:
         assert not verify_password("wrong", hashed)
 
     def test_create_and_decode_token(self, monkeypatch):
-        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "testsecret")
+        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "synthetic-test-signing-key-at-least-32-bytes")
         from nuri.api.auth import create_token, decode_token
 
         token = create_token("testuser")
@@ -89,13 +89,13 @@ class TestAuth:
         assert payload["sub"] == "testuser"
 
     def test_decode_invalid_token(self, monkeypatch):
-        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "testsecret")
+        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "synthetic-test-signing-key-at-least-32-bytes")
         from nuri.api.auth import decode_token
 
         assert decode_token("invalid.token.here") is None
 
     def test_decode_expired_token(self, monkeypatch):
-        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "testsecret")
+        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "synthetic-test-signing-key-at-least-32-bytes")
         from nuri.api.auth import create_token, decode_token
 
         token = create_token("user", expires_hours=-1)
@@ -135,7 +135,7 @@ class TestAuth:
     def test_require_auth_jwt(self, monkeypatch):
         monkeypatch.setattr("nuri.api.auth._AUTH_ENABLED", True)
         monkeypatch.setattr("nuri.api.auth._API_KEY", "")
-        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "testsecret")
+        monkeypatch.setattr("nuri.api.auth._SECRET_KEY", "synthetic-test-signing-key-at-least-32-bytes")
         from nuri.api.auth import create_token, require_auth
 
         token = create_token("dashboard")

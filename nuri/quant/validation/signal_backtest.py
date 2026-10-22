@@ -562,7 +562,7 @@ def merge_data_signals(df: pd.DataFrame, ticker: str, db_path=None) -> pd.DataFr
             ]
             buy_dates = buys["date"].tolist()
             df["insider_buy_count_10d"] = [
-                sum(1 for bd in buy_dates if pd.Timedelta(days=0) <= (d - bd) <= pd.Timedelta(days=10))
+                sum(1 for bd in buy_dates if pd.Timedelta(0, unit="D") <= (d - bd) <= pd.Timedelta(10, unit="D"))
                 for d in df["date"]
             ]
         else:
