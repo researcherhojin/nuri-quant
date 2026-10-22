@@ -914,3 +914,119 @@ describe("근거 사슬 — 자리표시자는 근거가 아니다 (#1436, codex
     expect(within(tech).queryByTestId("evidence-placeholder")).not.toBeInTheDocument();
   });
 });
+
+describe("측정 원장 카드 + 표본 배지 (#1912)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    notFoundMock.mockClear();
+  });
+
+  interface LedgerRow {
+    observation_window: number;
+    realized_return: number | null;
+    benchmark_return: number | null;
+    alpha: number | null;
+    hypothesis_validation: string;
+    pending: boolean;
+  }
+
+  interface MeasurementFields {
+    sample: string;
+    reasons: string[];
+    benchmark: string;
+    primary_window_days: number;
+    declared_date: string;
+  }
+
+  interface LedgerFields {
+    measurement?: MeasurementFields;
+    outcomes?: LedgerRow[];
+  }
+
+  const measurement: MeasurementFields = { sample: "judgment", reasons: [], benchmark: "SPY", primary_window_days: 30, declared_date: "2026-07-08" };
+
+  const row = (window: number, rr: number | null, bench: number | null, alpha: number | null, validation: string, pending = false): LedgerRow => ({
+    observation_window: window,
+    realized_return: rr,
+    benchmark_return: bench,
+    alpha,
+    hypothesis_validation: validation,
+    pending,
+  });
+
+  async function renderWith(extra: LedgerFields) {
+    mockFetchAPI = vi.fn().mockResolvedValue({ ...mockDetail, ...extra });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+  }
+
+  it("lists completed, price-missing and pending windows; alpha is in %p and the primary window is marked", async () => {
+    await renderWith({
+      measurement,
+      outcomes: [
+        row(7, 0.031, 0.012, 0.019, "pass"),
+        row(14, null, null, null, "insufficient_data"),
+        row(30, null, null, null, "insufficient_data", true),
+      ],
+    });
+    const r7 = within(screen.getByTestId("ledger-row-7"));
+    expect(r7.getByText("+3.1%")).toBeInTheDocument();
+    expect(r7.getByText("+1.2%")).toBeInTheDocument();
+    expect(r7.getByText("+1.9%p")).toHaveClass("text-emerald-400");
+    expect(r7.getByText("통과")).toBeInTheDocument();
+    expect(r7.getByText(DECISIONS.LEDGER_WINDOW_DIAGNOSTIC)).toBeInTheDocument();
+    expect(within(screen.getByTestId("ledger-row-14")).getByText(DECISIONS.LEDGER_MISSING)).toBeInTheDocument();
+    const r30 = within(screen.getByTestId("ledger-row-30"));
+    expect(r30.getByText(DECISIONS.LEDGER_PENDING)).toBeInTheDocument();
+    expect(r30.getByText(DECISIONS.LEDGER_WINDOW_PRIMARY)).toBeInTheDocument();
+    expect(screen.getByText(`${DECISIONS.LEDGER_TITLE} SPY`)).toBeInTheDocument();
+    expect(screen.getByText(DECISIONS.LEDGER_CAVEAT)).toBeInTheDocument();
+    expect(screen.getByText(DECISIONS.RAIL_PNL_NOTE)).toBeInTheDocument();
+    expect(screen.getByTestId("measurement-sample")).toHaveTextContent(DECISIONS.SAMPLE_JUDGMENT);
+  });
+
+  it("colors negative alpha red, leaves zero uncolored, and shows an unknown validation verbatim", async () => {
+    await renderWith({
+      measurement,
+      outcomes: [row(7, -0.01, 0.01, -0.02, "reject"), row(14, 0.01, 0.01, 0, "some_new_label")],
+    });
+    const r7 = within(screen.getByTestId("ledger-row-7"));
+    expect(r7.getByText("-2.0%p")).toHaveClass("text-red-400");
+    expect(r7.getByText("기각")).toBeInTheDocument();
+    const r14 = within(screen.getByTestId("ledger-row-14"));
+    const zero = r14.getByText("0.0%p");
+    expect(zero).not.toHaveClass("text-emerald-400");
+    expect(zero).not.toHaveClass("text-red-400");
+    expect(r14.getByText("some_new_label")).toBeInTheDocument();
+  });
+
+  it("a diagnostic decision carries its reasons and an empty ledger says so", async () => {
+    await renderWith({ measurement: { ...measurement, sample: "diagnostic", reasons: ["KR ticker", "action SELL"] }, outcomes: [] });
+    const badge = screen.getByTestId("measurement-sample");
+    expect(badge).toHaveTextContent(DECISIONS.SAMPLE_DIAGNOSTIC);
+    expect(badge).toHaveAttribute("title", "KR ticker · action SELL");
+    expect(screen.getByText(DECISIONS.LEDGER_EMPTY)).toBeInTheDocument();
+  });
+
+  it("an untracked decision shows the notice instead of a table, even without outcomes in the payload", async () => {
+    await renderWith({ measurement: { ...measurement, sample: "untracked" } });
+    expect(screen.getByTestId("measurement-sample")).toHaveTextContent(DECISIONS.SAMPLE_UNTRACKED);
+    expect(screen.getByText(DECISIONS.LEDGER_UNTRACKED)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("an unknown sample value is shown verbatim, not mapped to a known one", async () => {
+    await renderWith({ measurement: { ...measurement, sample: "future_class" } });
+    expect(screen.getByTestId("measurement-sample")).toHaveTextContent("future_class");
+    expect(screen.getByText(DECISIONS.LEDGER_EMPTY)).toBeInTheDocument();
+  });
+
+  it("a response from before #1910 renders without the ledger card or the badge", async () => {
+    await renderWith({});
+    expect(screen.queryByTestId("ledger-card")).toBeNull();
+    expect(screen.queryByTestId("measurement-sample")).toBeNull();
+    expect(screen.getByText(DECISIONS.RAIL_PNL_NOTE)).toBeInTheDocument();
+  });
+});
