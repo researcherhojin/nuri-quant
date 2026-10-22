@@ -573,8 +573,10 @@ def short_squeeze_data(db_path):
     with get_db(db_path) as conn:
         for i, d in enumerate(dates):
             conn.execute(
+                # 수집기(`wallstreet._save_short_interest`)가 쓰는 모양 그대로다. 예전엔 리더가 찾던 잘못된 키
+                # (`data_type='short_interest'`)로 심어서, 운영에서 시그널이 죽어 있는 동안 이 테스트는 통과했다 (#1911).
                 "INSERT OR REPLACE INTO external_analysis (date, source, ticker, data_type, value, numeric_value, collected_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (d.strftime("%Y-%m-%d"), "shortinterest", "SQZZ", "short_interest", "15%", 15.0, "2025-01-01"),
+                (d.strftime("%Y-%m-%d"), "short_interest", "SQZZ", "short_pct_float", "15.0", 15.0, "2025-01-01"),
             )
     return db_path

@@ -136,6 +136,10 @@ signals:
     type: BUY
     hold_days: 15
     enabled: true
+    # SHADOW (#1911) — 리더가 수집기와 다른 키를 읽어 도입 이후 발화 0 이었다. 키를 고친 지금도
+    # 공매도 이력이 2026-04-08 부터 24 스냅샷뿐이라 검증할 표본이 없다. scorecard 에만 쌓고,
+    # 아래 SHADOW 절의 승격 규칙(20+ 발동 × 70%+ positive, 사람 판단, 별도 PR)을 따른다.
+    actionable: false
     params:
       min_short_interest: 10
       consecutive_up_days: 3

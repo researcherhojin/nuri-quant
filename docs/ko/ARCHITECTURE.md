@@ -222,7 +222,7 @@ risk veto 는 `alpha_action` 을 읽는다(alpha action 이 없는 verdict 에 �
 - **Consensus**(`nuri/trading/agents/consensus/scoring.py`): 각 agent 의 표는 가중치 × confidence 만큼 반영된다. **risk veto** 는 표결을 override 한다. risk agent 의 `alpha_action` 이 `FLAT` 이고(alpha action 이 없는 verdict 라면 action 이 SELL 이고) confidence 가 `consensus.risk_veto_threshold` 이상이면 결과는 SELL 이다. degraded 이거나 기권한 risk verdict 는 veto 할 수 없으며, `scoring_detail` 에 veto 를 쓸 수 없었다는 사실이 기록된다. **divergence penalty** 는 technical agent 가 `consensus.divergence_technical_threshold` 이상의 confidence 로 반대할 때 BUY 나 SELL 을 HOLD 로 낮춘다(두 값 모두 `config/agents.yaml` 에 있다). `scoring_detail.final_action_source` 는 어느 규칙이 결정했는지 기록한다: `weighted_sum`, `risk_veto`, `divergence_penalty`.
 - **Factor composite**(`nuri/quant/factors/composite.py`): momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. sentiment 는 시장 전체의 Fear & Greed 값이므로 순위가 아니라 점수 수준을 움직인다. `factors` job 이 매일 08:10 에 계산해 저장한다.
 - **BUY 후보 점수**(`config/buy_signals.yaml`): factor composite 에 5일 momentum, RSI, 30일 breakout 을 결합한다. cross-sectional relative strength 와 dollar-volume surge 는 계산해 evidence 로 보여 주지만, walk-forward test 로 검증되기 전까지는 가중치가 0 이다. VIX 가 `vix_gate` 차단 수준을 넘으면 실행이 멈춘다. VIX 를 알 수 없거나 오래됐거나 caution 구간이면 배분이 절반으로 줄어든다.
-- **시그널**(`config/signals.yaml`): backtest detector 가 쓰는 ticker 단위 actionable 시그널 20개와, `actionable: false` 로 표시돼 경고로만 surface 되는 시장 전체 shadow 시그널 2개(수익률 곡선 역전, HY-OAS 확대).
+- **시그널**(`config/signals.yaml`): backtest detector 가 쓰는 ticker 단위 actionable 시그널 19개와, `actionable: false` 로 표시된 shadow 시그널 3개. 시장 전체 2개(수익률 곡선 역전, HY-OAS 확대)는 경고로만 surface 되고, ticker 단위 `short_squeeze` 는 scorecard 에만 잡히고 후보가 되지 않는다(#1911).
 
 ## 데이터베이스 접근
 
@@ -236,13 +236,13 @@ risk veto 는 `alpha_action` 을 읽는다(alpha action 이 없는 verdict 에 �
 - `upsert_*()`: 테이블마다 함수 하나(prices, portfolio, fundamentals 등).
 - `replace_portfolio_account(account, records)`: YAML → DB 동기화를 위해 DELETE + INSERT 를 한 transaction 으로 수행한다.
 
-## 시그널 시스템 (시그널 22개: actionable 20 + shadow 2, YAML 기반 registry)
+## 시그널 시스템 (시그널 22개: actionable 19 + shadow 3, YAML 기반 registry)
 
-`signal_backtest.py` 는 detector registry 를 쓴다. Python detector 함수를 그 metadata(threshold, 분류, hold_days)와 분리해 둔다. metadata 는 `config/signals.yaml` 에 있고 `nuri/core/signal_config.py` 가 로드한다. YAML 에는 항목 22개가 있다. 아래의 actionable 시그널 20개와 시장 전체 shadow 시그널 2개(`actionable: false`, detector 는 `nuri/quant/validation/market_signals.py`)다. actionable 시그널은 4개 category 로 나뉜다:
+`signal_backtest.py` 는 detector registry 를 쓴다. Python detector 함수를 그 metadata(threshold, 분류, hold_days)와 분리해 둔다. metadata 는 `config/signals.yaml` 에 있고 `nuri/core/signal_config.py` 가 로드한다. YAML 에는 항목 22개가 있다. 아래의 ticker 단위 시그널(actionable 19개 + ticker 단위 shadow `short_squeeze`)과 시장 전체 shadow 시그널 2개(`actionable: false`, detector 는 `nuri/quant/validation/market_signals.py`)다. ticker 단위 시그널은 4개 category 로 나뉜다:
 
 - **가격 기반** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro 기반** (3): vix_reversal, pcr_reversal, yield_curve_recovery (`merge_macro_data()` 필요)
-- **데이터 의존** (2): insider_cluster, short_squeeze (`merge_data_signals()` 필요)
+- **데이터 의존** (2): insider_cluster, short_squeeze (`merge_data_signals()` 필요. short_squeeze 는 shadow — #1911 전까지 리더가 잘못된 키를 읽었고 공매도 이력은 2026-04 부터다)
 - **차트 패턴** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance
 
 `SIGNAL_DEFINITIONS` 는 `_build_signal_definitions()` 가 YAML 과 detector registry 로부터 만든다. threshold 를 바꿀 때는 YAML 수정만 필요하다. backtest 는 스케줄이 아니라 [수동 리서치 경로](#수동-리서치-경로)에서 실행된다.
@@ -479,7 +479,7 @@ data/
 
 ## 테스트
 
-8,971 backend tests across 443 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+8,973 backend tests across 443 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 
