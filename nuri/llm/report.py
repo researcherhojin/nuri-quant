@@ -571,6 +571,9 @@ def _generate_llamacpp(prompt: str) -> str:
         from llama_cpp import Llama  # pyright: ignore[reportMissingImports]  # CI venv 에는 local-llm extra 가 없다
 
         llm = Llama(model_path=LLAMA_MODEL_PATH, n_ctx=4096, n_gpu_layers=-1, verbose=False)
+        # #1890: diskcache 역직렬화 경로를 사용하지 않도록 추론 전에 캐시를 명시적으로 끈다.
+        # 선택적 의존성의 advisory 자체가 해결되는 것은 아니다.
+        llm.set_cache(None)
         # stream=False (default) returns dict; the overloaded signature can
         # otherwise resolve to Iterator[CreateCompletionStreamResponse] which
         # breaks `output["choices"]` indexing (pylance reportIndexIssue).
