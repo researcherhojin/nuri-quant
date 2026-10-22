@@ -29,6 +29,7 @@ macOS `/bin/sh` 는 `xpg_echo` 가 켜진 bash 3.2 다 — `echo` 가 **JSON 안
 """
 
 import json
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -189,3 +190,31 @@ class TestPrivacyGuard:
     def test_allows_a_file_outside_the_repo(self, shell, command):
         payload = {"tool_input": {"file_path": "/tmp/x.md", "new_string": f"REMOTE={self._SSH_TARGET}\n"}}
         assert _run(shell, command, payload) == 0, "레포 밖 파일까지 막는다"
+
+    @pytest.mark.parametrize("logical_pwd", [False, True], ids=["physical-pwd", "symlink-pwd"])
+    @pytest.mark.parametrize("resolved_target", [False, True], ids=["symlink-target", "physical-target"])
+    @pytest.mark.parametrize("kind", ["ticker_pnl", "identifier", "new_file", "clean", "ignored", "outside"])
+    def test_symlink_paths_preserve_privacy_scope(self, shell, command, tmp_path, logical_pwd, resolved_target, kind):
+        """경로 표기가 달라도 공개 파일은 차단하고 기존 예외는 유지한다 (#1881)."""
+        alias = tmp_path / "checkout alias"
+        alias.symlink_to(REPO_ROOT, target_is_directory=True)
+        root = REPO_ROOT if resolved_target else alias
+        target = root / "README.md"
+        content = f"REMOTE={self._SSH_TARGET}\n"
+        expected = 2
+        if kind == "ticker_pnl":
+            ticker = "TS" + "LA"
+            content = f"## holdings\n- {ticker} +47.3%\n"
+        elif kind == "new_file":
+            target = root / "docs" / "privacy-test-new-file.md"
+        elif kind == "clean":
+            content, expected = "ordinary text\n", 0
+        elif kind == "ignored":
+            target, expected = root / "NEXT_SESSION.md", 0
+        elif kind == "outside":
+            target, expected = tmp_path / "outside.md", 0
+        cwd = alias if logical_pwd else REPO_ROOT
+        # 셸이 논리 PWD를 직접 설정해야 subprocess의 cwd 정규화에 가려지지 않는다.
+        prefixed = f"cd -L {shlex.quote(str(cwd))} && {command}"
+        payload = {"tool_input": {"file_path": str(target), "new_string": content}}
+        assert _run(shell, prefixed, payload) == expected
