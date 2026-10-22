@@ -77,9 +77,9 @@ flowchart LR
 | **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and price levels |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
-The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 58 independent cron jobs, plus a one-minute heartbeat, and each job reads its inputs from database tables written by other jobs.
+The stages are not chained by an orchestrator. `nuri/scheduler.py` registers 56 independent cron jobs, plus a one-minute heartbeat, and each job reads its inputs from database tables written by other jobs.
 
-- Scheduling: 58 cron jobs · in-process
+- Scheduling: 56 cron jobs · in-process
 - Storage: SQLite WAL · 63 tables
 - Market analytics: 22 trading signals · 10 regimes · a 4-factor composite score
 
@@ -167,10 +167,10 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 9,017 collected across 444 files |
+| Backend tests | 8,971 collected across 443 files |
 | Frontend test files | 117 vitest files |
-| Data collectors | 31 collector modules in `nuri/collectors/` |
-| Scheduler jobs | 58 cron entries |
+| Data collectors | 30 collector modules in `nuri/collectors/` |
+| Scheduler jobs | 56 cron entries |
 | API endpoints | 70 declared in `nuri/api/routes/` |
 | Database | SQLite WAL · 63 tables, 72 forward-only migrations |
 
