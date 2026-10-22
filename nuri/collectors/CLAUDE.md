@@ -253,6 +253,11 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 
 **Test:** `tests/collectors/test_kis_us_session_date.py::TestUsSessionDate` · `::TestSaveNeverReplacesACompleteBar` · `::TestYfinanceFallbackDate`
 
+## 신규 편입 종목의 이력 깊이 (#1883, #1907)
+
+주간 `stock_us_backfill` 은 `period: "1y"` 다. 이것만으로는 `universe_sync` 가 새로 넣은 종목이 연구 하네스의 `min_history`(504봉, `config/walkforward_exits.yaml`)에 **2년 뒤에야** 닿고, 그동안 패널에서 조용히 빠진다 — 2026-04 S&P 500 확장 뒤 운영 DB 558종목 중 504봉 이상이 18개였다(#1883, 5y 일회 backfill 로 535). 그래서 같은 job 이 `deep_period: "5y"` · `min_bars: 504` 를 넘기고, 저장된 봉이 그보다 적은 종목만 5y 로 받는다. 나머지는 1y 그대로다.
+**Test:** `tests/collectors/test_stock.py::TestShortHistoryTickersGetADeepFetch` · `tests/test_scheduler.py::TestUniverseBackfill::test_backfill_min_bars_matches_the_registered_min_history`
+
 ## Macro Data Quirk
 
 `us_3m_yield` (FRED) is absent in yfinance fallback — `^IRX` (13-week T-Bill) is stored as `us_2y_yield`. `merge_macro_data()` queries `us_2y_yield` when `us_3m_yield` is empty.

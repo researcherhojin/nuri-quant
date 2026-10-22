@@ -1067,11 +1067,13 @@ SCHEDULES = [
     # 기존 stock_us_night/dawn 은 source="portfolio" 기본으로 universe-only
     # 신규 ticker 를 수집하지 않음. 주 1회 1년치 + source="all" 로 gap 채움.
     # universe-only 730개 ticker 가 1-7일 stale 로 누적되는 현상 방지.
+    # 504봉 미만 종목(universe_sync 신규 편입)만 5y 로 받는다 — 연구 하네스의
+    # min_history(config/walkforward_exits.yaml) 와 같은 값 (#1907).
     {
         "name": "stock_us_backfill",
         "func": _run_collector,
         "args": ("stock",),
-        "kwargs": {"period": "1y", "source": "all"},
+        "kwargs": {"period": "1y", "source": "all", "deep_period": "5y", "min_bars": 504},
         "cron": "0 5 * * 0",
     },
     # Universe 1y backfill — KR (일요일 새벽 5시 30분)

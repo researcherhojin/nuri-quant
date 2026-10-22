@@ -61,6 +61,8 @@ class StockCollector(BaseCollector):
         market: Optional[str] = None,
         period: str = "5d",
         source: str = "portfolio",
+        deep_period: Optional[str] = None,
+        min_bars: int = 0,
         **kwargs,
     ) -> pd.DataFrame:
         """yfinance 로 미국 종목 OHLCV 수집.
@@ -68,6 +70,7 @@ class StockCollector(BaseCollector):
         Args:
             source: 'portfolio' (default) | 'universe' | 'all' | 'freshness'. #272 Phase 2b + #453.
                 freshness = config/rules.yaml freshness_tickers 에서 추출 (KOSPI 등 macro 식별자 제외).
+            deep_period: 주면 저장된 봉이 `min_bars` 미만인 종목만 이 기간으로 받는다 (#1907).
         """
         # 한국 종목은 stock_kr.py에서 처리
         if source == "freshness":
@@ -89,6 +92,13 @@ class StockCollector(BaseCollector):
 
         end_date = kst_now().strftime("%Y-%m-%d")
         start_date = self._period_to_start_date(period)
+        # universe_sync 로 새로 들어온 종목은 주간 1y backfill 만으로는 연구 하네스의
+        # min_history(504봉)에 2년 뒤에야 닿는다 — #1883 에서 519종목이 그 상태였다.
+        # 이력이 짧은 종목만 깊게 받고 나머지는 원래 기간 그대로 둔다 (#1907).
+        deep = self._short_history_tickers(tickers, min_bars) if deep_period else set()
+        deep_start = self._period_to_start_date(deep_period) if deep_period else start_date
+        if deep:
+            self.logger.info("이력 부족 %d 종목은 %s 로 수집", len(deep), deep_period)
 
         # yfinance ERROR 노이즈 억제 (universe 모드 시 수십~수백 traceback 방지)
         # ANSS, HES 같은 delisted 종목은 정상 케이스이지 buggy code 아님
@@ -110,7 +120,7 @@ class StockCollector(BaseCollector):
         failed: list[str] = []
 
         def _fetch_one(ticker: str):
-            return ticker, self._collect_ticker(ticker, start_date, end_date)
+            return ticker, self._collect_ticker(ticker, deep_start if ticker in deep else start_date, end_date)
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=10) as ex:
@@ -149,6 +159,16 @@ class StockCollector(BaseCollector):
             )
 
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+
+    @staticmethod
+    def _short_history_tickers(tickers: list[str], min_bars: int) -> set[str]:
+        """저장된 봉이 `min_bars` 미만인 종목. 행이 없는 신규 종목도 포함된다."""
+        from nuri.core.db import query
+
+        # upsert_prices 가 종가 없는 행을 쓰지 않으므로(#1480) 행 수가 곧 종가 봉 수다.
+        rows = query("SELECT ticker, COUNT(*) AS n FROM prices GROUP BY ticker")
+        counts = {r["ticker"]: r["n"] for r in rows}
+        return {t for t in tickers if counts.get(t, 0) < min_bars}
 
     def _collect_ticker(self, ticker: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
         """단일 종목 수집 (yfinance)."""
