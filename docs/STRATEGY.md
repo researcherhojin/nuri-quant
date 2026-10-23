@@ -2,6 +2,8 @@
 
 *Korean edition: [ko/STRATEGY.md](ko/STRATEGY.md)*
 
+> Reading rule (2026-10-23): policy, implemented behavior and dated experiment records are distinct. Historical results and external research/model-price claims are not newly validated by a documentation update. Current runtime wiring is described in ARCHITECTURE; §3.11/§3.12 pre-registered criteria remain unchanged.
+
 *§3.11 and §3.12 hold pre-registered criteria written in Korean. If the two editions ever differ there, the Korean text is the record.*
 
 This document defines why the project exists, the rationale behind its core design decisions, and its development quality standards. Before building a new feature or changing an existing structure, first check that the change conforms to the principles in this document.
@@ -20,7 +22,7 @@ Maintainer note: this file is not imported from `CLAUDE.md`; it is only pointed 
 
 **Core differentiator**: the goal is not to issue recommendations but to prove the evidence behind them.
 
-- Win rate / profit factor (PF) validated by backtesting 20 signals × 8,000+ historical trades
+- Win rate / profit factor (PF) validated by the signal backtest (19 actionable signals; historical trade counts depend on the input window)
 - Independent analysis by 10 agents, then weighted consensus (risk agent veto)
 - Mechanical verification of prudential constraints (weight, sector and leverage limits) — `rebalance_advisor` surfaces violations as REBALANCE (the portfolio-wide CERTIFIED/REJECTED verdict was retired in 2026-10 per §6)
 - 5 Plotly charts visualize the final evidence
@@ -292,6 +294,9 @@ Extended from a single-horizon structure, in which `_compute_weights` read only 
 
 ### 3.10 Strategic Asset Allocation (SAA) — long-term policy mix
 
+> Implementation scope (2026-10-23): targets exist in `config/rules.yaml`; `nuri/trading/strategy/strategic_allocation.py` computes drift on demand. It aggregates quantity × average cost across the portfolio without currency conversion or per-account filtering. It does not implement an automatic quarterly rebalance or a lifecycle glide path. The cadence and combination rules below express design intent, not an implemented scheduler contract.
+
+
 **Basis (modern academic + authoritative sources, 2020+)**:
 
 - **Ibbotson & Kaplan** (_FAJ_ 2000, correcting the reading of Brinson's "93%"): the answer depends on the question. Policy (asset allocation) explains about 90% of a fund's **return variability over time** and about 40% of the **variation in returns among funds**, and on average about 100% of the **return level** is explained by the policy return level.
@@ -509,7 +514,7 @@ Every external service follows a **per-data-class whitelist**.
 
 #### 4.4.3 External LLM Egress Policy (#152, revised 2026-04-14)
 
-A **whitelist** approach. Every call goes through a single gateway, `nuri/llm/openai_client.py`.
+A **whitelist** approach. Every external call must go through the single gateway, `nuri/llm/openai_client.py`.
 
 | Provider | Model | Allowed Tier | Unit price (in/out per 1M) | ZDR | Notes |
 |---|---|---|---|---|---|
@@ -619,6 +624,8 @@ The `/nuri-harness-debug` skill is canonical for the concrete lessons from real 
 
 ### 5.10 Frontier Alignment + Improvement Roadmap (2026-04-30)
 
+> Historical design/session record. Pending items and commands in this section are not the current work queue. Use the current implementation, §3.12 for held-add measurement, and the local TODO for status.
+
 The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI publication ("Harness engineering: leveraging Codex in an agent-first world", <https://openai.com/index/harness-engineering/>) + Anthropic Claude Code Best Practices (<https://www.anthropic.com/engineering/claude-code-best-practices>) + academic evidence (HAL Kapoor et al. 2026 / AgencyBench Li et al. 2026)**. However, there are **3 measurable gaps** relative to the frontier. This sub-section pins down the quantitative spec + acceptance + risk of each gap (kept separate from TODO — the policy layer).
 
 #### Gap A. Expanding agent autonomy (OpenAI 1M LOC pattern)
@@ -630,7 +637,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 **Two sides of the gap (honest assessment)**:
 
 - *Case for expansion*: harness invariants (privacy-scan, doc count drift, hooks, ruff, conventional commits, ≤3 commits/PR) already block deterministically and effectively. There are PR classes for which autonomous merge is safe (e.g., doc-only, lint-only).
-- *Case against expansion*: the same ethos as the permanent deferral of automated trading in STRATEGY §7.1 — **financial-impact code requires user review**. In an ecosystem that acknowledged system responsibility after directly experiencing a ₩7M loss cascade, growing autonomy runs against the trust budget.
+- *Case against expansion*: the same ethos as the permanent deferral of automated trading in STRATEGY §7.1 — **financial-impact code requires user review**. In an ecosystem that acknowledged system responsibility after directly experiencing a loss cascade, growing autonomy runs against the trust budget.
 
 **Acceptance criterion** (research, no commit by default):
 
@@ -638,7 +645,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 - Phase β: post-hoc measurement of `autonomy_safe_class` PRs — regression rate after 4 weeks (frequency of post-merge revert or fix-forward) < 10%.
 - Phase γ: **strategy / src / config stay under permanent human review** (a STRATEGY change is required).
 
-**Priority**: Tier 3 research. Low priority. **User review is worth ₩2-4M in avoided losses (the #507 escalation case) — the EV of expanding autonomy is low**.
+**Priority**: Tier 3 research. Low priority. Human review remains a policy requirement; no monetary value is inferred here.
 
 #### Gap B. Measuring harness-model coupling (AgencyBench-style)
 
@@ -649,7 +656,7 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 **Acceptance criterion**:
 
 - Phase 1: create `data/harness_telemetry.jsonl` — record every LLM call (timestamp / model / phase / outcome / token_count). Wired into both `nuri/llm/openai_client.py` and `scripts/dev/llm_consult.py`.
-- Phase 2: weekly aggregation script — `make harness-quality-report` → per-model success rate / failure pattern / phase breakdown. After 4 weeks of data, a model swap recommendation (cost-quality tradeoff of the classification model `gpt-6-luna` vs a higher-tier model — the 2026-10-08 nano→luna replacement was made without this measurement, on unit price and generation grounds, #1737).
+- Phase 2 (planned, not implemented): weekly aggregation script — proposed `make harness-quality-report` → per-model success rate / failure pattern / phase breakdown. After 4 weeks of data, a model swap recommendation (cost-quality tradeoff of the classification model `gpt-6-luna` vs a higher-tier model — the 2026-10-08 nano→luna replacement was made without this measurement, on unit price and generation grounds, #1737).
 - ✅ Phase 3 (2026-08-13, #1038): nuri-specific eval suite — **50** frozen prompts in `config/eval/thesis_prompts.yaml` (v1 10 + adversarial 40, families a-j), limited to the `thesis_query` path. The primary metric is `unsafe_price_level` (fabricated/phantom price levels); the secondary is IFEval-style instruction following. No LLM judge is used — if the judge wobbles, the A/B is meaningless.
   - **Limits (do not over-cite)**: the prompts are synthetic and self-written, so they have no external validity, and they do not measure whether investment judgments are right or wrong (no ground-truth labels). Each prompt is run only 1 time, so the noise floor is unmeasured — there have been cases where the same prompt gave different answers from run to run even with `temperature=0.0`. Add k repetitions before the next swap.
 
@@ -694,7 +701,9 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 
 ### 5.11 BUY Signal Asymmetry — #507 Phase 1 ship + Phase 2 v2 sequence (2026-04-30 Session 8)
 
-**Problem (found 4-29, escalated as #507)**: throughout `Collect → Analyze → Consensus → Certify → Track`, the system ran **7 sell-side gates** and **0 buy-side emitters**. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor all produced SELL or a block. Attribution: the user's ₩3.25M realized in April + ~₩2-4M estimated opportunity cost. Detailed inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
+> Historical design/session record. Pending items and commands in this section are not the current work queue. Use the current implementation, §3.12 for held-add measurement, and the local TODO for status.
+
+**Problem (found 4-29, escalated as #507)**: throughout `Collect → Analyze → Consensus → Certify → Track`, the system ran **7 sell-side gates** and **0 buy-side emitters**. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor all produced SELL or a block. Detailed inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
 
 **Phase 1 ship (PR #508 / #512)**:
 
@@ -728,6 +737,8 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 
 ### 5.12 Session 8 defect escalations (2026-04-30, #513–#516)
 
+> Historical design/session record. Pending items and commands in this section are not the current work queue. Use the current implementation, §3.12 for held-add measurement, and the local TODO for status.
+
 4 items found while verifying the Phase 1 ship + brief re-run — fix each in a separate PR:
 
 | # | Finding | Priority |
@@ -738,6 +749,8 @@ The 7 principles of §5.8 are **essentially aligned** with **the 2026-02 OpenAI 
 | **#516** | Re-entry into 3 stocks sold in April in the Pension account — need to verify whether the brokerage auto-buy setting was intended | P3 |
 
 ### 5.13 BUY candidate backtracking ledger (introduced in Session 8)
+
+> Historical design/session record. Pending items and commands in this section are not the current work queue. Use the current implementation, §3.12 for held-add measurement, and the local TODO for status.
 
 **Goal**: verify the reliability of the Phase 1 emitter score + automatically accumulate samples for the Phase 2c threshold backtest.
 

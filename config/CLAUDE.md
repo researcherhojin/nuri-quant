@@ -1,6 +1,6 @@
 # config/ — YAML Configuration
 
-**Canonical source of truth** for investment rules, agent thresholds, signal metadata, and account strategy profiles. Python code **never hardcodes** these values — always read from the corresponding loader in `nuri/core/`. (§2.2 mechanical execution.)
+**Canonical source of truth** for investment rules, agent thresholds, signal metadata, and account strategy profiles. Read these values from the corresponding loader in `nuri/core/`. Existing exceptions, such as `REGIME_ALLOCATION`, must be explicitly documented in the scoped rules; they do not authorize new hardcoded investment rules. (§2.2 mechanical execution.)
 
 ## File inventory
 
@@ -8,12 +8,12 @@
 |------|---------|--------|
 | `rules.yaml` | Investment rules (stop-loss, take-profit, position limits, VIX gate, `account_strategies`, `measurement_mode` (§3.11 사전 고정 판정 기준 — amend 는 STRATEGY PR 필수), `asset_class_rules` (classifier `nuri/core/asset_class.py`), `freshness_tickers`) | `nuri/core/rules.py` |
 | `agents.yaml` | Per-agent thresholds + confidence scale normalization + 10-agent consensus params | `nuri/core/agent_config.py` |
-| `signals.yaml` | 22 signal definitions (19 actionable + 3 shadow; type, hold_days, params). Detector code in `nuri/quant/validation/signal_backtest.py` | `nuri/core/signal_config.py` |
+| `signals.yaml` | 22 signal definitions (19 actionable + 3 shadow; type, hold_days, params). Per-ticker detectors in `nuri/quant/validation/signal_backtest.py`; market-wide shadow detectors in `nuri/quant/validation/market_signals.py` | `nuri/core/signal_config.py` |
 | `buy_signals.yaml` | Buy-candidate scoring (`weights`, `quality_bar`, `gates`, `allocation`) + per-candidate `risk` (stop/TP) + `held_add_mode` (incl. `would_fire_logging` — grid + `stage2_adjudication` 는 §3.12 사전등록, 값 드리프트는 잠금 테스트 FAIL) | `nuri/trading/recommend/buy_candidate_emitter.py` (`CONFIG_PATH`) + `held_add.py` (held_add_mode block) + `held_add_would_fire.py` |
 | `alerts.yaml` | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
 | `freshness.yaml` | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
 | `stock_types.yaml` | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
-| `universe.yaml` | 752 tickers: `us_core` (91) + `us_sp500_extended` (458) + `kr_kospi200` (203). Auto-maintained by `make universe-sync`; manual entries preserved | `nuri/collectors/universe_sync.py` |
+| `universe.yaml` | Universe groups: `us_core`, `us_sp500_extended`, `kr_kospi200`; current membership is in this YAML. `make universe-sync` previews changes; apply requires `make universe-sync-apply`. Removal requires the explicit `--allow-removal` option | `nuri/collectors/universe_sync.py` |
 | `portfolio.example.yaml` | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
 | `portfolio.yaml` | Real portfolio — **gitignored** (account labels, holdings, avg price). Shape matches `portfolio.example.yaml` | `scripts/ops/import_portfolio.py` |
 | `walkforward.yaml` | Strategy walk-forward validation — pre-registered parameters (P1b). Frozen: a change is a new pre-registration, not an edit | `nuri/quant/validation/strategy_walkforward.py` + `champion_gate.py` |
@@ -77,11 +77,11 @@ The duplication across 10 agents is **intentional** — each agent's confidence 
 
 ### `signals.yaml` — detector ↔ metadata split
 
-The YAML only carries **metadata** (type, hold_days, params). The actual signal detector lives in `nuri/quant/validation/signal_backtest.py` as a function. Disabling a signal:
+The YAML only carries **metadata** (type, hold_days, params). Per-ticker detectors live in `nuri/quant/validation/signal_backtest.py`; market-wide shadow detectors live in `nuri/quant/validation/market_signals.py`. `enabled: false` removes a detector from the enabled registry; `actionable: false` retains shadow measurement but excludes candidate recommendations. Disabling a signal:
 
 ```yaml
 rsi_oversold:
-  enabled: false   # detector still exists but config_loader filters it out
+  enabled: false   # detector still exists but the registry builder filters it out
 ```
 
 ### `rules.yaml` — `asset_class_rules` ordering

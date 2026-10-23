@@ -2,6 +2,8 @@
 
 *English (official) edition: [../DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md)*
 
+> 2026-10-23: 일반 push 전에는 `bash scripts/verify/pre_push_check.sh --skip-tests` 와 영향 범위 테스트를 실행한다. 아래 소요 시간은 당시 측정값이며 현재 성능 보장이 아니다.
+
 세션 중 반복되던 시간 낭비 패턴을 줄이기 위한 4개 script 와 PR template 을 정리한다. 도입 당시 약 120분의 누적 낭비를 기준으로 만든 도구다.
 
 ## TL;DR — 매 push 전

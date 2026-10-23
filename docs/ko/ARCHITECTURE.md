@@ -191,14 +191,14 @@ production 은 호스트 한 대에서 launchd(`scripts/launchd/`) 아래 실행
 | 축 | 값 | 촉발 요인 |
 |------|--------|--------------|
 | **alpha** | `LONG` / `SHORT` / `FLAT` | thesis 의 변화. stop-loss 이탈은 `FLAT` 으로 가는 유일한 기계적 경로다. |
-| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` | sizing. 집중도, sector cap, 실험 sleeve 한도 위반은 여기서 해소되며 결코 urgent SELL 을 만들지 않는다. |
+| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` / `NONE` | sizing. 집중도, sector cap, 실험 sleeve 한도 위반은 여기서 해소되며 결코 urgent SELL 을 만들지 않는다. |
 
 ```mermaid
 flowchart LR
     TR1["Stop-loss level breached"]
     TR2["Position · sector · sleeve<br/>over its cap"]
     AL["alpha_action<br/>LONG · SHORT · FLAT<br/>Should this position exist?"]
-    PO["portfolio_action<br/>REBALANCE · TRIM · HEDGE<br/>Is the book the right shape?"]
+    PO["portfolio_action<br/>REBALANCE · TRIM · HEDGE · NONE<br/>Is the book the right shape?"]
     C1["Risk veto may fire —<br/>operator sees a SELL to consider"]
     C2["Rebalance advice —<br/>never an urgent SELL"]
 

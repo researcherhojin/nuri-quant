@@ -37,7 +37,7 @@ The home page. It began as the `/dashboard-next` preview beside the old dashboar
 
 ## Server Components Pattern
 
-All pages are **Server Components** with `force-dynamic`. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`).
+Data pages generally use **Server Components** with `force-dynamic`; the client-page exceptions are listed below. Data fetched server-side via `fetchAPI()` (`src/lib/api.ts`).
 
 Client Components: `/report` (LLM generation), `/pipeline` (ReactFlow DAG), `/portfolio` (holdings editor), `/login` (auth form), `<PriceChart>` (period selector).
 

@@ -25,7 +25,7 @@ repository root with `make api`, or start both with `make start`.
 npm run dev            # development server on :3000
 npm run build          # production build
 npm run start          # serve the production build
-npm run lint           # eslint
+npm run lint           # eslint + oxlint
 npm test               # vitest
 npm run test:coverage  # vitest with coverage
 npm run test:e2e       # Playwright
@@ -37,8 +37,9 @@ Next.js dev server, or reuses them if they are already running
 
 ## Structure
 
-- Pages are Server Components rendered with `force-dynamic`; data is fetched
-  server-side through `fetchAPI()` in `src/lib/api.ts`.
+- Data pages generally use Server Components with `force-dynamic` and fetch
+  through `fetchAPI()` in `src/lib/api.ts`. Interactive pages, including `/login`
+  and `/portfolio`, use Client Components; see `CLAUDE.md` for the boundary.
 - Next.js rewrites `/api/*` to the FastAPI backend (`next.config.ts`).
 - UI strings are Korean constants in `src/lib/strings.ts`.
 - Tests live in `src/__tests__/`, next to the code they cover, and in `e2e/`.

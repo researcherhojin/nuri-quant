@@ -9,7 +9,7 @@ description: Deploy to Mac Mini production server. Use when asked to "deploy", "
 
 ```bash
 make pre-deploy        # Safety checks (config + DB + gate + frontend build + API + ports)
-make verify-all        # Full verification (tests + backend + frontend, no network)
+make verify-all        # Full verification (tests + live local backend + frontend; populated dev DB required)
 ```
 
 Both must pass before deploying. If either fails, fix the issue first.
@@ -49,5 +49,7 @@ If something breaks after deploy:
 # On Mac Mini
 make backup            # Ensure current DB is backed up first
 git log --oneline -5   # Find the last good commit
-git checkout <sha>     # Revert to last good state
+# Prepare a reviewed revert PR for the code regression; preserve the DB ledger.
+# After merge and green CI, use the normal deploy path to rebuild/restart.
+# A checkout alone does not replace the running Python process or Next build.
 ```

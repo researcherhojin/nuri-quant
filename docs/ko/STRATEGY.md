@@ -2,6 +2,8 @@
 
 *English (official) edition: [../STRATEGY.md](../STRATEGY.md)*
 
+> 읽기 규칙 (2026-10-23): 정책·구현된 동작·날짜별 실험 기록을 구분한다. 문서 갱신은 과거 결과와 외부 연구·모델 가격의 재검증이 아니다. 현행 실행 배선은 ARCHITECTURE 를 따르며 §3.11/§3.12 사전등록 기준은 그대로 유지한다.
+
 *§3.11·§3.12 의 사전등록 기준은 한국어로 작성됐다. 두 판이 이 부분에서 다르면 이 한국어 본문이 기록이다.*
 
 이 문서는 프로젝트의 존재 이유, 핵심 설계 결정의 근거, 개발 품질 기준을 정의한다. 새로운 기능을 만들거나 기존 구조를 변경할 때 이 문서의 원칙에 부합하는지 먼저 확인한다.
@@ -20,7 +22,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 
 **핵심 차별점**: 추천을 내리는 것이 아니라, 추천의 근거를 증명하는 것이 목적이다.
 
-- 20개 시그널 × 8,000+ 과거 트레이드 백테스트로 승률/수익비(PF) 검증
+- 19개 actionable 시그널 백테스트로 (과거 트레이드 수는 입력 기간에 따라 달라짐) 승률/수익비(PF) 검증
 - 10개 에이전트 독립 분석 후 가중 합의 (risk agent 거부권)
 - prudential 제약(비중·섹터·레버리지 한도)의 기계적 검증 — `rebalance_advisor` 가 위반을 REBALANCE 로 surface (포트폴리오 전체 CERTIFIED/REJECTED 판정은 §6 에 따라 2026-10 폐기)
 - 5개 Plotly 차트가 최종 증거를 시각화
@@ -292,6 +294,9 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 ### 3.10 Strategic Asset Allocation (SAA) — long-term policy mix
 
+> 구현 범위 (2026-10-23): 목표값은 `config/rules.yaml` 에 있고 `nuri/trading/strategy/strategic_allocation.py` 가 요청 시 drift 를 계산한다. 현재 통화 변환·계좌별 필터 없이 포트폴리오 전체의 수량 × 평균원가를 합산한다. 자동 분기 리밸런싱이나 생애주기 glide path 는 구현하지 않는다. 아래 주기·결합 규칙은 설계 의도이며 구현된 스케줄러 계약이 아니다.
+
+
 **근거 (현대 학술 + 공신력 자료, 2020+)**:
 
 - **Ibbotson & Kaplan** (_FAJ_ 2000, Brinson "93%" 해석 정정): 답은 질문에 따라 다르다. policy(자산 배분)는 한 펀드의 **시간에 따른 return 변동**의 약 90% 와 **펀드 간 return 차이**의 약 40% 를 설명하고, 평균적으로 **return 수준**의 약 100% 는 policy return 수준으로 설명된다.
@@ -509,7 +514,7 @@ Commit message 스캔 (PR #202 방지):
 
 #### 4.4.3 외부 LLM Egress Policy (#152, 2026-04-14 개정)
 
-**화이트리스트** 방식이다. 모든 호출은 `nuri/llm/openai_client.py` 단일 관문을 거친다.
+**화이트리스트** 방식이다. 모든 외부 호출은 `nuri/llm/openai_client.py` 단일 관문을 거쳐야 한다.
 
 | Provider | Model | 허용 Tier | 단가 (in/out per 1M) | ZDR | 비고 |
 |---|---|---|---|---|---|
@@ -619,6 +624,8 @@ Deferred (필요 시점에 추가):
 
 ### 5.10 Frontier Alignment + Improvement Roadmap (2026-04-30)
 
+> 과거 설계·세션 기록. 이 절의 미완료 항목과 명령은 현행 작업 대기열이 아니다. 현재 구현, held-add 측정의 §3.12, 작업 상태의 로컬 TODO 를 따른다.
+
 §5.8 의 7 원칙은 **2026-02 OpenAI 공표 ("Harness engineering: leveraging Codex in an agent-first world", <https://openai.com/index/harness-engineering/>) + Anthropic Claude Code Best Practices (<https://www.anthropic.com/engineering/claude-code-best-practices>) + 학술 evidence (HAL Kapoor et al. 2026 / AgencyBench Li et al. 2026)** 와 **본질적으로 align** 한다. 다만 frontier 대비 **3 개 measurable gap** 이 존재한다. 본 sub-section 은 각 gap 의 정량 spec + acceptance + risk 를 박는다 (TODO 와 분리 — 정책 layer).
 
 #### Gap A. Agent autonomy 확장 (OpenAI 1M LOC pattern)
@@ -630,7 +637,7 @@ Deferred (필요 시점에 추가):
 **Gap 의 양면성 (정직한 평가)**:
 
 - *확장 정당화*: harness invariants (privacy-scan, doc count drift, hooks, ruff, conventional commits, ≤3 commits/PR) 가 이미 deterministic 차단 실효. autonomous merge 가 안전한 PR class 존재 (예: doc-only, lint-only).
-- *확장 거부 근거*: STRATEGY §7.1 자동 매매 영구 deferred 와 동일 ethos — **financial-impact 코드는 사용자 review 필수**. ₩7M 손실 cascade 직접 경험 후 system 책임 인정한 ecosystem 에서 autonomy 키우는 건 trust budget 역행.
+- *확장 거부 근거*: STRATEGY §7.1 자동 매매 영구 deferred 와 동일 ethos — **financial-impact 코드는 사용자 review 필수**. 손실 cascade 직접 경험 후 system 책임 인정한 ecosystem 에서 autonomy 키우는 건 trust budget 역행.
 
 **Acceptance criterion** (research, no commit by default):
 
@@ -638,7 +645,7 @@ Deferred (필요 시점에 추가):
 - Phase β: `autonomy_safe_class` PR 의 사후 측정 — 4 주 후 regression rate (post-merge revert 또는 fix-forward 빈도) < 10%.
 - Phase γ: **strategy / src / config 는 영구 인간 review** (STRATEGY change 필수).
 
-**Priority**: Tier 3 research. 우선순위가 낮다. **사용자 review 가 ₩2-4M 손실 회피 가치 (#507 격상 사례) — autonomy 확장 EV 가 낮다**.
+**Priority**: Tier 3 research. 우선순위가 낮다. 사용자 review 는 정책 요건이며 여기서 금전 가치를 추정하지 않는다.
 
 #### Gap B. Harness-model coupling 측정 (AgencyBench-style)
 
@@ -649,7 +656,7 @@ Deferred (필요 시점에 추가):
 **Acceptance criterion**:
 
 - Phase 1: `data/harness_telemetry.jsonl` 신설 — 매 LLM 호출 기록 (timestamp / model / phase / outcome / token_count). `nuri/llm/openai_client.py` 와 `scripts/dev/llm_consult.py` 양쪽에 wired.
-- Phase 2: weekly aggregation script — `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (분류 `gpt-6-luna` vs 상위 모델 cost-quality tradeoff — 2026-10-08 nano→luna 교체는 이 측정 없이 단가·세대 근거로 했다, #1737).
+- Phase 2 (planned, not implemented): weekly aggregation script — proposed `make harness-quality-report` → model-별 success rate / failure pattern / phase breakdown. 4 주 데이터 후 model swap recommendation (분류 `gpt-6-luna` vs 상위 모델 cost-quality tradeoff — 2026-10-08 nano→luna 교체는 이 측정 없이 단가·세대 근거로 했다, #1737).
 - ✅ Phase 3 (2026-08-13, #1038): nuri-specific eval suite — `config/eval/thesis_prompts.yaml` 동결 프롬프트 **50개**(v1 10 + 적대적 40, 계열 a-j), `thesis_query` 경로 한정. 1차 지표는 `unsafe_price_level`(가격 레벨 날조/유령), 2차는 IFEval 계열 지시준수. LLM judge 를 쓰지 않는다 — 판정자가 흔들리면 A/B 가 무의미하다.
   - **한계 (과잉 인용 금지)**: 프롬프트가 합성·자작이라 외적 타당성이 없고, 투자 판단의 옳고 그름을 재지 않는다(정답 레이블 없음). 프롬프트당 1회만 돌리므로 잡음 바닥이 미측정이다 — `temperature=0.0` 인데도 같은 프롬프트가 런마다 다른 답을 낸 사례가 있다. 다음 스왑 전에 k회 반복을 붙일 것.
 
@@ -694,7 +701,9 @@ Deferred (필요 시점에 추가):
 
 ### 5.11 BUY Signal Asymmetry — #507 Phase 1 ship + Phase 2 v2 sequence (2026-04-30 Session 8)
 
-**문제 (4-29 발견, #507 격상)**: 시스템이 `Collect → Analyze → Consensus → Certify → Track` 전체에서 **sell-side gate 7개** 와 **buy-side emitter 0개** 를 운영. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor 모두 SELL 또는 block. 4월 사용자 ₩3.25M 실현 + ~₩2-4M 추정 기회비용 attribution. 자세한 inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
+> 과거 설계·세션 기록. 이 절의 미완료 항목과 명령은 현행 작업 대기열이 아니다. 현재 구현, held-add 측정의 §3.12, 작업 상태의 로컬 TODO 를 따른다.
+
+**문제 (4-29 발견, #507 격상)**: 시스템이 `Collect → Analyze → Consensus → Certify → Track` 전체에서 **sell-side gate 7개** 와 **buy-side emitter 0개** 를 운영. SIEGE / stop-loss / take-profit / position-limit / VIX / holdings_monitor 모두 SELL 또는 block. 자세한 inventory: `data/llm_consults/2026-04-30_507-system-audit.md`.
 
 **Phase 1 ship (PR #508 / #512)**:
 
@@ -728,6 +737,8 @@ Deferred (필요 시점에 추가):
 
 ### 5.12 Session 8 결함 격상 (2026-04-30, #513–#516)
 
+> 과거 설계·세션 기록. 이 절의 미완료 항목과 명령은 현행 작업 대기열이 아니다. 현재 구현, held-add 측정의 §3.12, 작업 상태의 로컬 TODO 를 따른다.
+
 Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 
 | # | 발견 | 우선순위 |
@@ -738,6 +749,8 @@ Phase 1 ship + brief 재실행 검증 중 발견된 4건 — 별도 PR로 fix:
 | **#516** | Pension 계좌 4월 매도 3종목 재진입 — 증권사 자동매수 설정 의도 검증 필요 | P3 |
 
 ### 5.13 BUY candidate backtracking ledger (Session 8 신설)
+
+> 과거 설계·세션 기록. 이 절의 미완료 항목과 명령은 현행 작업 대기열이 아니다. 현재 구현, held-add 측정의 §3.12, 작업 상태의 로컬 TODO 를 따른다.
 
 **Goal**: Phase 1 emitter score 신뢰도 검증 + Phase 2c threshold backtest 표본 자동 적립.
 
