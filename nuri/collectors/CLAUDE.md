@@ -1,4 +1,4 @@
-# nuri/collectors/ — 30 Data Collectors
+# nuri/collectors/ — 31 Data Collectors
 
 ## BaseCollector Contract
 
@@ -7,6 +7,22 @@ Collector classes inherit `BaseCollector` (`base.py`) — every one the schedule
 1. Implement `collect(**kwargs) -> Any` — fetch data from external source
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db/` package functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
+
+## Manual SEC evidence helper (`sec_research.py`, #1887)
+
+`sec_research` is an isolated function-based helper, not a scheduled collector.
+It captures only an explicitly supplied CIK, preserves both successful and failed
+responses in a new directory, and records timestamps, hashes and code identity.
+The SEC user agent is sent with the requests but is not stored in the manifest.
+It does not access the portfolio, production DB, scheduler or alerts.
+
+Use `python -m nuri.collectors.sec_research --help` for capture arguments and
+`python -m nuri.quant.validation.sec_quarters --help` for the offline audit.
+The audit checks an explicit accession, exact current/prior-year calendar quarters
+and a timezone-aware cutoff. Captures made after the cutoff are rejected.
+`evidence_linked` means the source records join; `research_eligible` stays false
+and accounting comparability stays unverified. Keeping this tool does not resume
+R02 or promote a signal. *(facts, no fix)*
 
 ## Korean Ticker `.KS` Suffix Convention (canonical)
 

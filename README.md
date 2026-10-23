@@ -167,9 +167,9 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 8,974 collected across 443 files |
+| Backend tests | 9,018 collected across 444 files |
 | Frontend test files | 117 vitest files |
-| Data collectors | 30 collector modules in `nuri/collectors/` |
+| Data collectors | 31 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 56 cron entries |
 | API endpoints | 70 declared in `nuri/api/routes/` |
 | Database | SQLite WAL · 63 tables, 72 forward-only migrations |
