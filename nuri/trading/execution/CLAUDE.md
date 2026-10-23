@@ -14,7 +14,7 @@ This directory exists for backtesting + paper-trading dry runs only. Live `submi
 
 ## Invariants
 
-- **Paper-only**. Never point `ALPACA_BASE_URL` at the live endpoint. CI / hooks do not enforce this — it's a discipline rule. If you need live execution for a backtest replay, document the rationale in the calling script.
+- **Paper-only**. Never point `ALPACA_BASE_URL` at the live endpoint. CI / hooks do not enforce this — it's a discipline rule. A backtest replay does not authorize live execution; changing this policy requires the STRATEGY PR and re-approval described in §7.1.
 - **Order persistence**: `Order` is an in-memory dataclass. If you need durable order history, add a migration to `_MIGRATIONS` in `nuri/core/db_migrations.py` (forward-only) — do not write a parallel SQLite from this directory.
 - **`kst_now()` only** for `Order.timestamp` (hook-enforced, but worth restating since this module formats timestamps for downstream display).
 
@@ -22,7 +22,7 @@ This directory exists for backtesting + paper-trading dry runs only. Live `submi
 
 Adding a new broker (e.g., KIS Open API write-side, IBKR) requires:
 
-1. STRATEGY PR re-approving `auto_trading_deferred=False` for that broker scope.
+1. STRATEGY §7.1 revision and explicit re-approval for that broker scope; this is a policy decision, not a config flag.
 2. New adapter class inheriting `BaseBroker` with the same `submit_order` / `get_positions` / `get_account_value` / `cancel_all` contract.
 3. Integration tests under `tests/trading/execution/` that exercise `--dry-run` only by default.
 

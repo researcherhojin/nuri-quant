@@ -11,11 +11,13 @@ description: Pre-commit verification. Use when about to commit, asked to "verify
 make verify-quick
 ```
 
-## Full check (no network, before pushing)
+## Full check (requires a populated development DB and frontend dependencies)
 
 ```bash
 make verify-all
 ```
+
+This also exercises live handlers and backtests against the local DB. Unlike the mocked unit suite, it is not an isolated offline test: a handler may reach a configured fallback source. Use `bash scripts/verify/pre_push_check.sh --skip-tests` plus affected tests for the ordinary pre-push gate.
 
 ## Manual checklist
 

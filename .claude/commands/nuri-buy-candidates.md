@@ -13,7 +13,7 @@ description: Emit BUY candidates from current snapshot (Issue #507 Phase 1). VIX
 주의:
 
 - VIX > 30 (`config/rules.yaml entry_rules.vix_gate`) 인 경우 0 candidate emit (blocked reason 표시) — 정상 동작. 레짐 하드 차단은 없다 (`config/buy_signals.yaml gates.blocking_regimes: []`) — `bear_*` 레짐은 배분 축소 soft penalty.
-- 0 candidate 인 경우 사용자에게 cash hold 가 적절함을 확인. 강제로 candidate 만들지 말 것.
+- 0 candidate 인 경우 조건을 충족한 후보가 없다는 사실과 시스템의 차단·제외 사유만 전달. 현금 보유가 적절하다는 권고로 확대하거나 후보를 만들어내지 말 것.
 - Skipped 종목 (held / cooldown / leverage ETF) 은 일부 (top 5) 만 표시. 전체는 `--print-all` flag 추후 도입.
 - 결과 markdown 은 console 출력만 — file archive 는 Phase 3 (`data/buy_candidates/{date}.md`).
 

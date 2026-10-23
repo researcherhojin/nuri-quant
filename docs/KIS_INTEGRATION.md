@@ -2,6 +2,8 @@
 
 *Korean edition: [ko/KIS_INTEGRATION.md](ko/KIS_INTEGRATION.md)*
 
+> Scope: repository implementation and dated integration observations. Provider notices and live collection results below were not revalidated in the 2026-10-23 documentation audit; they are not current API availability guarantees.
+
 This guide describes the modules that collect real-time quotes, trading activity by investor type, and analyst investment opinions through the Korea Investment & Securities (KIS) Open API.
 
 ## Module structure

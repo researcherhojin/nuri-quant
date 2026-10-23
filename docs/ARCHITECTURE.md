@@ -191,14 +191,14 @@ Rules that respond to a broken investment thesis are kept separate from rules th
 | Axis | Values | Triggered by |
 |------|--------|--------------|
 | **alpha** | `LONG` / `SHORT` / `FLAT` | A change in the thesis. A stop-loss breach is the only mechanical path to `FLAT`. |
-| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` | Sizing. Concentration, sector-cap and experiment-sleeve breaches are resolved here and never produce an urgent SELL. |
+| **portfolio** | `REBALANCE` / `TRIM` / `HEDGE` / `NONE` | Sizing. Concentration, sector-cap and experiment-sleeve breaches are resolved here and never produce an urgent SELL. |
 
 ```mermaid
 flowchart LR
     TR1["Stop-loss level breached"]
     TR2["Position · sector · sleeve<br/>over its cap"]
     AL["alpha_action<br/>LONG · SHORT · FLAT<br/>Should this position exist?"]
-    PO["portfolio_action<br/>REBALANCE · TRIM · HEDGE<br/>Is the book the right shape?"]
+    PO["portfolio_action<br/>REBALANCE · TRIM · HEDGE · NONE<br/>Is the book the right shape?"]
     C1["Risk veto may fire —<br/>operator sees a SELL to consider"]
     C2["Rebalance advice —<br/>never an urgent SELL"]
 

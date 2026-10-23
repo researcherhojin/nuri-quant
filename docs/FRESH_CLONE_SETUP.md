@@ -2,6 +2,8 @@
 
 *Korean edition: [ko/FRESH_CLONE_SETUP.md](ko/FRESH_CLONE_SETUP.md)*
 
+> Scope: disposable development setup. Do not run reset commands against the production adjudication ledger. The dated smoke logs below are historical evidence, not a fresh-clone run or a current service-health guarantee.
+
 This is the procedure for a first install of Nuri-Quant, a reinstall, and onboarding a new contributor. It manually verifies the end-to-end scenario that PR CI does not check. It reflects #272 Phase 5 (2026-04-15).
 
 > **When to run**: after a fresh clone, after resetting the environment, after a major dependency upgrade, and as a quarterly health check. Do not run it on every PR. The network work takes 20-30 minutes, and the results depend on the state of external APIs.

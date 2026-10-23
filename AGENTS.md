@@ -38,9 +38,9 @@ Claude Code's edit-time hooks do not run in Codex. A rule marked **review** is e
 | 1 | **DB access**: `nuri/core/db/connection.py` is the only `sqlite3` importer. Other modules use `query()` / `query_df()` / `upsert_*()` / `get_db()`; catch DB errors via `OperationalError` / `DatabaseError` from `nuri.core.db` (both `query()` and `query_df()` raise those types; #1754). | CI — `tests/core/test_sqlite3_sole_importer.py` |
 | 2 | **Forward `db_path`**: a function that accepts `db_path=` must pass it to every DB reader it calls. An unused parameter leaks that call to the default DB while signatures, type checks and tests stay green (21 such sites in #1050–#1052). | CI — `tests/core/test_db_path_forwarding.py` |
 | 3 | **Time**: use `kst_now()` / `today_kst()` from `nuri.core.timezone`; never `datetime.now()`. | review (no lint rule or test) |
-| 4 | **Config over code**: investment rules and thresholds live in `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml`. Hardcoding is rejected. | review |
+| 4 | **Config over code**: investment rules and thresholds live in `config/rules.yaml`, `config/agents.yaml`, `config/signals.yaml`. Hardcoding is rejected; existing exceptions must be explicitly documented in the scoped rules (for example, `REGIME_ALLOCATION` in `nuri/trading/strategy/CLAUDE.md`). | review |
 | 5 | **Cross-stage imports** — stages map to `collect`=`nuri/collectors`, `analyze`=`nuri/analysis`, `consensus`=`nuri/trading/agents`, `decide`=`nuri/trading/engine`, `track`=`nuri/trading/recommend` (`nuri/quant`, `nuri/core` are shared libraries). A crossing import must be deferred inside a function body and listed with a reason in the allowlist (#920). | CI — `tests/core/test_cross_stage_imports.py` |
-| 6 | **External LLM gateway**: `nuri/llm/openai_client.py` is the only external-LLM entry point; `import openai` elsewhere is forbidden (tier0-only gate + audit log live there; portfolio data never leaves the machine, STRATEGY §4.4.3). | review |
+| 6 | **External LLM gateway**: `nuri/llm/openai_client.py` is the only permitted external-LLM entry point; `import openai` elsewhere is forbidden (tier0-only gate + audit log live there; portfolio data must remain local, STRATEGY §4.4.3). The gateway switch is not a process-wide sandbox; review independent CLI entry points separately. | review |
 | 7 | **Privacy**: never commit personal financial data (broker names, holdings, prices, account ids, ticker + signed %) or personal identifiers (account names, real-name hostnames, `/Users/<account>/`). Use placeholders (`Brokerage Alpha`, `user@macmini.local`, `/Users/USER/`). Never edit `.env` or `config/portfolio.yaml`. | pre-push hook + CI `Privacy Leak Scan` |
 | 8 | **Commits**: Conventional Commits with an **English** subject — `(feat\|fix\|docs\|style\|refactor\|test\|chore\|perf\|ci\|build\|revert)(scope)?: msg`. Korean comments in code, English identifiers. | pre-push warning |
 | 9 | **PR scope**: 1 issue = 1 PR, ≤ 3 commits. New findings → separate issue. | CI `pr-discipline` (advisory) |
@@ -62,7 +62,7 @@ git diff --cached -U0 | grep -nE '^\+.*(datetime\.now\(|import (sqlite3|openai))
 ## Action axes (orthogonal — never conflate)
 
 - `alpha_action ∈ {LONG, SHORT, FLAT}` — expected-return signal. A stop-loss breach is the only mechanical path to `FLAT`.
-- `portfolio_action ∈ {REBALANCE, TRIM, HEDGE, NONE}` — portfolio-rule signal (concentration, sector, leverage). Never routes to an urgent SELL.
+- `portfolio_action ∈ {REBALANCE, TRIM, HEDGE, NONE}` — portfolio-rule signal (concentration, sector, leverage). `NONE` means no portfolio-rule action. Never routes to an urgent SELL.
 
 The risk veto fires on `alpha_action == "FLAT"` only. `/api/actions` buckets: `urgent` / `check` / `hold` / `portfolio`. Helpers: `nuri/core/axis.py`.
 

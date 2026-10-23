@@ -2,6 +2,8 @@
 
 *Korean edition: [ko/DEVELOPER_GUIDE.md](ko/DEVELOPER_GUIDE.md)*
 
+> 2026-10-23: ordinary pre-push gate: `bash scripts/verify/pre_push_check.sh --skip-tests` plus affected tests. Timings below are historical measurements, not current performance guarantees.
+
 This guide describes 4 scripts and a PR template that reduce the time-wasting patterns that kept recurring during sessions. The tools were built around the roughly 120 minutes of accumulated waste at the time they were introduced.
 
 ## TL;DR — before every push

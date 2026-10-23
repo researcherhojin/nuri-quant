@@ -27,7 +27,7 @@ scripts/
 
 | Script | Purpose | Use |
 |---|---|---|
-| `verify_all.sh` | full verification (lint+test+gate) | `make verify-all` |
+| `verify_all.sh` | tests + backend API/logic/backtest + frontend build + import integrity (lint is a separate gate) | `make verify-all` |
 | `verify.py` | full functional verification (analysis run + `data/reports/` save) | `make verify-fast` (`--skip-backtest`) / `make verify` (full) |
 | `verify_doc_counts.sh` | doc count drift check (CI-enforced) | `make verify-doc-counts` |
 | `check_drift.py` | uncommitted working-tree changes vs committed files | `.venv/bin/python scripts/verify/check_drift.py` (pre-push gate Section 1) |
@@ -102,7 +102,7 @@ scripts/
 | `codex_review.sh` | Codex CLI review wrapper | `bash scripts/dev/codex_review.sh` |
 | `install_hooks.sh` | git hooks install | `make setup-hooks` |
 | `seed_e2e_db.py` | e2e 용 합성 seed DB 생성 | CI `Frontend E2E` (`--db` 필수) |
-| `llm_consult.py` | codex + local-LLM dual-archive consult | `make llm-consult slug=X prompt=path` |
+| `llm_consult.py` | codex + local-LLM dual-archive consult (public/synthetic prompts only; private context requires `--qwen-only` and a loopback URL) | `make llm-consult slug=X prompt=path` |
 | `agent_loop.py` | agent loop orchestrator skeleton (#577/#578, file-based transcript) | dev only |
 | `llm_ab_eval.py` | 로컬 모델 A/B — 동결 프롬프트 50개, 결정론적 채점 (LLM judge 없음) | `python scripts/dev/llm_ab_eval.py --model-a X --model-b Y` |
 | `llm_ab_stats.py` | A/B 판정 — Clopper-Pearson exact CI + McNemar exact (stdlib only) | `llm_ab_eval.py` 가 import |

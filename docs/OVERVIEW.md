@@ -49,7 +49,7 @@ Each entry is `{key, label, close, prev_close, change_pct, date, source, symbol}
 - **US indices are not stored in `prices`.** Their names have no `.KS` · `.KQ` suffix, so they pass the `is_kr_ticker()` filter. They would then mix into the US ticker universe (decision_alpha substitution candidates · walkforward panel) as if they were tradable tickers (the same path KOSDAQ took in #710).
 - **Missing values are null.** With no row, all 4 values are null. With no previous observation, or a previous value of 0, only `change_pct` is null. The entry shape stays the same even when the query fails. The screen renders null as `—` and never turns it into 0%.
 - **`close` is the latest stored value.** macro overwrites the day's bar every hour, and stock_kr every 5 minutes during market hours, so during the session it may not be the final close. The US and Korean `date` values can differ.
-- **`source` is the stored value.** A `macro` row returns its own `source` column as is. `prices` has no source column, so the entry names the collector (`StockKRCollector._collect_indices`, yfinance). `symbol` is the upstream symbol (`^GSPC` and so on).
+- **`source` depends on the query.** A `macro` row returns its stored `source`. The Korean-index query currently returns the constant `yfinance` for `StockKRCollector._collect_indices`; although `prices.source` exists, this query does not read it. Do not interpret that label as row-level provenance. `symbol` is the upstream symbol (`^GSPC` and so on).
 
 ### `macro_inputs` (#1682)
 

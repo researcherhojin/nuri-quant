@@ -2,6 +2,8 @@
 
 *English (official) edition: [../FRESH_CLONE_SETUP.md](../FRESH_CLONE_SETUP.md)*
 
+> 범위: 초기화 가능한 개발 환경. 운영 판정 원장에 초기화 명령을 실행하지 않는다. 아래 날짜별 smoke 로그는 당시 증거이며, 새 clone 실행 결과나 현재 서비스 정상 상태를 보장하지 않는다.
+
 Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다. PR CI 가 확인하지 않는 end-to-end 시나리오를 수동으로 검증한다. #272 Phase 5 (2026-04-15) 기준.
 
 > **실행 시점**: fresh clone, 환경 초기화 후, 주요 dependency 업그레이드 후, 분기별 헬스 체크. PR 마다 실행하지 않는다. 네트워크 작업에 20-30분이 걸리고 외부 API 상태에 따라 결과가 달라진다.

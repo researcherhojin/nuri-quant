@@ -49,7 +49,7 @@ Overview 는 홈 화면 `/` 이다. `/dashboard-next` 미리보기(#1658)로 시
 - **미국 지수는 `prices` 에 넣지 않는다.** `.KS` · `.KQ` 접미사가 없는 이름이라 `is_kr_ticker()` 필터를 통과한다. 그러면 US 종목 universe(decision_alpha 치환 후보 · walkforward 패널)에 거래 가능 종목처럼 섞인다(#710 의 KOSDAQ 과 같은 경로).
 - **결측은 null 이다.** 행이 없으면 4개 값이 모두 null 이다. 직전 관측이 없거나 0 이면 `change_pct` 만 null 이다. 조회가 실패해도 항목 shape 는 유지한다. 화면은 null 을 `—` 로 내고 0% 로 바꾸지 않는다.
 - **`close` 는 최근 저장값이다.** macro 는 매시, stock_kr 은 장중 5분마다 그날 봉을 덮어쓰므로 장중에는 확정 종가가 아닐 수 있다. 미국과 한국의 `date` 는 다를 수 있다.
-- **`source` 는 저장된 값이다.** `macro` 행은 그 행의 `source` 열을 그대로 낸다. `prices` 에는 source 열이 없어 수집기(`StockKRCollector._collect_indices`, yfinance)를 적는다. `symbol` 은 원천 심볼(`^GSPC` 등)이다.
+- **`source` 는 쿼리별로 다르다.** `macro` 행은 저장된 `source` 를 그대로 낸다. 한국 지수 쿼리는 `StockKRCollector._collect_indices` 의 출처로 상수 `yfinance` 를 반환한다. `prices.source` 열은 존재하지만 이 쿼리는 읽지 않으므로, 이 라벨을 행별 provenance 로 해석하지 않는다. `symbol` 은 원천 심볼(`^GSPC` 등)이다.
 
 ### `macro_inputs` (#1682)
 

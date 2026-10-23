@@ -16,11 +16,11 @@ User invocation: `/nuri-earnings-preview $ARGUMENTS`
 
 알려진 한계 (사용자에게 inline 노출):
 
-- yfinance 만료 직전 옵션 hit 시 implied move 비정상 (예: AMZN 2026-04-30 case). `next_friday` filter Phase 2 fix.
+- 만기 선택은 `_select_expiration()` 구현을 따른다: 실적일 이상인 첫 만기 우선, 없으면 오늘부터 2일 이상 남은 만기, 그것도 없으면 마지막 만기. 따라서 만료 임박 옵션이 항상 제외되는 것은 아니며 implied move 해석에 주의한다.
 - Whisper number (Estimize/StockTwits) 외부 API 필요 — 현재 consensus + options-implied move 만.
 - 어닝 일정 없는 ticker → "no upcoming announcement" 표시.
 
 Reference:
 
 - `nuri/collectors/earnings_preview.py`
-- `docs/TODO.md Tier 2 P1 #0b`
+- `tests/collectors/test_earnings_preview.py`

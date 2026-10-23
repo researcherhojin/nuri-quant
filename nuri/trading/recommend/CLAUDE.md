@@ -16,7 +16,7 @@ The user-facing output layer: BUY candidates, SELL alerts on holdings, price tar
 | `price_targets.py` | entry / stop / TP1 / TP2 / trailing per holding, pulling from `config/rules.yaml` ladders (growth / value / swing). | upstream of every BUY/SELL alert | core |
 | `rebalance.py` | E-2 regime-adapted MVO/RP rebalance (defensive vs offensive sector tilt by regime). | `python -m ...rebalance` | E-2 |
 | `tracker.py` | E-3 store recommendations + 7/14/21/30/60/90d outcome backfill into `recommendations` table. | scheduler daily + `--save` | E-3 |
-| `adherence.py` | 합의 BUY/SELL 이행 여부 진단 — `portfolio_changes` 순변화로 4분류, 읽기 전용·저장 없음. | `python -m nuri.trading.recommend.adherence` | #1722 |
+| `adherence.py` | 합의 BUY/SELL 이행 여부 진단 — `portfolio_changes` 순변화와 관측 창으로 5분류 (`followed` / `contrary` / `not_followed` / `unknown` / `open`), 읽기 전용·저장 없음. | `python -m nuri.trading.recommend.adherence` | #1722 |
 
 ## Invariants
 

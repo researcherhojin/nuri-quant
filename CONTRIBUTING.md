@@ -43,15 +43,16 @@ The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
 
 ### Required CI checks
 
-Branch protection on `main` requires these 14 checks (authoritative list:
+Branch protection on `main` requires these 15 checks (authoritative list:
 `gh api repos/{owner}/{repo}/branches/main/protection`), with
 `enforce_admins` on and no review count required:
 
 | Check | What it enforces |
 |-------|------------------|
-| Backend Tests | pytest across fast and slow shards (a separate, non-required job aggregates coverage for Codecov) |
+| Backend Tests | pytest fast shards on PRs; fast + slow shards on main. A separate job aggregates coverage for Codecov and Patch Coverage |
+| Patch Coverage | Enforces the `codecov.yml` patch target from backend coverage, frontend lcov and the PR diff |
 | Backend Lint | `ruff check`, and `pyright` with zero errors (version pinned) |
-| Frontend Tests / Frontend Lint / Frontend Build | vitest, eslint, `next build` |
+| Frontend Tests / Frontend Lint / Frontend Build | vitest, eslint + oxlint, `next build` |
 | Shell Lint | shellcheck |
 | Privacy Leak Scan | `check_privacy_leak.py` on the checked-out tree |
 | Security Scan | Trivy, CRITICAL findings only |
@@ -77,8 +78,8 @@ the next human merge. A PR that conflicts with `main` still needs a rebase.
 - `PR Discipline` workflow: at most 3 commits per PR (escape label
   `scope-expand-approved`, also read from the API). Not a required check.
 - Codecov: project status allows a 1 % drop against the base commit; the patch
-  status targets 100 % of changed lines. Not required.
-- `Frontend E2E` (Playwright, 78 tests in 9 spec files against a seeded DB) runs on PRs that
+  status targets 100 % of changed lines. Codecov statuses are advisory; the separate required `Patch Coverage` check enforces the patch target.
+- `Frontend E2E` (Playwright, 93 tests in 10 spec files (`--list`, 2026-10-23) against a seeded DB) runs on PRs that
   touch the frontend or the backend. Not required.
 - Claude Code hooks (`.claude/settings.json`) block `import sqlite3` outside
   `nuri/core/db/connection.py`, `datetime.now()`, destructive git commands and
@@ -136,7 +137,7 @@ not precedent. Comments inside code may be Korean; identifiers are English.
   recharts-free tests in separate files.
 - E2E: `cd frontend && npx playwright test` (starts the API and the dev server
   itself; locally it runs against the dev DB).
-- Tests run without network access. `tests/conftest.py` mocks
+- Default backend tests exclude the `integration` marker and mock network access. `tests/conftest.py` mocks
   `yfinance.download` and `yfinance.Ticker` for every test; override the
   monkeypatch per test rather than removing the global mock.
 - Defensive code needs a regression test that fails if the fix is reverted

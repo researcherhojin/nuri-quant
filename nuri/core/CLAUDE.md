@@ -65,7 +65,7 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 
 ## pipeline.py — Orchestration
 
-`STEP_DEPENDENCIES` defines the 5-stage DAG (`collect → analyze → consensus → decide → track`). `run_step()` checks it but the scheduler (its only caller) passes `warn_only=True`, so an unmet dependency is only recorded as a warning — it is not enforced (#894).
+`STEP_DEPENDENCIES` declares stage prerequisites: analyze and consensus depend on collect; decide and track depend on consensus. The five-stage reading order is `collect → analyze → consensus → decide → track`. `run_step()` checks it but the scheduler and the Overview data-refresh worker pass `warn_only=True`, so an unmet dependency is only recorded as a warning — it is not enforced (#894).
 
 ## rules.py / signal_config.py / agent_config.py
 
