@@ -237,6 +237,37 @@ def get_decision_with_evidence(decision_id: int, db_path: Optional[Path] = None)
     return decision
 
 
+def get_decision_ledger(ticker: str, date: str, db_path: Optional[Path] = None) -> dict:
+    """결정과 같은 (date, ticker) 의 추천과 측정 원장 행 (#1909).
+
+    `decisions` 와 `recommendations` 는 둘 다 UNIQUE(date, ticker) 라 1:1 이고, 원장 키는
+    `rec_{id}` 다 (forward_outcome_tracker 의 미러 규약). 추천이 없으면 원장도 없다.
+    `pending` 은 `/api/alpha` 와 같은 판별 — 실현 수익이 없고 notes 에 lookahead 가 있는 행
+    (창 미도래). 실현 수익이 없는데 lookahead 가 아니면 가격 결측이다.
+    """
+    recs = query(
+        "SELECT id, date, ticker, action, source, signals FROM recommendations WHERE date = ? AND ticker = ?",
+        (date, ticker),
+        db_path,
+    )
+    if not recs:
+        return {"recommendation": None, "outcomes": []}
+    rec = dict(recs[0])
+    rows = query(
+        """SELECT observation_window, tracked_as_of_date, realized_return, benchmark_return, alpha,
+                  hit_threshold, hypothesis_validation, notes
+           FROM decision_outcomes WHERE decision_id = ? ORDER BY observation_window""",
+        (f"rec_{rec['id']}",),
+        db_path,
+    )
+    outcomes = []
+    for row in rows:
+        o = dict(row)
+        o["pending"] = o["realized_return"] is None and "lookahead" in (o["notes"] or "").lower()
+        outcomes.append(o)
+    return {"recommendation": rec, "outcomes": outcomes}
+
+
 def is_feature_enabled(
     flag_name: str,
     default: bool = False,

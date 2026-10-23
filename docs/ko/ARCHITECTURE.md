@@ -174,7 +174,7 @@ flowchart LR
 
 outcome tracking 은 07:05 의 consensus job 보다 앞선 07:02 로 스케줄되므로, agent 가중치에 그날 아침까지 마감된 outcome window 가 들어갈 수 있다. 그 완료를 기다리는 것은 없으며, 종가가 아직 수집되지 않은 window 는 이후 실행 때까지 비어 있다. `factors` 는 consensus 뒤에 실행되지만 이를 읽는 agent 가 없으므로 문제가 없다. 이를 읽는 쪽(08:20 thesis criteria, 08:30 held-add shadow check, 저녁의 pre-market brief)은 모두 그보다 늦게 실행된다. `premarket_brief` 는 `US/Eastern` 기준으로 스케줄되므로 EDT 에는 22:00 KST, EST 에는 23:00 KST 에 실행된다.
 
-시각은 호스트 로컬 시간이며, production 호스트는 KST 로 동작한다. 평일 cron 은 휴장일 달력을 참조하지 않으므로 거래소 휴장일에도 실행된다. KST 자정 이후에 걸리는 미국 세션 job(가격 polling 과 refresh, `technical`, `ark`, 미국 post-market brief)은 KST 기준 화요일부터 토요일까지 실행된다. 주간 batch(fundamentals, 13F filing, estimates, analyst rating, ETF flow, 가격 backfill)는 일요일에 실행된다. 어떤 스테이지 job 이든 단독으로 다시 실행할 수 있다. 입력을 데이터베이스나 외부 API 에서 읽기 때문이다. 결정 기록은 예외다. 입력을 메모리로 받으므로 consensus 를 다시 실행해야만(`make consensus`) 다시 만들어진다.
+시각은 호스트 로컬 시간이며, production 호스트는 KST 로 동작한다. 평일 cron 은 휴장일 달력을 참조하지 않으므로 거래소 휴장일에도 실행된다. KST 자정 이후에 걸리는 미국 세션 job(가격 polling 과 refresh, `technical`, `ark`, 미국 post-market brief)은 KST 기준 화요일부터 토요일까지 실행된다. 주간 batch(fundamentals, 13F filing, estimates, analyst rating, 가격 backfill)는 일요일에 실행된다. 어떤 스테이지 job 이든 단독으로 다시 실행할 수 있다. 입력을 데이터베이스나 외부 API 에서 읽기 때문이다. 결정 기록은 예외다. 입력을 메모리로 받으므로 consensus 를 다시 실행해야만(`make consensus`) 다시 만들어진다.
 
 ### 프로세스와 배포
 
@@ -222,7 +222,7 @@ risk veto 는 `alpha_action` 을 읽는다(alpha action 이 없는 verdict 에 �
 - **Consensus**(`nuri/trading/agents/consensus/scoring.py`): 각 agent 의 표는 가중치 × confidence 만큼 반영된다. **risk veto** 는 표결을 override 한다. risk agent 의 `alpha_action` 이 `FLAT` 이고(alpha action 이 없는 verdict 라면 action 이 SELL 이고) confidence 가 `consensus.risk_veto_threshold` 이상이면 결과는 SELL 이다. degraded 이거나 기권한 risk verdict 는 veto 할 수 없으며, `scoring_detail` 에 veto 를 쓸 수 없었다는 사실이 기록된다. **divergence penalty** 는 technical agent 가 `consensus.divergence_technical_threshold` 이상의 confidence 로 반대할 때 BUY 나 SELL 을 HOLD 로 낮춘다(두 값 모두 `config/agents.yaml` 에 있다). `scoring_detail.final_action_source` 는 어느 규칙이 결정했는지 기록한다: `weighted_sum`, `risk_veto`, `divergence_penalty`.
 - **Factor composite**(`nuri/quant/factors/composite.py`): momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. sentiment 는 시장 전체의 Fear & Greed 값이므로 순위가 아니라 점수 수준을 움직인다. `factors` job 이 매일 08:10 에 계산해 저장한다.
 - **BUY 후보 점수**(`config/buy_signals.yaml`): factor composite 에 5일 momentum, RSI, 30일 breakout 을 결합한다. cross-sectional relative strength 와 dollar-volume surge 는 계산해 evidence 로 보여 주지만, walk-forward test 로 검증되기 전까지는 가중치가 0 이다. VIX 가 `vix_gate` 차단 수준을 넘으면 실행이 멈춘다. VIX 를 알 수 없거나 오래됐거나 caution 구간이면 배분이 절반으로 줄어든다.
-- **시그널**(`config/signals.yaml`): backtest detector 가 쓰는 ticker 단위 actionable 시그널 20개와, `actionable: false` 로 표시돼 경고로만 surface 되는 시장 전체 shadow 시그널 2개(수익률 곡선 역전, HY-OAS 확대).
+- **시그널**(`config/signals.yaml`): backtest detector 가 쓰는 ticker 단위 actionable 시그널 19개와, `actionable: false` 로 표시된 shadow 시그널 3개. 시장 전체 2개(수익률 곡선 역전, HY-OAS 확대)는 경고로만 surface 되고, ticker 단위 `short_squeeze` 는 scorecard 에만 잡히고 후보가 되지 않는다(#1911).
 
 ## 데이터베이스 접근
 
@@ -236,13 +236,13 @@ risk veto 는 `alpha_action` 을 읽는다(alpha action 이 없는 verdict 에 �
 - `upsert_*()`: 테이블마다 함수 하나(prices, portfolio, fundamentals 등).
 - `replace_portfolio_account(account, records)`: YAML → DB 동기화를 위해 DELETE + INSERT 를 한 transaction 으로 수행한다.
 
-## 시그널 시스템 (시그널 22개: actionable 20 + shadow 2, YAML 기반 registry)
+## 시그널 시스템 (시그널 22개: actionable 19 + shadow 3, YAML 기반 registry)
 
-`signal_backtest.py` 는 detector registry 를 쓴다. Python detector 함수를 그 metadata(threshold, 분류, hold_days)와 분리해 둔다. metadata 는 `config/signals.yaml` 에 있고 `nuri/core/signal_config.py` 가 로드한다. YAML 에는 항목 22개가 있다. 아래의 actionable 시그널 20개와 시장 전체 shadow 시그널 2개(`actionable: false`, detector 는 `nuri/quant/validation/market_signals.py`)다. actionable 시그널은 4개 category 로 나뉜다:
+`signal_backtest.py` 는 detector registry 를 쓴다. Python detector 함수를 그 metadata(threshold, 분류, hold_days)와 분리해 둔다. metadata 는 `config/signals.yaml` 에 있고 `nuri/core/signal_config.py` 가 로드한다. YAML 에는 항목 22개가 있다. 아래의 ticker 단위 시그널(actionable 19개 + ticker 단위 shadow `short_squeeze`)과 시장 전체 shadow 시그널 2개(`actionable: false`, detector 는 `nuri/quant/validation/market_signals.py`)다. ticker 단위 시그널은 4개 category 로 나뉜다:
 
 - **가격 기반** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro 기반** (3): vix_reversal, pcr_reversal, yield_curve_recovery (`merge_macro_data()` 필요)
-- **데이터 의존** (2): insider_cluster, short_squeeze (`merge_data_signals()` 필요)
+- **데이터 의존** (2): insider_cluster, short_squeeze (`merge_data_signals()` 필요. short_squeeze 는 shadow — #1911 전까지 리더가 잘못된 키를 읽었고 공매도 이력은 2026-04 부터다)
 - **차트 패턴** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance
 
 `SIGNAL_DEFINITIONS` 는 `_build_signal_definitions()` 가 YAML 과 detector registry 로부터 만든다. threshold 를 바꿀 때는 YAML 수정만 필요하다. backtest 는 스케줄이 아니라 [수동 리서치 경로](#수동-리서치-경로)에서 실행된다.
@@ -323,7 +323,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 
 ## Scheduler
 
-`nuri/scheduler.py` 는 58 cron jobs in the `SCHEDULES` list 를 정의하고, 여기에 1분 간격 `heartbeat` interval job 이 하나 더 있다. 시각은 호스트 로컬 시간이며(production 호스트에서는 KST), job 이 자기 timezone 을 지정한 경우만 다르다(`premarket_brief` 는 `US/Eastern` 으로 실행된다). collector import 는 import 시점의 부작용을 피하려고 `_dispatch_collector()` 안으로 지연된다. job 의 pipeline 스테이지는 `_STAGE_OF_JOB` 에서 오며, 스테이지가 지정된 job 만 lifecycle event 를 기록한다. cron job 은 5분의 misfire grace 를 허용하며, 프로세스가 내려가 있는 동안 놓친 실행 시각은 나중에 실행되지 않는다. 매일 도는 `self_restart` job(08:40 KST)은 누수된 yfinance file descriptor 를 회수하려고 프로세스를 재기동한다. 주간 `prune_reports` job(일요일 03:30 KST)은 30일보다 오래된 `data/reports/` 날짜 디렉터리를 지운다. 단, 가장 최신 디렉터리, 소비되는 산출물(`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — 이들은 수동 `make validate` / `make full-scan` 으로만 다시 생성된다)마다 그것을 담은 가장 최신 디렉터리, 그리고 날짜가 아닌 하위 디렉터리는 남긴다(#1654). `stock_us_freshness` job(06:10 과 06:40 KST, 화요일부터 토요일까지)은 SPY 측정 benchmark 와 `freshness_tickers` 를 최신으로 유지한다(§3.11).
+`nuri/scheduler.py` 는 56 cron jobs in the `SCHEDULES` list 를 정의하고, 여기에 1분 간격 `heartbeat` interval job 이 하나 더 있다. 시각은 호스트 로컬 시간이며(production 호스트에서는 KST), job 이 자기 timezone 을 지정한 경우만 다르다(`premarket_brief` 는 `US/Eastern` 으로 실행된다). collector import 는 import 시점의 부작용을 피하려고 `_dispatch_collector()` 안으로 지연된다. job 의 pipeline 스테이지는 `_STAGE_OF_JOB` 에서 오며, 스테이지가 지정된 job 만 lifecycle event 를 기록한다. cron job 은 5분의 misfire grace 를 허용하며, 프로세스가 내려가 있는 동안 놓친 실행 시각은 나중에 실행되지 않는다. 매일 도는 `self_restart` job(08:40 KST)은 누수된 yfinance file descriptor 를 회수하려고 프로세스를 재기동한다. 주간 `prune_reports` job(일요일 03:30 KST)은 30일보다 오래된 `data/reports/` 날짜 디렉터리를 지운다. 단, 가장 최신 디렉터리, 소비되는 산출물(`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — 이들은 수동 `make validate` / `make full-scan` 으로만 다시 생성된다)마다 그것을 담은 가장 최신 디렉터리, 그리고 날짜가 아닌 하위 디렉터리는 남긴다(#1654). `stock_us_freshness` job(06:10 과 06:40 KST, 화요일부터 토요일까지)은 SPY 측정 benchmark 와 `freshness_tickers` 를 최신으로 유지한다(§3.11).
 
 ## 환경 변수
 
@@ -479,7 +479,7 @@ data/
 
 ## 테스트
 
-9,089 backend tests across 447 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+9,018 backend tests across 444 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 

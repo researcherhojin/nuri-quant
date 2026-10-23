@@ -184,6 +184,25 @@ export const DECISIONS = {
   REGIME_NO_EVIDENCE_TAG: "증거없음",
   RAIL_PRICES: "가격 레벨",
   RAIL_PNL: "실현 결과 (forward PnL %)",
+  // #1912: raw PnL 은 벤치마크를 빼지 않은 가격 수익률이다 — alpha 로 읽히지 않게 표시한다.
+  RAIL_PNL_NOTE: "벤치마크 미보정 가격 수익률 — alpha 는 원장 실측 카드",
+  // §3.11 측정 원장 (decision_outcomes). 이 페이지의 "판정"(90일 성공/실패)과 다른 축이라
+  // "측정" 으로 부른다 — 같은 단어를 쓰면 두 규칙이 하나로 읽힌다.
+  LEDGER_TITLE: "원장 실측 — alpha vs",
+  LEDGER_COL_WINDOW: "창",
+  LEDGER_COL_RAW: "수익",
+  LEDGER_COL_ALPHA: "alpha",
+  LEDGER_COL_VALIDATION: "검증",
+  LEDGER_WINDOW_PRIMARY: "측정창",
+  LEDGER_WINDOW_DIAGNOSTIC: "진단",
+  LEDGER_PENDING: "대기 (창 미도래)",
+  LEDGER_MISSING: "가격 결측",
+  LEDGER_EMPTY: "원장 행 없음 — 추적기가 아직 기록하지 않았습니다",
+  LEDGER_UNTRACKED: "추천으로 emit 되지 않은 결정이라 측정 원장 대상이 아닙니다",
+  LEDGER_CAVEAT: "개별 결정의 alpha 는 검증된 edge 가 아닙니다 (NOT_MEASURABLE)",
+  SAMPLE_JUDGMENT: "측정 표본 (§3.11)",
+  SAMPLE_DIAGNOSTIC: "측정 진단 전용",
+  SAMPLE_UNTRACKED: "측정 대상 아님",
   // #1257 판정 경로 히어로 — 판정 소스(final_action_source)별 3변형. 일상어 원칙:
   // "합의 불성립"/"mechanical rung" 같은 시스템 은어 금지 (와이어프레임 v2 codex 검토).
   HERO_VETO_TITLE: "의견은 갈렸지만, 손실 관리 규칙이 이 판정을 자동 확정했습니다",

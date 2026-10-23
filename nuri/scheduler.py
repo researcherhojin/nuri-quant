@@ -117,9 +117,7 @@ _STAGE_OF_JOB = {
     "fundamental": "collect",
     "kis_analyst_opinion": "collect",
     "superinvestors": "collect",
-    "bank_13f": "collect",
     "estimates": "collect",
-    "etf_flows": "collect",
     "wallstreet": "collect",
     # analyze — `factors` 하나뿐. 이게 붙기 전까지 `pipeline_events.step` 에 analyze 가
     # **0건**이었다: 5스테이지 중 하나가 관측상 존재하지 않았다는 뜻이다 (#1071).
@@ -249,21 +247,10 @@ def _dispatch_collector(name: str, **kwargs):
         from nuri.collectors.superinvestors import SuperinvestorCollector
 
         return SuperinvestorCollector().run()
-    elif name == "bank_13f":
-        # 대형 은행 4곳 13F (#1098). 확신 투자자와 **같은 테이블 다른 class** 라
-        # 잡을 나눠 둔다 — 은행 쪽 EDGAR 실패가 확신 13F 수집을 같이 죽이면 안 된다.
-        # 분기 공시라 주 1회면 충분하고, 확신 수집(01:00) 뒤에 둬 EDGAR 부하를 겹치지 않는다.
-        from nuri.collectors.superinvestors import Bank13FCollector
-
-        return Bank13FCollector().run(quarters=4)
     elif name == "estimates":
         from nuri.collectors.estimates import EstimatesCollector
 
         return EstimatesCollector().run(**kwargs)
-    elif name == "etf_flows":
-        from nuri.collectors.etf_flows import EtfFlowsCollector
-
-        return EtfFlowsCollector().run()
     elif name == "wallstreet":
         from nuri.collectors.wallstreet import WallStreetCollector
 
@@ -943,7 +930,6 @@ SCHEDULES = [
     {"name": "kis_analyst_opinion", "func": _run_collector, "args": ("kis_analyst_opinion",), "cron": "30 0 * * 0"},
     # 슈퍼투자자 13F (주 1회 일요일 01:00)
     {"name": "superinvestors", "func": _run_collector, "args": ("superinvestors",), "cron": "0 1 * * 0"},
-    {"name": "bank_13f", "func": _run_collector, "args": ("bank_13f",), "cron": "0 2 * * 0"},
     # 애널리스트 컨센서스 (주 1회 일요일 02:00) — universe 전체 (#420).
     # universe 543 US tickers ~27s elapsed (2026-04-28 live probe 96.7% OK / 0 rate-limit).
     # universe ⊃ portfolio 이므로 별도 portfolio entry 없어도 보유종목 자동 갱신.
@@ -955,7 +941,6 @@ SCHEDULES = [
         "cron": "0 2 * * 0",
     },
     # ETF 자금흐름 (주 1회 일요일 03:00)
-    {"name": "etf_flows", "func": _run_collector, "args": ("etf_flows",), "cron": "0 3 * * 0"},
     # Wall Street 데이터 (주 1회 일요일 03:30)
     {"name": "wallstreet", "func": _run_collector, "args": ("wallstreet",), "cron": "30 3 * * 0"},
     # Learning Memory 스냅샷 (주 1회 일요일 04:00)
@@ -1049,7 +1034,7 @@ SCHEDULES = [
     # Watchdog — outbox backlog / oldest-pending-age threshold breach 시 #ops 직접 발송 (recursion 방지).
     {"name": "outbox_watchdog", "func": _run_outbox_watchdog, "args": (), "cron": "*/10 * * * *"},
     # 유지보수 발굴 주간 스캔 (#1308 Phase 0) — 일요일 04:30 KST. 03:00 은
-    # db_maintenance(VACUUM/checkpoint)·etf_flows 와 같은 슬롯이라 매주 lock 경합
+    # db_maintenance(VACUUM/checkpoint) 슬롯이라 매주 lock 경합
     # 위험 (codex P1). 04:30 은 memory_snapshot(04:00) 뒤·backfill(05:00) 앞의 빈
     # 슬롯이고 정시(hourly macro/news)도 피한다. 로컬 원장 staging 만 — GitHub 쓰기 없음.
     {"name": "maintenance_audit", "func": _run_maintenance_audit, "args": (), "cron": "30 4 * * 0"},
@@ -1067,11 +1052,13 @@ SCHEDULES = [
     # 기존 stock_us_night/dawn 은 source="portfolio" 기본으로 universe-only
     # 신규 ticker 를 수집하지 않음. 주 1회 1년치 + source="all" 로 gap 채움.
     # universe-only 730개 ticker 가 1-7일 stale 로 누적되는 현상 방지.
+    # 504봉 미만 종목(universe_sync 신규 편입)만 5y 로 받는다 — 연구 하네스의
+    # min_history(config/walkforward_exits.yaml) 와 같은 값 (#1907).
     {
         "name": "stock_us_backfill",
         "func": _run_collector,
         "args": ("stock",),
-        "kwargs": {"period": "1y", "source": "all"},
+        "kwargs": {"period": "1y", "source": "all", "deep_period": "5y", "min_bars": 504},
         "cron": "0 5 * * 0",
     },
     # Universe 1y backfill — KR (일요일 새벽 5시 30분)

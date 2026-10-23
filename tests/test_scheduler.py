@@ -144,15 +144,6 @@ class TestScheduler:
             _run_collector("estimates", source="universe")
         mock_collector.run.assert_called_once_with(source="universe")
 
-    def test_run_collector_etf_flows(self):
-        """_run_collector dispatches to EtfFlowsCollector."""
-        from nuri.scheduler import _run_collector
-
-        mock_collector = MagicMock()
-        with patch("nuri.collectors.etf_flows.EtfFlowsCollector", return_value=mock_collector):
-            _run_collector("etf_flows")
-        mock_collector.run.assert_called_once()
-
     def test_run_collector_wallstreet(self):
         """_run_collector dispatches to WallStreetCollector."""
         from nuri.scheduler import _run_collector
@@ -618,7 +609,6 @@ class TestSchedulerLazy_R6:
             "estimates",
             "wallstreet",
             "cboe",
-            "etf_flows",
         ]
         for name in names:
             _run_collector(name)  # lazy import + run() 호출
@@ -955,14 +945,28 @@ class TestUniverseBackfill:
         assert entries[0]["args"] == ("stock",), "_run_collector('stock', ...) 로 dispatch"
 
     def test_stock_us_backfill_kwargs_period_1y_source_all(self):
-        """Backfill 은 `period='1y'` + `source='all'` 로 universe 전체 1년치 수집."""
+        """Backfill 은 `period='1y'` + `source='all'` 로 universe 전체 1년치 수집하고,
+        504봉 미만 종목만 5y 로 받는다 (#1907 — 신규 편입 종목이 하네스 패널에 2년간 빠지지 않게)."""
         from nuri.scheduler import SCHEDULES
 
         entry = next(s for s in SCHEDULES if s.get("name") == "stock_us_backfill")
-        assert entry.get("kwargs") == {"period": "1y", "source": "all"}, (
+        assert entry.get("kwargs") == {"period": "1y", "source": "all", "deep_period": "5y", "min_bars": 504}, (
             "kwargs 는 period/source 를 명시적으로 전달. "
             "source='portfolio' 기본값으로 universe-only ticker 수집 누락 방지."
         )
+
+    def test_backfill_min_bars_matches_the_registered_min_history(self):
+        """min_bars 는 연구 하네스의 사전등록 min_history 와 같아야 한다 (#1907) — 어긋나면
+        깊게 받은 종목이 여전히 패널 문턱 아래에 남거나 매주 불필요하게 5y 를 받는다."""
+        from pathlib import Path
+
+        import yaml
+
+        from nuri.scheduler import SCHEDULES
+
+        cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "walkforward_exits.yaml").read_text())
+        entry = next(s for s in SCHEDULES if s.get("name") == "stock_us_backfill")
+        assert entry["kwargs"]["min_bars"] == cfg["panel"]["min_history"]
 
     def test_stock_kr_backfill_entry_exists_with_correct_kwargs(self):
         """SCHEDULES 에 `stock_kr_backfill` 항목이 있고 days=365 + source=all."""
@@ -1036,7 +1040,7 @@ class TestUniverseBackfill:
         job = scheduler.get_job("stock_us_backfill")
         assert job is not None, "stock_us_backfill job 이 등록돼야 함"
         # apscheduler Job 에서 kwargs 는 job.kwargs 로 접근
-        assert job.kwargs == {"period": "1y", "source": "all"}, (
+        assert job.kwargs == {"period": "1y", "source": "all", "deep_period": "5y", "min_bars": 504}, (
             "create_scheduler 가 job.get('kwargs', {}) 를 add_job 으로 전달 해야 함. "
             "이 한 줄이 누락되면 period/source 가 무시되고 기본값 (5d/portfolio) 로 돌아감."
         )

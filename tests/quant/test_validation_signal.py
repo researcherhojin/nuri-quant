@@ -1330,3 +1330,37 @@ class TestBacktestSignalsDateRange:
             db_path=db_path,
         )
         assert isinstance(results, list)
+
+
+class TestShortInterestReachesTheSqueezeSignal:
+    """#1911: 리더가 수집기와 다른 키(`data_type='short_interest'`)를 읽어 컬럼이 늘 비어 있었다.
+
+    위의 `test_merge_data_signals` 는 컬럼 **존재**만 봐서 그 3월 이후의 공백을 못 잡았다.
+    여기서는 수집기의 실제 저장 함수로 행을 쓰고 **값**이 리더에 닿는지 본다 — 둘 중 한쪽 키가
+    바뀌면 FAIL.
+    """
+
+    def test_a_collector_written_row_populates_the_column(self, db_path):
+        from nuri.collectors.wallstreet import _save_short_interest
+        from nuri.quant.validation.signal_backtest import merge_data_signals
+
+        _save_short_interest([{"ticker": "AAPL", "short_pct_float": 12.5, "days_to_cover": 2.0}], db_path=db_path)
+        with get_db(db_path) as conn:
+            snap = conn.execute("SELECT date FROM external_analysis WHERE ticker = 'AAPL'").fetchone()[0]
+        df = pd.DataFrame({"date": pd.date_range(snap, periods=2, freq="D"), "close": [150.0, 151.0]})
+
+        result = merge_data_signals(df, "AAPL", db_path=db_path)
+        assert result["short_interest"].tolist() == [12.5, 12.5]
+
+    def test_short_squeeze_is_scored_but_never_a_candidate(self):
+        """키를 고쳐도 공매도 이력이 2026-04 부터라 검증 표본이 없다 — SHADOW 로 둔다.
+
+        per-ticker detector 가 있으므로 scorecard 에는 들어가고(SIGNAL_DEFINITIONS),
+        `candidates.py` 의 `is_actionable` 가드가 후보에서 뺀다 (가드 자체는 별도 잠금).
+        """
+        from nuri.core.signal_config import is_actionable, list_shadow_signals
+        from nuri.quant.validation.signal_backtest import SIGNAL_DEFINITIONS
+
+        assert "short_squeeze" in SIGNAL_DEFINITIONS
+        assert is_actionable("short_squeeze") is False
+        assert "short_squeeze" in list_shadow_signals()

@@ -229,6 +229,31 @@ def fetch_sample(db_path: Optional[Path] = None, as_of: Optional[str] = None) ->
     return sample
 
 
+def sample_membership(rec: Optional[dict]) -> dict:
+    """추천 한 건의 §3.11 표본 소속 — 결정 상세 화면의 배지 (#1909).
+
+    `fetch_sample` 과 같은 규칙이다: SQL 의 `action = 'BUY'` · `source IS NULL` · 기간 조건과
+    Python 의 KR 제외를 옮겼다. 어긋나면 화면이 판정과 다른 표본을 말하므로
+    `TestSampleMembershipMatchesFetchSample` 이 같은 모집단에서 둘을 대조한다.
+    추천이 없는 결정(합의가 emit 하지 않은 것)은 측정 대상이 아니다.
+    """
+    if rec is None:
+        return {"sample": "untracked", "reasons": ["no recommendation emitted for this decision"]}
+    mm = _criteria()
+    reasons = []
+    if rec["action"] != "BUY":
+        reasons.append(f"action {rec['action']} (BUY only)")
+    if rec.get("source") is not None:
+        reasons.append(f"source {rec['source']} (consensus rows only)")
+    if rec["date"] < mm["declared_date"]:
+        reasons.append("emitted before declared_date")
+    if rec["date"] > mm["emit_cutoff_date"]:
+        reasons.append("emitted after emit_cutoff_date")
+    if is_kr_ticker(rec["ticker"]):
+        reasons.append("KR ticker (US-only adjudication)")
+    return {"sample": "diagnostic" if reasons else "judgment", "reasons": reasons}
+
+
 def _blocks(decisions: list[dict]) -> dict[str, list[str]]:
     """ticker → emit 일자 리스트 (실 표본의 반복 구조)."""
     blocks: dict[str, list[str]] = {}

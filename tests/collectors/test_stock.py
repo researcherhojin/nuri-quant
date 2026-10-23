@@ -6,6 +6,7 @@ Split from tests/test_collectors_all.py for module-level isolation.
 from unittest.mock import MagicMock
 
 import pandas as pd
+import pytest
 
 from nuri.core.db import (
     init_db,
@@ -207,6 +208,50 @@ class TestStockOneYearBackfill:
             f"Expected log with both '1y' and 'source=universe'. "
             f"Got: {[r.message for r in caplog.records if '수집' in r.message]}"
         )
+
+
+class TestShortHistoryTickersGetADeepFetch:
+    """#1907: universe_sync 신규 편입 종목은 1y backfill 만으로 하네스 min_history 에 2년 뒤에야 닿았다.
+
+    seed(conftest db_with_portfolio): AAPL·NVDA·SPY 는 종가 30봉, MSFT 는 행이 없다.
+    """
+
+    @staticmethod
+    def _starts(monkeypatch, collector, tickers):
+        seen: dict[str, str] = {}
+        monkeypatch.setattr(collector, "_get_tickers", lambda **kw: tickers)
+        monkeypatch.setattr(collector, "_collect_ticker", lambda t, start, end: seen.__setitem__(t, start))
+        return seen
+
+    def test_only_short_history_tickers_get_the_deep_start(self, monkeypatch, db_with_portfolio):
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        seen = self._starts(monkeypatch, c, ["AAPL", "NVDA", "MSFT"])
+        c.collect(period="1y", source="all", deep_period="5y", min_bars=20)
+        assert seen["MSFT"] == c._period_to_start_date("5y")
+        assert seen["AAPL"] == seen["NVDA"] == c._period_to_start_date("1y")
+
+    @pytest.mark.parametrize(
+        ("min_bars", "deep"),
+        [(1, {"MSFT"}), (30, {"MSFT"}), (31, {"AAPL", "MSFT"})],
+    )
+    def test_the_threshold_counts_stored_bars(self, monkeypatch, db_with_portfolio, min_bars, deep):
+        """정확히 min_bars 봉이면 충분하고(30), 행이 없는 종목은 0봉으로 센다(1)."""
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        seen = self._starts(monkeypatch, c, ["AAPL", "MSFT"])
+        c.collect(period="1y", source="all", deep_period="5y", min_bars=min_bars)
+        assert {t for t, start in seen.items() if start == c._period_to_start_date("5y")} == deep
+
+    def test_without_deep_period_every_ticker_keeps_the_period(self, monkeypatch, db_with_portfolio):
+        from nuri.collectors.stock import StockCollector
+
+        c = StockCollector()
+        seen = self._starts(monkeypatch, c, ["AAPL", "MSFT"])
+        c.collect(period="1y", source="all")
+        assert seen["AAPL"] == seen["MSFT"] == c._period_to_start_date("1y")
 
 
 class TestStandardizeThreadSafety:

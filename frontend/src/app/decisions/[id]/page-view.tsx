@@ -130,6 +130,45 @@ interface DecisionDetail {
   // 결정 시점(`date`)에 유효했던 논지 — point-in-time 조인이라 논지를 나중에 써도
   // 그 이전 결정들에 소급해 붙는다. 논지가 없으면 null.
   thesis: Thesis | null;
+  // #1910 측정 원장 — 그 이전 API 응답에는 없다 (없으면 원장 카드·배지를 그리지 않는다).
+  outcomes?: LedgerOutcome[];
+  measurement?: Measurement;
+}
+
+// decision_outcomes 1행. 수익·alpha 는 비율(0.03 = 3%). `pending` 은 백엔드가 `/api/alpha` 와
+// 같은 규칙(실현 수익 없음 + lookahead 메모)으로 계산한다 — 화면이 날짜로 다시 세지 않는다.
+interface LedgerOutcome {
+  observation_window: number;
+  realized_return: number | null;
+  benchmark_return: number | null;
+  alpha: number | null;
+  hypothesis_validation: string;
+  pending: boolean;
+}
+
+interface Measurement {
+  sample: string;
+  reasons: string[];
+  benchmark: string;
+  primary_window_days: number;
+}
+
+// 표본 소속은 통계 규약이지 성취가 아니다 — 무채색 (계획서 §5).
+const SAMPLE_TAG = {
+  judgment: { label: DECISIONS.SAMPLE_JUDGMENT, cls: "bg-zinc-500/15 text-zinc-300" },
+  diagnostic: { label: DECISIONS.SAMPLE_DIAGNOSTIC, cls: "bg-zinc-700/40 text-zinc-500" },
+  untracked: { label: DECISIONS.SAMPLE_UNTRACKED, cls: "bg-zinc-700/40 text-zinc-500" },
+} satisfies Record<string, { label: string; cls: string }>;
+
+const VALIDATION_LABEL = {
+  pass: "통과",
+  reject: "기각",
+  insufficient_data: "데이터 부족",
+} satisfies Record<string, string>;
+
+// 비율 → 부호 병기 퍼센트 (fmtPnl 은 이미 % 단위인 pnl_* 전용).
+function fmtRatio(v: number | null, unit: string): string {
+  return v === null ? "—" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(1)}${unit}`;
 }
 
 // agent_verdicts 는 JSON 문자열로 저장됨 — 안전 파싱 + per-item 검증.
@@ -216,6 +255,13 @@ export async function DecisionProvenance({ id }: { id: string }) {
   const split = verdictSplit(liveVerdicts);
   const splitRestLabel = degradedVerdicts.length + abstainedVerdicts.length > 0 ? "중립" : "중립/무의견";
   const agreementPct = d.agreement_rate === null ? null : Math.round(d.agreement_rate * 100);
+  const m = d.measurement;
+  const outcomes = d.outcomes ?? [];
+
+  // 화면이 모르는 새 소속 값은 지어내지 않고 원문을 보인다 (판정 경로 `unknown` 과 같은 원칙).
+  const sampleBadge = m
+    ? { ...(lookup(SAMPLE_TAG, m.sample) ?? { label: m.sample, cls: SAMPLE_TAG.untracked.cls }), title: m.reasons.join(" · ") }
+    : null;
 
   return (
     <div className="space-y-5">
@@ -236,6 +282,15 @@ export async function DecisionProvenance({ id }: { id: string }) {
             {adj.kind === "waiting" && `${DECISIONS.ADJ_DONE} ${adj.adjudicationDate} (${DECISIONS.ADJ_DUE_PREFIX}${adj.daysLeft})`}
             {adj.kind === "due" && DECISIONS.ADJ_DUE}
           </span>
+          {sampleBadge && (
+            <span
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-sm ${sampleBadge.cls}`}
+              title={sampleBadge.title}
+              data-testid="measurement-sample"
+            >
+              {sampleBadge.label}
+            </span>
+          )}
         </span>
       </div>
 
@@ -386,7 +441,8 @@ export async function DecisionProvenance({ id }: { id: string }) {
       {/* Outcome (forward PnL) — 부호 병기 + 소수 1자리 */}
       <Card className="bg-card border-border">
         <CardContent className="pt-4 pb-3">
-          <p className="text-[10px] text-muted-foreground mb-3">{DECISIONS.RAIL_PNL}</p>
+          <p className="text-[10px] text-muted-foreground">{DECISIONS.RAIL_PNL}</p>
+          <p className="text-[10px] text-faint mb-3">{DECISIONS.RAIL_PNL_NOTE}</p>
           <div className="grid grid-cols-4 gap-3">
             <Metric label="7d" value={fmtPnl(d.pnl_7d)} color={pnlColor(d.pnl_7d)} />
             <Metric label="30d" value={fmtPnl(d.pnl_30d)} color={pnlColor(d.pnl_30d)} />
@@ -395,6 +451,63 @@ export async function DecisionProvenance({ id }: { id: string }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* #1912 원장 실측 — decision_outcomes (alpha vs 벤치마크). 측정 응답이 없는 옛 API 면 그리지 않는다. */}
+      {m && (
+        <Card className="bg-card border-border" data-testid="ledger-card">
+          <CardContent className="pt-4 pb-3 space-y-2">
+            <p className="text-[10px] text-muted-foreground">
+              {DECISIONS.LEDGER_TITLE} {m.benchmark}
+            </p>
+            {m.sample === "untracked" ? (
+              <p className="text-xs text-muted-foreground">{DECISIONS.LEDGER_UNTRACKED}</p>
+            ) : outcomes.length === 0 ? (
+              <p className="text-xs text-muted-foreground">{DECISIONS.LEDGER_EMPTY}</p>
+            ) : (
+              <table className="w-full text-xs font-mono tabular-nums">
+                <thead>
+                  <tr className="text-[10px] text-muted-foreground text-left">
+                    <th className="font-normal">{DECISIONS.LEDGER_COL_WINDOW}</th>
+                    <th className="font-normal text-right">{DECISIONS.LEDGER_COL_RAW}</th>
+                    <th className="font-normal text-right">{m.benchmark}</th>
+                    <th className="font-normal text-right">{DECISIONS.LEDGER_COL_ALPHA}</th>
+                    <th className="font-normal text-right">{DECISIONS.LEDGER_COL_VALIDATION}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {outcomes.map((o) => (
+                    <tr key={o.observation_window} data-testid={`ledger-row-${o.observation_window}`}>
+                      <td>
+                        {o.observation_window}d{" "}
+                        <span className="text-[10px] text-faint">
+                          {o.observation_window === m.primary_window_days
+                            ? DECISIONS.LEDGER_WINDOW_PRIMARY
+                            : DECISIONS.LEDGER_WINDOW_DIAGNOSTIC}
+                        </span>
+                      </td>
+                      <td className="text-right">{fmtRatio(o.realized_return, "%")}</td>
+                      <td className="text-right">{fmtRatio(o.benchmark_return, "%")}</td>
+                      <td
+                        className={`text-right ${o.alpha === null ? "" : o.alpha > 0 ? "text-emerald-400" : o.alpha < 0 ? "text-red-400" : ""}`}
+                      >
+                        {fmtRatio(o.alpha, "%p")}
+                      </td>
+                      <td className="text-right text-[10px]">
+                        {o.realized_return === null
+                          ? o.pending
+                            ? DECISIONS.LEDGER_PENDING
+                            : DECISIONS.LEDGER_MISSING
+                          : (lookup(VALIDATION_LABEL, o.hypothesis_validation) ?? o.hypothesis_validation)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <p className="text-[10px] text-faint">{DECISIONS.LEDGER_CAVEAT}</p>
+          </CardContent>
+        </Card>
+      )}
       </div>
 
       <div className="space-y-5 lg:col-span-2 order-1">

@@ -174,7 +174,7 @@ flowchart LR
 
 Outcome tracking is scheduled at 07:02, before the consensus job at 07:05, so the agent weights can include the outcome windows that closed by that morning. Nothing waits for it to finish, and a window whose closing price is not yet collected stays empty until a later run. `factors` runs after consensus, which is harmless because no agent reads it; its readers (thesis criteria at 08:20, the held-add shadow check at 08:30, the pre-market brief in the evening) all run later. `premarket_brief` is scheduled in `US/Eastern`, which places it at 22:00 KST under EDT and 23:00 KST under EST.
 
-Times are host-local; the production host runs on KST. Weekday crons do not consult a holiday calendar, so they also fire on exchange holidays. US-session jobs that fall after midnight KST (the price polls and refreshes, `technical`, `ark` and the US post-market brief) run Tuesday to Saturday KST; the weekly batch (fundamentals, 13F filings, estimates, analyst ratings, ETF flows and the price backfills) runs on Sunday. Any stage job can be re-run on its own, because it reads its inputs from the database or an external API. The decision record is the exception: it receives its input in memory, so it is re-created only by re-running consensus (`make consensus`).
+Times are host-local; the production host runs on KST. Weekday crons do not consult a holiday calendar, so they also fire on exchange holidays. US-session jobs that fall after midnight KST (the price polls and refreshes, `technical`, `ark` and the US post-market brief) run Tuesday to Saturday KST; the weekly batch (fundamentals, 13F filings, estimates, analyst ratings and the price backfills) runs on Sunday. Any stage job can be re-run on its own, because it reads its inputs from the database or an external API. The decision record is the exception: it receives its input in memory, so it is re-created only by re-running consensus (`make consensus`).
 
 ### Processes and Deployment
 
@@ -222,7 +222,7 @@ The risk veto reads `alpha_action` (it falls back to a SELL action only for a ve
 - **Consensus** (`nuri/trading/agents/consensus/scoring.py`): each agent's vote counts as its weight × confidence. The **risk veto** overrides the vote: when the risk agent's `alpha_action` is `FLAT` (or, on a verdict without an alpha action, its action is SELL) with a confidence at or above `consensus.risk_veto_threshold`, the result is SELL. A degraded or abstaining risk verdict cannot veto, and `scoring_detail` records that the veto was unavailable. The **divergence penalty** downgrades a BUY or SELL to HOLD when the technical agent opposes it with a confidence at or above `consensus.divergence_technical_threshold` (both in `config/agents.yaml`). `scoring_detail.final_action_source` records which rule decided: `weighted_sum`, `risk_veto` or `divergence_penalty`.
 - **Factor composite** (`nuri/quant/factors/composite.py`): momentum 0.30, value 0.25, quality 0.25, sentiment 0.20. Sentiment is the market-wide Fear & Greed value, so it shifts the score level rather than the ranking. The `factors` job computes and stores it daily at 08:10.
 - **BUY-candidate score** (`config/buy_signals.yaml`): combines the factor composite with 5-day momentum, RSI and 30-day breakout. Cross-sectional relative strength and dollar-volume surge are computed and shown as evidence but carry a weight of 0 until validated by a walk-forward test. A VIX above the `vix_gate` block level stops the run; an unknown or stale VIX, or one in the caution band, halves the allocation.
-- **Signals** (`config/signals.yaml`): 20 per-ticker, actionable signals used by the backtest detectors, plus 2 market-wide shadow signals (yield-curve inversion and HY-OAS widening) marked `actionable: false` and surfaced as warnings only.
+- **Signals** (`config/signals.yaml`): 19 per-ticker, actionable signals used by the backtest detectors, plus 3 shadow signals marked `actionable: false`: 2 market-wide ones surfaced as warnings only (yield-curve inversion and HY-OAS widening) and the per-ticker `short_squeeze`, which is scored but never becomes a candidate (#1911).
 
 ## Database Access
 
@@ -236,13 +236,13 @@ Key DB access patterns:
 - `upsert_*()`: one function per table (prices, portfolio, fundamentals, etc.).
 - `replace_portfolio_account(account, records)`: DELETE + INSERT in one transaction for the YAML → DB sync.
 
-## Signal System (22 signals: 20 actionable + 2 shadow, YAML-driven registry)
+## Signal System (22 signals: 19 actionable + 3 shadow, YAML-driven registry)
 
-`signal_backtest.py` uses a detector registry: Python detector functions are kept separate from their metadata (thresholds, classification, hold_days). The metadata lives in `config/signals.yaml` and is loaded by `nuri/core/signal_config.py`. The YAML holds 22 entries: the 20 actionable signals below plus 2 market-wide shadow signals (`actionable: false`, detectors in `nuri/quant/validation/market_signals.py`). The actionable signals fall into 4 categories:
+`signal_backtest.py` uses a detector registry: Python detector functions are kept separate from their metadata (thresholds, classification, hold_days). The metadata lives in `config/signals.yaml` and is loaded by `nuri/core/signal_config.py`. The YAML holds 22 entries: the per-ticker signals below (19 actionable, plus `short_squeeze` as a per-ticker shadow) and 2 market-wide shadow signals (`actionable: false`, detectors in `nuri/quant/validation/market_signals.py`). The per-ticker signals fall into 4 categories:
 
 - **Price-based** (10): rsi_oversold/overbought, macd_golden/dead, sma_golden/dead, bb_bounce, volume_spike, gap_up, gap_down
 - **Macro-based** (3): vix_reversal, pcr_reversal, yield_curve_recovery (require `merge_macro_data()`)
-- **Data-dependent** (2): insider_cluster, short_squeeze (require `merge_data_signals()`)
+- **Data-dependent** (2): insider_cluster, short_squeeze (require `merge_data_signals()`; short_squeeze is shadow — its reader used the wrong key until #1911 and short-interest history starts 2026-04)
 - **Chart pattern** (5): macd_bullish_turn, macd_bearish_turn, bb_squeeze_breakout, near_52w_low_bounce, volume_profile_resistance
 
 `SIGNAL_DEFINITIONS` is built by `_build_signal_definitions()` from the YAML and the detector registry. Threshold changes require a YAML edit only. The backtest runs on the [manual research path](#manual-research-path), not on the schedule.
@@ -323,7 +323,7 @@ cache states and known limitations.
 
 ## Scheduler
 
-`nuri/scheduler.py` defines 58 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are host-local (KST on the production host) unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A job's pipeline stage comes from `_STAGE_OF_JOB`, and only staged jobs record lifecycle events. Cron jobs allow a 5-minute misfire grace, and a fire time missed while the process is down is not run later. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
+`nuri/scheduler.py` defines 56 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are host-local (KST on the production host) unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A job's pipeline stage comes from `_STAGE_OF_JOB`, and only staged jobs record lifecycle events. Cron jobs allow a 5-minute misfire grace, and a fire time missed while the process is down is not run later. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
 
 ## Environment Variables
 
@@ -479,7 +479,7 @@ data/
 
 ## Testing
 
-9,089 backend tests across 447 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+9,018 backend tests across 444 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the slow shards of `main` runs, push or the catch-up's dispatch (#1812) (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

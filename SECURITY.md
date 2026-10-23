@@ -42,8 +42,8 @@ here so future audits can verify the rationale is still valid.
 
 | Package | CVE | Severity | Why we accept it | Re-check trigger |
 |---------|-----|----------|------------------|------------------|
-| `diskcache` 5.6.3 | [CVE-2025-69872](https://github.com/advisories/GHSA-w8v5-vhqr-4h9v) | MEDIUM | Transitive dependency of `llama-cpp-python` (optional `local-llm` extra). The vulnerable path is unsafe pickle deserialization from the cache directory. `llama-cpp-python` imports `diskcache` only for `LlamaDiskCache`, and nothing in `nuri/` or `scripts/` creates that cache, so no cache is read from disk. | Upstream `diskcache` fix released, `LlamaDiskCache` used anywhere in the project, or `llama-cpp-python` removed. |
-| `braces` 3.0.3 (npm) | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | HIGH | No patched release exists (`<= 3.0.3`). Transitive via `shadcn` → `fast-glob` → `micromatch`. The application imports only `shadcn/tailwind.css`; `braces` runs only in the shadcn CLI, whose glob patterns come from the repository, not from user input. The DoS needs attacker-controlled nested patterns. | A patched `braces` release, or `shadcn` / `fast-glob` dropping `micromatch`. |
+| `diskcache` 5.6.3 | [CVE-2025-69872](https://github.com/advisories/GHSA-w8v5-vhqr-4h9v) | MEDIUM | Transitive dependency of `llama-cpp-python` (optional `local-llm` extra). The vulnerable path is unsafe pickle deserialization from the cache directory. `llama-cpp-python` imports `diskcache` only for `LlamaDiskCache`, and nothing in `nuri/` or `scripts/` creates that cache, so no cache is read from disk. The GGUF path also calls `set_cache(None)` before inference and skips inference if that fails (#1896). | Upstream `diskcache` fix released, `LlamaDiskCache` used anywhere in the project, or `llama-cpp-python` removed. |
+| `braces` 3.0.3 (npm) | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) | HIGH | No patched release exists (`<= 3.0.3`). Since the shadcn runtime dependency was removed (#1894), the only path is lint tooling: `eslint-config-next` → `@next/eslint-plugin-next` → `fast-glob` → `micromatch`. `npm audit --omit=dev` reports 0, no application code imports a glob library, and the lint globs come from repository config, not user input. The DoS needs attacker-controlled nested patterns (#1889). | A patched `braces` release, `eslint-config-next` dropping `fast-glob`, or `npm audit --omit=dev` reporting it. |
 
 When adding a new accepted risk:
 
@@ -62,6 +62,25 @@ The repository runs the following on every PR and every push to `main`:
 | Privacy leak scanner ([#138](https://github.com/researcherhojin/nuri-quant/issues/138)) | `scripts/verify/check_privacy_leak.py`, run by the `privacy-scan` job (`Privacy Leak Scan`) and `scripts/verify/pre_push_check.sh` | Yes. Blocks broker names, suspect monetary literals, ticker+signed-% combinations and personal identifiers |
 | Dependabot alerts and version updates | Repository settings; `.github/dependabot.yml` (uv and npm weekly, GitHub Actions monthly) | No. Security-fix PRs are not enabled; version-update PRs follow the schedule |
 | Branch protection on `main` | GitHub repository settings | All required checks must pass; force push and deletion blocked |
+
+### Dependency graph and alert reconciliation
+
+For Python dependencies, inspect the dynamic `Dependency Graph` workflow and
+exported SBOM as well as `uv.lock`. A stale graph can retain alerts after a
+patch is installed. The freeze tracked in [#1899](https://github.com/researcherhojin/nuri-quant/issues/1899)
+ended after [#1926](https://github.com/researcherhojin/nuri-quant/pull/1926):
+[run 39907392741](https://github.com/researcherhojin/nuri-quant/actions/runs/39907392741)
+succeeded on 2026-10-23 with lock revision 5. The SBOM reported Pillow 13.0.0,
+certifi 2026.10.19, aiohttp 3.14.4, OpenTelemetry API 1.45.1 and Next.js 16.4.1.
+The Next.js and OpenTelemetry patches were also verified in production.
+
+Graph refresh does not by itself prove that alert status has reconciled.
+Alerts #241–#243 and #254 still showed `open` at the post-deploy check despite
+patched versions in main, production and the SBOM. Compare each alert's
+manifest and version with those sources before deciding on further action.
+These patched dependencies are not accepted risks. An alert dismissal, when
+supported by evidence, must retain that evidence and must not be reported as
+GitHub automatically marking the alert `fixed`.
 
 ## Personal Financial Data
 

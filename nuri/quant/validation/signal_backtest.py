@@ -571,10 +571,13 @@ def merge_data_signals(df: pd.DataFrame, ticker: str, db_path=None) -> pd.DataFr
         df["insider_buy_count_10d"] = 0
 
     # ── short_squeeze: external_analysis에서 short_interest ──
+    # 수집기(`wallstreet._save_short_interest`)는 source='short_interest', **data_type='short_pct_float'**
+    # 로 쓴다. 여기서 data_type='short_interest' 를 찾던 3월(#15) 이후 이 컬럼은 늘 비어 있었고
+    # short_squeeze 는 운영·백테스트 모두 한 번도 발화하지 않았다 (#1911).
     df = _merge_asof_from_db(
         df,
         "SELECT date, numeric_value FROM external_analysis "
-        "WHERE ticker = ? AND data_type = 'short_interest' ORDER BY date",
+        "WHERE ticker = ? AND data_type = 'short_pct_float' ORDER BY date",
         (ticker,),
         "numeric_value",
         "short_interest",

@@ -1,4 +1,4 @@
-# nuri/collectors/ — 33 Data Collectors
+# nuri/collectors/ — 31 Data Collectors
 
 ## BaseCollector Contract
 
@@ -7,6 +7,22 @@ Collector classes inherit `BaseCollector` (`base.py`) — every one the schedule
 1. Implement `collect(**kwargs) -> Any` — fetch data from external source
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db/` package functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
+
+## Manual SEC evidence helper (`sec_research.py`, #1887)
+
+`sec_research` is an isolated function-based helper, not a scheduled collector.
+It captures only an explicitly supplied CIK, preserves both successful and failed
+responses in a new directory, and records timestamps, hashes and code identity.
+The SEC user agent is sent with the requests but is not stored in the manifest.
+It does not access the portfolio, production DB, scheduler or alerts.
+
+Use `python -m nuri.collectors.sec_research --help` for capture arguments and
+`python -m nuri.quant.validation.sec_quarters --help` for the offline audit.
+The audit checks an explicit accession, exact current/prior-year calendar quarters
+and a timezone-aware cutoff. Captures made after the cutoff are rejected.
+`evidence_linked` means the source records join; `research_eligible` stays false
+and accounting comparability stays unverified. Keeping this tool does not resume
+R02 or promote a signal. *(facts, no fix)*
 
 ## Korean Ticker `.KS` Suffix Convention (canonical)
 
@@ -61,7 +77,7 @@ ThreadPoolExecutor caveat: `.result(timeout=)` cancels FUTURE only — underlyin
 
 ## yfinance Direct (openbb removed, #1477)
 
-`stock` / `etf_flows` / `news` / `analysis.portfolio.get_exchange_rate` call yfinance directly. openbb was the nominal primary source until 2026-09-01, when a lower-bound-only `[tool.uv] override` let dependabot move fastapi past openbb-core's exact pin and `from openbb import obb` started failing on every machine; the yfinance path carried production for a week with no data gap, so the dependency (51 lock packages incl. 31 openbb-*, 3 overrides, a ruff cap) was dropped. `yfinance` is imported **inside functions**:
+`stock` / `news` / `analysis.portfolio.get_exchange_rate` call yfinance directly. openbb was the nominal primary source until 2026-09-01, when a lower-bound-only `[tool.uv] override` let dependabot move fastapi past openbb-core's exact pin and `from openbb import obb` started failing on every machine; the yfinance path carried production for a week with no data gap, so the dependency (51 lock packages incl. 31 openbb-*, 3 overrides, a ruff cap) was dropped. `yfinance` is imported **inside functions**:
 
 - `patch("module.yf")` will FAIL — the name doesn't exist at module level
 - Stub the module for tests: `monkeypatch.setitem(sys.modules, "yfinance", MagicMock(...))`
@@ -221,10 +237,15 @@ ticker 가 비어 있는데, 둘 다 ticker 빈 값으로 자연히 걸러진다
 
 | | `conviction` (기본) | `dealer` |
 |---|---|---|
-| 누구 | 버핏·달리오·애크먼·국민연금 등 8곳 | JPM·BAC·GS·Citi 4곳 (`BANK_13F`) |
-| 수집기 | `SuperinvestorCollector` | `Bank13FCollector` (같은 코드, 클래스 속성만 교체) |
+| 누구 | 버핏·달리오·애크먼·국민연금 등 8곳 | JPM·BAC·GS·Citi 4곳 |
+| 수집기 | `SuperinvestorCollector` (job `superinvestors`) | **은퇴** — `Bank13FCollector` 는 #1916 에서 제거. 과거 행만 남는다 |
 | 의미 | 판단 | 마켓메이킹·수탁·인덱스 혼재 + **45일 지연** |
-| 저장 범위 | 전량 | `config/universe.yaml` us 로 제한 |
+
+**dealer 수집기를 은퇴시킨 이유 (#1916, 2026-10-23)**: 격리(#1098) 뒤 그 행을 읽는 결정 경로가 끝내
+생기지 않았다 — `nuri/` 의 모든 `superinvestors` 리더가 `conviction` 으로 거른다. 읽는 곳 없는 수집은
+EDGAR 부하와 테이블 크기만 늘린다. 되살린다면 소비자를 먼저 설계하고 아래 두 경고를 그대로 지킬 것
+(universe 필터는 `portfolio_pct` 계산 **뒤** — 먼저 걸면 분모가 우리 유니버스 합이 돼 "JPM 포트폴리오의
+12%" 같은 거짓이 된다).
 
 ⚠️ **은행을 확신 신호에 섞으면 틀린 값이 아니라 "변별력 0인 값"이 나온다.** 그래서 화면이
 멀쩡해 보인다. `smart_money.py` 는 `score += min(2, 보유 투자자 수)` 인데 은행 4곳은 사실상
@@ -236,9 +257,7 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 ⚠️ **`INSERT OR REPLACE` 는 컬럼을 빼면 기본값으로 되돌린다.** 재수집마다 `dealer` 행이
 조용히 `conviction` 으로 승격됐을 자리다 — upsert 는 `investor_class` 를 반드시 함께 쓴다.
 
-⚠️ **universe 필터는 `portfolio_pct` 계산 뒤**에 건다. 먼저 걸면 분모가 우리 유니버스 합이
-되어 비중이 부풀고 "JPM 포트폴리오의 12%" 같은 거짓이 화면에 실린다.
-
+과거 dealer 행이 테이블에 남아 있으므로 아래 잠금은 수집기 은퇴 뒤에도 그대로 유지한다.
 **Test:** `tests/core/test_superinvestor_class_isolation.py` — 동작(딜러 행을 심어도
 점수·커버리지 불변)과 구조(`superinvestors` 를 읽는 모든 SQL 리터럴이 `investor_class` 를
 걸거나 사유와 함께 allowlist, 양방향)를 같이 잠근다. 뮤테이션 8종 전부 FAIL 실측.
@@ -252,6 +271,11 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 - yfinance fallback 행의 `date` 는 봉의 인덱스 날짜다.
 
 **Test:** `tests/collectors/test_kis_us_session_date.py::TestUsSessionDate` · `::TestSaveNeverReplacesACompleteBar` · `::TestYfinanceFallbackDate`
+
+## 신규 편입 종목의 이력 깊이 (#1883, #1907)
+
+주간 `stock_us_backfill` 은 `period: "1y"` 다. 이것만으로는 `universe_sync` 가 새로 넣은 종목이 연구 하네스의 `min_history`(504봉, `config/walkforward_exits.yaml`)에 **2년 뒤에야** 닿고, 그동안 패널에서 조용히 빠진다 — 2026-04 S&P 500 확장 뒤 운영 DB 558종목 중 504봉 이상이 18개였다(#1883, 5y 일회 backfill 로 535). 그래서 같은 job 이 `deep_period: "5y"` · `min_bars: 504` 를 넘기고, 저장된 봉이 그보다 적은 종목만 5y 로 받는다. 나머지는 1y 그대로다.
+**Test:** `tests/collectors/test_stock.py::TestShortHistoryTickersGetADeepFetch` · `tests/test_scheduler.py::TestUniverseBackfill::test_backfill_min_bars_matches_the_registered_min_history`
 
 ## Macro Data Quirk
 
