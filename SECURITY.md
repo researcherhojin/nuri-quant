@@ -78,8 +78,14 @@ The Next.js and OpenTelemetry patches were also verified in production.
 
 Graph refresh does not by itself prove that alert status has reconciled.
 Alerts #241–#243 and #254 still showed `open` at the post-deploy check despite
-patched versions in main, production and the SBOM. Compare each alert's
-manifest and version with those sources before deciding on further action.
+patched versions in main, production and the SBOM; GitHub marked all four
+`fixed` at 08:35 UTC, about 2 h 50 min after that graph run. On 2026-10-26
+the same step took about one minute: alerts #258–#262 went `fixed` right after
+the graph runs for [#1933](https://github.com/researcherhojin/nuri-quant/pull/1933)
+and [#1941](https://github.com/researcherhojin/nuri-quant/pull/1941). An alert
+still `open` shortly after a graph run is therefore not evidence of a missed
+patch. Compare each alert's manifest and version with those sources before
+deciding on further action.
 These patched dependencies are not accepted risks. An alert dismissal, when
 supported by evidence, must retain that evidence and must not be reported as
 GitHub automatically marking the alert `fixed`.
