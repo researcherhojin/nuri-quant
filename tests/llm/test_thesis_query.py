@@ -317,41 +317,99 @@ class TestThesisQuery:
         assert out_path.name == target_filename
         assert out_path.exists()
 
-    def test_subprocess_failure_logs_warning(
+    def test_subprocess_failure_logs_and_raises(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setattr("nuri.llm.thesis_query._fetch_db_context", lambda t: {})
         monkeypatch.setattr(
             subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=1, stdout="", stderr="err " * 200)
         )
-        with caplog.at_level("ERROR"):
+        with caplog.at_level("ERROR"), pytest.raises(RuntimeError, match="rc=1"):
             tq.thesis_query("AAA", "q", out_dir=tmp_path)
         assert any("llm_consult failed" in rec.message for rec in caplog.records)
 
-    def test_codex_only_appends_flag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_stale_same_day_archive_does_not_count_as_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """거부된 런이 같은 날 앞선 런의 out_path 를 자기 결과로 내밀면 안 된다."""
+        from nuri.core.timezone import today_kst as _tk
+
+        (tmp_path / f"{_tk()}_aaa_q.md").write_text("# earlier run", encoding="utf-8")
+        monkeypatch.setattr("nuri.llm.thesis_query._fetch_db_context", lambda t: {})
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=2, stdout="", stderr=""))
+        with pytest.raises(RuntimeError):
+            tq.thesis_query("AAA", "q", out_dir=tmp_path)
+
+
+    def test_failed_consult_keeps_the_archive_but_is_not_success(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """로컬 모델이 꺼져 있으면 llm_consult 는 에러만 담은 archive 를 쓰고 rc 1 을 낸다."""
+        from nuri.core.timezone import today_kst as _tk
+
+        def _fake_run(*args, **kwargs):
+            (tmp_path / f"{_tk()}_thesis-aaa-q.md").write_text("(qwen error: offline)", encoding="utf-8")
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+
+        monkeypatch.setattr("nuri.llm.thesis_query._fetch_db_context", lambda t: {})
+        monkeypatch.setattr(subprocess, "run", _fake_run)
+        with pytest.raises(RuntimeError, match="rc=1"):
+            tq.thesis_query("AAA", "q", out_dir=tmp_path)
+        assert (tmp_path / f"{_tk()}_aaa_q.md").exists()
+
+
+class TestThesisIsLocalOnly:
+    """보유 종목이 담긴 prompt 는 외부 모델로 가지 않는다 (STRATEGY §4.4).
+
+    Makefile `thesis` · Discord `/thesis` · `/nuri-thesis` 가 전부 `thesis_query()` 를 거치므로
+    여기서 잠그면 세 경로가 같이 잠긴다.
+    """
+
+    def test_every_call_requests_local_only_and_nothing_external(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         captured: dict = {}
 
         def _capture(cmd, **kwargs):
             captured["cmd"] = cmd
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+            return SimpleNamespace(returncode=2, stdout="", stderr="")
 
         monkeypatch.setattr("nuri.llm.thesis_query._fetch_db_context", lambda t: {})
         monkeypatch.setattr(subprocess, "run", _capture)
-        tq.thesis_query("AAA", "q", out_dir=tmp_path, codex_only=True)
-        assert "--codex-only" in captured["cmd"]
-        assert "--qwen-only" not in captured["cmd"]
+        with pytest.raises(RuntimeError):
+            tq.thesis_query("AAA", "q", out_dir=tmp_path)
+        assert "--local-only" in captured["cmd"]
+        assert "--codex-only" not in captured["cmd"]
 
-    def test_qwen_only_appends_flag(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        captured: dict = {}
+    def test_no_parameter_opens_an_external_path(self) -> None:
+        with pytest.raises(TypeError):
+            tq.thesis_query("AAA", "q", codex_only=True)  # pyright: ignore[reportCallIssue]
 
-        def _capture(cmd, **kwargs):
-            captured["cmd"] = cmd
-            return SimpleNamespace(returncode=0, stdout="", stderr="")
+    def test_cli_has_no_codex_only_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "AAA", "--codex-only"])
+        with pytest.raises(SystemExit) as exc:
+            tq.main()
+        assert exc.value.code == 2
 
-        monkeypatch.setattr("nuri.llm.thesis_query._fetch_db_context", lambda t: {})
-        monkeypatch.setattr(subprocess, "run", _capture)
-        tq.thesis_query("AAA", "q", out_dir=tmp_path, qwen_only=True)
-        assert "--qwen-only" in captured["cmd"]
+    def test_legacy_qwen_only_flag_is_still_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        out_file = tmp_path / "result.md"
+        out_file.write_text("# generated", encoding="utf-8")
+        monkeypatch.setattr("nuri.llm.thesis_query.thesis_query", lambda **kw: out_file)
+        monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "AAA", "--qwen-only"])
+        assert tq.main() == 0
+
+    def test_main_fails_when_the_consult_is_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        def _refused(**kw):
+            raise RuntimeError("llm_consult wrote no archive (rc=2)")
+
+        monkeypatch.setattr("nuri.llm.thesis_query.thesis_query", _refused)
+        monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "AAA"])
+        assert tq.main() == 1
+        captured = capsys.readouterr()
+        assert "saved:" not in captured.out
+        assert "thesis failed" in captured.err
 
 
 # ─── main (argparse + print flag) ─────────────────────────────────
@@ -399,10 +457,14 @@ def test_module_main_guard(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     """
     import runpy
 
+    from nuri.core.timezone import today_kst as _tk
+
     calls: list[list[str]] = []
 
     def _fake_run(cmd, **kw):
         calls.append(cmd)
+        # consult 가 archive 를 남겨야 main 이 0 을 돌려준다
+        (tmp_path / f"{_tk()}_{cmd[cmd.index('--slug') + 1]}.md").write_text("# stub", encoding="utf-8")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)

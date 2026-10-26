@@ -102,7 +102,7 @@ def build_bot():
         await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
 
     # ─── /thesis ticker:<TICKER> ───
-    @tree.command(name="thesis", description="ticker thesis Q&A (Codex + Qwen3.5 dual archive)", guild=guild)
+    @tree.command(name="thesis", description="ticker thesis Q&A (local model only)", guild=guild)
     @app_commands.describe(ticker="대상 ticker (e.g. MSFT, NVDA)")
     async def thesis(interaction: "discord.Interaction", ticker: str) -> None:
         ticker = ticker.upper().strip()

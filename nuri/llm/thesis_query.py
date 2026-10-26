@@ -12,7 +12,7 @@ Why this exists (2026-04-30 user escalation):
 
 Phase 1 (이 PR):
   - DB context (factors / signals / prices / fundamentals / portfolio overlap)
-  - LLM synthesis via `scripts/dev/llm_consult.py` (codex + Qwen3.5)
+  - LLM synthesis via `scripts/dev/llm_consult.py --local-only` (loopback 로컬 모델만)
   - structured markdown output → `data/thesis_query/{date}_{ticker}_{slug}.md`
   - CLI: `make thesis ticker=INTC question="..."`
 
@@ -23,6 +23,11 @@ Phase 2 (deferred):
 
 Hard constraint: STRATEGY §7.1 — recommendation only, never execute.
 Output 은 사용자 manual judgment 보조 자료.
+
+Hard constraint: STRATEGY §4.4 — prompt 에 보유 종목이 들어가므로 외부 모델로 보내지
+않는다. 경로 선택지를 두지 않고 항상 `--local-only` 로 부른다 (Makefile `thesis`, Discord
+`/thesis`, `/nuri-thesis` 가 전부 이 함수를 거친다). 로컬 모델이 없으면 실패하고 끝 —
+외부 fallback 없음. `--qwen-only` 는 예전 호출과의 호환용 no-op.
 """
 
 from __future__ import annotations
@@ -231,7 +236,7 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
 
 
 def _build_prompt(ticker: str, question: str, ctx: dict[str, str]) -> str:
-    """Compose structured prompt for codex+Qwen consult."""
+    """Compose structured prompt for the local-model consult."""
     parts = [
         f"# Thesis Q&A — {ticker}",
         "",
@@ -289,8 +294,6 @@ def thesis_query(
     ticker: str,
     question: str = DEFAULT_QUESTION,
     out_dir: Path | None = None,
-    codex_only: bool = False,
-    qwen_only: bool = False,
 ) -> Path:
     """Main entry: gather context → consult LLMs → save markdown.
 
@@ -314,11 +317,8 @@ def thesis_query(
         f"thesis-{ticker.lower()}-{slug}",
         "--out-dir",
         str(out),
+        "--local-only",
     ]
-    if codex_only:
-        cmd.append("--codex-only")
-    if qwen_only:
-        cmd.append("--qwen-only")
 
     proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=900, check=False)
     if proc.returncode != 0:
@@ -328,11 +328,16 @@ def thesis_query(
 
     # llm_consult writes its own filename — find it and rename to our convention
     consult_files = sorted(out.glob(f"{today_kst()}_thesis-{ticker.lower()}-{slug}*.md"))
-    if consult_files:
-        latest = consult_files[-1]
-        # consult 파일명 glob 은 out_path 와 겹칠 수 없다 (#1765)
-        if latest != out_path:  # pragma: no branch
-            latest.rename(out_path)
+    if not consult_files:
+        # 거부 — 같은 날 앞선 실행이 남긴 out_path 가 있어도 성공으로 치지 않는다
+        raise RuntimeError(f"llm_consult wrote no archive (rc={proc.returncode})")
+    latest = consult_files[-1]
+    # consult 파일명 glob 은 out_path 와 겹칠 수 없다 (#1765)
+    if latest != out_path:  # pragma: no branch
+        latest.rename(out_path)
+    if proc.returncode != 0:
+        # 로컬 모델 실패 — archive 는 남기되 성공으로 보고하지 않는다 (Discord embed 가 rc 로 판정)
+        raise RuntimeError(f"local model consult failed (rc={proc.returncode}); archive: {out_path}")
     return out_path
 
 
@@ -341,20 +346,23 @@ def main() -> int:
     parser.add_argument("--ticker", required=True, help="ticker (e.g. INTC)")
     parser.add_argument("--question", default=DEFAULT_QUESTION, help="thesis question (free text)")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
-    parser.add_argument("--codex-only", action="store_true")
-    parser.add_argument("--qwen-only", action="store_true")
+    # 호환용 no-op — 항상 로컬 전용이다. `--codex-only` 는 없앴다 (외부 경로를 열지 않는다)
+    parser.add_argument("--qwen-only", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--print", action="store_true", help="print markdown after generation")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    out_path = thesis_query(
-        ticker=args.ticker,
-        question=args.question,
-        out_dir=args.out_dir,
-        codex_only=args.codex_only,
-        qwen_only=args.qwen_only,
-    )
+    try:
+        out_path = thesis_query(
+            ticker=args.ticker,
+            question=args.question,
+            out_dir=args.out_dir,
+        )
+    except RuntimeError as e:
+        # consult 실패·거부 — `make thesis` 와 Discord 가 성공으로 보고하지 않게
+        print(f"thesis failed: {e}", file=sys.stderr)
+        return 1
     print(f"saved: {out_path}")
 
     if args.print and out_path.exists():
