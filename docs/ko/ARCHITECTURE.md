@@ -460,6 +460,7 @@ script 는 #557 이후 category 별 하위 디렉터리로 묶여 있다. script
 - `deploy/sync_dev.sh`: dev↔dev 상태 동기화(gitignored 파일 + ~/.claude Tier 3)
 - `deploy/autopull_receiver.sh`: Mac mini receiver(launchd 5분 auto-pull)
 - `deploy/state_replicator.sh`: 개발 호스트의 `data/replicas/` 로 매시 snapshot
+- `deploy/thesis_remote.sh`: `make thesis-remote`, Discord `/thesis` 를 개발 호스트의 로컬 모델로 실행 (Mac mini 는 모델을 못 올림), 최신 replica DB 사용
 - `launchd/`: LaunchAgent plist(`com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive 포함, #838), `system/` 의 system LaunchDaemon, install/uninstall script
 
 ## 데이터 디렉터리

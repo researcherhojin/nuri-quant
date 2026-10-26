@@ -132,9 +132,13 @@ External LLM use is governed by a per-data-tier whitelist (updated
   `external_llm_calls` table; content is never logged.
 - `NURI_DISABLE_EXTERNAL_LLM=1` disables the external gateway. It is not
   a process-wide network sandbox and does not govern independent CLI tools.
-  Private-context thesis tooling must use `--qwen-only` and a loopback local
-  model; stop when that model is unavailable. Documentation is a usage rule,
-  not proof that every developer entry point enforces the policy in code.
+  Private-context thesis tooling is enforced in code: `nuri/llm/thesis_query.py`
+  always runs `scripts/dev/llm_consult.py --local-only`, which refuses a
+  non-loopback local-model URL before any network call, ignores environment
+  proxies, and has no Codex fallback ([#1943](https://github.com/researcherhojin/nuri-quant/pull/1943),
+  [#1944](https://github.com/researcherhojin/nuri-quant/pull/1944)). When the
+  local model cannot answer, the run fails rather than falling back.
+  Other developer CLI entry points are not covered by this enforcement.
 - Outputs from `nuri/llm/report.py` are validated for hallucinations:
   numbers not present in the input data are flagged before the report
   is surfaced.

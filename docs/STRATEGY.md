@@ -85,7 +85,7 @@ Minimize dependence on paid APIs / cloud / commercial software. This is not a 10
 | Choice | Why |
 |------|------|
 | SQLite (not Postgres) | No separate server needed. Concurrent reads in WAL mode. Test isolation through `tmp_path`. |
-| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0, replaced `gpt-5.4-nano` on 2026-10-08). Portfolio reports (Tier 2) are **local only** (OpenAI path retired 2026-10-08). User narrative (Tier 1) is not allowed. Local LLMs (Ollama / LM Studio local models) are **on-demand only — always-on operation retired (2026-07-08, #854)**: the trading pipeline uses no local LLM, so their contribution is 0 and only their upkeep cost is real. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
+| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0, replaced `gpt-5.4-nano` on 2026-10-08). Portfolio reports (Tier 2) are **local only** (OpenAI path retired 2026-10-08). User narrative (Tier 1) is not allowed. Local LLMs (Ollama, and Strata for `scripts/dev/llm_consult.py` — LM Studio was removed on 2026-10-26) are **on-demand only — always-on operation retired (2026-07-08, #854)**: the trading pipeline uses no local LLM, so their contribution is 0 and only their upkeep cost is real. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
 | yfinance | Free data. openbb was removed in #1477 — a lower-bound override erased the exact pin, leaving it dead with no signal for 7 days, and yfinance alone has no gaps. |
 | GitHub Actions | Free for open source. Automates lint + test + coverage + security. |
 
