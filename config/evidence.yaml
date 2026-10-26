@@ -1,0 +1,69 @@
+# 다단계 thesis 의 근거 묶음 (#1955) — 알파 단계 입력의 임계값.
+# 쿼리와 소스 목록은 nuri/llm/evidence.py 에 있다 (freshness.yaml 과 같은 분리: 값은 여기, 구현은 코드).
+#
+# 알파 묶음은 보유 여부를 드러내면 안 된다. 보유 종목은 수집 주기·범위가 달라서(뉴스·내부자·애널리스트는
+# 보유 위주, 미국 보유 종목은 가격도 하루 더 신선하다) 그대로 넣으면 "이 종목을 들고 있다" 가 새어 나간다.
+# 그래서 소스마다 두 가지를 같은 스냅샷에서 잰다:
+#   1. 커버리지 — 그 시장 유니버스의 min_universe_share 이상을 덮지 못하면 모든 종목에서 제외한다.
+#   2. 공통 기준일 — 유니버스의 min_universe_share 가 도달한 가장 늦은 날짜까지만 쓴다.
+
+coverage:
+  min_universe_share: 0.9
+
+sources:
+  prices:
+    max_age_days: 7
+    rows: 260 # 52주 고저·장기 수익률 계산용. 묶음에는 요약과 최근 closes 만 싣는다
+    recent_closes: 10
+  signals:
+    max_age_days: 7
+  factors:
+    max_age_days: 10
+  fundamentals:
+    max_age_days: 14
+  estimates:
+    max_age_days: 14
+  earnings_surprises:
+    rows: 4 # 발표일 컬럼이 없어 나이를 잴 수 없다 — 최근 분기 n 개만
+  superinvestors:
+    max_age_days: 150 # 13F 는 분기 종료 후 45일 안에 제출된다
+    rows: 10
+    # 투자자 단위로 수집해 우리 보유와 무관하다. 대신 확신 13F 만 센다 (nuri/core/coverage.py #1098 과 같은 이유).
+    holdings_independent: true
+
+market:
+  macro_rows: 30
+  macro_max_age_days: 7
+  # 월간 지표는 발표 주기가 달라 따로 본다.
+  macro_monthly: [fed_funds_rate, cpi_yoy, unemployment, ism_manufacturing, consumer_sentiment]
+  macro_monthly_max_age_days: 60
+  # 허용 목록 — 이름에 보유가 들어간 지표(wsb_held_mentions)나 종목별 wsb 순위는 넣지 않는다.
+  macro_indicators:
+    - sp500
+    - nasdaq_composite
+    - dow
+    - sox
+    - vix
+    - put_call_ratio
+    - fear_greed
+    - hy_oas
+    - us_3m_yield
+    - us_2y_yield
+    - us_10y_yield
+    - us_30y_yield
+    - dxy
+    - usd_krw
+    - wti_oil
+    - gold
+    - copper
+    - fed_funds_rate
+    - cpi_yoy
+    - unemployment
+    - ism_manufacturing
+    - consumer_sentiment
+  macro_events_days: 7
+  macro_events_headlines: 20
+  # 종목 이벤트(earnings · ex_dividend)는 보유 위주 수집이라 넣지 않는다.
+  calendar_event_types: [fomc, economic]
+  calendar_days_ahead: 14
+  etf_flows_max_age_days: 14
