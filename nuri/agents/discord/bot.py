@@ -2,7 +2,7 @@
 
 Long-running process (Mac mini launchd). 3 guild-scoped commands:
     /buy-candidates          → make buy-candidates → 결과를 #brief 에 publish
-    /thesis ticker:<TICKER>  → make thesis ticker=X → archive 경로 + verdict 1줄
+    /thesis ticker:<TICKER>  → make thesis-remote ticker=X (MBP 의 Strata 에서 실행) → archive 경로 + verdict 1줄
     /health                  → scripts/health_check.sh → 결과 inline
 
 설계 원칙:
@@ -110,7 +110,8 @@ def build_bot():
             await interaction.response.send_message(f"❌ invalid ticker: {ticker!r}", ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
-        rc, out = await asyncio.to_thread(_run_make, "thesis", {"ticker": ticker}, 300)
+        # mini 는 로컬 모델을 못 올린다 — MBP 에서 돌린다 (scripts/deploy/thesis_remote.sh)
+        rc, out = await asyncio.to_thread(_run_make, "thesis-remote", {"ticker": ticker}, 300)
         embed_dict = build_status_embed(
             title=f"Thesis · {ticker}",
             success=(rc == 0),
