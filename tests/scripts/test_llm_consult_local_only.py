@@ -51,6 +51,45 @@ class TestIsLoopbackUrl:
         assert not llm_consult.is_loopback_url(url)
 
 
+class TestLocalRequestIgnoresEnvProxy:
+    """requests 는 loopback 요청도 HTTP_PROXY / ALL_PROXY 로 보낸다 (2026-10-26 실측).
+
+    전송 직전(adapter)에서 실제로 쓰일 proxies 를 본다 — `requests.post` 를 통째로 바꾸면
+    환경 병합이 일어나지 않아 이 결함이 안 보인다.
+    """
+
+    @staticmethod
+    def _proxies_seen(monkeypatch: pytest.MonkeyPatch, *, trust_env: bool) -> dict:
+        import requests
+        import requests.adapters
+
+        for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            monkeypatch.setenv(key, "http://proxy.example:3128")
+        monkeypatch.setenv("ALL_PROXY", "socks5://proxy.example:1080")
+        for key in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(llm_consult, "LOCAL_URL", "http://127.0.0.1:1234/v1/chat/completions")
+        seen: dict = {}
+
+        def _send(_self, _request, **kwargs):
+            seen.update(kwargs.get("proxies") or {})
+            resp = requests.Response()
+            resp.status_code = 200
+            resp._content = b'{"choices":[{"message":{"content":"OK"},"finish_reason":"stop"}]}'
+            return resp
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", _send)
+        assert llm_consult.consult_qwen("synthetic", trust_env=trust_env)["ok"]
+        return seen
+
+    def test_local_only_request_goes_direct(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert self._proxies_seen(monkeypatch, trust_env=False) == {}
+
+    def test_default_request_still_follows_env_proxy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # 대조군 — 이게 비어 있으면 위 테스트는 아무것도 증명하지 않는다
+        assert self._proxies_seen(monkeypatch, trust_env=True)
+
+
 def _argv(tmp_path: Path, *flags: str) -> list[str]:
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("synthetic private context", encoding="utf-8")
@@ -86,6 +125,7 @@ class TestLocalOnlyCli:
         ):
             assert llm_consult.main() == 0
         local.assert_called_once()
+        assert local.call_args.kwargs["trust_env"] is False, "--local-only 는 환경 프록시를 끈다"
         external.assert_not_called()
         assert "## Codex" not in next(tmp_path.glob("*_s.md")).read_text(encoding="utf-8")
 
