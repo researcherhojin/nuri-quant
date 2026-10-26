@@ -93,7 +93,7 @@ us_core:
   - XLC
   - XLRE
 us_sp500_extended:
-  description: 미국 S&P 500 — us_core에 없는 추가 종목 (458개)
+  description: 미국 S&P 500 + extras — us_core에 없는 추가 종목 (465개)
   tickers:
   - A
   - ABT
@@ -122,7 +122,6 @@ us_sp500_extended:
   - AMP
   - AMT
   - ANET
-  - ANSS
   - AON
   - AOS
   - APA
@@ -143,16 +142,17 @@ us_sp500_extended:
   - BAX
   - BBY
   - BDX
+  - BE
   - BEN
   - BF-B
   - BG
   - BIIB
-  - BK
   - BKNG
   - BKR
   - BLDR
   - BLK
   - BMY
+  - BNY
   - BR
   - BRO
   - BSX
@@ -202,7 +202,6 @@ us_sp500_extended:
   - CSGP
   - CSX
   - CTAS
-  - CTRA
   - CTSH
   - CTVA
   - CVNA
@@ -232,6 +231,7 @@ us_sp500_extended:
   - DXCM
   - EA
   - EBAY
+  - ECHO
   - ECL
   - ED
   - EFX
@@ -264,13 +264,16 @@ us_sp500_extended:
   - FCX
   - FDS
   - FDX
+  - FDXF
   - FE
+  - FERG
   - FFIV
   - FICO
   - FIS
   - FISV
   - FITB
   - FIX
+  - FLEX
   - FOX
   - FOXA
   - FRT
@@ -297,11 +300,11 @@ us_sp500_extended:
   - HAS
   - HBAN
   - HCA
-  - HES
   - HIG
   - HII
   - HLT
   - HON
+  - HONA
   - HPE
   - HPQ
   - HRL
@@ -317,11 +320,11 @@ us_sp500_extended:
   - IDXX
   - IEX
   - IFF
+  - ILMN
   - INCY
   - INTU
   - INVH
   - IP
-  - IPG
   - IQV
   - IR
   - IRM
@@ -334,7 +337,6 @@ us_sp500_extended:
   - JBL
   - JCI
   - JKHY
-  - JNPR
   - KDP
   - KEY
   - KEYS
@@ -376,7 +378,6 @@ us_sp500_extended:
   - MGM
   - MKC
   - MLM
-  - MMC
   - MMM
   - MNST
   - MO
@@ -417,6 +418,7 @@ us_sp500_extended:
   - ORLY
   - OTIS
   - OXY
+  - P
   - PARA
   - PAYX
   - PCAR
@@ -464,6 +466,7 @@ us_sp500_extended:
   - SCHW
   - SHW
   - SJM
+  - SKYD
   - SLB
   - SNA
   - SNDK
@@ -508,6 +511,7 @@ us_sp500_extended:
   - TT
   - TTD
   - TTWO
+  - TWLO
   - TXN
   - TXT
   - TYL
@@ -519,10 +523,12 @@ us_sp500_extended:
   - UPS
   - URI
   - USB
+  - VEEV
   - VICI
   - VLO
   - VLTO
   - VMC
+  - VMRK
   - VRSK
   - VRSN
   - VRT
@@ -530,6 +536,7 @@ us_sp500_extended:
   - VST
   - VTR
   - VTRS
+  - VYLR
   - WAB
   - WAT
   - WBD
