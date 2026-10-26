@@ -340,7 +340,6 @@ class TestThesisQuery:
         with pytest.raises(RuntimeError):
             tq.thesis_query("AAA", "q", out_dir=tmp_path)
 
-
     def test_failed_consult_keeps_the_archive_but_is_not_success(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

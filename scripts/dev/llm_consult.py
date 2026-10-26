@@ -131,7 +131,7 @@ def consult_codex(prompt: str) -> dict:
     }
 
 
-def consult_qwen(prompt: str, system: str = DEFAULT_SYSTEM_PROMPT) -> dict:
+def consult_qwen(prompt: str, system: str = DEFAULT_SYSTEM_PROMPT, *, trust_env: bool = True) -> dict:
     """Hit the local LLM endpoint (LM Studio default), return verdict + metadata.
 
     이름이 `consult_qwen` 인 것은 역사적 잔재다 — 기본 모델은 더 이상 qwen 이
@@ -140,8 +140,17 @@ def consult_qwen(prompt: str, system: str = DEFAULT_SYSTEM_PROMPT) -> dict:
 
     Backend-agnostic: works with LM Studio (`/v1/chat/completions`), llama.cpp,
     Ollama, or any OpenAI-compatible server. Override via NURI_LLM_LOCAL_URL.
+
+    `trust_env=False` (`--local-only`): `HTTP_PROXY` / `ALL_PROXY` 를 무시한다. requests 는
+    loopback 요청도 환경 프록시로 보내므로, 그대로 두면 loopback 검사를 통과한 prompt 가
+    프록시를 거쳐 기기 밖으로 나간다. 키별 `None` override 는 `all` 같은 키를 놓쳐 쓰지 않는다.
     """
-    resp = requests.post(
+    post = requests.post
+    if not trust_env:
+        session = requests.Session()
+        session.trust_env = False
+        post = session.post
+    resp = post(
         LOCAL_URL,
         headers={"Content-Type": "application/json"},
         json={
@@ -269,7 +278,7 @@ def main() -> int:
     qwen_result: dict | None = None
     with cf.ThreadPoolExecutor(max_workers=2) as ex:
         codex_future = None if args.qwen_only else ex.submit(consult_codex, prompt)
-        qwen_future = None if args.codex_only else ex.submit(consult_qwen, prompt)
+        qwen_future = None if args.codex_only else ex.submit(consult_qwen, prompt, trust_env=not args.local_only)
         if codex_future:
             try:
                 codex_result = codex_future.result()
