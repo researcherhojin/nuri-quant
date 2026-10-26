@@ -36,8 +36,13 @@ def _shim(path: Path, body: str) -> None:
     path.chmod(0o755)
 
 
-def _run_primary(tmp_path: Path, *, vacuum_fails: bool = False) -> tuple[subprocess.CompletedProcess, Path]:
-    """push 는 항상 실패한다(ssh exit 255). `vacuum_fails` 면 그 전에 스냅샷부터 실패한다."""
+def _run_primary(
+    tmp_path: Path, *, vacuum_fails: bool = False, extra: dict[str, float] | None = None
+) -> tuple[subprocess.CompletedProcess, Path]:
+    """push 는 항상 실패한다(ssh exit 255). `vacuum_fails` 면 그 전에 스냅샷부터 실패한다.
+
+    `extra` 는 {파일명: 나이(시간)} — 보관 규칙 테스트용으로 그 나이의 스냅샷을 더 심는다.
+    """
     repo = tmp_path / "repo"
     (repo / "scripts/deploy").mkdir(parents=True)
     shutil.copy(SCRIPT, repo / SCRIPT)
@@ -55,6 +60,11 @@ def _run_primary(tmp_path: Path, *, vacuum_fails: bool = False) -> tuple[subproc
     old.touch()
     ten_days_ago = time.time() - 10 * 86400
     os.utime(old, (ten_days_ago, ten_days_ago))
+    for name, age_hours in (extra or {}).items():
+        f = backups / name
+        f.touch()
+        ts = time.time() - age_hours * 3600
+        os.utime(f, (ts, ts))
 
     env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "DEV2_HOST": "replica.invalid"}
     env.pop("NURI_DB_PATH", None)
@@ -83,3 +93,60 @@ class TestSnapshotCleanupSurvivesPushFailure:
         assert not (backups / "snapshot_20200101_000000.db").exists(), (
             "VACUUM 실패 후 7일 지난 스냅샷이 남았다 — 정리가 스냅샷 생성 뒤로 돌아갔다 (#1576)"
         )
+
+
+class TestOlderSnapshotsAreThinnedToOnePerDay:
+    """48시간이 지난 스냅샷은 날짜별 최신 1개만 남는다 — 매시 사본 7일치가 mini 에 60GB 쌓였다
+    (2026-10-27 실측 192개). 최근 48시간은 매시 그대로 둔다."""
+
+    EXTRA: dict[str, float] = {
+        # 최근 48시간 — 전부 남는다
+        "snapshot_20261027_100000.db": 1,
+        "snapshot_20261027_090000.db": 2,
+        "snapshot_20261026_110000.db": 24,
+        # 3일 전 하루치 3개 — 그날 최신(23:00)만 남는다
+        "snapshot_20261024_230000.db": 72,
+        "snapshot_20261024_120000.db": 83,
+        "snapshot_20261024_010000.db": 94,
+        # 5일 전 하루치 2개 — 최신(18:00)만
+        "snapshot_20261022_180000.db": 120,
+        "snapshot_20261022_060000.db": 132,
+        # 8일 전 — 7일 규칙으로 삭제
+        "snapshot_20261019_120000.db": 8 * 24 + 1,
+    }
+
+    def test_thinning(self, tmp_path):
+        _, backups = _run_primary(tmp_path, extra=self.EXTRA)
+        names = {p.name for p in backups.glob("snapshot_*.db")}
+        for kept in ("snapshot_20261027_100000.db", "snapshot_20261027_090000.db", "snapshot_20261026_110000.db"):
+            assert kept in names, f"48시간 안의 매시 사본이 지워졌다: {kept}"
+        assert "snapshot_20261024_230000.db" in names and "snapshot_20261022_180000.db" in names
+        for gone in (
+            "snapshot_20261024_120000.db",
+            "snapshot_20261024_010000.db",
+            "snapshot_20261022_060000.db",
+            "snapshot_20261019_120000.db",
+        ):
+            assert gone not in names, f"남으면 안 되는 스냅샷: {gone}"
+
+
+class TestPlistRunsTheReplicatorEvenIfZshrcFails:
+    """launchd 명령이 `source ~/.zshrc && …` 이면 zshrc 의 마지막 명령이 bash 에서 실패할 때
+    복제가 아예 안 돈다 (2026-10-27: starship 초기화 한 줄로 실제 발생). plist 의 명령을 그대로 실행한다."""
+
+    def test_replicator_starts_after_a_failing_zshrc(self, tmp_path):
+        import plistlib
+
+        plist = Path("scripts/launchd/com.nuri-quant.state-replicator.plist")
+        argv = plistlib.loads(plist.read_bytes())["ProgramArguments"]
+        assert argv[:2] == ["/bin/bash", "-c"]
+        repo = tmp_path / "repo"
+        (repo / "scripts/deploy").mkdir(parents=True)
+        marker = tmp_path / "ran"
+        (repo / "scripts/deploy/state_replicator.sh").write_text(f"touch '{marker}'\n", encoding="utf-8")
+        home = tmp_path / "home"
+        home.mkdir()
+        (home / ".zshrc").write_text("export DEV2_HOST=x\nfalse\n", encoding="utf-8")
+        cmd = argv[2].replace("/Users/USER/workspace/nuri-quant", str(repo))
+        subprocess.run(["/bin/bash", "-c", cmd], env={**os.environ, "HOME": str(home)}, check=False)
+        assert marker.exists(), "zshrc 가 비-0 으로 끝나자 복제 스크립트가 실행되지 않았다"

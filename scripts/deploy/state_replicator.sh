@@ -99,6 +99,20 @@ case "$MODE" in
         # 차서 VACUUM 이 죽으면 `set -e` 가 정리를 건너뛰어 디스크가 영영 안 비워진다.
         echo "[primary] cleanup snapshot >7 days"
         find "$SNAPSHOTS_DIR" -name 'snapshot_*.db' -mtime +7 -delete 2>/dev/null || true
+        # 48시간이 지난 스냅샷은 날짜별 최신 1개만 둔다. 매시 사본을 7일 내내 두면 개당 ~320MB ×
+        # 168 = 54GB 였다(2026-10-27 mini 실측 60.1GB / 192개). 최근 48시간은 매시 그대로.
+        # 이름(snapshot_YYYYMMDD_HHMMSS)을 역순 정렬해 날짜가 바뀔 때 처음 본 것(그날 최신)을 남긴다.
+        # launchd 의 /bin/bash 는 3.2 라 연관 배열 없이 쓴다.
+        echo "[primary] thin snapshots older than 48h to one per day"
+        prev_day=""
+        while IFS= read -r snap_old; do
+            snap_day=$(basename "$snap_old" | cut -c10-17)
+            if [ "$snap_day" = "$prev_day" ]; then
+                rm -f "$snap_old"
+            else
+                prev_day="$snap_day"
+            fi
+        done < <(find "$SNAPSHOTS_DIR" -name 'snapshot_*.db' -mtime +1 2>/dev/null | sort -r)
         SNAP="$SNAPSHOTS_DIR/snapshot_${TS}.db"
         echo "[primary] creating snapshot $SNAP"
         .venv/bin/python -c "
