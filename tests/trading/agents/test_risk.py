@@ -330,34 +330,34 @@ class TestRiskAgentBranches:
         v = RiskAgent().analyze("SAFE", db_path=db_path)
         assert "손절선" not in v.reasoning  # stop_loss 미발화 확인
 
-    def test_multi_holding_second_row_not_worse(self, db_path):
-        """46→39: 다계좌 보유 — 첫 row 큰 손실 (worst_breach 설정), 두번째 row 작은 손실 (worst 유지).
+    @pytest.mark.parametrize("milder_first", [False, True])
+    def test_multi_holding_reports_the_worst_breach_in_either_order(self, db_path, monkeypatch, milder_first):
+        """다계좌 보유 — 두 계좌 모두 손절선을 넘으면 더 크게 넘은 쪽(-20%)을 보고한다.
 
-        if worst_breach is None or row_pnl < worst_breach[0]:  # 두번째 row 에서 False path
+        `milder_first=False` 가 `if worst_breach is None or row_pnl < worst_breach[0]` 의 False 경로다.
+        예전 판은 계좌별 임계를 실제 `config/portfolio.yaml`(gitignored)에서 읽어, 그 파일이 있는 기기에선
+        두 번째 계좌가 임계 -20% 에 걸리지 않아 이 경로를 밟지 않았다 — CI 에서만 우연히 맞았다
+        (2026-10-27 커버리지 실측). 임계를 여기서 고정한다.
         """
         from nuri.core.db import get_db
         from nuri.trading.agents.risk_agent import RiskAgent
 
-        # current=85, avg1=100 (loss=-15%, breach), avg2=90 (loss=-5.5%, no breach)
-        # → 첫 row -15% breach 됨, 두번째 row 의 -5.5% 는 breach 아니라
-        #   if worst_breach[0]=-15.0 의 False path 필요 → 첫 row 큰 breach + 두번째 row
-        #   더 작은 breach 만들어야 if 가 False 됨.
-        # current=80, avg1=100 (loss=-20%, breach), avg2=90 (loss=-11%, breach but less negative)
-        # → -11 < -20 False → if False 진입.
+        # 두 계좌 모두 임계 -7%: current=80 → avg 100 은 -20.0%, avg 90 은 -11.1% (둘 다 돌파)
+        monkeypatch.setattr("nuri.trading.agents.risk_agent.get_stop_loss_for_account", lambda account: -7)
+        rows = [("acct-worse", 100.0), ("acct-milder", 90.0)]
+        if milder_first:
+            rows.reverse()
         with get_db(db_path) as conn:
-            conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES ('Main', 'MULTI', 10, 100.0, 'USD')"
-            )
-            conn.execute(
-                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) "
-                "VALUES ('Toss', 'MULTI', 5, 90.0, 'USD')"
-            )
+            for account, avg in rows:
+                conn.execute(
+                    "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, 'MULTI', 10, ?, 'USD')",
+                    (account, avg),
+                )
             conn.execute(
                 "INSERT INTO prices (ticker, date, open, high, low, close, volume) "
                 "VALUES ('MULTI', '2026-05-06', 80, 82, 78, 80, 1000)"
             )
         v = RiskAgent().analyze("MULTI", db_path=db_path)
-        # 첫 row 손실 -20% 가 worst_breach 로 보고됨 (두번째 -11% 가 덮어쓰지 않음)
         assert "손절선 돌파" in v.reasoning
-        assert "-20.0%" in v.reasoning  # 첫 row 손실
+        assert "-20.0%" in v.reasoning
+        assert "-11.1%" not in v.reasoning

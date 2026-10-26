@@ -140,3 +140,39 @@ class TestGate_R23:
 
         cond = _check_estimates_accumulation(db_path)
         assert cond.passed is False
+
+
+class TestSignalScorecardCheckIsHermetic:
+    """`_check_signal_scorecard` 는 레포의 `data/reports/` 를 본다 — 테스트가 실제 레포를 읽으면 결과가
+    기기마다 달라진다 (CI 는 폴더가 없어 한 분기만, 리포트가 있는 개발 기기는 다른 분기만 밟았다:
+    2026-10-27 커버리지 실측). 모듈의 `__file__` 을 임시 트리로 돌려 세 경우를 고정한다."""
+
+    @staticmethod
+    def _check(tmp_path, monkeypatch):
+        import nuri.trading.engine.gate as gate
+
+        fake = tmp_path / "repo" / "nuri" / "trading" / "engine" / "gate.py"
+        monkeypatch.setattr(gate, "__file__", str(fake))
+        return gate._check_signal_scorecard(), tmp_path / "repo" / "data" / "reports"
+
+    def test_missing_reports_dir_fails(self, tmp_path, monkeypatch):
+        cond, reports = self._check(tmp_path, monkeypatch)
+        assert not reports.exists()
+        assert cond.passed is False
+
+    def test_reports_without_a_scorecard_fail(self, tmp_path, monkeypatch):
+        import nuri.trading.engine.gate as gate
+
+        _, reports = self._check(tmp_path, monkeypatch)
+        (reports / "2026-10-01").mkdir(parents=True)
+        (reports / "2026-10-02").mkdir()
+        assert gate._check_signal_scorecard().passed is False
+
+    def test_any_dated_dir_with_a_scorecard_passes(self, tmp_path, monkeypatch):
+        import nuri.trading.engine.gate as gate
+
+        _, reports = self._check(tmp_path, monkeypatch)
+        (reports / "2026-10-01").mkdir(parents=True)
+        (reports / "2026-10-01" / "signal_scorecard.csv").write_text("x")
+        (reports / "2026-10-02").mkdir()
+        assert gate._check_signal_scorecard().passed is True
