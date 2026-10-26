@@ -19,4 +19,4 @@ User invocation: `/nuri-thesis $ARGUMENTS`
 
 - $ARGUMENTS 에 ticker 가 없으면 사용자에게 ticker 를 명시 요청.
 - `data/thesis_query/` 는 gitignored — 사적 financial reference 포함 가능. 외부 노출 금지.
-- Strata (`strata status`, port 8081) 가 running 인지 확인 후 invoke. 미가용 시 중단하고 `strata start` 후 재실행. 외부 모델로 fallback 하지 않는다. `NURI_LLM_LOCAL_URL` 은 loopback 로컬 서버인지 확인한다.
+- Strata(port 8081)가 꺼져 있으면 `llm_consult --local-only` 가 `strata start quiet` 로 켜고, 자기가 켰으면 끝나고 끈다. 그래도 실패하면 중단한다. 외부 모델로 fallback 하지 않는다. `NURI_LLM_LOCAL_URL` 은 loopback 로컬 서버인지 확인한다.

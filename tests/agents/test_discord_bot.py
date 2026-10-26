@@ -242,7 +242,8 @@ class TestEveryMakeTargetExists:
 
 
 class TestThesisSummary:
-    """`/thesis` embed 는 verdict 1줄 + archive 경로만 싣는다.
+    """`/thesis` embed — 처음 보는 사람이 읽을 수 있게 판정(+풀이)·논지·리스크·가격 레벨·신뢰도를 싣고,
+    Portfolio implications(보유 관련) 섹션은 싣지 않는다 (2026-10-26 소유자 요청).
 
     예전에는 출력 끝 1,500자를 실어 Verdict(맨 앞)는 잘리고 Portfolio implications(끝, 보유 관련)가
     Discord 로 갔다 (2026-10-26 mini 실측: 본문 약 1,300자 + 로그 3줄).
@@ -271,8 +272,44 @@ class TestThesisSummary:
             self.PROMPT + "\n## Local LLM (m)\n\n**ok:** True\n\n" + answer + "\n## 6. Portfolio Implications\nSECRET\n"
         )
         summary = _thesis_summary(out)
-        assert summary.splitlines() == [f"verdict: {expected}", "archive (MBP): data/thesis_query/2026-10-26_aaa_q.md"]
-        assert "SECRET" not in summary, "본문(보유 관련 섹션)은 embed 로 가지 않는다"
+        label = expected.split()[0]
+        assert summary.splitlines()[0].startswith(f"**판정: {label}** — ")
+        assert f"> {expected}" in summary
+        assert summary.endswith("archive (MBP): data/thesis_query/2026-10-26_aaa_q.md")
+        assert "SECRET" not in summary, "보유 관련 섹션은 embed 로 가지 않는다"
+
+    FULL = (
+        "\n## Local LLM (m)\n\n## 1. Verdict\n\n**STRONG BUY** — breakout\n\n## 2. Thesis\n\nT-TEXT\n\n"
+        "## 3. Beneficiary Analysis\n\nBENEFICIARY\n\n## 4. Risk\n\nR-TEXT\n\n## 5. Price Levels\n\nentry $101\n\n"
+        "## 6. Portfolio Implications\n\nSECRET\n\n## 7. Confidence\n\n70/100\n"
+    )
+    LEVELS = "## Price levels (system-computed — DO NOT derive your own)\n\nentry $100 | stop $93\n\n## Constraints\n"
+
+    def test_full_answer_renders_the_readable_sections_in_order(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        s = _thesis_summary(self.LEVELS + self.PROMPT + self.FULL)
+        assert s.startswith("**판정: STRONG BUY** — 강한 매수 의견")  # BUY 가 아니라 STRONG BUY 로 풀이
+        order = [s.index(x) for x in ("**논지**", "**주요 리스크**", "**신뢰도**", "**가격 레벨", "archive (MBP)")]
+        assert order == sorted(order)
+        assert "T-TEXT" in s and "R-TEXT" in s and "70/100" in s
+        assert "SECRET" not in s and "BENEFICIARY" not in s
+
+    def test_price_levels_come_from_the_system_not_the_model(self):
+        """모델이 옮겨 적은 `$101` 이 아니라 prompt 의 시스템 계산값 `$100 / $93` 을 싣는다."""
+        from nuri.agents.discord.bot import _thesis_summary
+
+        s = _thesis_summary(self.LEVELS + self.PROMPT + self.FULL)
+        assert "entry $100 | stop $93" in s
+        assert "$101" not in s
+
+    def test_long_sections_are_capped(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        long_answer = self.FULL.replace("T-TEXT", "x" * 2000)
+        s = _thesis_summary(self.PROMPT + long_answer)
+        assert "x" * 699 + "…" in s and "x" * 700 not in s
+        assert "**가격 레벨" not in s, "prompt 에 가격 섹션이 없으면 싣지 않는다"
 
     def test_the_prompt_instruction_is_not_taken_as_the_verdict(self):
         from nuri.agents.discord.bot import _thesis_summary

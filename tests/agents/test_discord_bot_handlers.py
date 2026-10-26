@@ -103,7 +103,9 @@ class TestSlashCommandHandlers:
             asyncio.run(callback(ix, "msft"))
         body = embed.call_args.kwargs["body"]
         if rc == 0:
-            assert body == "verdict: HOLD\narchive (MBP): data/thesis_query/a.md"
+            assert body.startswith("**판정: HOLD**")
+            assert body.endswith("archive (MBP): data/thesis_query/a.md")
+            assert "SECRET" not in body
         else:
             assert body == raw, "실패 때는 원인을 보려면 출력 끝이 필요하다"
 

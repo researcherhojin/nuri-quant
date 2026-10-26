@@ -8,8 +8,8 @@ This wraps both, saves prompt + both responses to data/llm_consults/{date}_{slug
 (gitignored — prompts may quote portfolio holdings). Use for any design
 ambiguity where a single LLM verdict isn't enough (axis A vs B style decisions).
 
-Local LLM: **Strata** at http://127.0.0.1:8081 (OpenAI-compatible, 서버는 별도 실행 —
-`strata start`), 모델 qwen3.8-flash-next-unsloth-ud-q4_k_xl. 모델 파일(Metal GGUF 77GB)이
+Local LLM: **Strata** at http://127.0.0.1:8081 (OpenAI-compatible). `--local-only` 는 꺼져 있으면
+`strata start quiet` 로 켜고, 자기가 켰으면 끝나고 `strata stop` 으로 내린다 (88GB 반환). 모델 qwen3.8-flash-next-unsloth-ud-q4_k_xl. 모델 파일(Metal GGUF 77GB)이
 RAM 32GB 인 Mac mini 에는 올라가지 않아 MBP 전용이다 — Discord `/thesis` 는
 `scripts/deploy/thesis_remote.sh` 로 MBP 에서 돈다. LM Studio backend 는 2026-10-26 제거했다
 (더 이상 쓰지 않음).
@@ -34,8 +34,10 @@ import concurrent.futures as cf
 import ipaddress
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -43,15 +45,17 @@ import requests
 
 from nuri.core.timezone import kst_now, today_kst
 
-LOCAL_URL = os.environ.get("NURI_LLM_LOCAL_URL") or os.environ.get(
-    "NURI_LLM_QWEN_URL", "http://127.0.0.1:8081/v1/chat/completions"
-)
+STRATA_URL = "http://127.0.0.1:8081/v1/chat/completions"
+LOCAL_URL = os.environ.get("NURI_LLM_LOCAL_URL") or os.environ.get("NURI_LLM_QWEN_URL", STRATA_URL)
 # Strata 서버 `/v1/models` 의 id 와 같아야 한다 (2026-10-26 실측 일치). 예전 LM Studio 기본
 # 모델(muse-glimmer-30b)의 2026-08-13 A/B 근거는 git log 와 data/llm_eval/ 에 있다.
 LOCAL_MODEL = os.environ.get("NURI_LLM_LOCAL_MODEL") or os.environ.get(
     "NURI_LLM_QWEN_MODEL", "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
 )
 LOCAL_TIMEOUT_S = 600
+# Strata 는 필요할 때만 켠다 (88GB 상주). ssh 비대화형 셸은 ~/.local/bin 을 PATH 에 안 넣으므로 경로도 본다.
+STRATA_BIN = shutil.which("strata") or str(Path.home() / ".local" / "bin" / "strata")
+STRATA_START_TIMEOUT_S = 180
 CODEX_TIMEOUT_S = 600
 # Codex 리뷰 모델은 여기서 명시한다. 예전에는 `-m` 없이 불러 머신의 `~/.codex/config.toml`
 # 기본값을 따랐고, 아카이브 머리말에는 "gpt-5.4" 가 고정 문자열로 박혀 실제 모델과 달랐다.
@@ -87,6 +91,38 @@ def is_loopback_url(url: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def local_server_up() -> bool:
+    """로컬 서버가 응답하는가 — `/v1/models` 를 프록시 없이 직접 묻는다."""
+    session = requests.Session()
+    session.trust_env = False
+    try:
+        return session.get(LOCAL_URL.rsplit("/chat/completions", 1)[0] + "/models", timeout=3).ok
+    except requests.RequestException:
+        return False
+
+
+def ensure_strata() -> bool:
+    """기본 주소(Strata)가 꺼져 있으면 `strata start quiet` 로 켠다. 이 호출이 켰으면 True.
+
+    True 를 받은 호출자는 끝나고 `stop_strata()` 로 내린다 — 원래 꺼져 있던 상태로 돌려 88GB 를
+    반환한다. 다른 주소를 지정했거나 strata 가 없으면 아무것도 안 한다 (그때 consult 는 연결 실패로
+    끝난다). 동시에 두 번 불리면 먼저 끝난 쪽이 끌 수 있다 — 단일 사용자 전제.
+    """
+    if LOCAL_URL != STRATA_URL or local_server_up() or not Path(STRATA_BIN).exists():
+        return False
+    subprocess.run(
+        [STRATA_BIN, "start", "quiet"], capture_output=True, text=True, timeout=STRATA_START_TIMEOUT_S, check=False
+    )
+    deadline = time.monotonic() + STRATA_START_TIMEOUT_S
+    while not local_server_up() and time.monotonic() < deadline:
+        time.sleep(2)
+    return True  # 켜기를 시도했으니 끝나면 끈다 — 반쯤 뜬 서버를 남기지 않는다
+
+
+def stop_strata() -> None:
+    subprocess.run([STRATA_BIN, "stop"], capture_output=True, text=True, timeout=60, check=False)
 
 
 def consult_codex(prompt: str) -> dict:
@@ -252,6 +288,15 @@ def main() -> int:
     if not prompt.strip():
         parser.error("empty prompt (use --prompt-file or pipe via stdin)")
 
+    started = ensure_strata() if args.local_only else False
+    try:
+        return _run(args, prompt)
+    finally:
+        if started:
+            stop_strata()
+
+
+def _run(args: argparse.Namespace, prompt: str) -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     out_path = args.out_dir / f"{today_kst()}_{args.slug}.md"
 
