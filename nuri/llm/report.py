@@ -32,7 +32,11 @@ logger = logging.getLogger(__name__)
 
 # ─── Local backends (portfolio data never leaves the machine) ───
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "")  # empty = disabled
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3.8:27b")
+# 기본값과 `.env` 의 값은 두 기기(MBP·mini)에 실제로 설치된 모델이어야 한다 — 배포가 MBP 의 `.env` 를
+# mini 로 복사하므로 한 값이 두 기기에 같이 쓰인다. qwen3.8:27b 가 그 값이던 동안 mini 에는 그 모델이 없어
+# 회고 합성이 매번 404 였다 (2026-10-27 mini 로그 12건 전부 404). gemma4:26b-a4b-it-qat(16GB, MoE 4B 활성)은
+# 두 기기에 설치돼 있고 리포트 검증 8/8 섹션 · 경고 0 (MBP 3회 17–23초, mini 2회 33–54초, swap 0).
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:26b-a4b-it-qat")
 LLAMA_MODEL_PATH = os.getenv("LLAMA_MODEL_PATH", "")  # GGUF path
 
 DISCLAIMER = (
@@ -658,8 +662,17 @@ def _generate_ollama(prompt: str) -> str:
         return response
     except _requests.ConnectionError:
         return ""
-    except Exception:
-        logger.exception("Ollama LLM 호출 실패")
+    except Exception as e:
+        # 404 = 모델 미설치 — 스택트레이스보다 고칠 방법을 남긴다. 예외 클래스가 아니라 응답 코드로 본다
+        # (requests 모듈째 mock 하는 호출자가 있어 `except HTTPError` 는 TypeError 가 된다).
+        if getattr(getattr(e, "response", None), "status_code", None) == 404:
+            logger.error(
+                "Ollama 에 모델 %s 이 없다 (404) — `ollama pull %s` 하거나 OLLAMA_MODEL 을 설치된 모델로 지정",
+                OLLAMA_MODEL,
+                OLLAMA_MODEL,
+            )
+        else:
+            logger.exception("Ollama LLM 호출 실패")
         return ""
 
 

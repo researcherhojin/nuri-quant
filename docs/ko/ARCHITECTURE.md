@@ -348,7 +348,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 
 - `OPENAI_API_KEY`: 외부 gateway(`nuri/llm/openai_client.py`): macro headline 분류와 리서치 briefing
 - `NURI_DISABLE_EXTERNAL_LLM`: `1` 로 설정하면 외부 gateway 가 꺼지고, 호출자는 fallback 한다
-- `OLLAMA_HOST` / `OLLAMA_MODEL`: 로컬 Ollama server 를 통한 LLM report(`OLLAMA_HOST` 가 설정되지 않으면 꺼지고, 설정한 값은 localhost 를 가리켜야 한다. `OLLAMA_MODEL` 기본값은 `qwen3.8:27b`)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: 로컬 Ollama server 를 통한 LLM report(`OLLAMA_HOST` 가 설정되지 않으면 꺼지고, 설정한 값은 localhost 를 가리켜야 한다. `OLLAMA_MODEL` 기본값은 `gemma4:26b-a4b-it-qat`)
 - `LLAMA_MODEL_PATH`, `NURI_LLM_LOCAL_URL`, `NURI_LLM_LOCAL_MODEL`, `NURI_LLM_CODEX_MODEL`: 로컬 모델과 consult 도구
 
 **API 와 dashboard**
@@ -480,7 +480,7 @@ data/
 
 ## 테스트
 
-9,091 backend tests across 446 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+9,094 backend tests across 446 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 
