@@ -348,7 +348,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise. Every key is o
 
 - `OPENAI_API_KEY`: the external gateway (`nuri/llm/openai_client.py`): macro headline classification and research briefings
 - `NURI_DISABLE_EXTERNAL_LLM`: set to `1` to turn the external gateway off; callers fall back
-- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (an unset `OLLAMA_HOST` disables it, and a set value must point to localhost; `OLLAMA_MODEL` defaults to `qwen3.8:27b`)
+- `OLLAMA_HOST` / `OLLAMA_MODEL`: LLM report via a local Ollama server (an unset `OLLAMA_HOST` disables it, and a set value must point to localhost; `OLLAMA_MODEL` defaults to `gemma4:26b-a4b-it-qat`)
 - `LLAMA_MODEL_PATH`, `NURI_LLM_LOCAL_URL`, `NURI_LLM_LOCAL_MODEL`, `NURI_LLM_CODEX_MODEL`: local-model and consult tooling
 
 **API and dashboard**
@@ -480,7 +480,7 @@ data/
 
 ## Testing
 
-9,091 backend tests across 446 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+9,094 backend tests across 446 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-12 executed 1,449 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the slow shards of `main` runs, push or the catch-up's dispatch (#1812) (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

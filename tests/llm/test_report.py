@@ -520,6 +520,51 @@ class TestLLMReportDeep:
 # ═══════════════════════════════════════════════════════
 
 
+class TestOllamaErrorLogging:
+    """slow 표시 없음 — PR 커버리지는 fast shard 만 센다."""
+
+    def test_missing_model_logs_how_to_fix_instead_of_a_traceback(self, caplog):
+        """404 는 모델 미설치다 — mini 에서 19일 동안 스택트레이스만 쌓였다 (2026-10-27)."""
+        import requests
+
+        from nuri.llm import report as r
+
+        resp = MagicMock(status_code=404)
+        err = requests.HTTPError("404 Client Error: Not Found", response=resp)
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = err
+        with patch("requests.post", return_value=mock_resp), caplog.at_level("ERROR", logger="nuri.llm.report"):
+            assert r._generate_ollama("프롬프트") == ""
+        msgs = [rec.getMessage() for rec in caplog.records]
+        assert any("404" in m and f"ollama pull {r.OLLAMA_MODEL}" in m for m in msgs)
+        assert not any(rec.exc_info for rec in caplog.records), "404 는 원인을 적고 스택트레이스는 남기지 않는다"
+
+    def test_other_http_errors_keep_the_traceback(self, caplog):
+        import requests
+
+        from nuri.llm import report as r
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.side_effect = requests.HTTPError("500", response=MagicMock(status_code=500))
+        with patch("requests.post", return_value=mock_resp), caplog.at_level("ERROR", logger="nuri.llm.report"):
+            assert r._generate_ollama("프롬프트") == ""
+        assert any(rec.exc_info for rec in caplog.records)
+
+    def test_default_model_matches_the_documented_one(self):
+        """기본 모델이 .env.example 과 어긋나면 운영자가 엉뚱한 모델을 받는다."""
+        import re
+        from pathlib import Path
+
+        from nuri.llm import report as r
+
+        found = re.search(r'os.getenv\("OLLAMA_MODEL", "([^"]+)"\)', Path(r.__file__).read_text())
+
+        assert found, "report.py 에서 OLLAMA_MODEL 기본값을 찾지 못했다"
+
+        default = found.group(1)
+        assert f"# OLLAMA_MODEL={default}" in Path(".env.example").read_text()
+
+
 @pytest.mark.slow
 class TestLLMDeep:
     def test_report_context_all_sections(self, rich_db):
