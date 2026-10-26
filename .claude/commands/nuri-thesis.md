@@ -12,7 +12,7 @@ User invocation: `/nuri-thesis $ARGUMENTS`
 
 1. 첫 token = ticker (예: `INTC`, `MSFT`).
 2. 나머지 = question. 비어있으면 default = "investment thesis (long/short/avoid) + portfolio implications".
-3. Bash 실행: `.venv/bin/python -m nuri.llm.thesis_query --ticker <TICKER> --question "<question>" --qwen-only` — `nuri/llm/thesis_query.py` 가 DB context (factors / signals / prices / fundamentals / portfolio) + LLM synthesis (local only — `llm_consult --local-only`, 기본 Strata `qwen3.8-flash-next-unsloth-ud-q4_k_xl`) 후 `data/thesis_query/{date}_{ticker}_<slug>.md` 에 archive.
+3. Bash 실행: `.venv/bin/python -m nuri.llm.thesis_query --ticker <TICKER> --question "<question>"` — `nuri/llm/thesis_query.py` 가 DB context (factors / signals / prices / fundamentals / portfolio) + LLM synthesis (local only — `llm_consult --local-only`, 기본 Strata `qwen3.8-flash-next-unsloth-ud-q4_k_xl`) 후 `data/thesis_query/{date}_{ticker}_<slug>.md` 에 archive.
 4. 결과 markdown 의 확인된 사실·불확실성과 기존 시스템 산출물만 사용자에게 surface. Full transcript 는 아카이브 file 로 reference.
 
 주의:

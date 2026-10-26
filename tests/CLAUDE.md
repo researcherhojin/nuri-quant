@@ -183,6 +183,23 @@ main 을 재실행하는 테스트 3개가 그랬다 (#1842). `nuri.*` 를 빼�
 `git add` 전의 새 파일이 빠진다).
 **Test:** `tests/verify/test_docs_bilingual_parity.py::test_gitignored_local_docs_are_not_paired`
 
+### 기기마다 다른 파일을 읽는 테스트는 기기마다 다른 분기를 밟는다 (#1949)
+
+초록이어도 의도한 경로를 안 밟을 수 있다 — 커버리지가 기기·날짜에 따라 출렁이면 이 계열이다
+(2026-10-27 실측: 같은 스위트가 한 번은 덮고 한 번은 놓쳤다). 세 형태를 밟았다:
+
+- **gitignored 설정**: 계좌별 손절 임계는 `config/portfolio.yaml`(gitignored) 에서 온다. 그 파일이 있는
+  개발 기기에선 두 번째 계좌 임계가 −20% 라 "둘 다 손절" 시나리오가 성립하지 않았고, 테스트는 첫
+  계좌만 단언해 초록이었다 — 의도는 CI(파일 없음, 기본 −7%)에서만 맞았다. 임계를 테스트에서 고정한다.
+- **실제 레포 산출물**: `gate._check_signal_scorecard` 는 레포의 `data/reports/` 를 본다. CI 는 폴더가 없어
+  한 분기, 리포트가 있는 기기는 다른 분기만 밟았다. 모듈 `__file__` 을 임시 트리로 돌린다.
+- **그날의 합성 데이터**: MACD 히스토그램 전환을 겨눈 테스트가 없어 다른 테스트의 합성 가격이 그날
+  우연히 양전환을 만들 때만 덮였다. 입력(차트)을 고정한다.
+
+`get_account_strategy()` 에 닿는 다른 테스트들은 여전히 로컬 `config/portfolio.yaml` 을 읽는다 *(facts, no fix)*.
+**Test:** `tests/trading/agents/test_risk.py::TestRiskAgentBranches::test_multi_holding_reports_the_worst_breach_in_either_order`
+· `tests/trading/engine/test_gate.py::TestSignalScorecardCheckIsHermetic` · `tests/trading/agents/test_technical.py::TestTechnicalMacdTurn`
+
 ### yfinance is imported inside functions
 
 Collectors do `import yfinance as yf` inside the method (openbb was removed in #1477). `patch("module.yf")` fails; stub the module instead:

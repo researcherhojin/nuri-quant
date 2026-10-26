@@ -85,7 +85,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna` (Tier 0, 2026-10-08 `gpt-5.4-nano` 에서 교체). 포트폴리오 리포트(Tier 2)는 **로컬 전용** (2026-10-08 OpenAI 경로 폐지). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama / LM Studio 로컬 모델) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 로컬 LLM 을 쓰지 않아 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna` (Tier 0, 2026-10-08 `gpt-5.4-nano` 에서 교체). 포트폴리오 리포트(Tier 2)는 **로컬 전용** (2026-10-08 OpenAI 경로 폐지). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama, 그리고 `scripts/dev/llm_consult.py` 의 Strata — LM Studio 는 2026-10-26 제거) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 로컬 LLM 을 쓰지 않아 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
 | yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 

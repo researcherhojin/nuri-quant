@@ -460,6 +460,7 @@ Scripts are grouped in category subdirectories since #557. The full per-script i
 - `deploy/sync_dev.sh`: dev↔dev state sync (gitignored files + ~/.claude Tier 3)
 - `deploy/autopull_receiver.sh`: Mac mini receiver (launchd 5-minute auto-pull)
 - `deploy/state_replicator.sh`: hourly snapshot to the development host's `data/replicas/`
+- `deploy/thesis_remote.sh`: `make thesis-remote`, runs Discord `/thesis` on the development host's local model (the Mac mini cannot load it), on the newest replica DB
 - `launchd/`: LaunchAgent plists (including `com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive, #838), the system LaunchDaemon in `system/`, and install/uninstall scripts
 
 ## Data Directory
