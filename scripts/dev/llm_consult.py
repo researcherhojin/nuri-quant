@@ -8,11 +8,13 @@ This wraps both, saves prompt + both responses to data/llm_consults/{date}_{slug
 (gitignored — prompts may quote portfolio holdings). Use for any design
 ambiguity where a single LLM verdict isn't enough (axis A vs B style decisions).
 
-Local LLM backend (default): **LM Studio** at http://127.0.0.1:1234
-(OpenAI-compatible). 기본 모델은 muse-glimmer-30b — 2026-08-13 A/B 런으로
-qwen3.5-122b-a10b 에서 교체했다(근거는 `LOCAL_MODEL` 주석). ⚠️ MLX 런타임은
-muse 를 못 올린다 — **llama.cpp GGUF 런타임**이어야 한다 (`lms runtime`).
-Strata 선택: `NURI_LLM_LOCAL_BACKEND=strata` (loopback :8081, 서버는 별도 실행).
+Local LLM backend (default, 2026-10-26~): **Strata** at http://127.0.0.1:8081
+(OpenAI-compatible, 서버는 별도 실행 — `strata start`). 기본 모델은
+qwen3.8-flash-next-unsloth-ud-q4_k_xl. 모델 파일(Metal GGUF 77GB)이 RAM 32GB 인
+Mac mini 에는 올라가지 않아, 사실상 MBP 전용이다.
+LM Studio 는 명시할 때만: `NURI_LLM_LOCAL_BACKEND=lmstudio` (loopback :1234, muse-glimmer-30b —
+2026-08-13 A/B 근거는 `LOCAL_MODEL` 주석. ⚠️ MLX 런타임은 muse 를 못 올린다 —
+**llama.cpp GGUF 런타임**이어야 한다, `lms runtime`).
 Override via exported `NURI_LLM_LOCAL_URL` / `NURI_LLM_LOCAL_MODEL` (no dotenv loading).
 구 이름 `NURI_LLM_QWEN_*` 도 계속 읽어 기존 `.env` 를 깨지 않는다. 우선순위는
 **새 이름 > 구 이름 > 기본값** — 둘 다 설정돼 있으면 새 이름이 이긴다.
@@ -45,7 +47,7 @@ import requests
 
 from nuri.core.timezone import kst_now, today_kst
 
-LOCAL_BACKEND = os.environ.get("NURI_LLM_LOCAL_BACKEND", "lmstudio")
+LOCAL_BACKEND = os.environ.get("NURI_LLM_LOCAL_BACKEND", "strata")
 if LOCAL_BACKEND not in {"lmstudio", "strata"}:
     raise ValueError("NURI_LLM_LOCAL_BACKEND must be lmstudio or strata")
 _DEFAULT_LOCAL_URL = (
@@ -54,7 +56,8 @@ _DEFAULT_LOCAL_URL = (
     else "http://127.0.0.1:1234/v1/chat/completions"
 )
 LOCAL_URL = os.environ.get("NURI_LLM_LOCAL_URL") or os.environ.get("NURI_LLM_QWEN_URL", _DEFAULT_LOCAL_URL)
-# 기본 모델은 2026-08-13 A/B 런으로 qwen3.5-122b-a10b → muse-glimmer-30b 교체.
+# Strata 기본 모델은 서버 `/v1/models` 의 id 와 같아야 한다 (2026-10-26 실측 일치).
+# 아래는 lmstudio backend 의 모델 근거 — 2026-08-13 A/B 런으로 qwen3.5-122b-a10b → muse-glimmer-30b 교체.
 # 근거: 같은 4,000 토큰 예산에서 완주 50/50 vs 45/50 (qwen 은 5건이
 # `finish_reason == "length"`), hard_fail 1/50 vs 5/50. 반올림 유도(d 계열)에서
 # muse 는 4/4 canonical 값을 유지했고, qwen 은 예산을 12,000 으로 늘려주자

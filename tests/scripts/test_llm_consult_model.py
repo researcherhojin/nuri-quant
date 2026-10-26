@@ -59,9 +59,14 @@ def test_strata_preset_sends_the_selected_model(monkeypatch):
 
 
 def test_existing_defaults_and_explicit_overrides(monkeypatch):
+    # 기본 backend 는 Strata 다 (2026-10-26) — LM Studio 는 명시할 때만
     default = _load_consult(monkeypatch)
-    assert default.LOCAL_URL == "http://127.0.0.1:1234/v1/chat/completions"
-    assert default.LOCAL_MODEL == "lmstudio-community/muse-glimmer-30b"
+    assert default.LOCAL_BACKEND == "strata"
+    assert default.LOCAL_URL == "http://127.0.0.1:8081/v1/chat/completions"
+    assert default.LOCAL_MODEL == "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
+    lmstudio = _load_consult(monkeypatch, NURI_LLM_LOCAL_BACKEND="lmstudio")
+    assert lmstudio.LOCAL_URL == "http://127.0.0.1:1234/v1/chat/completions"
+    assert lmstudio.LOCAL_MODEL == "lmstudio-community/muse-glimmer-30b"
     legacy = _load_consult(
         monkeypatch, NURI_LLM_QWEN_URL="http://localhost:9000/v1/chat/completions", NURI_LLM_QWEN_MODEL="legacy"
     )
