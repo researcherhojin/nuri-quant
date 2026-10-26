@@ -17,16 +17,18 @@ LLM 을 부르지 않는다. 역할(technical / fundamentals / flows / market)�
 2. **공통 기준일** — 유니버스의 그 비율이 도달한 가장 늦은 날짜까지만 쓴다. 어떤 종목도 자기
    시장 대부분보다 신선한 행을 보지 못한다.
 
-뉴스 · 내부자 · 애널리스트 등급 · 종목 이벤트 · consensus · price_targets 는 소스 목록에 없다 —
-모두 보유 위주 수집이거나 포트폴리오를 읽는다. 시장 묶음은 고정 지표 · 고정 키워드 뉴스 ·
+내부자 · 애널리스트 등급 · 종목 이벤트 · consensus · price_targets · 보유 뉴스(`news`)는 소스 목록에
+없다 — 모두 보유 위주 수집이거나 포트폴리오를 읽는다. 종목 뉴스는 DB 가 아니라 분석 직전 실시간
+조회 결과를 인자로 받는다(`news=`, `nuri/llm/live_news.py`, #1958). 시장 묶음은 고정 지표 · 고정 키워드 뉴스 ·
 고정 ETF 목록만 쓴다.
 
 **한 스냅샷**: 묶음 하나의 모든 읽기는 읽기 전용 연결 하나의 한 트랜잭션 안에서 한다 —
 `query()` 를 여러 번 부르면 호출마다 연결이 열려 읽기 사이에 수집기가 끼어들 수 있다.
 
 **미래 정보**: 묶음은 실행 시점에 운영 DB 에서 만들고 그대로 보관하는 전제다(forward-only).
-그 시점 DB 에 있는 행은 전부 그 전에 수집됐으므로 행별 수집 시각 컬럼은 두지 않는다. 과거 DB
-사본으로 다시 만들면 이 보장은 없다.
+그 시점 DB 에 있는 행은 전부 그 전에 수집됐다. 과거 DB 사본으로 다시 만들면 이 보장은 없다 —
+수집 시각을 행마다 남기는 `macro_events` 만 발행 · 수집 시각을 둘 다 기준 시점과 비교하고, 실시간
+종목 뉴스는 조회 완료 시각이 기준 시점 뒤면 거부한다.
 
 `packet_hash` 는 정렬된 JSON 의 SHA-256 — 뒤 단계가 어떤 입력을 봤는지 증명하는 값이다.
 """
@@ -49,6 +51,7 @@ from nuri.core.coverage import _load_universe
 from nuri.core.db import DatabaseError, OperationalError, get_db
 from nuri.core.ticker_names import is_kr_ticker
 from nuri.core.timezone import kst_now
+from nuri.llm import live_news
 
 CONFIG_PATH = Path("config/evidence.yaml")
 SCHEMA = "evidence_packet/v1"
@@ -277,6 +280,58 @@ def _ticker_source(
     return status, items
 
 
+def _ticker_news(
+    news: Optional[dict[str, Any]], ticker: str, c: datetime, cfg: dict[str, Any]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """종목 뉴스 (#1958) — 분석 직전 실시간 조회 결과(`nuri.llm.live_news.fetch`)를 거른다. DB 는 읽지 않는다.
+
+    발행 시각이 없거나 기준 시점 뒤인 기사, lookback 창 밖 기사는 버리고 최신순 `rows` 개만 남긴다.
+    조회가 기준 시점 뒤에 끝났으면 거부한다 — 그 결과에는 기준 시점 뒤에 나온 기사가 섞일 수 있다.
+    """
+    info: dict[str, Any] = {
+        "role": "news",
+        "date_meaning": "publication time (UTC); fetched live before the cutoff; Yahoo search returns a sample",
+    }
+    if news is None:
+        info["status"], info["reason"] = "missing", "not fetched"
+        return info, []
+    if news["ticker"] != ticker:
+        raise ValueError(f"news fetched for {news['ticker']}, packet is for {ticker}")
+    # strftime 은 초 미만을 버린다(내림). live_news 는 조회 시각을 올려 적으므로 둘을 비교하면 보수적이다.
+    utc = c.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    if news["fetched_at"] > utc:
+        raise ValueError(f"news fetched at {news['fetched_at']} UTC, after the cutoff {utc} UTC")
+    info["fetched_at"] = news["fetched_at"]
+    info["status"] = news["status"]
+    if news["status"] != "ok":
+        if news.get("reason"):
+            info["reason"] = news["reason"]
+        return info, []
+    oldest = (c - timedelta(days=int(cfg["lookback_days"]))).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    window = {a["link"]: a for a in news["articles"] if a["pub_date"] is not None and oldest < a["pub_date"] <= utc}
+    kept = sorted(
+        window.values(),
+        key=lambda a: (a["pub_date"], a["link"]),
+        reverse=True,
+    )[: int(cfg["rows"])]
+    if not kept:
+        info["note"] = "no tagged article in the window; the search is a sample, so this is not an absence of news"
+    items = [
+        {
+            # URL 해시 — 같은 기사는 어느 실행에서든 같은 ID 다 (주장이 가리키는 대상)
+            "id": "ticker_news:" + hashlib.sha256(a["link"].encode()).hexdigest()[:16],
+            "source": "ticker_news",
+            "observed": a["pub_date"],
+            # 시각끼리 뺀다 — KST 기준일에서 UTC 날짜를 빼면 몇 분 전 기사가 하루 묵은 것으로 나온다
+            "age_days": (c - datetime.fromisoformat(a["pub_date"]).replace(tzinfo=timezone.utc)).days,
+            # 원본 News Analyst 프롬프트가 받는 것과 같은 필드 (`_format_articles`: 제목 · 출처 · 요약)
+            "fields": {"publisher": a["publisher"], "title": a["title"], "summary": a["summary"]},
+        }
+        for a in kept
+    ]
+    return info, items
+
+
 def build_packet(
     ticker: str,
     *,
@@ -284,8 +339,13 @@ def build_packet(
     db_path: Optional[Path] = None,
     config: Optional[dict[str, Any]] = None,
     universe: Optional[dict[str, set[str]]] = None,
+    news: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """종목 하나의 알파 단계 근거 묶음. 보유 테이블은 읽지 않는다."""
+    """종목 하나의 알파 단계 근거 묶음. 보유 테이블은 읽지 않는다.
+
+    `news` 는 `live_news.fetch(ticker)` 결과 — 묶음은 네트워크를 쓰지 않는다. 비교하는 모든 팔이
+    같은 묶음을 받아야 한다 (뉴스를 다시 받으면 다른 표본이 온다).
+    """
     c = _as_cutoff(cutoff)
     cutoff_day = c.date()
     cfg = config if config is not None else load_config()
@@ -317,6 +377,8 @@ def build_packet(
                 info["status"] = "failed"
                 info["reason"] = type(e).__name__
             sources[src.name] = info
+    sources["ticker_news"], got = _ticker_news(news, ticker, c, cfg["sources"]["ticker_news"])
+    items.extend(got)
 
     return _seal(
         {
@@ -505,8 +567,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     p = argparse.ArgumentParser(description="Print the alpha-stage evidence packets for one ticker (no LLM).")
     p.add_argument("--ticker", required=True)
     p.add_argument("--db", type=Path, default=None, help="DB file (default: the configured DB)")
+    p.add_argument("--no-news", action="store_true", help="skip the live ticker-news fetch (no network)")
     args = p.parse_args(argv)
-    out = {"ticker": build_packet(args.ticker, db_path=args.db), "market": build_market_packet(db_path=args.db)}
+    news = None if args.no_news else live_news.fetch(args.ticker)
+    out = {
+        "ticker": build_packet(args.ticker, db_path=args.db, news=news),
+        "market": build_market_packet(db_path=args.db),
+    }
     json.dump(out, sys.stdout, indent=2, ensure_ascii=False, default=str)
     sys.stdout.write("\n")
     return 0

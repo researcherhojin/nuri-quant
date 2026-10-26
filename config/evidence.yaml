@@ -30,6 +30,9 @@ sources:
     rows: 10
     # 투자자 단위로 수집해 우리 보유와 무관하다. 대신 확신 13F 만 센다 (nuri/core/coverage.py #1098 과 같은 이유).
     holdings_independent: true
+  ticker_news: # #1958 — 분석 직전 실시간 조회(nuri/llm/live_news.py), DB 에 쌓지 않는다
+    lookback_days: 7 # TradingAgents News Analyst 의 "past week" 와 같다
+    rows: 20 # 종목당 최신 기사 상한 — 요청 수(NEWS_COUNT 20)와 같다
 
 market:
   macro_rows: 30

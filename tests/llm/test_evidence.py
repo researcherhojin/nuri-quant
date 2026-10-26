@@ -272,6 +272,118 @@ class TestMarketPacket:
 def test_cli_prints_both_packets_and_exits_zero(db_path, capsys, monkeypatch):
     monkeypatch.setattr(ev, "_load_universe", lambda: UNIVERSE)
     _prices(db_path, UNIVERSE["us"], D)
+    calls = []
+    monkeypatch.setattr(ev.live_news, "fetch", lambda t: calls.append(t) or _news(t, fetched_at="2000-01-01 00:00:00"))
     assert ev.main(["--ticker", "T0", "--db", str(db_path)]) == 0
     out = capsys.readouterr().out
     assert '"kind": "ticker"' in out and '"kind": "market"' in out
+    assert calls == ["T0"] and '"ticker_news"' in out
+
+
+def test_cli_no_news_makes_no_fetch(db_path, capsys, monkeypatch):
+    monkeypatch.setattr(ev, "_load_universe", lambda: UNIVERSE)
+    monkeypatch.setattr(ev.live_news, "fetch", lambda t: pytest.fail("fetched"))
+    assert ev.main(["--ticker", "T0", "--db", str(db_path), "--no-news"]) == 0
+    assert '"not fetched"' in capsys.readouterr().out
+
+
+UTC_CUTOFF = "2026-03-10 00:00:00"  # CUTOFF(KST 09:00) 의 UTC
+
+
+def _article(link, pub, title="t"):
+    return {"title": title, "summary": "s", "publisher": "wire", "link": link, "pub_date": pub}
+
+
+def _news(ticker="T0", articles=(), status="ok", fetched_at="2026-03-09 23:59:00", **extra):
+    return {"ticker": ticker, "status": status, "fetched_at": fetched_at, "articles": list(articles), **extra}
+
+
+def _news_items(p):
+    return [i for i in p["items"] if i["source"] == "ticker_news"]
+
+
+class TestTickerNews:
+    """실시간 종목 뉴스 (#1958) — 묶음은 넘겨받은 조회 결과만 거른다."""
+
+    def test_only_articles_with_a_time_inside_the_window_and_before_the_cutoff_enter(self, db_path, cfg):
+        news = _news(
+            articles=[
+                _article("u-in", "2026-03-09 12:00:00", "inside"),
+                _article("u-late", "2026-03-10 00:00:01", "after cutoff"),
+                _article("u-old", "2026-03-03 00:00:00", "outside lookback"),
+                _article("u-none", None, "no time"),
+                _article("u-in", "2026-03-09 12:00:00", "inside"),  # 같은 기사 두 번
+            ]
+        )
+        p = ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=news)
+        assert [i["fields"]["title"] for i in _news_items(p)] == ["inside"]
+        assert _news_items(p)[0]["age_days"] == 0  # 12시간 전 — KST/UTC 날짜 차로 1 이 되면 안 된다
+        assert p["sources"]["ticker_news"]["status"] == "ok"
+        assert p["sources"]["ticker_news"]["fetched_at"] == news["fetched_at"]
+
+    def test_newest_first_and_capped_by_config(self, db_path, cfg):
+        cfg["sources"]["ticker_news"]["rows"] = 2
+        news = _news(articles=[_article(f"u{h}", f"2026-03-09 {h:02d}:00:00", str(h)) for h in (1, 5, 3)])
+        p = ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=news)
+        assert [i["fields"]["title"] for i in _news_items(p)] == ["5", "3"]
+
+    def test_the_item_id_is_stable_for_the_same_link(self, db_path, cfg):
+        a = _article("https://x/1", "2026-03-09 12:00:00")
+        p1 = ev.build_packet(
+            "T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news(articles=[a])
+        )
+        b = {**a, "title": "edited"}
+        p2 = ev.build_packet(
+            "T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news(articles=[b])
+        )
+        assert _news_items(p1)[0]["id"] == _news_items(p2)[0]["id"]
+
+    def test_zero_tagged_articles_is_ok_with_a_sample_note(self, db_path, cfg):
+        p = ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news())
+        info = p["sources"]["ticker_news"]
+        assert info["status"] == "ok" and "not an absence" in info["note"]
+
+    def test_failed_and_excluded_carry_no_items(self, db_path, cfg):
+        failed = _news(status="failed", reason="no answer", articles=[_article("u", "2026-03-09 12:00:00")])
+        p = ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=failed)
+        assert (
+            p["sources"]["ticker_news"]["status"] == "failed" and p["sources"]["ticker_news"]["reason"] == "no answer"
+        )
+        assert _news_items(p) == []
+        p = ev.build_packet(
+            "T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news(status="excluded")
+        )
+        assert p["sources"]["ticker_news"] == {
+            "role": "news",
+            "date_meaning": p["sources"]["ticker_news"]["date_meaning"],
+            "status": "excluded",
+            "fetched_at": "2026-03-09 23:59:00",
+        }
+
+    def test_no_fetch_is_missing(self, db_path, cfg):
+        p = _build(db_path, cfg)
+        assert p["sources"]["ticker_news"]["status"] == "missing"
+
+    def test_a_fetch_that_finished_after_the_cutoff_is_refused(self, db_path, cfg):
+        """그 결과에는 기준 시점 뒤에 나온 기사가 섞일 수 있다."""
+        late = _news(fetched_at="2026-03-10 00:00:01")
+        with pytest.raises(ValueError, match="after the cutoff"):
+            ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=late)
+        ok = _news(fetched_at=UTC_CUTOFF)
+        ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=ok)
+
+    def test_news_for_another_ticker_is_refused(self, db_path, cfg):
+        with pytest.raises(ValueError, match="fetched for T1"):
+            ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news("T1"))
+
+    def test_the_news_is_inside_the_packet_hash(self, db_path, cfg):
+        a = ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=_news())
+        b = ev.build_packet(
+            "T0",
+            cutoff=CUTOFF,
+            db_path=db_path,
+            config=cfg,
+            universe=UNIVERSE,
+            news=_news(articles=[_article("u", "2026-03-09 12:00:00")]),
+        )
+        assert a["packet_hash"] != b["packet_hash"]
