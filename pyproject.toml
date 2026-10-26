@@ -111,7 +111,7 @@ dev = [
     # pandas 의 공식 타입 stub. 없으면 pyright 가 DatetimeIndex[i] 를 Index 로 보는 식의 오탐을 낸다
     # (2026-10-12 실측: 오류 174 → 29). pandas 와 major.minor 를 맞출 것 —
     # tests/core/test_pandas_stubs_match.py 가 어긋남을 잡는다.
-    "pandas-stubs>=2.3.3,<2.4",
+    "pandas-stubs>=2.3.3,<3.1",
     "ruff==0.15.22",  # 정확 핀 — CI ruff-action 이 이 핀을 읽어 로컬/CI 단일 버전 (#1235). openbb-core 의 ruff<0.16 캡은 #1477 로 사라졌다 — 0.16+ 은 별도 bump 에서
 ]
 
