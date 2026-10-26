@@ -688,3 +688,28 @@ class TestUpsertNewsDedupCount:
         from nuri.core.db import upsert_news
 
         assert upsert_news([], db_path=db_path) == 0
+
+
+class TestUpsertArk:
+    def test_empty_records_do_not_open_the_database(self, tmp_path):
+        """빈 입력의 반환값은 가드가 없어도 0 이라 반환값만으로는 가드를 잠그지 못한다 (2026-10-27 mutation 실측).
+        가드의 실제 효과 — 커넥션을 열지 않는다 — 를 본다: 없는 경로에 DB 파일이 생기면 안 된다."""
+        from nuri.core.db import upsert_ark
+
+        target = tmp_path / "never" / "opened.db"
+        assert upsert_ark([], db_path=target) == 0
+        assert not target.exists()
+
+    def test_records_are_written(self, db_path):
+        from nuri.core.db import query, upsert_ark
+
+        row = {
+            "date": "2026-10-23",
+            "ticker": "AAA",
+            "direction": "Buy",
+            "shares": 100.0,
+            "weight": 1.5,
+            "fund": "ARKK",
+        }
+        assert upsert_ark([row], db_path=db_path) == 1
+        assert query("SELECT ticker, direction FROM ark", db_path=db_path) == [{"ticker": "AAA", "direction": "Buy"}]

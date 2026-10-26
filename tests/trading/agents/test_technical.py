@@ -175,3 +175,33 @@ class TestTechnicalAgent_R26:
 
         result = TechnicalAgent().analyze("NONEXIST", db_path=db_path)
         assert result.action == "HOLD"
+
+
+class TestTechnicalMacdTurn:
+    """MACD 히스토그램 전환은 ±2 가중 — 이 분기를 겨눈 테스트가 없어, 다른 테스트의 합성 가격이 그날 우연히
+    양전환을 만들 때만 덮였다 (2026-10-27: 같은 스위트가 한 번은 덮고 한 번은 놓쳤다). 차트를 고정해 잠근다."""
+
+    @pytest.mark.parametrize(
+        ("turn", "token"), [("bullish", "MACD 히스토그램 양전환"), ("bearish", "MACD 히스토그램 음전환")]
+    )
+    def test_turn_is_reported(self, db_path, monkeypatch, turn, token):
+        from types import SimpleNamespace
+
+        from nuri.trading.agents import technical as mod
+
+        _seed_ticker(db_path, "TURN", n=60)
+        chart = SimpleNamespace(
+            price=100.0,
+            macd_turn=turn,
+            bb_position=50.0,
+            dist_from_52w_low=None,
+            dist_from_52w_high=None,
+            trend_strength=None,
+            poc_price=None,
+            visual_bias="neutral",
+        )
+        monkeypatch.setattr(mod, "analyze_chart", lambda *a, **k: chart)
+        v = mod.TechnicalAgent().analyze("TURN", db_path=db_path)
+        assert token in v.reasoning
+        other = "음전환" if turn == "bullish" else "양전환"
+        assert other not in v.reasoning

@@ -298,3 +298,16 @@ class TestSearchSourceKeepsOnlyRelatedArticles:
         got = NewsCollector()._fetch_ticker_news("AAPL")
         assert [r["url"] for r in got] == ["https://x/keep"]
         mock_yf.Search.assert_called_once_with("AAPL", news_count=NewsCollector.NEWS_COUNT)
+
+
+class TestParserGuardsItsOwnInput:
+    def test_non_dict_items_are_skipped_by_the_parser_itself(self):
+        """파서는 스스로 dict 아닌 항목을 건너뛴다.
+
+        지금의 두 호출자(`_fetch_ticker_news` · `company_research`)는 둘 다 미리 거르므로 이 가드는
+        호출자 경유로는 닿지 않는다 (2026-10-27 커버리지 실측) — 파서 단독 계약으로 잠근다."""
+        from nuri.collectors.news import NewsCollector
+
+        flat = {"title": "Good flat", "link": "https://ok.com/2", "publisher": "Z", "providerPublishTime": 1745000000}
+        records = NewsCollector()._parse_yfinance_news([None, "string item", 42, flat], "AAPL")
+        assert [r["url"] for r in records] == ["https://ok.com/2"]
