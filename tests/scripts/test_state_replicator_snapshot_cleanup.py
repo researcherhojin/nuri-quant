@@ -99,7 +99,7 @@ class TestOlderSnapshotsAreThinnedToOnePerDay:
     """48시간이 지난 스냅샷은 날짜별 최신 1개만 남는다 — 매시 사본 7일치가 mini 에 60GB 쌓였다
     (2026-10-27 실측 192개). 최근 48시간은 매시 그대로 둔다."""
 
-    EXTRA = {
+    EXTRA: dict[str, float] = {
         # 최근 48시간 — 전부 남는다
         "snapshot_20261027_100000.db": 1,
         "snapshot_20261027_090000.db": 2,
