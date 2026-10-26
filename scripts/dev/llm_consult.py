@@ -23,6 +23,7 @@ Usage:
     .venv/bin/python scripts/dev/llm_consult.py --slug <slug> --prompt-file <path>
     .venv/bin/python scripts/dev/llm_consult.py --slug <slug> < prompt.md
     .venv/bin/python scripts/dev/llm_consult.py --slug <slug> --codex-only --prompt-file <path>
+    .venv/bin/python scripts/dev/llm_consult.py --slug <slug> --local-only < private.md   # 비공개 맥락
 
 The slug becomes the filename suffix; keep it kebab-case + descriptive
 (e.g. `e3-phase2-shelve-decision`).
@@ -32,11 +33,13 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures as cf
+import ipaddress
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 
@@ -82,6 +85,26 @@ DEFAULT_SYSTEM_PROMPT = (
     "Pick ONE option (where applicable) and defend with 3-5 sentences. "
     "Flag architectural smells. Output the verdict directly without thinking blocks."
 )
+
+
+def is_loopback_url(url: str) -> bool:
+    """URL 의 host 가 이 머신(loopback)인가. 파싱 실패·host 없음은 False.
+
+    `--local-only` 는 env 로 바꿀 수 있는 `LOCAL_URL` 이 다른 머신을 가리키면 거부한다 —
+    `--qwen-only` 만으로는 `NURI_LLM_LOCAL_URL` 하나로 비공개 prompt 가 밖으로 나간다.
+    """
+    try:
+        host = urlsplit(url).hostname
+    except ValueError:
+        return False
+    if host is None:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def consult_codex(prompt: str) -> dict:
@@ -215,11 +238,22 @@ def main() -> int:
     parser.add_argument("--prompt-file", type=Path, help="path to prompt file (default: stdin)")
     parser.add_argument("--codex-only", action="store_true")
     parser.add_argument("--qwen-only", action="store_true")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="private context: local model only, refuse unless the local URL is loopback",
+    )
     parser.add_argument("--out-dir", type=Path, default=Path("data/llm_consults"))
     args = parser.parse_args()
 
-    if args.codex_only and args.qwen_only:
-        parser.error("--codex-only and --qwen-only are mutually exclusive")
+    if args.codex_only and (args.qwen_only or args.local_only):
+        parser.error("--codex-only excludes --qwen-only / --local-only")
+    if args.local_only:
+        if not is_loopback_url(LOCAL_URL):
+            # URL 은 찍지 않는다 — env 값이 로그·Discord 로 새지 않게
+            print("refused: --local-only requires a loopback local LLM URL (NURI_LLM_LOCAL_URL)", file=sys.stderr)
+            return 2
+        args.qwen_only = True
 
     if args.prompt_file:
         prompt = args.prompt_file.read_text(encoding="utf-8")

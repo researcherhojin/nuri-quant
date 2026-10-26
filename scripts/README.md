@@ -102,7 +102,7 @@ scripts/
 | `codex_review.sh` | Codex CLI review wrapper | `bash scripts/dev/codex_review.sh` |
 | `install_hooks.sh` | git hooks install | `make setup-hooks` |
 | `seed_e2e_db.py` | e2e 용 합성 seed DB 생성 | CI `Frontend E2E` (`--db` 필수) |
-| `llm_consult.py` | codex + local-LLM dual-archive consult (public/synthetic prompts only; private context requires `--qwen-only` and a loopback URL) | `make llm-consult slug=X prompt=path` |
+| `llm_consult.py` | codex + local-LLM dual-archive consult (public/synthetic prompts only; private context requires `--local-only`, which refuses a non-loopback URL) | `make llm-consult slug=X prompt=path` |
 | `agent_loop.py` | agent loop orchestrator skeleton (#577/#578, file-based transcript) | dev only |
 | `llm_ab_eval.py` | 로컬 모델 A/B — 동결 프롬프트 50개, 결정론적 채점 (LLM judge 없음) | `python scripts/dev/llm_ab_eval.py --model-a X --model-b Y` |
 | `llm_ab_stats.py` | A/B 판정 — Clopper-Pearson exact CI + McNemar exact (stdlib only) | `llm_ab_eval.py` 가 import |
