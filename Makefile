@@ -393,12 +393,18 @@ buy-candidates:
 	$(PYTHON) -m nuri.trading.recommend.buy_candidate_emitter
 
 # Thesis Q&A engine (Issue #508) — DB 맥락 + LLM 으로 종목 논지를 묻는다. 결과는 data/thesis_query/.
-# Discord `/thesis` 가 이 타깃을 부른다 (#1772). Usage:
+# 이 머신의 로컬 모델(Strata)로 돈다. Discord `/thesis` 는 아래 thesis-remote 를 부른다. Usage:
 #   make thesis ticker=INTC
 #   make thesis ticker=INTC question="hyperscaler 수혜자인가?"
 thesis:
 	@test -n "$(ticker)" || (echo "usage: make thesis ticker=<TICKER> [question=\"...\"]"; exit 1)
 	$(PYTHON) -m nuri.llm.thesis_query --ticker "$(ticker)" $(if $(question),--question "$(question)") --print
+
+# 상대 머신(DEV2_HOST — mini 에서는 MBP)에서 `make thesis` 를 돌린다. mini 는 Strata 모델(77GB)을
+# 못 올린다 (RAM 32GB). 맥락 조회·모델 호출은 원격 loopback 안에서만 — scripts/deploy/thesis_remote.sh.
+thesis-remote:
+	@test -n "$(ticker)" || (echo "usage: make thesis-remote ticker=<TICKER>"; exit 1)
+	bash scripts/deploy/thesis_remote.sh "$(ticker)"
 
 # Earnings preview (Issue #509) — consensus EPS/revenue + ATM straddle implied move.
 # yfinance-based, on-demand. Future: 위스퍼 (Estimize/StockTwits) Phase 2.

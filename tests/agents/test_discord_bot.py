@@ -219,7 +219,7 @@ class TestEveryMakeTargetExists:
         return targets
 
     def test_the_sweep_finds_the_slash_command_targets(self):
-        assert {"buy-candidates", "thesis"} <= self._targets_called_by_the_bot()
+        assert {"buy-candidates", "thesis-remote"} <= self._targets_called_by_the_bot()
 
     def test_every_called_target_is_defined_in_the_makefile(self):
         import re

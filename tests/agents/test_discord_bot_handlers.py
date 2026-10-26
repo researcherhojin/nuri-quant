@@ -67,7 +67,10 @@ class TestSlashCommandHandlers:
         assert "embed" in kwargs
 
     def test_thesis_handler_normalizes_ticker_and_invokes_make(self, bot_components, monkeypatch):
-        """/thesis: ticker uppercased, defer → _run_make('thesis', {ticker:X}) → followup."""
+        """/thesis: ticker uppercased, defer → _run_make('thesis-remote', {ticker:X}) → followup.
+
+        봇은 mini 에서 돈다 — mini 는 로컬 모델을 못 올리므로 MBP 위임 타깃이어야 한다.
+        """
         _, tree, guild = bot_components
         callback = _get_callback(tree, guild, "thesis")
         ix = self._make_interaction()
@@ -82,7 +85,7 @@ class TestSlashCommandHandlers:
         # ticker normalized to upper, passed via args dict
         mock_make.assert_called_once()
         call_args = mock_make.call_args
-        assert call_args.args[0] == "thesis"
+        assert call_args.args[0] == "thesis-remote"
         assert call_args.args[1] == {"ticker": "MSFT"}
         ix.followup.send.assert_awaited_once()
 

@@ -47,8 +47,8 @@ def _load_consult(monkeypatch, **env):
     return module
 
 
-def test_strata_preset_sends_the_selected_model(monkeypatch):
-    module = _load_consult(monkeypatch, NURI_LLM_LOCAL_BACKEND="strata")
+def test_default_sends_the_strata_model(monkeypatch):
+    module = _load_consult(monkeypatch)
     response = MagicMock(status_code=200)
     response.json.return_value = {"choices": [{"message": {"content": "OK"}, "finish_reason": "stop"}]}
     with patch.object(module.requests, "post", return_value=response) as post:
@@ -59,14 +59,11 @@ def test_strata_preset_sends_the_selected_model(monkeypatch):
 
 
 def test_existing_defaults_and_explicit_overrides(monkeypatch):
-    # 기본 backend 는 Strata 다 (2026-10-26) — LM Studio 는 명시할 때만
+    # 기본은 Strata (2026-10-26) — LM Studio backend 는 제거됐다
     default = _load_consult(monkeypatch)
-    assert default.LOCAL_BACKEND == "strata"
     assert default.LOCAL_URL == "http://127.0.0.1:8081/v1/chat/completions"
     assert default.LOCAL_MODEL == "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
-    lmstudio = _load_consult(monkeypatch, NURI_LLM_LOCAL_BACKEND="lmstudio")
-    assert lmstudio.LOCAL_URL == "http://127.0.0.1:1234/v1/chat/completions"
-    assert lmstudio.LOCAL_MODEL == "lmstudio-community/muse-glimmer-30b"
+    assert not hasattr(default, "LOCAL_BACKEND")
     legacy = _load_consult(
         monkeypatch, NURI_LLM_QWEN_URL="http://localhost:9000/v1/chat/completions", NURI_LLM_QWEN_MODEL="legacy"
     )
@@ -74,7 +71,6 @@ def test_existing_defaults_and_explicit_overrides(monkeypatch):
     assert legacy.LOCAL_URL == "http://localhost:9000/v1/chat/completions"
     override = _load_consult(
         monkeypatch,
-        NURI_LLM_LOCAL_BACKEND="strata",
         NURI_LLM_LOCAL_MODEL="custom",
         NURI_LLM_QWEN_MODEL="legacy",
         NURI_LLM_LOCAL_URL="http://localhost:8082/v1/chat/completions",
