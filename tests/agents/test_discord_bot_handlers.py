@@ -87,7 +87,25 @@ class TestSlashCommandHandlers:
         call_args = mock_make.call_args
         assert call_args.args[0] == "thesis-remote"
         assert call_args.args[1] == {"ticker": "MSFT"}
+        assert call_args.args[3] is None, "요약하려면 출력 전체가 필요하다"
         ix.followup.send.assert_awaited_once()
+
+    @pytest.mark.parametrize("rc", [0, 2])
+    def test_thesis_embed_body_is_the_summary_only_on_success(self, bot_components, rc):
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        raw = "saved: data/thesis_query/a.md\n## Local LLM (m)\n## 1. Verdict\nHOLD\n## 6. Portfolio\nSECRET\n"
+        with (
+            patch("nuri.agents.discord.bot._run_make", return_value=(rc, raw)),
+            patch("nuri.agents.discord.bot.build_status_embed", return_value={"title": "t"}) as embed,
+        ):
+            asyncio.run(callback(ix, "msft"))
+        body = embed.call_args.kwargs["body"]
+        if rc == 0:
+            assert body == "verdict: HOLD\narchive (MBP): data/thesis_query/a.md"
+        else:
+            assert body == raw, "실패 때는 원인을 보려면 출력 끝이 필요하다"
 
     def test_thesis_handler_rejects_invalid_ticker(self, bot_components, monkeypatch):
         """/thesis with non-alpha ticker: ephemeral error, no _run_make call."""

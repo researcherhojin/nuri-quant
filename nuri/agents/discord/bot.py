@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shlex
 import socket
 import subprocess
@@ -42,10 +43,13 @@ HEALTH_CHECK_SCRIPT = "scripts/ops/health_check.sh"
 load_dotenv(REPO_ROOT / ".env")
 
 
-def _run_make(target: str, args: Optional[dict[str, str]] = None, timeout: int = 120) -> tuple[int, str]:
+def _run_make(
+    target: str, args: Optional[dict[str, str]] = None, timeout: int = 120, tail: Optional[int] = 1500
+) -> tuple[int, str]:
     """make 타겟 실행 — (returncode, output) 반환.
 
     args 는 make 변수 (e.g. {'ticker': 'MSFT'}) → make ticker=MSFT.
+    tail=None 이면 출력 전체 (호출자가 직접 요약할 때).
     """
     cmd = ["make", target]
     if args:
@@ -60,10 +64,43 @@ def _run_make(target: str, args: Optional[dict[str, str]] = None, timeout: int =
             timeout=timeout,
             check=False,
         )
-        out = (proc.stdout + proc.stderr)[-1500:]
-        return proc.returncode, out
+        out = proc.stdout + proc.stderr
+        return proc.returncode, (out if tail is None else out[-tail:])
     except subprocess.TimeoutExpired:
         return 124, f"timeout after {timeout}s"
+
+
+_VERDICT_RE = re.compile(r"verdict", re.IGNORECASE)
+_MD_NOISE = re.compile(r"^[\s#>*\-\d.:—|]+|[\s*_|]+$")
+
+
+def _thesis_summary(out: str) -> str:
+    """`make thesis --print` 출력 → verdict 1줄 + archive 경로.
+
+    예전에는 출력 끝 1,500자를 그대로 embed 에 실었다 — 그러면 맨 앞의 Verdict 는 잘리고 끝의
+    Portfolio implications(보유 관련) 섹션이 Discord 로 갔다. 본문은 MBP archive 에만 남긴다.
+    verdict 는 `## Local LLM` 섹션 안에서만 찾는다 — 그 위 prompt 의 "Required output" 에도
+    "Verdict" 가 있다.
+    """
+    saved = [ln for ln in out.splitlines() if ln.startswith("saved: ")]
+    # llm_consult 도 임시 이름(`<date>_thesis-…`)으로 `saved:` 를 찍는다 — 최종 이름을 고른다
+    final = next((ln for ln in saved if "_thesis-" not in ln), saved[0] if saved else "saved: (unknown)")
+    archive = f"archive (MBP): {final.removeprefix('saved: ')}"
+    _, sep, answer = out.partition("\n## Local LLM")
+    verdict = ""
+    if sep:
+        # 강조 기호는 줄 안 어디에나 온다 (`**AVOID** (…)` — 2026-10-26 Strata 실측)
+        lines = [ln.replace("**", "").replace("__", "") for ln in answer.splitlines()[1:]]
+        for i, ln in enumerate(lines):
+            m = _VERDICT_RE.search(ln)
+            if not m:
+                continue
+            rest = _MD_NOISE.sub("", ln[m.end() :])
+            if not rest:  # 제목만 있는 줄 — 다음 내용 줄이 판정
+                rest = next((_MD_NOISE.sub("", x) for x in lines[i + 1 :] if _MD_NOISE.sub("", x)), "")
+            verdict = rest[:200]
+            break
+    return f"verdict: {verdict or '(not found — see archive)'}\n{archive}"
 
 
 def build_bot():
@@ -111,11 +148,12 @@ def build_bot():
             return
         await interaction.response.defer(thinking=True)
         # mini 는 로컬 모델을 못 올린다 — MBP 에서 돌린다 (scripts/deploy/thesis_remote.sh)
-        rc, out = await asyncio.to_thread(_run_make, "thesis-remote", {"ticker": ticker}, 300)
+        rc, out = await asyncio.to_thread(_run_make, "thesis-remote", {"ticker": ticker}, 300, None)
         embed_dict = build_status_embed(
             title=f"Thesis · {ticker}",
             success=(rc == 0),
-            body=out[-3500:],
+            # 성공: verdict + 경로만. 실패: 원인을 보려면 출력 끝이 필요하다 (그때는 본문이 출력되지 않는다)
+            body=_thesis_summary(out) if rc == 0 else out[-1500:],
             fields={"ticker": ticker, "exit": str(rc), "host": socket.gethostname()},
         )
         await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
