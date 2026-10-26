@@ -46,6 +46,15 @@ class TestRunMake:
         assert rc == 124
         assert "timeout" in out.lower()
 
+    def test_tail_none_returns_the_whole_output(self):
+        from nuri.agents.discord.bot import _run_make
+
+        long = "x" * 5000
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=long, stderr="")
+            assert len(_run_make("thesis-remote", {"ticker": "X"}, 5, None)[1]) == 5000
+            assert len(_run_make("thesis-remote", {"ticker": "X"}, 5)[1]) == 1500
+
     def test_args_quoted_via_shlex(self):
         """make 인자 quoting — 공백/특수문자 injection 방지."""
         from nuri.agents.discord.bot import _run_make
@@ -230,3 +239,67 @@ class TestEveryMakeTargetExists:
             t for t in self._targets_called_by_the_bot() if not re.search(rf"^{re.escape(t)}:", makefile, re.M)
         )
         assert not missing, f"봇이 부르는데 Makefile 에 없는 타깃: {missing}"
+
+
+class TestThesisSummary:
+    """`/thesis` embed 는 verdict 1줄 + archive 경로만 싣는다.
+
+    예전에는 출력 끝 1,500자를 실어 Verdict(맨 앞)는 잘리고 Portfolio implications(끝, 보유 관련)가
+    Discord 로 갔다 (2026-10-26 mini 실측: 본문 약 1,300자 + 로그 3줄).
+    """
+
+    PROMPT = (
+        "saved: data/thesis_query/2026-10-26_aaa_q.md\n\n# LLM Consult — thesis-aaa-q\n## Required output\n"
+        "1. **Verdict** (one of: STRONG BUY / BUY / HOLD / AVOID / SELL — single line)\n"
+        "6. **Portfolio implications** (given user's actual holdings + cash situation)\n"
+    )
+
+    @pytest.mark.parametrize(
+        ("answer", "expected"),
+        [
+            ("## 1. Verdict\n\n**HOLD**\n\n## 2. Thesis\nx\n", "HOLD"),
+            ("1. **Verdict**: AVOID — weak momentum\n", "AVOID — weak momentum"),
+            ("**Verdict:** BUY\n", "BUY"),
+            # 2026-10-26 Strata 실측 형태 — 단어 뒤 `**` 가 남으면 라벨이 `AVOID**` 가 된다
+            ("## 1. Verdict\n\n**AVOID** (low conviction) — below SMA200\n", "AVOID (low conviction) — below SMA200"),
+        ],
+    )
+    def test_verdict_comes_from_the_model_answer(self, answer: str, expected: str):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        out = (
+            self.PROMPT + "\n## Local LLM (m)\n\n**ok:** True\n\n" + answer + "\n## 6. Portfolio Implications\nSECRET\n"
+        )
+        summary = _thesis_summary(out)
+        assert summary.splitlines() == [f"verdict: {expected}", "archive (MBP): data/thesis_query/2026-10-26_aaa_q.md"]
+        assert "SECRET" not in summary, "본문(보유 관련 섹션)은 embed 로 가지 않는다"
+
+    def test_the_prompt_instruction_is_not_taken_as_the_verdict(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        summary = _thesis_summary(self.PROMPT)
+        assert summary.startswith("verdict: (not found — see archive)")
+        assert "STRONG BUY" not in summary
+
+    def test_missing_saved_line(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        assert _thesis_summary("") == "verdict: (not found — see archive)\narchive (MBP): (unknown)"
+
+    def test_heading_with_no_following_text(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        assert _thesis_summary(self.PROMPT + "\n## Local LLM (m)\n\n## 1. Verdict\n").startswith("verdict: (not found")
+
+    def test_answer_without_any_verdict(self):
+        from nuri.agents.discord.bot import _thesis_summary
+
+        out = self.PROMPT + "\n## Local LLM (m)\n\n(qwen error: offline)\n"
+        assert _thesis_summary(out).startswith("verdict: (not found")
+
+    def test_the_final_archive_name_wins_over_the_consult_temp_name(self):
+        """stderr 를 섞어 받으면 llm_consult 의 임시 `saved:` 가 먼저 온다 (2026-10-26 실측)."""
+        from nuri.agents.discord.bot import _thesis_summary
+
+        out = "saved: data/thesis_query/2026-10-26_thesis-aaa-q.md\nsaved: data/thesis_query/2026-10-26_aaa_q.md\n"
+        assert _thesis_summary(out).endswith("archive (MBP): data/thesis_query/2026-10-26_aaa_q.md")
