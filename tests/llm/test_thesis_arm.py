@@ -13,6 +13,7 @@ import requests
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_arm as arm
 from nuri.llm import thesis_contract as tc
+from nuri.llm import thesis_freeze as tf
 from nuri.llm.tradingagents.prompts import ANALYST_ROLES, MANAGER_ROLE
 
 
@@ -342,6 +343,12 @@ class TestPairingAndDefinition:
         from nuri.llm.tradingagents.prompts import RATING_SCALE
 
         assert RATING_SCALE in prompts["A"] and RATING_SCALE in prompts["manager"]
+
+    def test_the_freeze_guard_hashes_what_the_run_records(self, monkeypatch, packets):
+        # 동결 가드(#1990)가 원장과 다른 것을 해시하면 영원히 통과한다
+        rich = {"stage_prompt_budget_tokens": 1000, "model": "m", "memory": {"same_ticker": 5}, "sim": {"sleeves": 5}}
+        b, _ = run_b(monkeypatch, packets, cfg=rich)
+        assert b["arm_hash"] == tf.current_hashes(rich)["B"]
 
     def test_the_definition_hash_moves_with_any_behaviour_file_or_setting(self, tmp_path, monkeypatch):
         src = tc._LLM_DIR
