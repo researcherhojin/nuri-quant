@@ -21,6 +21,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field, fields
+from typing import cast
 
 from dotenv import load_dotenv
 
@@ -619,6 +620,14 @@ def _generate_ollama(prompt: str) -> str:
             OLLAMA_HOST,
         )
         return ""
+    # 루프백이어도 cloud 모델은 Ollama 서버에서 돈다 (#1969) — 이 기기에 설치된 로컬 모델만 쓴다.
+    # 검사와 생성은 별개 요청이라 그 사이 모델 목록이 바뀔 수 있다 — 그 짧은 창은 받아들인다.
+    from nuri.llm.local_model_guard import refuse_reason
+
+    reason = refuse_reason(OLLAMA_HOST, OLLAMA_MODEL)
+    if reason:
+        logger.warning("Ollama 모델 %s 거부 — %s (STRATEGY §4.4.3 local-only)", OLLAMA_MODEL, reason)
+        return ""
     import requests as _requests
 
     try:
@@ -635,6 +644,11 @@ def _generate_ollama(prompt: str) -> str:
                 "options": {"temperature": 0.3, "num_predict": 2000},
             },
             timeout=300,
+            # 가드와 같은 경로로 보낸다 (#1969) — requests 는 루프백 요청도 HTTP_PROXY · ALL_PROXY 로 보내므로,
+            # 그대로 두면 가드가 확인한 서버와 prompt 가 가는 곳이 달라진다. 키별 None 에 `all` 까지 넣어야 다 빠진다.
+            # 스텁은 값을 str 로만 적지만 requests 는 None 을 "이 키 끄기" 로 처리한다(2026-10-27 adapter 실측).
+            proxies=cast("dict[str, str]", {"http": None, "https": None, "all": None}),
+            allow_redirects=False,
         )
         resp.raise_for_status()
         data = resp.json()
