@@ -59,7 +59,6 @@ GROUP_A_MODULES = [
     "nuri.collectors.fear_greed",
     "nuri.collectors.events",
     "nuri.collectors.ark",
-    "nuri.collectors.reddit",
     "nuri.collectors.superinvestors",
     "nuri.collectors.cboe",
     "nuri.collectors.coingecko",

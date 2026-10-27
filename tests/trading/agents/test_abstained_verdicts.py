@@ -199,6 +199,9 @@ class TestFailureIsNeverReportedAsAbstention:
         monkeypatch.setattr(dbmod, "DB_PATH", Path("/nonexistent-dir-for-1436/no.db"))
         out = {}
         for agent in build_all_agents():
+            # 은퇴한 retail 슬롯은 DB 를 읽지 않는다. 전용 은퇴 테스트가 그 계약을 검증한다 (#1979).
+            if agent.name == "retail":
+                continue
             try:
                 out[agent.name] = agent.analyze(ticker)
             except Exception:
@@ -230,14 +233,14 @@ class TestFailureIsNeverReportedAsAbstention:
     def test_the_probe_actually_reaches_every_agent(self, monkeypatch):
         """0 개를 검사하며 초록인 상태를 막는 카나리아 (#910)."""
         verdicts = self._verdicts_with_dead_db(monkeypatch)
-        assert len(verdicts) >= 10
+        assert len(verdicts) >= 9
+        assert "retail" not in verdicts
 
     @staticmethod
     def _partial_failure_cases():
         """에이전트 → (인스턴스, sql→QueryRows 스텁). 형제 쿼리는 **성공하되 신호를 못 만든다.**"""
         from nuri.trading.agents.base import QueryRows
         from nuri.trading.agents.crypto_agent import CryptoAgent
-        from nuri.trading.agents.retail_agent import RetailAgent
         from nuri.trading.agents.risk_agent import RiskAgent
         from nuri.trading.agents.smart_money import SmartMoneyAgent
         from nuri.trading.agents.wallstreet import WallStreetAgent
@@ -259,11 +262,6 @@ class TestFailureIsNeverReportedAsAbstention:
                     if "btc_24h_change_pct" in sql
                     else (rows({"value": 50.0}) if "btc_dominance" in sql else QueryRows())
                 ),
-            ),
-            # 티커 언급 실패 + 전체 게시물 수는 과열 임계 아래로 성공
-            "retail": (
-                RetailAgent(),
-                lambda sql: QueryRows(failed=True) if "indicator=?" in sql else rows({"value": 10.0}),
             ),
             # 캐시 테이블 조회 실패 (연결은 살아 있다) + yfinance 는 비어서 반환
             "wallstreet": (
@@ -557,7 +555,7 @@ class TestFailureIsNeverReportedAsAbstention:
         각 항목은 "이 상황에 놓이면 기권이어야 한다" 는 진술이고, 생성 형태가 바뀌어도 유효하다.
 
         여기 없는 출구는 다른 테스트가 덮는다: fundamental NULL 행 ·
-        crypto/retail/smart_money/wallstreet 부분 실패 · technical 데이터 부족.
+        crypto/smart_money/wallstreet 부분 실패 · technical 데이터 부족.
         """
         from nuri.core.db import init_db
         from nuri.trading.agents.base import QueryRows

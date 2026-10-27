@@ -87,7 +87,7 @@ PLACEHOLDER_REASONS: dict[str, set[str]] = {
     # 양쪽 다 0.0 이라 어느 축에 놓든 채점에 기여하지 않으므로 기권으로 둔다.
     "macro": {"SPY 데이터 부족", "레짐/매크로 데이터 부족"},
     "options": {"PCR 데이터 없음", "PCR 값 없음", "미국 시장 PCR — 자료 유효 기간 초과"},
-    "retail": {"리테일 센티먼트 데이터 없음", "리테일 데이터 부족"},
+    "retail": {"리테일 센티먼트 데이터 없음", "리테일 데이터 부족", "Reddit 입력 은퇴 (#1979)"},
     "smart_money": {"스마트머니 데이터 없음"},
     "technical": {"데이터 부족"},
     "wallstreet": {"Wall Street 데이터 미지원 종목", "Wall Street 데이터 부족"},
