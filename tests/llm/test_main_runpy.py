@@ -9,8 +9,6 @@ from __future__ import annotations
 import io
 import sys
 
-import pytest
-
 from nuri.llm import report as report_mod
 
 
@@ -80,11 +78,27 @@ class TestLLMReportMain:
         # 인자가 무시되는지 검증 — SystemExit 없이 0 반환
         assert report_mod.main(["--anything"]) == 0
 
-    @pytest.mark.skip(reason="Removed legacy runpy test — main() refactor (PR #593/#595 pattern)")
-    def test_main_gate_blocked_path(self):
-        """Legacy runpy test placeholder."""
-        # Kept as named slot to detect anyone trying to revive runpy pattern.
-        pass
+    def test_main_gate_blocked_path_creates_no_report(self, monkeypatch, tmp_path, capsys):
+        """게이트 거부는 컨텍스트를 출력하고 보고서 파일을 만들지 않는다."""
+        monkeypatch.chdir(tmp_path)
+        calls = []
+
+        def blocked():
+            calls.append(True)
+            return {
+                "gate_blocked": True,
+                "context": "INSUFFICIENT EVIDENCE",
+                "report": None,
+                "validation": {"passed": False, "warnings": []},
+            }
+
+        monkeypatch.setattr(report_mod, "generate_llm_report_sync", blocked)
+        assert report_mod.main([]) == 0
+        assert calls == [True]
+        out = capsys.readouterr().out
+        assert "Gate 차단" in out and "INSUFFICIENT EVIDENCE" in out
+        assert "LLM 리포트" not in out
+        assert list(tmp_path.iterdir()) == []
 
 
 class TestLLMReportMainStdoutCapture:

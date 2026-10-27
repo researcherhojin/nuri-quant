@@ -197,27 +197,35 @@ class TestValidationMainRunpy:
         assert isinstance(out, str)
 
     def test_classifier_main_history_csv_write_via_seeded_db(self, monkeypatch, db_path_mp, tmp_path):
-        """classifier --history 가 history 채워서 CSV save 까지 (lines 642-652).
+        """SPY 이력은 격리 DB 에 시드하고 실제 CLI 의 CSV 값까지 확인한다."""
+        import pandas as pd
 
-        runpy-aware 패치 전략:
-        1) `nuri.core.db.query` 를 mock 으로 패치 → runpy reload 후 `from nuri.core.db
-           import query` 시 mock 이 보임.
-        2) REPORT_DIR 도 module-level 정의 → runpy reload 시 redefine 됨. 하지만
-           classifier 의 REPORT_DIR 는 `Path("data/reports")` 같은 literal 일 수 있음 —
-           tmp_path 로 redirect 하려면 source-level patch 필요. monkeypatch.setattr 가
-           module 객체에 setattr 하므로 reload 후엔 무효 → 직접 chdir 로 우회.
-        """
-        from nuri.quant.regime.classifier import RegimeState
+        from nuri.core.db import upsert_prices
+        from nuri.core.timezone import today_kst
+        from nuri.quant.regime import classifier
 
-        # classify_regime_history 가 의존하는 query 결과만 mock
-        # (history dates + history snapshot)
-        # 너무 많은 구현 의존이라 deferred — line 642 진입만 cover.
-        # CSV write 경로 (lines 646-652) 는 source 안에서 history 가 비어있으면 skip.
-        # 빈 DB 라 path 도달 어려움 → 별도 issue 로 refactor 권고.
-        pytest.skip(
-            "lines 646-652 (history CSV save) 는 빈 DB 에서 history=[] 가 되어 분기 미진입. "
-            "source 의 main(argv) 추출 + DB seeding 필요 (별도 이슈)."
+        dates = pd.bdate_range("2025-01-02", periods=260)
+        prices = pd.DataFrame(
+            {
+                "ticker": "SPY",
+                "date": dates.strftime("%Y-%m-%d"),
+                "open": 100.0,
+                "high": 200.0,
+                "low": 90.0,
+                "close": [100.0 + i * 0.1 for i in range(len(dates))],
+                "adj_close": [100.0 + i * 0.1 for i in range(len(dates))],
+                "volume": 1000,
+            }
         )
+        upsert_prices(prices, db_path=db_path_mp)
+        monkeypatch.setattr(classifier, "REPORT_DIR", tmp_path)
+        start, end = "2025-11-01", dates[-1].strftime("%Y-%m-%d")
+        assert classifier.main(["--history", "--start", start, "--end", end]) == 0
+        saved = pd.read_csv(tmp_path / today_kst() / "regime_history.csv")
+        expected = prices.loc[prices["date"] >= start].groupby(prices["date"].str[:7])["date"].max().tolist()
+        assert saved["date"].tolist() == expected
+        assert saved["regime"].notna().all()
+        assert saved["confidence"].between(0, 1).all()
 
     def test_optimizer_main_with_signal_flag(self, monkeypatch, db_path_mp):
         """optimizer --signal X (lines 293-295): optimize_signal 결과 print top 10.

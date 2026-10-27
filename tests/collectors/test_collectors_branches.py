@@ -1031,31 +1031,20 @@ class TestRemainingMisses:
         assert _is_token_cooldown(None, 500) is False  # type: ignore[arg-type]
 
     def test_inquire_price_kr_both_attempts_rate_limited(self, monkeypatch):
-        """두 attempt 모두 rate limit → for loop 끝나고 trailing return None (line 337).
+        """두 번 rate limit 이면 1회만 재시도하고 가격을 반환하지 않는다."""
+        from nuri.collectors import kis_realtime as mod
 
-        attempt 0: rate limit → continue. attempt 1: rate limit but `_is_rate_limit
-        and attempt == 0` 조건 false → 그냥 다음 분기로 빠짐 → output empty 분기 →
-        return None. 하지만 line 337 에 도달하려면 양쪽 attempt 가 rate-limit response
-        이어야 함.
-
-        실제 로직: attempt 1 에서 rate_limit 매칭은 attempt==0 false 이므로 break-skip
-        없이 if-block 안 들어감 → output 가져옴 → output.get("stck_prpr") 없으니 line 322 return.
-        line 337 은 try 가 attempt 1 에서 raise 안 하고 flow 끝까지 가야 도달.
-        attempt 0 rate_limit + attempt 1 raise (try except 잡아 return None on line 336) → 337 not hit.
-
-        가장 robust path: side_effect 가 반복 가능 IndexError 던지면 attempt 1 도 except → return None
-        (line 336). line 337 은 outer for 끝난 trailing — for 가 break/return 없이 끝나야 함.
-        for-else 없이 for 빠지면 337 도달. 즉 attempt 0 continue + attempt 1 도 continue 인데
-        attempt 1 에서 _is_rate_limit and attempt==0 false → continue 안 됨.
-        실용상 line 337 은 dead code (방어 trailing). pragma 달려있지 않지만 hit 가 어려움.
-        """
-        # 가장 가까운 path: rate_limit response 두 번 + attempt 0 만 retry → attempt 1 rate-limit
-        # but `attempt == 0` false 이므로 if 안 들어감 → continue 도 안 함 → output 비어 line 322 return.
-        # 따라서 line 337 직접 hit 는 불가. skip 하되 record.
-        pytest.skip(
-            "line 337 trailing return is unreachable defensive code "
-            "(attempt 1 rate_limit doesn't trigger continue, falls to output empty branch)"
-        )
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"rt_cd": "1", "msg_cd": "EGW00201", "output": {}}
+        get = MagicMock(return_value=response)
+        sleep = MagicMock()
+        monkeypatch.setattr(mod.requests, "get", get)
+        monkeypatch.setattr(mod.time, "sleep", sleep)
+        creds = mod.KISCredentials("k", "s", "", "", "prod")
+        assert mod.inquire_price_kr(creds, "T", "999999.KS") is None
+        assert get.call_count == 2
+        sleep.assert_called_once_with(mod.KIS_RATE_LIMIT_RETRY_DELAY_SEC)
+        assert all(call.kwargs["params"]["FID_INPUT_ISCD"] == "999999" for call in get.call_args_list)
 
     def test_safe_num_typeerror(self):
         """_safe_num: float() 가 TypeError → None (fundamental line 55-56)."""
@@ -1107,17 +1096,22 @@ class TestRemainingMisses:
         assert result == []
         assert any("KIS 토큰 발급 실패" in r.message for r in caplog.records)
 
-    def test_collect_no_yf_tickers_returns_kis_only(self, monkeypatch, db_with_portfolio):
-        """yf_tickers 가 빈 list 분기 — KR ticker 만 + yfinance 호출 차단으로 강제.
+    def test_collect_empty_universe_returns_before_fetching(self, monkeypatch, db_with_portfolio, caplog):
+        """빈 대상은 실제 early return 을 타며 어느 제공자도 호출하지 않는다."""
+        import yfinance as yf
 
-        실제 코드: yf_tickers = list(tickers). tickers 비면 line 171-173 에서 return.
-        line 202-204 분기 hit 시키려면 tickers 가 non-empty 인데 list(tickers) 가
-        empty 가 되어야 함 — Python list() 는 그렇게 안 됨. 따라서 dead code.
-        """
-        pytest.skip(
-            "line 203-204 unreachable: tickers non-empty → list(tickers) non-empty "
-            "(early-return at line 171-173 covers tickers==[] case)"
-        )
+        from nuri.collectors.fundamental import FundamentalCollector
+
+        collector = FundamentalCollector()
+        monkeypatch.setattr(collector, "_get_tickers", lambda **kw: [])
+        kis = MagicMock(side_effect=AssertionError("unexpected KIS request"))
+        yf_ticker = MagicMock(side_effect=AssertionError("unexpected yfinance request"))
+        monkeypatch.setattr(collector, "_collect_kr_via_kis", kis)
+        monkeypatch.setattr(yf, "Ticker", yf_ticker)
+        assert collector.collect(source="universe") == []
+        kis.assert_not_called()
+        yf_ticker.assert_not_called()
+        assert "수집할 종목이 없습니다" in caplog.text
 
 
 class TestMacroNewsBranches:
