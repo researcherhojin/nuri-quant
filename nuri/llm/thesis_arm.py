@@ -362,13 +362,13 @@ def run_arm_b(
 
     verdict: Optional[tc.Verdict] = None
     debate_view = tc.View(text="", values={}, hash="")
+    report_view, reports, history = tc.View(text="", values={}, hash=""), "", ""
     if not infra():
         pairs = [
             p for r in ANALYSTS if analysts[r].outcome == "ok" for p in _cited(analysts[r].result.claims, views[r])
         ]
         report_view = _pair_view(pairs)
         reports = _reports_text(analysts, views)
-        history = ""
         debate_pairs: list[tuple[str, str, Any]] = []
         for side in ("bull", "bear"):
             st = Stage(f"researcher:{side}")
@@ -448,6 +448,15 @@ def run_arm_b(
         "claims_rejected": sum(s.claims_rejected for s in stages),
         "masked_numbers": masked,
         "rendered": rendered,
+        # 모의 장부 팔 S(#1968)가 이어받는 것 — 정리된 보고서 · 토론 · 판정과 각자가 본 (ID, 필드, 값). 보관만 하고
+        # run_hash 에는 넣지 않는다(이미 묶인 입력 · 호출 해시에서 결정되는 값이다).
+        "handoff": {
+            "reports": reports,
+            "report_values": report_view.values,
+            "debate": history.strip(),
+            "debate_values": debate_view.values,
+            "verdict": verdict.model_dump(mode="json") if verdict is not None else None,
+        },
     }
     run["run_hash"] = tc._sha(
         {
@@ -470,10 +479,25 @@ ARMS = {"A": tc.run_baseline, "B": run_arm_b}
 def run_pair(
     ticker: str, packets: dict[str, Any], arms: tuple[str, ...], *, memory: str = "", **kw: Any
 ) -> list[dict[str, Any]]:
-    """한 번 받은 묶음으로 여러 팔을 돌린다 — 뉴스를 다시 받으면 다른 표본이 와서 짝이 깨진다. 기억은 B 만."""
-    return [
-        run_arm_b(ticker, packets, memory=memory, **kw) if a == "B" else ARMS[a](ticker, packets, **kw) for a in arms
-    ]
+    """한 번 받은 묶음으로 여러 팔을 돌린다 — 뉴스를 다시 받으면 다른 표본이 와서 짝이 깨진다. 기억은 B 만.
+
+    S(모의 장부, #1968)는 묶음이 아니라 같은 실행의 B 결과를 이어받는다 — B 없이 S 만 요청하면 거부한다.
+    """
+    if "S" in arms and "B" not in arms:
+        raise ValueError("arm S consumes arm B's run; run B in the same pair")
+    out: list[dict[str, Any]] = []
+    b_run: Optional[dict[str, Any]] = None
+    for a in arms:
+        if a == "B":
+            b_run = run_arm_b(ticker, packets, memory=memory, **kw)
+            out.append(b_run)
+        elif a != "S":
+            out.append(ARMS[a](ticker, packets, **kw))
+    if b_run is not None and "S" in arms:
+        from nuri.llm import thesis_sim  # S 가 이 모듈을 import 한다 — 순환을 함수 안에서 끊는다
+
+        out.append(thesis_sim.run_arm_s(ticker, b_run, cfg=kw.get("cfg"), session=kw.get("session")))
+    return out
 
 
 def _cutoff(packets: dict[str, Any]) -> datetime:

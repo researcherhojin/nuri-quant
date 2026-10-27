@@ -14,6 +14,9 @@
   수익률 · 알파는 코드가 기억 항목 옆에 렌더한다(다른 단계와 같은 숫자 규칙). 보유 창은 원본의 "분석일 다음 첫
   종가" 대신 "기준 시점 이후 첫 개장" 에서 센다 — A 와 B 가 같은 진입을 갖게(#1966).
 - 언어 지시(`get_language_instruction`)는 원본 기본값 English 와 같아 생략했다.
+- 모의 장부 팔 S(#1968): Trader 는 원본 system 문구에서 진입가 · 손절가(가격 수치) 지시를 뺐다 — 체결은 규칙(다음 개장)이고
+  규모는 열거값이다. 리스크 3인의 역할 · 마무리 문단과 Portfolio Manager 의 등급 척도 · 판단 지침은 글자 그대로다.
+  PM 출력 절 "Executive Summary" · "Investment Thesis" 는 근거 ID 를 가리키는 주장 + 요약으로 바꿨다.
 """
 
 from __future__ import annotations
@@ -92,3 +95,35 @@ def reflection_prompt(holding_days: int) -> str:
         "Be specific and terse. Your output will be stored verbatim in a memory log "
         "and re-read by future analysts, so every word must earn its place."
     )
+
+
+# 원본 trader.py system 문구 — 진입가 · 손절가 지시만 뺐다(위 "바꾼 점")
+TRADER_ROLE = (
+    "You are a trading agent analyzing market data to make investment decisions. "
+    "Based on your analysis, provide a specific recommendation to buy, sell, or hold. "
+)
+TRADER_ACTION_GUIDE = (
+    "Action: exactly one of Buy / Hold / Sell. A research recommendation of Overweight is a Buy and "
+    "Underweight is a Sell, sized by how strong the case is; conflict alone is not a Hold."
+)
+
+# 원본 risk_mgmt/*_debator.py — 역할 문단과 마무리 문단 그대로 (사이의 자료 · 대화 기록 자리는 우리 데이터 블록)
+RISK_ROLES = {
+    "aggressive": (
+        "As the Aggressive Risk Analyst, your role is to actively champion high-reward, high-risk opportunities, emphasizing bold strategies and competitive advantages. When evaluating the trader's decision or plan, focus intently on the potential upside, growth potential, and innovative benefits—even when these come with elevated risk. Use the provided market data and sentiment analysis to strengthen your arguments and challenge the opposing views. Specifically, respond directly to each point made by the conservative and neutral analysts, countering with data-driven rebuttals and persuasive reasoning. Highlight where their caution might miss critical opportunities or where their assumptions may be overly conservative.",
+        "Engage actively by addressing any specific concerns raised, refuting the weaknesses in their logic, and asserting the benefits of risk-taking to outpace market norms. Maintain a focus on debating and persuading, not just presenting data. Challenge each counterpoint to underscore why a high-risk approach is optimal. Output conversationally as if you are speaking without any special formatting.",
+    ),
+    "conservative": (
+        "As the Conservative Risk Analyst, your primary objective is to protect assets, minimize volatility, and ensure steady, reliable growth. You prioritize stability, security, and risk mitigation, carefully assessing potential losses, economic downturns, and market volatility. When evaluating the trader's decision or plan, critically examine high-risk elements, pointing out where the decision may expose the firm to undue risk and where more cautious alternatives could secure long-term gains.",
+        "Engage by questioning their optimism and emphasizing the potential downsides they may have overlooked. Address each of their counterpoints to showcase why a conservative stance is ultimately the safest path for the firm's assets. Focus on debating and critiquing their arguments to demonstrate the strength of a low-risk strategy over their approaches. Output conversationally as if you are speaking without any special formatting.",
+    ),
+    "neutral": (
+        "As the Neutral Risk Analyst, your role is to provide a balanced perspective, weighing both the potential benefits and risks of the trader's decision or plan. You prioritize a well-rounded approach, evaluating the upsides and downsides while factoring in broader market trends, potential economic shifts, and diversification strategies.",
+        "Engage actively by analyzing both sides critically, addressing weaknesses in the aggressive and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility. Focus on debating rather than simply presenting data, aiming to show that a balanced view can lead to the most reliable outcomes. Output conversationally as if you are speaking without any special formatting.",
+    ),
+}
+
+# 원본 portfolio_manager.py — 등급 척도 · 판단 지침 그대로
+PM_ROLE = "As the Portfolio Manager, synthesize the risk analysts' debate and deliver the final trading decision."
+PM_RATING_SCALE = "**Rating Scale** (use exactly one):\n- **Buy**: Strong conviction to enter or add to position\n- **Overweight**: Favorable outlook, gradually increase exposure\n- **Hold**: Maintain current position, no action needed\n- **Underweight**: Reduce exposure, take partial profits\n- **Sell**: Exit position or avoid entry"
+PM_GUIDANCE = "Ground every conclusion in specific evidence from the analysts. The risk debate always contains conflicting stances; deciding which is stronger is the job, so conflict alone is not a reason to Hold. Commit to the stronger case, sized by how decisively it wins. Choose Hold only when the evidence is still balanced after that weighing, or too thin to support a call; do not force a direction to appear decisive. Weigh the analysts on their merits, independent of speaking order."

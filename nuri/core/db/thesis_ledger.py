@@ -63,8 +63,8 @@ def record_run(
         cur = conn.execute(
             """INSERT INTO thesis_runs (experiment, batch_id, cohort_date, arm, arm_hash, ticker, cutoff, late, scored,
                    run_hash, packet_hashes, view_hash, prompt_hashes, call_hashes, runtime, canary_sha256, budget_tokens,
-                   rating, outcome, code_rev)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   rating, size, outcome, code_rev)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 experiment,
                 batch_id,
@@ -84,6 +84,7 @@ def record_run(
                 canary_sha256,
                 run["budget_tokens"],
                 run["rating"],
+                run.get("size"),
                 run["outcome"],
                 code_rev(),
             ),

@@ -162,6 +162,13 @@ class TestSealAndTamper:
             conn.execute("UPDATE thesis_runs SET arm_hash = 'other' WHERE cohort_date = '2026-10-02'")
         assert any("2026-10-02" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
+    def test_an_edited_size_is_caught(self, db_path):
+        """모의 장부 규모를 사후에 바꾸면 장부가 바뀐다 (#1968) — 봉인 필드다."""
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE thesis_runs SET size = 1.0 WHERE cohort_date = '2026-10-01'")
+        assert any("2026-10-01" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
+
     def test_an_edited_experiment_is_caught(self, db_path):
         """파일럿 행을 확증 실험으로 옮기면 잡힌다 (#1981)."""
         _sealed(db_path)

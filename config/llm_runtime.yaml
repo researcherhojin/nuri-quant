@@ -66,4 +66,9 @@ memory:
   early_closes: ["2026-11-27", "2026-12-24", "2027-11-26"]
   decision_chars: 1500
 
+# 모의 장부 팔 S (#1968) — 수치는 사전등록(E)에서 고정한다. 5세션 보유가 겹쳐 자본을 5 칸으로 나눈다.
+sim:
+  sleeves: 5
+  cost_bps_per_side: 10
+
 archive_dir: data/thesis_runtime
