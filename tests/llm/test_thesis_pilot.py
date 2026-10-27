@@ -81,8 +81,15 @@ def pre(world, pilot=PILOT, now=NOW):
 
 
 class TestConfig:
-    def test_the_tracked_config_ships_disabled(self):
-        assert tp.load_pilot(REPO / tp.PILOT_PATH) is None
+    def test_the_tracked_config_is_disabled_or_fully_frozen(self):
+        """켜져 있으면 그 실험의 동결 창이 있어야 하고, 돌릴 모든 팔이 그 창에 얼려 있어야 한다 — 아니면 러너가
+        매일 `not_frozen` 으로 거절해 파일럿이 조용히 빈다(경보는 오지만 하루 늦다)."""
+        pilot = tp.load_pilot(REPO / tp.PILOT_PATH)
+        if pilot is None:
+            return
+        windows = [f for f in tf.load(REPO / tf.FREEZE_PATH) if f.experiment == pilot.experiment]
+        assert windows, f"{pilot.experiment} 의 동결 창이 없다"
+        assert all(set(pilot.arms) <= set(f.arms) for f in windows), "돌릴 팔 중 얼리지 않은 것이 있다"
 
     def test_a_valid_config_loads(self, world):
         assert tp.load_pilot(world[0] / tp.PILOT_PATH) == PILOT
