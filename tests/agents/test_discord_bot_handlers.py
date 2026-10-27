@@ -13,12 +13,13 @@ call `interaction.response.defer()` / `interaction.followup.send()` and the
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 
-def _get_callback(tree, guild, name):
+def _get_callback(tree, guild, name) -> Any:
     """Find the registered slash command's callback by name."""
     for cmd in tree.get_commands(guild=guild):
         if cmd.name == name:
@@ -50,6 +51,7 @@ class TestSlashCommandHandlers:
         ix.followup.send = AsyncMock()
         ix.progress_thread = MagicMock()
         ix.progress_thread.send = AsyncMock()
+        ix.progress_thread.send.return_value.edit = AsyncMock()
         message = MagicMock()
         message.create_thread = AsyncMock(return_value=ix.progress_thread)
         ix.followup.send.return_value = message
@@ -90,7 +92,8 @@ class TestSlashCommandHandlers:
         assert runner.call_args.args[:2] == ("thesis-remote", "MSFT")
         ix.followup.send.assert_awaited_once()
         assert ix.progress_thread.send.await_count == 2
-        assert ix.progress_thread.send.await_args_list[0].args == ("종합 판정 · 완료",)
+        assert ix.progress_thread.send.return_value.edit.await_count == 2
+        assert "종합 판정" in ix.progress_thread.send.return_value.edit.await_args.kwargs["embed"].description
         assert "embed" in ix.progress_thread.send.await_args.kwargs
 
     def test_followup_without_guild_creates_thread_through_the_channel(self, bot_components):
@@ -111,7 +114,7 @@ class TestSlashCommandHandlers:
         ix.channel.create_thread.assert_awaited_once_with(
             name="Thesis · TEST", message=message, auto_archive_duration=60
         )
-        ix.progress_thread.send.assert_awaited_once()
+        assert ix.progress_thread.send.await_count == 2
 
     @pytest.mark.parametrize("rc", [0, 2])
     def test_thesis_embed_body_is_allowlisted_even_on_errors(self, bot_components, rc):
@@ -127,16 +130,12 @@ class TestSlashCommandHandlers:
             "error": "PRIVATE",
             "size": "PRIVATE",
         }
-        with (
-            patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(rc, value)),
-            patch("nuri.agents.discord.bot.build_status_embed", return_value={"title": "t"}) as embed,
-        ):
+        with patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(rc, value)):
             asyncio.run(callback(ix, "msft"))
-        body = embed.call_args.kwargs["body"]
-        assert "PRIVATE" not in body
-        assert embed.call_args.kwargs["fields"] == {"분석": "탐색용"}
-        assert ("판정: Hold" in body) if rc == 0 else ("완료하지 못했습니다" in body)
-        assert ix.progress_thread.send.await_count == 1
+        embed = ix.progress_thread.send.await_args.kwargs["embed"].to_dict()
+        assert "PRIVATE" not in str(embed)
+        assert "Hold" in str(embed) if rc == 0 else "완료하지 못했습니다" in embed["description"]
+        assert ix.progress_thread.send.await_count == 2
 
     @pytest.mark.parametrize("mode", ["exception", "invalid", "failed"])
     def test_thesis_failure_never_exposes_details(self, bot_components, mode):
@@ -152,14 +151,12 @@ class TestSlashCommandHandlers:
                 return 0, {"event": "result", "rating": "REVIEW", "outcome": "failed", "run_hash": "a" * 64}
             return 0, {"event": "unknown", "detail": "PRIVATE"}
 
-        with (
-            patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=fail),
-            patch("nuri.agents.discord.bot.build_status_embed", return_value={"title": "t"}) as embed,
-        ):
+        with patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=fail):
             asyncio.run(callback(ix, "TEST"))
-        assert embed.call_args.kwargs["success"] is False
-        assert "PRIVATE" not in str(embed.call_args)
-        assert ix.progress_thread.send.await_count == 1
+        embed = ix.progress_thread.send.await_args.kwargs["embed"].to_dict()
+        assert embed["color"] == 0xD16B6B
+        assert "PRIVATE" not in str(embed)
+        assert ix.progress_thread.send.await_count == 2
 
     def test_thesis_uses_an_existing_thread(self, bot_components):
         import discord
@@ -173,7 +170,7 @@ class TestSlashCommandHandlers:
         with patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(0, value)):
             asyncio.run(callback(ix, "TEST"))
         ix.followup.send.return_value.create_thread.assert_not_awaited()
-        ix.channel.send.assert_awaited_once()
+        assert ix.channel.send.await_count == 2
 
     @pytest.mark.parametrize("unsupported_channel", [False, True])
     def test_thread_failure_stops_before_the_model(self, bot_components, unsupported_channel):
@@ -260,3 +257,137 @@ class TestOnReadyEvent:
         # Patch logger.info to silence
         asyncio.run(on_ready())  # type: ignore[arg-type]
         sync_mock.assert_awaited_once_with(guild=guild)
+
+
+def test_thesis_edits_one_board_and_survives_discord_edit_failure(monkeypatch):
+    import discord
+
+    from nuri.agents.discord.bot import build_bot
+    from nuri.llm.thesis_events import STAGES
+
+    monkeypatch.setenv("DISCORD_GUILD_ID", "1234567890")
+    _, tree, guild = build_bot()
+    callback = _get_callback(tree, guild, "thesis")
+    ix = TestSlashCommandHandlers()._make_interaction()
+    response = MagicMock(status=404, reason="not found")
+    ix.progress_thread.send.return_value.edit.side_effect = discord.NotFound(response, "gone")
+
+    async def run(target, ticker, on_stage):
+        # 토큰 만료 후 followup 을 사용하면 실패하도록 만든다.
+        ix.followup.send.side_effect = AssertionError("expired interaction")
+        for stage in STAGES:
+            for status in ("started", "ok", "ok"):
+                await on_stage({"event": "stage", "stage": stage, "status": status})
+        return 0, {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
+
+    with patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=run):
+        asyncio.run(callback(ix, "TEST"))
+    assert ix.progress_thread.send.await_count == 2  # 상태표 + 최종 결과만
+    assert ix.progress_thread.send.return_value.edit.await_count == 15  # 중복 이벤트는 갱신하지 않음
+    assert ix.progress_thread.send.await_args.kwargs["embed"].color.value == 0x253649
+
+
+def test_thesis_progress_gaps_and_review_are_not_success():
+    from nuri.agents.discord.thesis_view import AMBER, BASE, RED, progress_embed, result_embed
+    from nuri.llm.thesis_events import STAGES
+
+    states = dict.fromkeys(STAGES, "ok")
+    value = {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
+    assert result_embed("TEST", states, 0, value)["color"] == BASE
+    states["analyst:news"] = "absent"
+    states["manager"] = "started"
+    del states["researcher:bear"]
+    board = progress_embed("TEST", states, finished=True)
+    assert all(s in board["description"] for s in ("근거 없음", "중단 · 완료 미확인", "미확인"))
+    assert result_embed("TEST", states, 0, value)["color"] == AMBER
+    review = value | {"rating": "REVIEW", "outcome": "review"}
+    assert "확정하지 못했습니다" in result_embed("TEST", states, 0, review)["description"]
+    assert result_embed("TEST", states, 1, value)["color"] == RED
+
+
+def _saved_report():
+    from nuri.llm.thesis_events import STAGES
+
+    return {
+        "run": {
+            "ticker": "TEST",
+            "run_hash": "a" * 64,
+            "rating": "Hold",
+            "outcome": "verdict",
+            "scored": False,
+            "rendered": "**Rating**: Hold\n- [bull] demand evidence\n- [bear] opposing evidence\n**Rationale**: <script>alert(1)</script>",
+            "stages": {s: {"outcome": "ok"} for s in STAGES},
+            "handoff": {"reports": "<img src=https://example.com/track>", "debate": "opposing argument"},
+        },
+        "packets": {
+            "ticker": {
+                "cutoff": "2026-10-28",
+                "sources": {"news": {"status": "absent"}},
+                "items": [{"id": "e1", "source": "test", "observed": "2026-10-27", "age_days": 1}],
+            }
+        },
+    }
+
+
+def test_local_report_escapes_untrusted_text_and_exposes_evidence():
+    from nuri.agents.discord.thesis_report import render
+
+    saved = _saved_report()
+    page = render(saved)
+    assert "<script>" not in page and "<img " not in page
+    assert "&lt;script&gt;" in page and "&lt;img " in page
+    assert "default-src 'none'" in page
+    assert all(
+        s in page for s in ("demand evidence", "opposing evidence", "opposing argument", "2026-10-27", "2026-10-28")
+    )
+    saved["run"]["scored"] = True
+    saved["run"]["outcome"] = "review_model"
+    saved["run"]["rendered"] = ""
+    saved["run"]["stages"] = {}
+    saved["packets"] = {}
+    page = render(saved)
+    assert "채점 실행 기록" in page and "미확정" in page and "저장된 근거 없음" in page
+    assert "7개 단계가 완료" not in page
+
+
+def test_local_report_opens_exact_archive_without_model_or_ledger(tmp_path, monkeypatch, capsys):
+    import json
+
+    from nuri.agents.discord import thesis_report as report
+
+    directory = tmp_path / "runs"
+    directory.mkdir()
+    saved = _saved_report()
+    source = directory / f"TEST-{'a' * 16}.json"
+    source.write_text(json.dumps(saved))
+    before = source.read_bytes()
+    monkeypatch.setattr(report, "load_config", lambda: {"archive_dir": str(tmp_path)})
+    with patch.object(report.webbrowser, "open") as browser:
+        assert report.main(["--ticker", "TEST", "--run", "a" * 16]) == 0
+        browser.assert_not_called()
+        assert report.main(["--ticker", "TEST", "--run", "a" * 64, "--open"]) == 0
+        browser.assert_called_once()
+    assert source.read_bytes() == before
+    assert source.with_suffix(".html").stat().st_mode & 0o777 == 0o600
+    assert report.main(["--ticker", "TEST", "--run", "b" * 16]) == 2
+    saved["run"]["run_hash"] = "a" * 16 + "b" * 48
+    source.write_text(json.dumps(saved))
+    assert report.main(["--ticker", "TEST", "--run", "a" * 64]) == 2
+    with pytest.raises(SystemExit):
+        report.main(["--ticker", "../TEST", "--run", "a" * 16])
+    assert "분석 파일을 읽을 수 없습니다" in capsys.readouterr().out
+
+
+def test_local_report_ignores_unknown_packet_metadata_and_handles_invalid_cli(monkeypatch):
+    import runpy
+    import sys
+
+    from nuri.agents.discord.thesis_report import render
+
+    saved = _saved_report()
+    saved["packets"]["unknown"] = "not a packet"
+    assert "not a packet" not in render(saved)
+    monkeypatch.setattr(sys, "argv", ["thesis-report", "--ticker", "bad!", "--run", "a" * 16])
+    with pytest.raises(SystemExit) as error:
+        runpy.run_module("nuri.agents.discord.thesis_report", run_name="__main__")
+    assert error.value.code == 2

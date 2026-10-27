@@ -169,7 +169,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 9,649 collected across 463 files |
+| Backend tests | 9,661 collected across 463 files |
 | Frontend test files | 117 vitest files |
 | Data collectors | 30 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 57 cron entries |
@@ -182,6 +182,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 |----------|----------|
 | [`docs/STRATEGY.md`](docs/STRATEGY.md) | Principles, decisions and investment rules (authoritative) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | System flow, runtime topology and schedule, database, configuration, CI/CD |
+| [`docs/THESIS_DISCORD.md`](docs/THESIS_DISCORD.md) | Discord analysis status, model ratings and private local evidence viewer |
 | [`docs/OVERVIEW.md`](docs/OVERVIEW.md) | The Overview dashboard: panels, data refresh, responsive layout and verification |
 | [`docs/RESEARCH_BRIEFING.md`](docs/RESEARCH_BRIEFING.md) | Ticker research, public briefing prompts, validation and known limitations |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | End-to-end setup from a fresh clone |
