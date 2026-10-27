@@ -74,8 +74,8 @@ RECOMMENDATIONS = Chain("recommendations", "recommendation_seals", "date", FIELD
 #: thesis 실험 원장 (#1962) — 동결. 정산 컬럼은 나중에 정당하게 쓰이므로 넣지 않는다(#1966 이 따로 더한다).
 #: v2 = v1 + `arm_hash`(#1963, migration 74), v3 = v2 + `cutoff` · `late`(#1966, migration 75). v1 · v2 로 봉인된 행은 없다 —
 #: 2026-10-27 운영 DB 에는 테이블조차 없었고 첫 채점 실행(F)은 이 migration 들이 모두 배포된 뒤다.
-#: v4 = v3 + `experiment` · `batch_id`(#1981, migration 76).
-THESIS_FIELDS_V4: tuple[str, ...] = (
+#: v4 = v3 + `experiment` · `batch_id`(#1981, migration 76), v5 = v4 + `size`(#1968, migration 77).
+THESIS_FIELDS_V5: tuple[str, ...] = (
     "id",
     "experiment",
     "batch_id",
@@ -95,12 +95,13 @@ THESIS_FIELDS_V4: tuple[str, ...] = (
     "canary_sha256",
     "budget_tokens",
     "rating",
+    "size",
     "outcome",
     "code_rev",
     # 기록 시각도 봉인한다 — "판정이 다음 개장 전에 기록됐다" 의 증거다(Codex 리뷰 2026-10-27)
     "recorded_at",
 )
-THESIS_RUNS = Chain("thesis_runs", "thesis_run_seals", "cohort_date", THESIS_FIELDS_V4, "thesis_v4")
+THESIS_RUNS = Chain("thesis_runs", "thesis_run_seals", "cohort_date", THESIS_FIELDS_V5, "thesis_v5")
 CHAINS = {"recommendations": RECOMMENDATIONS, "thesis_runs": THESIS_RUNS}
 
 

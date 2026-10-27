@@ -2338,4 +2338,13 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
     """,
     ),
+    (
+        77,
+        "thesis_runs.size — 모의 장부 팔 S 의 규모 (#1968)",
+        # S 의 최종 규모(−1 · −0.5 · 0 · 0.5 · 1). 판정과 함께 봉인한다(thesis_v5) — 규모를 사후에 바꾸면 장부가 바뀐다.
+        # 다른 팔은 NULL. 첫 채점 행은 파일럿이 쓰므로 그 전에는 봉인이 없다.
+        """
+        ALTER TABLE thesis_runs ADD COLUMN size REAL;
+    """,
+    ),
 ]
