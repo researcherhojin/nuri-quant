@@ -145,7 +145,10 @@ open_thesis_batches() {
     [ -f "$db" ] || { echo 0; return; }
     command -v sqlite3 >/dev/null 2>&1 || { echo "no-cli"; return; }
     # 표 이름은 문장 준비 시점에 확인되므로(CASE 로 감싸도 "no such table") 존재 확인을 따로 한다.
-    q() { sqlite3 -readonly -cmd ".timeout 5000" "$db" "$1" 2>&1; }
+    # -readonly · mode=ro 로 열지 않는다(#1995): mini 의 Apple sqlite3 3.51 은 연결이 하나도 없어 -wal/-shm 이
+    # 지워진 WAL DB 를 읽기 전용으로 열지 못하고(code 14) 보류가 된다 — 배포가 무작위로 막힌다. 보통으로 열어
+    # -shm 을 만들 수 있게 하고, 쓰기는 PRAGMA query_only 로 막는다(sqlite.org/pragma.html#pragma_query_only).
+    q() { sqlite3 -cmd ".timeout 5000" -cmd "PRAGMA query_only = ON;" "$db" "$1" 2>&1; }
     out=$(q "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'thesis_batches';") \
         || { echo "unreadable: ${out:0:120}"; return; }
     [ "$out" = "0" ] && { echo 0; return; }

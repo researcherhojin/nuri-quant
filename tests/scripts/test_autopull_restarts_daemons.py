@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -468,6 +469,59 @@ class TestAutopullDefersForAnOpenThesisBatch:
         world.run()
         assert not (world.work / "nuri" / "core" / "rules.py").exists()
         assert "database is locked" in world.autopull_log()
+
+    @staticmethod
+    def _mini_sqlite(world) -> Path:
+        """mini 의 Apple sqlite3 3.51 처럼 — -wal/-shm 이 없을 때 읽기 전용 열기는 code 14 로 실패한다 (#1995).
+        그 밖에는 진짜 CLI 로 넘기고, 받은 인자를 한 줄씩 남긴다."""
+        real = shutil.which("sqlite3")
+        assert real, "sqlite3 CLI 가 없다"
+        stub = world.work.parent / "bin" / "sqlite3"
+        argv_log = world.work.parent / "sqlite3_argv"
+        stub.write_text(
+            "#!/bin/bash\n"
+            f'printf "%s\\0" "$@" >> "{argv_log}"; printf "\\n" >> "{argv_log}"\n'
+            'for a in "$@"; do case "$a" in -readonly|*mode=ro*) ro=1 ;; *.db) db="$a" ;; esac; done\n'
+            'if [ -n "$ro" ] && [ ! -e "$db-shm" ]; then\n'
+            '  echo "Error: in prepare, unable to open database file (14)" >&2; exit 1\n'
+            "fi\n"
+            f'exec "{real}" "$@"\n'
+        )
+        stub.chmod(0o755)
+        return argv_log
+
+    @pytest.mark.parametrize(("status", "deploys"), [("open", False), ("ok", True)])
+    def test_a_wal_db_with_no_open_connection_is_still_read(self, world, status, deploys):
+        """연결이 모두 닫혀 -wal/-shm 이 없는 WAL DB — 읽지 못한다고 보류하면 배포가 무작위로 막힌다 (#1995)."""
+        self._db(world, status)
+        db = world.work / "data" / "portfolio.db"
+        # conftest 가 테스트 DB 를 MEMORY 저널로 만든다 — 운영처럼 WAL 로 바꾸고, 연결이 닫혀 사이드카가 없는 상태로
+        sqlite3 = shutil.which("sqlite3")
+        assert sqlite3
+        mode = subprocess.run([sqlite3, str(db), "PRAGMA journal_mode=WAL;"], capture_output=True, text=True)
+        assert mode.stdout.strip() == "wal"
+        assert not Path(f"{db}-shm").exists() and not Path(f"{db}-wal").exists()
+        self._mini_sqlite(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run()
+        assert (world.work / "nuri" / "core" / "rules.py").exists() is deploys
+        assert "unreadable" not in world.autopull_log()
+
+    def test_the_guard_connection_refuses_writes(self, world):
+        """읽기 전용 플래그 대신 query_only — 가드가 쓴 그대로의 인자로 INSERT 를 보내면 거부돼야 한다."""
+        self._db(world, "ok")
+        argv_log = self._mini_sqlite(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run()
+        argv = argv_log.read_text().splitlines()[0].split("\0")[:-1]
+        argv[-1] = (
+            "INSERT INTO thesis_batches (batch_id, experiment, started_at, canary_start, status) "
+            "VALUES ('x', 'p', 's', 'c', 'open');"
+        )
+        sqlite3 = shutil.which("sqlite3")
+        assert sqlite3
+        r = subprocess.run([sqlite3, *argv], capture_output=True, text=True)
+        assert r.returncode != 0 and "readonly" in r.stderr, r.stderr
 
     @pytest.mark.parametrize("hours", ["oops", "-1", "0", "100", "6 hours')) OR 1=1; --"])
     def test_an_invalid_cap_falls_back_to_six_hours(self, world, hours):
