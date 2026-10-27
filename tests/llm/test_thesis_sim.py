@@ -13,6 +13,7 @@ import requests
 from nuri.core.db import get_db, init_db
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_arm as arm
+from nuri.llm import thesis_freeze as tf
 from nuri.llm import thesis_sim as sim
 from nuri.llm.tradingagents.prompts import PM_ROLE, RISK_ROLES, TRADER_ROLE
 
@@ -212,6 +213,13 @@ class TestPairing:
         )
         out = arm.run_pair("T0", {}, ("B", "S"), cfg=dict(CFG))
         assert calls == ["B", ("S", "bh")] and [r.get("arm") for r in out] == [None, "S"]
+
+    def test_the_freeze_guard_hashes_what_the_run_records(self, monkeypatch):
+        # 동결 가드(#1990)가 원장과 다른 것을 해시하면 영원히 통과한다
+        rich = {"stage_prompt_budget_tokens": 1000, "model": "m", "memory": {"same_ticker": 5}, "sim": {"sleeves": 5}}
+        monkeypatch.setattr(lc, "generate", Fake())
+        s = sim.run_arm_s("T0", b_run(), cfg=rich)
+        assert s["arm_hash"] == tf.current_hashes(rich)["S"]
 
     def test_s_without_b_is_refused(self):
         with pytest.raises(ValueError, match="consumes arm B"):

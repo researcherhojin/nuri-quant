@@ -1,0 +1,15 @@
+# 실험 창 동안 팔 정의 지문을 얼린다 (#1990). 가드: nuri/llm/thesis_freeze.py · tests/llm/test_thesis_freeze.py
+#
+# 오늘(KST)이 어떤 창 안(양 끝 포함)이고 그 창에 적은 팔의 지문이 지금 계산한 값과 다르면 fast 테스트가 실패한다
+# — 동작 파일 · config/llm_runtime.yaml 을 바꾸는 머지가 수집 중인 실험을 조용히 새 실험으로 바꾸지 못하게.
+# 창을 여닫는 것도 이 파일의 편집이다(리뷰 대상). 현재 지문: `.venv/bin/python -m nuri.llm.thesis_freeze`
+#
+# 형식(키는 정확히 이 넷, 날짜는 따옴표 없이):
+#   freezes:
+#     - experiment: <ledger 의 experiment 태그>
+#       start: 2026-11-02
+#       end: 2026-11-20
+#       arms: {A: <64 hex>, B: <64 hex>, S: <64 hex>}   # A · B · S 중 얼릴 것만
+#
+# 창은 파일럿(#1964)과 사전등록(E)이 정한다.
+freezes: []

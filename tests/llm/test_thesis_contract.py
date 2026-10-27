@@ -10,6 +10,7 @@ import pytest
 
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_contract as tc
+from nuri.llm import thesis_freeze as tf
 
 
 def _packet(kind, items, ticker="T0"):
@@ -432,6 +433,12 @@ class TestDefinitionHash:
         # B 전용 문구만 바뀌면 A 의 지문은 그대로다
         (dst / "tradingagents/prompts.py").write_bytes(b"BULL_KEY_POINTS = 'changed'\n")
         assert tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS) == base
+
+    def test_the_freeze_guard_hashes_what_the_run_records(self, monkeypatch, packets):
+        # 동결 가드(#1990)가 원장과 다른 것을 해시하면 영원히 통과한다
+        rich = {"stage_prompt_budget_tokens": 1000, "model": "m", "memory": {"same_ticker": 5}, "sim": {"sleeves": 5}}
+        a, _ = _run(monkeypatch, packets, rich, [verdict()])
+        assert a["arm_hash"] == tf.current_hashes(rich)["A"]
 
     def test_the_run_records_and_binds_it(self, monkeypatch, packets, cfg):
         a, _ = _run(monkeypatch, packets, cfg, [verdict()])
