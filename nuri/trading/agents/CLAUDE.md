@@ -2,7 +2,7 @@
 
 ## Architecture
 
-10 specialist agents with weighted voting. Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Weights live in `consensus/registry.py:DEFAULT_WEIGHTS` (sum = 1.0).
+10 specialist slots with weighted voting from eligible verdicts; the retired retail slot always abstains (#1979). Config in `config/agents.yaml`, loaded via `nuri/core/agent_config.py`. Weights live in `consensus/registry.py:DEFAULT_WEIGHTS` (sum = 1.0).
 
 ## BaseAgent Contract
 
@@ -18,7 +18,7 @@ Not every agent runs meaningfully on every ticker. Earlier docs framed this as "
 | **Specialized by ticker type** | korean_market (KR only), crypto (crypto only) | 0.123 | Returns low-conf HOLD outside specialization by design — this is correct behavior, not a bug |
 | **Retired input / compatibility slot** | retail | 0.05 (reserved, no vote) | Reddit source retired (#1979); always HOLD/0 with `abstained=True`, without reading historical rows |
 
-Live probe (2026-04-17):
+Historical probe (2026-04-17, before Reddit retirement; not current verdict examples):
 
 - `TSLA` → 10/10 agents return real reasoning (smart_money, technical = BUY; fundamental = SELL; rest = HOLD with varied context). Consensus BUY @ 39 conf, 20% agreement.
 - `005930.KS` → korean_market activates (20-day momentum + institutional flows), retail/crypto dormant by design. Consensus HOLD @ 62 conf, 90% agreement.

@@ -2,7 +2,7 @@
 
 *English (official) edition: [../RESEARCH_BRIEFING.md](../RESEARCH_BRIEFING.md)*
 
-기준일: 2026-10-08. 이 문서가 설명하는 구현은 `main` 에 머지돼 있다.
+기준일: 2026-10-28. 이 문서가 설명하는 구현은 `main` 에 머지돼 있다.
 투자 규칙과 외부 송신 정책의 정본은 [STRATEGY](STRATEGY.md), 실행 구조는 [ARCHITECTURE](ARCHITECTURE.md)다.
 
 ## 화면과 데이터의 경계
@@ -87,6 +87,43 @@ v9는 단순 항목 나열을 줄이고 근거에서 실적·비용·현금흐�
 - `tests/api/test_ticker_research.py`: 저장·조회·작업 상태
 - `frontend/src/__tests__/pages/public-briefing.test.tsx`: 기업·펀드 공통 본문 계약
 - `frontend/e2e/ticker-preview.spec.ts`: 실제 상세 화면과 이동 경로
+
+## 로컬 thesis 모드
+
+비공개 맥락의 thesis 분석은 위 공개 브리핑 흐름과 별개다.
+아래 진입점은 출력 계약과 채점 목적이 서로 다르다.
+
+| 모드 | 진입점 | 런타임과 출력 |
+|---|---|---|
+| 기존 질의응답 | `make thesis ticker=TEST`, `/nuri-thesis` | `thesis_query.py` → `llm_consult.py --local-only`; 기본 로컬 Strata, 비공개 Markdown archive |
+| Discord 대화형 | `/thesis ticker:TEST` → `make thesis-remote` | Mini 가 개발 호스트의 `make thesis-progress` 로 위임; 로컬 Ollama B 팔, unscored, 진행 스레드와 허용 목록 최종 카드 |
+| 정시 파일럿 | `thesis_pilot` scheduler job | 운영 호스트의 로컬 채점 실행, 고정 소스 트리와 실험 가드; 운영 thesis 원장 |
+| 리포트와 회고 교훈 | `report.py` Ollama 백엔드 | 로컬 Ollama; 요청에 `config/llm_runtime.yaml` 의 `report.num_ctx` 를 명시(#1960) |
+
+대화형 핸들러는 즉시 defer 하고 분석가·강세/약세 연구자·종합 판정 단계를 스레드에 게시한다.
+subprocess 제한은 `config/llm_runtime.yaml` 의 `interactive.timeout_s`(현재 3,600초)다.
+최종 카드는 만료되는 interaction token 대신 봇 자격으로 전송한다. 검증된 판정·완료/검토 상태·짧은 run hash 만
+탐색용 표시와 함께 담고, 단계 문구는 고정된 이름과 상태만 사용한다.
+원문 논거·보유 맥락·오류 상세는 `data/thesis_runtime/` 아래 로컬 archive 에만 남는다.
+대화형 실행은 채점 thesis 원장을 쓰거나 합의 판정을 바꾸지 않는다(#1965).
+
+보내는 Mini 와 받는 개발 호스트의 checkout 모두 새 target 을 포함해야 한다.
+받는 checkout 에서 `make -n thesis-progress ticker=TEST` 로 추론 없이 target 유무를 확인할 수 있다.
+`thesis_remote.sh` 는 최신 replica DB 를 고르지만 replica 가 없으면 경고 후 개발 DB 로 fallback 한다.
+따라서 실행 완료만으로 자료의 신선도를 입증할 수 없다.
+
+로컬 client 는 생성 전에 loopback endpoint·로컬 모델 식별·등록 런타임·prompt budget 을 검증한다.
+loopback 주소만으로 로컬 실행이 보장되지는 않는다. 모델 가드는 remote/cloud 또는 미등록 모델을 거부한다.
+외부 모델 fallback 은 없다. 파일럿 활성화는 `config/thesis_pilot.yaml`, 선언 지문은
+`config/thesis_freeze.yaml`, 스케줄은 `nuri/scheduler.py` 가 정본이다. 선언된 팔·런타임 변경은 문서 수정이 아니다.
+파일럿 설정이나 리허설 통과가 정시 실행을 입증하지는 않는다. 운영 원장을
+`NURI_ROLE=production .venv/bin/python -m nuri.llm.thesis_pilot_ops report` 로 확인한다.
+프로토콜 선택·표본·결과는 비공개로 유지한다. 분석 진입점은 `python -m nuri.llm.thesis_dates --help` 이며,
+인자는 임의 효과크기 대신 별도로 사전등록한 프로토콜을 따라야 한다.
+
+회귀 검증: `tests/agents/test_discord_bot_handlers.py`, `tests/agents/test_thesis_stream.py`,
+`tests/llm/test_thesis_interactive.py`, `tests/llm/test_local_model_guard.py`, `tests/llm/test_thesis_freeze.py`,
+`tests/llm/test_thesis_pilot.py`. 소프트웨어 완료와 투자 효과 검증은 별개다.
 
 ## 검증 기록
 

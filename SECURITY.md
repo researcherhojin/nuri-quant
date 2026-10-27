@@ -139,6 +139,11 @@ External LLM use is governed by a per-data-tier whitelist (updated
   [#1944](https://github.com/researcherhojin/nuri-quant/pull/1944)). When the
   local model cannot answer, the run fails rather than falling back.
   Other developer CLI entry points are not covered by this enforcement.
+- Discord `/thesis` uses the separate unscored local B-arm path through
+  `nuri/llm/local_client.py`. The model guard rejects cloud/remote and unlisted
+  models even on loopback endpoints. Progress and final cards are rebuilt from
+  an allowlist; holdings-aware reasoning and error details remain in local archives.
+  See [local thesis modes](docs/RESEARCH_BRIEFING.md#local-thesis-modes).
 - Outputs from `nuri/llm/report.py` are validated for hallucinations:
   numbers not present in the input data are flagged before the report
   is surfaced.

@@ -73,7 +73,7 @@ flowchart LR
 |-------|---------|------|
 | **Collect** | `nuri/collectors` | Collects prices, fundamentals, macroeconomic data and news |
 | **Analyze** | `nuri/analysis` | Analyzes portfolio risk and sector exposure; the daily `factors` job computes factor scores |
-| **Consensus** | `nuri/trading/agents` | Combines the weighted verdicts of 10 rule-based specialist agents per holding, subject to a risk veto |
+| **Consensus** | `nuri/trading/agents` | Combines eligible specialist verdicts per holding, subject to a risk veto; the 10-slot registry retains a retired, always-abstaining retail slot |
 | **Decide** | `nuri/trading/engine` | Records each consensus decision with its market context and price levels |
 | **Track** | `nuri/trading/recommend` | Measures recommendation outcomes at horizons from 7 to 90 days |
 
@@ -112,6 +112,8 @@ make help           # list all targets
 ```
 
 `make full-scan` ends by sending a summary to Discord when `DISCORD_WEBHOOK_URL` is set, and to Telegram when both `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set; leave them unset on a development machine so that only the production host posts.
+
+Discord `/thesis` runs an unscored, local-model analysis with stage progress and an allowlisted final card. It is separate from both public briefing generation and the scheduled research pilot; see [local thesis modes](docs/RESEARCH_BRIEFING.md#local-thesis-modes).
 
 Investment rules and thresholds live in [`config/`](config/) (mainly `rules.yaml`); their rationale is in [`docs/STRATEGY.md`](docs/STRATEGY.md). Optional LLM features and their data-egress rules are described in §4.4.3 of the same document.
 

@@ -2,7 +2,7 @@
 
 *Korean edition: [ko/RESEARCH_BRIEFING.md](ko/RESEARCH_BRIEFING.md)*
 
-As of: 2026-10-08. The implementation it describes is merged into `main`.
+As of: 2026-10-28. The implementation it describes is merged into `main`.
 The canonical source for investment rules and the external egress policy is [STRATEGY](STRATEGY.md); for the runtime structure, it is [ARCHITECTURE](ARCHITECTURE.md).
 
 ## Screen and data boundaries
@@ -87,6 +87,43 @@ Related regression tests:
 - `tests/api/test_ticker_research.py`: storage, reads and job status
 - `frontend/src/__tests__/pages/public-briefing.test.tsx`: the shared body contract for companies and funds
 - `frontend/e2e/ticker-preview.spec.ts`: the real detail screen and navigation paths
+
+## Local thesis modes
+
+Private-context thesis analysis is separate from the public briefing flow above.
+These entry points share neither an output contract nor a scoring purpose:
+
+| Mode | Entry point | Runtime and output |
+|---|---|---|
+| Legacy question and answer | `make thesis ticker=TEST`, `/nuri-thesis` | `thesis_query.py` → `llm_consult.py --local-only`; local Strata by default, private Markdown archive |
+| Discord interactive | `/thesis ticker:TEST` → `make thesis-remote` | Mini delegates to the development host's `make thesis-progress`; local Ollama B arm, unscored, progress thread and allowlisted final card |
+| Scheduled pilot | `thesis_pilot` scheduler job | Scored local execution on the production host, pinned source tree and experiment guard; production thesis ledger |
+| Report and retro lessons | `report.py` Ollama backend | Local Ollama; the request explicitly uses `report.num_ctx` from `config/llm_runtime.yaml` (#1960) |
+
+The interactive handler defers immediately and posts the analyst, bull/bear researcher and manager stages in a thread.
+Its subprocess budget is `interactive.timeout_s` in `config/llm_runtime.yaml` (currently 3,600 seconds).
+The final card uses bot credentials rather than the expiring interaction token. Only the validated rating,
+completion/review state and shortened run hash appear with the exploratory label; stage text uses fixed labels and statuses.
+Raw reasoning, holdings-aware text and error details stay in local archives under `data/thesis_runtime/`.
+Interactive execution does not write the scored thesis ledger or change consensus decisions (#1965).
+
+Both the sending Mini checkout and the receiving development checkout must contain the new targets.
+On the receiving checkout, `make -n thesis-progress ticker=TEST` checks target availability without inference.
+`thesis_remote.sh` selects the newest replica DB, but warns and falls back to the development DB if no replica exists;
+a completed run alone therefore does not establish data freshness.
+
+The local client validates the loopback endpoint, local model identity, registered runtime and prompt budget before generation.
+A loopback address alone does not establish local execution: the model guard rejects remote/cloud or unlisted models.
+There is no external-model fallback. Pilot enablement is in `config/thesis_pilot.yaml`, declared fingerprints are in
+`config/thesis_freeze.yaml`, and scheduling is in `nuri/scheduler.py`. Changing a declared arm/runtime is not a documentation fix.
+Pilot configuration or a passing rehearsal does not prove that a scheduled night ran; inspect the production ledger with
+`NURI_ROLE=production .venv/bin/python -m nuri.llm.thesis_pilot_ops report`.
+Protocol choices, samples and results remain private. The analysis entry point is `python -m nuri.llm.thesis_dates --help`;
+its arguments must follow the separately registered protocol, not an improvised effect size.
+
+Regression coverage: `tests/agents/test_discord_bot_handlers.py`, `tests/agents/test_thesis_stream.py`,
+`tests/llm/test_thesis_interactive.py`, `tests/llm/test_local_model_guard.py`, `tests/llm/test_thesis_freeze.py`
+and `tests/llm/test_thesis_pilot.py`. Software completion is distinct from investment-effect validation.
 
 ## Verification record
 

@@ -8,6 +8,12 @@ Collector classes inherit `BaseCollector` (`base.py`) — every one the schedule
 2. Implement `save(data) -> int` — persist to DB via `nuri/core/db/` package functions
 3. External code calls `run()` which does `collect()` → `save()` with logging and timing
 
+## Retired Reddit input (#1979)
+
+The Arctic Shift Reddit collector and its manual/scheduled entry points are removed.
+Historical `macro.wsb_*` rows are retained but the retail agent does not read them.
+**Test:** `tests/collectors/test_reddit.py::test_reddit_has_no_scheduled_or_manual_collection_route` + `tests/trading/agents/test_retail.py::test_historical_reddit_data_cannot_vote`.
+
 ## Manual SEC evidence helper (`sec_research.py`, #1887)
 
 `sec_research` is an isolated function-based helper, not a scheduled collector.
