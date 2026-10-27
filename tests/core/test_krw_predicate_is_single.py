@@ -156,15 +156,14 @@ class TestCurrencySitesUseThePredicate:
         where = f"{rel}::{func}" if func else rel
         assert counts["is_krw_holding"] >= 1, f"{where}: 정본 술어를 호출하지 않는다"
 
-    @pytest.mark.parametrize(("rel", "func"), CONVERSION_SITES)
+    # 시장 질문이 섞인 두 파일은 위 술어 호출 검사만 적용한다. 해당 없는 조합은 수집하지 않는다.
+    @pytest.mark.parametrize(("rel", "func"), [(r, f) for r, f in CONVERSION_SITES if f is not None])
     def test_no_conversion_site_still_asks_only_the_suffix(self, rel, func):
         """환산 함수 안에 `is_kr_ticker` 직접 호출이 남아 있으면 술어가 갈린 것이다.
 
         Mutation lock: 어느 환산 분기든 `is_kr_ticker(...)` 로 되돌리면 FAIL — 파일
         어딘가의 무관한 호출로는 우회되지 않는다 (함수 스코프).
         """
-        if func is None:
-            pytest.skip("같은 함수 안에서 시장 질문도 하는 곳 — 위 CONVERSION_SITES 주석 참조")
         counts = _calls_in(rel, func)
         assert counts["is_kr_ticker"] == 0, (
             f"{rel}::{func}: 환산 함수 안에서 접미사 단독 판정을 쓴다 "

@@ -302,14 +302,31 @@ class TestMeanReversionFullBranches:
         # entry_price must equal close (a real number, not NaN)
         assert s.entry_price > 0
 
-    def test_zero_std_z_score_zero(self, basic_db):
-        """Line 71-72: std20==0 → z_score=0 fallback. Hard to hit with real data
-        but verify division-guard: if all prices identical at break point, std=0."""
-        # Skip — requires synthetic guard hit; covered by other test exercising the line via std>0 path.
-        # Documented: std==0 fallback only fires when all 20 prior prices are identical AND BB lower
-        # break occurs simultaneously, which is mathematically impossible (BB lower = SMA - 2*std = SMA
-        # when std=0, so close < SMA never breaks lower). Defensive code; lock by assertion above.
-        pytest.skip("std==0 path is unreachable when BB lower break occurs; defensive guard documented.")
+    def test_flat_prices_cannot_emit_a_lower_band_break(self, basic_db):
+        """표준편차 0 의 실제 시계열은 하단 이탈 신호를 만들지 않는다."""
+        from nuri.trading.strategy.mean_reversion import scan_mean_reversion
+
+        dates = pd.bdate_range("2025-01-02", periods=60)
+        prices = pd.DataFrame(
+            {
+                "ticker": "FLATTEST",
+                "date": dates.strftime("%Y-%m-%d"),
+                "open": 100.0,
+                "high": 100.0,
+                "low": 100.0,
+                "close": 100.0,
+                "volume": 1000,
+                "adj_close": 100.0,
+            }
+        )
+        upsert_prices(prices, basic_db)
+        with get_db(basic_db) as conn:
+            conn.execute(
+                "INSERT INTO portfolio (account, ticker, quantity, avg_price, currency) VALUES (?, ?, ?, ?, ?)",
+                ("test", "FLATTEST", 10, 100.0, "USD"),
+            )
+        assert prices["close"].rolling(20).std().iloc[-1] == 0
+        assert scan_mean_reversion(db_path=basic_db) == []
 
     def test_scan_skips_ticker_with_insufficient_history(self, basic_db):
         """Line 47-48: portfolio ticker exists but < 30 price rows → continue.

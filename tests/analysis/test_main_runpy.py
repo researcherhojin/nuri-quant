@@ -6,8 +6,6 @@ Each test patches DB-dependent leaf functions to keep main() fast + deterministi
 
 from __future__ import annotations
 
-import pytest
-
 
 class TestChartsMain:
     def test_charts_main_help_when_no_flags(self, db_path, capsys):
@@ -34,12 +32,22 @@ class TestChartsMain:
 
 
 class TestEvidenceChartsMain:
-    def test_evidence_charts_main_empty_db(self, db_path, monkeypatch):
-        """evidence_charts main exists; with empty DB → no-op no raise."""
-        # evidence_charts.py 는 다른 패치에서 다룸 — 본 모듈의 __main__ 은
-        # 본 task 범주(scope) 외 (charts.py만 refactor 했으므로).
-        # 이 placeholder 는 future-proofing 용으로만 유지.
-        pytest.skip("evidence_charts not refactored in this PR scope")
+    def test_evidence_charts_main_empty_db(self, db_path, tmp_path, capsys):
+        """빈 격리 DB 로 CLI 를 실행해 데이터 없는 차트의 HTML 을 실제로 쓴다."""
+        from nuri.analysis import evidence_charts
+        from nuri.core.timezone import today_kst
+
+        assert evidence_charts.main(["--output-root", str(tmp_path)]) == 0
+        files = list((tmp_path / today_kst() / "evidence").glob("*.html"))
+        # SPY 가 없는 레짐 차트는 현재 경로만 반환한다. 나머지 네 차트는 빈 안내 HTML 을 쓴다.
+        assert {f.name for f in files} == {
+            "portfolio_heatmap.html",
+            "signal_performance.html",
+            "fear_greed.html",
+            "sell_evidence.html",
+        }
+        assert all("<html>" in f.read_text() for f in files)
+        assert "증거 차트 생성 완료:" in capsys.readouterr().out
 
 
 class TestRebalanceAdvisorMain:
