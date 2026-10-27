@@ -70,15 +70,12 @@ def test_neither_module_imports_the_db_layer():
 
 
 class TestFetchTime:
-    @pytest.mark.parametrize(
-        ("micro", "want"), [(0, "2026-03-09 23:59:59"), (1, "2026-03-10 00:00:00"), (999999, "2026-03-10 00:00:00")]
-    )
-    def test_the_fetch_time_is_rounded_up_so_a_sub_second_late_fetch_cannot_pass(self, monkeypatch, micro, want):
+    def test_the_fetch_time_keeps_microseconds(self, monkeypatch):
         from datetime import datetime, timedelta, timezone
 
         kst = timezone(timedelta(hours=9))
-        monkeypatch.setattr(live_news, "kst_now", lambda: datetime(2026, 3, 10, 8, 59, 59, micro, tzinfo=kst))
-        assert live_news._now_utc() == want
+        monkeypatch.setattr(live_news, "kst_now", lambda: datetime(2026, 3, 10, 8, 59, 59, 7, tzinfo=kst))
+        assert live_news._now_utc() == "2026-03-09 23:59:59.000007"
 
 
 class TestExtractArticleData:
@@ -142,7 +139,7 @@ class TestFetch:
         got = live_news.fetch("AAA")
         assert got["status"] == "ok" and [a["link"] for a in got["articles"]] == ["https://x/1"]
         assert seen == [("AAA", live_news.NEWS_COUNT)]
-        assert len(got["fetched_at"]) == 19
+        assert len(got["fetched_at"]) == len("2026-03-10 00:00:00.000000")
 
     def test_zero_tagged_is_ok_but_no_answer_is_failed(self, monkeypatch):
         stub_search(monkeypatch, SimpleNamespace(news=[], quotes=[{"symbol": "AAA"}]))

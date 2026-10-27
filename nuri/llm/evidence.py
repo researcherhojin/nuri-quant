@@ -280,6 +280,11 @@ def _ticker_source(
     return status, items
 
 
+def _utc_time(text: str) -> datetime:
+    """UTC 로 적힌 "YYYY-MM-DD HH:MM:SS[.ffffff]" → aware datetime."""
+    return datetime.fromisoformat(text).replace(tzinfo=timezone.utc)
+
+
 def _ticker_news(
     news: Optional[dict[str, Any]], ticker: str, c: datetime, cfg: dict[str, Any]
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -297,18 +302,19 @@ def _ticker_news(
         return info, []
     if news["ticker"] != ticker:
         raise ValueError(f"news fetched for {news['ticker']}, packet is for {ticker}")
-    # strftime 은 초 미만을 버린다(내림). live_news 는 조회 시각을 올려 적으므로 둘을 비교하면 보수적이다.
-    utc = c.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    if news["fetched_at"] > utc:
-        raise ValueError(f"news fetched at {news['fetched_at']} UTC, after the cutoff {utc} UTC")
+    # 문자열이 아니라 aware datetime 으로 비교한다 — 초 단위로 자르면 같은 초의 조회가 거부되거나 통과한다 (#1973)
+    if _utc_time(news["fetched_at"]) > c:
+        raise ValueError(f"news fetched at {news['fetched_at']} UTC, after the cutoff {c.isoformat()}")
     info["fetched_at"] = news["fetched_at"]
     info["status"] = news["status"]
     if news["status"] != "ok":
         if news.get("reason"):
             info["reason"] = news["reason"]
         return info, []
-    oldest = (c - timedelta(days=int(cfg["lookback_days"]))).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    window = {a["link"]: a for a in news["articles"] if a["pub_date"] is not None and oldest < a["pub_date"] <= utc}
+    oldest = c - timedelta(days=int(cfg["lookback_days"]))
+    window = {
+        a["link"]: a for a in news["articles"] if a["pub_date"] is not None and oldest < _utc_time(a["pub_date"]) <= c
+    }
     kept = sorted(
         window.values(),
         key=lambda a: (a["pub_date"], a["link"]),
@@ -323,7 +329,7 @@ def _ticker_news(
             "source": "ticker_news",
             "observed": a["pub_date"],
             # 시각끼리 뺀다 — KST 기준일에서 UTC 날짜를 빼면 몇 분 전 기사가 하루 묵은 것으로 나온다
-            "age_days": (c - datetime.fromisoformat(a["pub_date"]).replace(tzinfo=timezone.utc)).days,
+            "age_days": (c - _utc_time(a["pub_date"])).days,
             # 원본 News Analyst 프롬프트가 받는 것과 같은 필드 (`_format_articles`: 제목 · 출처 · 요약)
             "fields": {"publisher": a["publisher"], "title": a["title"], "summary": a["summary"]},
         }

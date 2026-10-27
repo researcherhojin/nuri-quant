@@ -18,7 +18,7 @@ Yahoo 는 API · 요청 한도 문서를 공개하지 않는다(yfinance 는 비
 
 from __future__ import annotations
 
-from datetime import timedelta, timezone
+from datetime import timezone
 from typing import Any
 
 from nuri.core.ticker_names import is_kr_ticker
@@ -30,12 +30,9 @@ NEWS_COUNT = 20
 
 
 def _now_utc() -> str:
-    """지금(UTC)을 초 단위로 **올린다** — 묶음은 cutoff 를 내려 비교하므로, 1초 미만이라도 cutoff 뒤에 끝난
-    조회는 통과하지 못한다."""
-    now = kst_now().astimezone(timezone.utc)
-    if now.microsecond:
-        now = now.replace(microsecond=0) + timedelta(seconds=1)
-    return now.strftime("%Y-%m-%d %H:%M:%S")
+    """지금(UTC), 마이크로초까지 — 묶음이 cutoff 와 datetime 으로 비교한다(#1973: 초 단위 반올림은 같은 초에 만든
+    묶음을 거부했다)."""
+    return kst_now().astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
 
 def fetch(ticker: str) -> dict[str, Any]:
