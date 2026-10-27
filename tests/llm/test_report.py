@@ -523,6 +523,17 @@ class TestLLMReportDeep:
 class TestOllamaErrorLogging:
     """slow 표시 없음 — PR 커버리지는 fast shard 만 센다."""
 
+    def test_ollama_request_pins_context_from_config(self, monkeypatch):
+        from nuri.llm import local_client as lc
+        from nuri.llm import report
+
+        monkeypatch.setattr(lc, "load_config", lambda: {"report": {"num_ctx": 16384}})
+        response = MagicMock()
+        response.json.return_value = {"response": "synthetic report"}
+        with patch("requests.post", return_value=response) as post:
+            assert report._generate_ollama("synthetic prompt") == "synthetic report"
+        assert post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384
+
     def test_missing_model_logs_how_to_fix_instead_of_a_traceback(self, caplog):
         """404 는 모델 미설치다 — mini 에서 19일 동안 스택트레이스만 쌓였다 (2026-10-27)."""
         import requests
