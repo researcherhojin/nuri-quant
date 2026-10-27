@@ -2,7 +2,7 @@
 
 Long-running process (Mac mini launchd). 3 guild-scoped commands:
     /buy-candidates          → make buy-candidates → 결과를 #brief 에 publish
-    /thesis ticker:<TICKER>  → make thesis-remote ticker=X (MBP 의 Strata 에서 실행) → archive 경로 + verdict 1줄
+    /thesis ticker:<TICKER>  → 로컬 B 팔 단계별 진행 스레드 + 허용 목록 최종 카드
     /health                  → scripts/health_check.sh → 결과 inline
 
 설계 원칙:
@@ -30,6 +30,8 @@ from typing import Optional
 from dotenv import load_dotenv
 
 from nuri.agents.discord.embeds import build_status_embed
+from nuri.agents.discord.thesis_stream import run as _run_thesis_stream
+from nuri.llm.thesis_events import STAGE_LABELS, public_event
 
 logger = logging.getLogger(__name__)
 
@@ -68,103 +70,6 @@ def _run_make(
         return proc.returncode, (out if tail is None else out[-tail:])
     except subprocess.TimeoutExpired:
         return 124, f"timeout after {timeout}s"
-
-
-_VERDICT_RE = re.compile(r"verdict", re.IGNORECASE)
-_MD_NOISE = re.compile(r"^[\s#>*\-\d.:—|]+|[\s*_|]+$")
-_HEADING_RE = re.compile(r"^#{1,4}\s*(?:\d+\.\s*)?(?P<title>.+?)\s*$")
-
-# 처음 보는 사람용 판정 풀이 — 라벨은 thesis prompt 의 Required output 1번과 같다
-_VERDICT_MEANING = {
-    "STRONG BUY": "강한 매수 의견",
-    "BUY": "매수 의견",
-    "HOLD": "보유 유지 의견 — 새로 사거나 팔 근거가 약하다",
-    "AVOID": "신규 진입을 권하지 않음",
-    "SELL": "매도 의견",
-}
-# embed 에 싣는 모델 답변 섹션 (제목 키워드, 표시 이름, 최대 글자). Portfolio implications(보유
-# 관련)와 Beneficiary analysis(길다)는 싣지 않는다 — archive 에만 있다. 가격 레벨은 모델이 옮겨 적은
-# 것이 아니라 prompt 의 시스템 계산값 원문을 싣는다 (`_system_price_levels`).
-_EMBED_SECTIONS = (
-    ("thesis", "논지", 700),
-    ("risk", "주요 리스크", 600),
-    ("confidence", "신뢰도", 200),
-)
-_PRICE_LEVELS_HEADING = "## Price levels (system-computed"
-
-
-def _system_price_levels(prompt_part: str) -> str:
-    """prompt 의 `## Price levels (system-computed …)` 본문 — `price_targets.calculate_targets` 산출물."""
-    _, sep, rest = prompt_part.partition(_PRICE_LEVELS_HEADING)
-    if not sep:
-        return ""
-    body = rest.split("\n", 1)[1] if "\n" in rest else ""
-    return body.split("\n## ", 1)[0].strip()[:400]
-
-
-def _answer_sections(lines: list[str]) -> dict[str, str]:
-    """모델 답변을 `## N. 제목` 단위로 나눈다 — {소문자 제목: 본문}."""
-    sections: dict[str, str] = {}
-    title, body = "", []
-    for ln in lines:
-        m = _HEADING_RE.match(ln) if ln.lstrip().startswith("#") else None
-        if m:
-            if title:
-                sections[title] = "\n".join(body).strip()
-            title, body = m["title"].lower(), []
-        elif title:
-            body.append(ln)
-    if title:
-        sections[title] = "\n".join(body).strip()
-    return sections
-
-
-def _thesis_summary(out: str) -> str:
-    """`make thesis --print` 출력 → 처음 보는 사람도 읽을 수 있는 embed 본문.
-
-    예전에는 출력 끝 1,500자를 그대로 embed 에 실었다 — 그러면 맨 앞의 Verdict 는 잘리고 끝의
-    Portfolio implications(보유 관련) 섹션이 Discord 로 갔다. 지금은 판정(+풀이)·논지·리스크·
-    가격 레벨·신뢰도만 싣고, 보유 관련 섹션과 전체 본문은 MBP archive 에만 남긴다.
-    답변은 `## Local LLM` 섹션 안에서만 읽는다 — 그 위 prompt 의 "Required output" 에도
-    같은 제목들이 있다. 제목 구조가 없는 답이면 판정 1줄만 싣는다.
-    """
-    saved = [ln for ln in out.splitlines() if ln.startswith("saved: ")]
-    # llm_consult 도 임시 이름(`<date>_thesis-…`)으로 `saved:` 를 찍는다 — 최종 이름을 고른다
-    final = next((ln for ln in saved if "_thesis-" not in ln), saved[0] if saved else "saved: (unknown)")
-    archive = f"archive (MBP): {final.removeprefix('saved: ')}"
-    prompt_part, sep, answer = out.partition("\n## Local LLM")
-    verdict = ""
-    sections: dict[str, str] = {}
-    if sep:
-        # 강조 기호는 줄 안 어디에나 온다 (`**AVOID** (…)` — 2026-10-26 Strata 실측)
-        lines = [ln.replace("**", "").replace("__", "") for ln in answer.splitlines()[1:]]
-        sections = _answer_sections(lines)
-        for i, ln in enumerate(lines):
-            m = _VERDICT_RE.search(ln)
-            if not m:
-                continue
-            rest = _MD_NOISE.sub("", ln[m.end() :])
-            if not rest:  # 제목만 있는 줄 — 다음 내용 줄이 판정
-                rest = next((_MD_NOISE.sub("", x) for x in lines[i + 1 :] if _MD_NOISE.sub("", x)), "")
-            verdict = rest[:200]
-            break
-    if not verdict:
-        return f"verdict: (not found — see archive)\n{archive}"
-    label = next((k for k in _VERDICT_MEANING if verdict.upper().startswith(k)), "")
-    parts = [f"**판정: {label or verdict}**" + (f" — {_VERDICT_MEANING[label]}" if label else ""), f"> {verdict}"]
-    for key, name, limit in _EMBED_SECTIONS:
-        body = next((v for t, v in sections.items() if key in t and "portfolio" not in t), "")
-        if body:
-            parts.append(f"**{name}**\n{body if len(body) <= limit else body[: limit - 1] + '…'}")
-    levels = _system_price_levels(prompt_part)
-    if levels:
-        parts.append(f"**가격 레벨 (시스템 계산값, `config/rules.yaml`)**\n{levels}")
-    parts.append(
-        "_로컬 모델(Strata)이 시스템 데이터로 쓴 해석이다. 매매 지시가 아니다. "
-        "포트폴리오 영향 섹션은 싣지 않았다 — 전문은 archive 에 있다._"
-    )
-    parts.append(archive)
-    return "\n\n".join(parts)
 
 
 def build_bot():
@@ -207,20 +112,59 @@ def build_bot():
     @app_commands.describe(ticker="대상 ticker (e.g. MSFT, NVDA)")
     async def thesis(interaction: "discord.Interaction", ticker: str) -> None:
         ticker = ticker.upper().strip()
-        if not ticker.isalpha() or len(ticker) > 6:
-            await interaction.response.send_message(f"❌ invalid ticker: {ticker!r}", ephemeral=True)
+        if not re.fullmatch(r"[A-Z]{1,6}", ticker):
+            await interaction.response.send_message("❌ invalid ticker (A-Z, 1-6)", ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
-        # mini 는 로컬 모델을 못 올린다 — MBP 에서 돌린다 (scripts/deploy/thesis_remote.sh)
-        rc, out = await asyncio.to_thread(_run_make, "thesis-remote", {"ticker": ticker}, 300, None)
+        try:
+            message = await interaction.followup.send(
+                f"Thesis · {ticker} — 단계별 분석을 시작합니다.",
+                wait=True,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            channel = interaction.channel
+            if isinstance(channel, discord.Thread):
+                thread = channel
+            elif isinstance(channel, discord.TextChannel):
+                thread = await channel.create_thread(
+                    name=f"Thesis · {ticker}", message=message, auto_archive_duration=60
+                )
+            else:
+                raise ValueError("unsupported thesis channel")
+        except Exception:
+            logger.exception("thesis thread creation failed")
+            await interaction.followup.send("분석 스레드를 만들 수 없습니다. 봇 권한을 확인하세요.")
+            return
+
+        async def on_stage(value: dict[str, str]) -> None:
+            event = public_event(value)
+            if event is not None and event["event"] == "stage":
+                labels = {"started": "시작", "ok": "완료", "absent": "결과 없음", "failed": "실패"}
+                await thread.send(
+                    f"{STAGE_LABELS[event['stage']]} · {labels[event['status']]}",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+
+        try:
+            rc, value = await _run_thesis_stream("thesis-remote", ticker, on_stage)
+            event = public_event(value)
+        except Exception:
+            logger.exception("thesis stream failed; details stay in the local log")
+            rc, event = 1, None
+        if rc == 0 and event is not None and event["event"] == "result" and event["outcome"] != "failed":
+            status = "완료" if event["outcome"] == "verdict" else "검토 필요"
+            body = f"판정: {event['rating']}\n상태: {status}\n실행: {event['run_hash'][:16]}"
+        else:
+            rc = rc or 2
+            body = "분석을 완료하지 못했습니다. 상세 오류는 로컬 실행 기록에 보관했습니다."
         embed_dict = build_status_embed(
             title=f"Thesis · {ticker}",
             success=(rc == 0),
-            # 성공: verdict + 경로만. 실패: 원인을 보려면 출력 끝이 필요하다 (그때는 본문이 출력되지 않는다)
-            body=_thesis_summary(out) if rc == 0 else out[-1500:],
-            fields={"ticker": ticker, "exit": str(rc), "host": socket.gethostname()},
+            body=body,
+            fields={"분석": "탐색용"},
         )
-        await interaction.followup.send(embed=discord.Embed.from_dict(embed_dict))
+        # 상호작용 토큰(15분)이 만료돼도 스레드는 봇 권한으로 최종 카드를 보낼 수 있다.
+        await thread.send(embed=discord.Embed.from_dict(embed_dict), allowed_mentions=discord.AllowedMentions.none())
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)

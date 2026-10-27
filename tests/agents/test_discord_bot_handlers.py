@@ -39,12 +39,21 @@ class TestSlashCommandHandlers:
 
     def _make_interaction(self):
         """Build a mocked discord.Interaction with async response/followup."""
+        import discord
+
         ix = MagicMock()
+        ix.channel = MagicMock(spec=discord.TextChannel)
         ix.response = MagicMock()
         ix.response.defer = AsyncMock()
         ix.response.send_message = AsyncMock()
         ix.followup = MagicMock()
         ix.followup.send = AsyncMock()
+        ix.progress_thread = MagicMock()
+        ix.progress_thread.send = AsyncMock()
+        message = MagicMock()
+        message.create_thread = AsyncMock(return_value=ix.progress_thread)
+        ix.followup.send.return_value = message
+        ix.channel.create_thread = AsyncMock(return_value=ix.progress_thread)
         return ix
 
     def test_buy_candidates_handler_invokes_run_make_and_sends_embed(self, bot_components, monkeypatch):
@@ -67,47 +76,118 @@ class TestSlashCommandHandlers:
         assert "embed" in kwargs
 
     def test_thesis_handler_normalizes_ticker_and_invokes_make(self, bot_components, monkeypatch):
-        """/thesis: ticker uppercased, defer → _run_make('thesis-remote', {ticker:X}) → followup.
-
-        봇은 mini 에서 돈다 — mini 는 로컬 모델을 못 올리므로 MBP 위임 타깃이어야 한다.
-        """
         _, tree, guild = bot_components
         callback = _get_callback(tree, guild, "thesis")
         ix = self._make_interaction()
 
-        with patch(
-            "nuri.agents.discord.bot._run_make",
-            return_value=(0, "thesis output\n"),
-        ) as mock_make:
-            asyncio.run(callback(ix, "msft"))
+        async def run(target, ticker, on_stage):
+            await on_stage({"event": "stage", "stage": "manager", "status": "ok", "secret": "PRIVATE"})
+            return 0, {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
 
+        with patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=run) as runner:
+            asyncio.run(callback(ix, "msft"))
         ix.response.defer.assert_awaited_once_with(thinking=True)
-        # ticker normalized to upper, passed via args dict
-        mock_make.assert_called_once()
-        call_args = mock_make.call_args
-        assert call_args.args[0] == "thesis-remote"
-        assert call_args.args[1] == {"ticker": "MSFT"}
-        assert call_args.args[3] is None, "요약하려면 출력 전체가 필요하다"
+        assert runner.call_args.args[:2] == ("thesis-remote", "MSFT")
         ix.followup.send.assert_awaited_once()
+        assert ix.progress_thread.send.await_count == 2
+        assert ix.progress_thread.send.await_args_list[0].args == ("종합 판정 · 완료",)
+        assert "embed" in ix.progress_thread.send.await_args.kwargs
+
+    def test_followup_without_guild_creates_thread_through_the_channel(self, bot_components):
+        import discord
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        # 실제 follow-up SDK 객체에는 guild 가 없어서 message.create_thread 는 실패한다.
+        message = object.__new__(discord.WebhookMessage)
+        message.id = 123
+        message.guild = None
+        ix.followup.send.return_value = message
+        ix.channel.create_thread = AsyncMock(return_value=ix.progress_thread)
+        result = {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
+        with patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(0, result)):
+            asyncio.run(callback(ix, "TEST"))
+        ix.channel.create_thread.assert_awaited_once_with(
+            name="Thesis · TEST", message=message, auto_archive_duration=60
+        )
+        ix.progress_thread.send.assert_awaited_once()
 
     @pytest.mark.parametrize("rc", [0, 2])
-    def test_thesis_embed_body_is_the_summary_only_on_success(self, bot_components, rc):
+    def test_thesis_embed_body_is_allowlisted_even_on_errors(self, bot_components, rc):
         _, tree, guild = bot_components
         callback = _get_callback(tree, guild, "thesis")
         ix = self._make_interaction()
-        raw = "saved: data/thesis_query/a.md\n## Local LLM (m)\n## 1. Verdict\nHOLD\n## 6. Portfolio\nSECRET\n"
+        value = {
+            "event": "result",
+            "rating": "Hold",
+            "outcome": "verdict",
+            "run_hash": "a" * 64,
+            "holdings": "PRIVATE",
+            "error": "PRIVATE",
+            "size": "PRIVATE",
+        }
         with (
-            patch("nuri.agents.discord.bot._run_make", return_value=(rc, raw)),
+            patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(rc, value)),
             patch("nuri.agents.discord.bot.build_status_embed", return_value={"title": "t"}) as embed,
         ):
             asyncio.run(callback(ix, "msft"))
         body = embed.call_args.kwargs["body"]
-        if rc == 0:
-            assert body.startswith("**판정: HOLD**")
-            assert body.endswith("archive (MBP): data/thesis_query/a.md")
-            assert "SECRET" not in body
-        else:
-            assert body == raw, "실패 때는 원인을 보려면 출력 끝이 필요하다"
+        assert "PRIVATE" not in body
+        assert embed.call_args.kwargs["fields"] == {"분석": "탐색용"}
+        assert ("판정: Hold" in body) if rc == 0 else ("완료하지 못했습니다" in body)
+        assert ix.progress_thread.send.await_count == 1
+
+    @pytest.mark.parametrize("mode", ["exception", "invalid", "failed"])
+    def test_thesis_failure_never_exposes_details(self, bot_components, mode):
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+
+        async def fail(*args):
+            await args[2]({"event": "stage", "stage": "PRIVATE", "status": "ok"})
+            if mode == "exception":
+                raise RuntimeError("PRIVATE")
+            if mode == "failed":
+                return 0, {"event": "result", "rating": "REVIEW", "outcome": "failed", "run_hash": "a" * 64}
+            return 0, {"event": "unknown", "detail": "PRIVATE"}
+
+        with (
+            patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=fail),
+            patch("nuri.agents.discord.bot.build_status_embed", return_value={"title": "t"}) as embed,
+        ):
+            asyncio.run(callback(ix, "TEST"))
+        assert embed.call_args.kwargs["success"] is False
+        assert "PRIVATE" not in str(embed.call_args)
+        assert ix.progress_thread.send.await_count == 1
+
+    def test_thesis_uses_an_existing_thread(self, bot_components):
+        import discord
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        ix.channel = MagicMock(spec=discord.Thread)
+        ix.channel.send = AsyncMock()
+        value = {"event": "result", "rating": "REVIEW", "outcome": "review", "run_hash": "a" * 64}
+        with patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(0, value)):
+            asyncio.run(callback(ix, "TEST"))
+        ix.followup.send.return_value.create_thread.assert_not_awaited()
+        ix.channel.send.assert_awaited_once()
+
+    @pytest.mark.parametrize("unsupported_channel", [False, True])
+    def test_thread_failure_stops_before_the_model(self, bot_components, unsupported_channel):
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        ix.channel.create_thread.side_effect = RuntimeError("PRIVATE")
+        if unsupported_channel:
+            ix.channel = None
+        with patch("nuri.agents.discord.bot._run_thesis_stream") as runner:
+            asyncio.run(callback(ix, "TEST"))
+        runner.assert_not_called()
+        assert ix.followup.send.await_count == 2
+        assert "PRIVATE" not in str(ix.followup.send.call_args)
 
     def test_thesis_handler_rejects_invalid_ticker(self, bot_components, monkeypatch):
         """/thesis with non-alpha ticker: ephemeral error, no _run_make call."""

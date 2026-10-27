@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # scripts/deploy/thesis_remote.sh — Discord /thesis 를 상대 머신(MBP)에서 실행한다.
 #
-# 왜: thesis 는 로컬 모델만 쓴다 (`llm_consult --local-only`, loopback 전용). 그 모델(Strata,
-# Metal GGUF 77GB)은 RAM 32GB 인 Mac mini 에 올라가지 않는다. 그래서 mini 의 봇은 ticker 만
-# MBP 로 보내고, 맥락 조회와 모델 호출은 전부 MBP 안(loopback)에서 일어난다. mini 가 받는 건
-# `make thesis` 의 출력 텍스트뿐이다.
+# 왜: 대화형 분석은 MBP 의 loopback 모델에서 실행해 채점 기기 mini 의 모델과 경쟁하지 않는다.
+# 맥락 조회·모델 호출은 MBP 안에서 끝나며, mini 는 허용 목록 JSONL 진행 이벤트만 처리한다.
+# 원문과 오류는 로컬 실행 기록에만 보관한다 (#1965).
 #
 # 데이터: MBP 의 dev DB 는 며칠씩 낡는다 (2026-10-26 실측: 4일). mini 가 매시간 push 하는
 # 최신 `data/replicas/*.db` 를 NURI_DB_PATH 로 쓴다. 복제본이 없으면 dev DB 로 돌리되 경고한다.
@@ -13,7 +12,7 @@
 # 환경: DEV2_HOST / DEV2_PATH — ~/.zshrc 에만 둔다. .env 는 sync_dev.sh 가 머신 사이로 복사하므로
 #       머신별 값을 두지 않는다 (state_replicator.sh 와 같은 규칙). 봇 프로세스는 .env 만 읽으므로
 #       비어 있으면 여기서 ~/.zshrc 를 읽는다.
-# 종료: 원격 `make thesis` 의 exit code 를 그대로 돌려준다. 입력 오류·설정 누락은 2.
+# 종료: 원격 `make thesis-progress` 의 exit code 를 그대로 돌려준다. 입력 오류·설정 누락은 2.
 
 set -euo pipefail
 
@@ -40,6 +39,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REMOTE_CMD="cd $(printf '%q' "$REMOTE_REPO") && export PATH=/opt/homebrew/bin:\$PATH"
 REMOTE_CMD+=" && R=\$(ls -t data/replicas/*.db 2>/dev/null | head -n 1)"
 REMOTE_CMD+="; if [ -n \"\$R\" ]; then export NURI_DB_PATH=\"\$PWD/\$R\"; else echo 'warn: no replica — using the dev DB' >&2; fi"
-REMOTE_CMD+="; make thesis ticker=$TICKER"
+REMOTE_CMD+="; make thesis-progress ticker=$TICKER"
 
 exec bash "$SCRIPT_DIR/ssh_dev2.sh" -o BatchMode=yes -o ConnectTimeout=10 "$DEV2_HOST" "$REMOTE_CMD"

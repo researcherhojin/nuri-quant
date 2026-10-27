@@ -88,7 +88,7 @@ class TestRemoteRun:
         os.utime(old, (1_000_000, 1_000_000))
         r = run("MSFT")
         assert r.returncode == 0, r.stderr
-        assert "make-args: thesis ticker=MSFT" in r.stdout
+        assert "make-args: thesis-progress ticker=MSFT" in r.stdout
         assert f"db: {repo}/data/replicas/portfolio_new.db" in r.stdout
         argv = log.read_text(encoding="utf-8").splitlines()
         assert argv[:5] == ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "user@macbook.local"]
