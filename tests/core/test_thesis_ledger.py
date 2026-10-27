@@ -21,6 +21,7 @@ CHAIN = seal.THESIS_RUNS
 def _run(ticker="AAA", rating="Hold", outcome="verdict"):
     return {
         "arm": "A",
+        "arm_hash": "ah",
         "ticker": ticker,
         "scored": True,
         "run_hash": f"rh-{ticker}",
@@ -53,6 +54,7 @@ class TestWriter:
             "Hold",
             "verdict",
         )
+        assert row["arm_hash"] == "ah"
         assert json.loads(row["prompt_hashes"]) == ["p1"] and json.loads(row["call_hashes"]) == ["c1"]
         assert json.loads(row["runtime"]) == {"version": "v"} and row["canary_sha256"] == "cn"
 
@@ -97,6 +99,13 @@ class TestSealAndTamper:
         _sealed(db_path)
         tl.record_run(_run("ZZZ"), cohort_date="2026-09-30", runtime={}, canary_sha256=None, db_path=db_path)
         assert any("2026-09-30" in p and "소급 삽입" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
+
+    def test_an_edited_arm_hash_is_caught(self, db_path):
+        """팔 정의 지문도 봉인 필드다 (#1963) — 어떤 팔로 돌렸는지 사후에 바꾸지 못한다."""
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE thesis_runs SET arm_hash = 'other' WHERE cohort_date = '2026-10-02'")
+        assert any("2026-10-02" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
     def test_a_rewritten_recorded_time_is_caught(self, db_path):
         """기록 시각은 "개장 전에 기록됐다" 의 증거라 봉인 대상이다 — 고치면 잡힌다."""
