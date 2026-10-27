@@ -129,6 +129,42 @@ class TestLocalOnlyCli:
         external.assert_not_called()
         assert "## Codex" not in next(tmp_path.glob("*_s.md")).read_text(encoding="utf-8")
 
+    def test_a_cloud_model_behind_the_loopback_url_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        """Ollama cloud 모델은 루프백으로 불러도 원격에서 돈다 (#1969) — 모델 검사로 막는다."""
+        from nuri.llm import local_model_guard
+
+        seen = []
+        monkeypatch.setattr(
+            local_model_guard, "refuse_reason", lambda url, model, **kw: seen.append((url, model, kw)) or "remote model"
+        )
+        monkeypatch.setattr(llm_consult, "LOCAL_URL", "http://127.0.0.1:11434/v1/chat/completions")
+        monkeypatch.setattr(llm_consult, "LOCAL_MODEL", "glm-5.3:cloud")
+        monkeypatch.setattr(sys, "argv", _argv(tmp_path, "--local-only"))
+        with patch.object(llm_consult, "consult_qwen", side_effect=AssertionError("sent")) as local:
+            assert llm_consult.main() == 2
+        local.assert_not_called()
+        # Strata 가 아닌 주소는 /api/tags 가 있어야 한다 — 404 를 내는 프록시로 우회하지 못하게
+        assert seen == [("http://127.0.0.1:11434/v1/chat/completions", "glm-5.3:cloud", {"require_ollama": True})]
+        assert not list(tmp_path.glob("*_s.md"))
+        err = capsys.readouterr().err
+        assert "remote model" in err and "11434" not in err
+
+    def test_only_the_pinned_strata_url_may_skip_the_ollama_model_list(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Strata 는 /api/tags 가 404 다(2026-10-27 실측) — 그 주소에서만 이름 검사로 충분하다."""
+        from nuri.llm import local_model_guard
+
+        seen = []
+        monkeypatch.setattr(local_model_guard, "refuse_reason", lambda url, model, **kw: seen.append(kw) or "stop")
+        monkeypatch.setattr(llm_consult, "LOCAL_URL", llm_consult.STRATA_URL)
+        monkeypatch.setattr(llm_consult, "ensure_strata", lambda: False)
+        monkeypatch.setattr(sys, "argv", _argv(tmp_path, "--local-only"))
+        assert llm_consult.main() == 2
+        assert seen == [{"require_ollama": False}]
+
     @pytest.mark.parametrize("other", ["--codex-only", "--qwen-only"])
     def test_codex_only_cannot_be_combined(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, other: str) -> None:
         flags = ("--local-only", "--codex-only") if other == "--codex-only" else ("--codex-only", "--qwen-only")

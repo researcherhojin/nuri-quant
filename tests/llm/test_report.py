@@ -550,6 +550,54 @@ class TestOllamaErrorLogging:
             assert r._generate_ollama("프롬프트") == ""
         assert any(rec.exc_info for rec in caplog.records)
 
+    def test_a_model_the_guard_refuses_is_never_sent(self, caplog, monkeypatch):
+        """루프백 URL 뒤의 cloud 모델 (#1969) — 생성 요청 전에 멈춘다."""
+        from nuri.llm import local_model_guard
+        from nuri.llm import report as r
+
+        seen = []
+        monkeypatch.setattr(r, "OLLAMA_HOST", "http://localhost:11434")
+        monkeypatch.setattr(
+            local_model_guard, "refuse_reason", lambda host, model, **kw: seen.append((host, model)) or "remote model"
+        )
+        with (
+            patch("requests.post", side_effect=AssertionError("sent")) as post,
+            caplog.at_level("WARNING", logger="nuri.llm.report"),
+        ):
+            assert r._generate_ollama("프롬프트") == ""
+        post.assert_not_called()
+        assert seen == [("http://localhost:11434", r.OLLAMA_MODEL)]
+        assert any("remote model" in rec.getMessage() for rec in caplog.records)
+
+    def test_the_generate_request_ignores_env_proxies(self, monkeypatch):
+        """가드는 프록시 없이 서버를 확인한다 — 생성 요청이 프록시로 가면 그 확인이 무의미하다 (#1969).
+
+        전송 직전(adapter)에서 실제로 쓰일 proxies 를 본다 — `requests.post` 를 통째로 바꾸면 환경 병합이 안 보인다.
+        """
+        import requests
+        import requests.adapters
+
+        from nuri.llm import report as r
+
+        for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            monkeypatch.setenv(key, "http://proxy.example:3128")
+        monkeypatch.setenv("ALL_PROXY", "socks5://proxy.example:1080")
+        for key in ("NO_PROXY", "no_proxy"):
+            monkeypatch.delenv(key, raising=False)
+        monkeypatch.setattr(r, "OLLAMA_HOST", "http://127.0.0.1:11434")
+        seen: dict = {}
+
+        def _send(_self, _request, **kwargs):
+            seen["proxies"] = dict(kwargs.get("proxies") or {})
+            resp = requests.Response()
+            resp.status_code = 200
+            resp._content = b'{"response": "ok"}'
+            return resp
+
+        monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", _send)
+        assert r._generate_ollama("프롬프트") == "ok"
+        assert seen["proxies"] == {}
+
     def test_default_model_matches_the_documented_one(self):
         """기본 모델이 .env.example 과 어긋나면 운영자가 엉뚱한 모델을 받는다."""
         import re

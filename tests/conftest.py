@@ -233,6 +233,18 @@ def _force_no_wal(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _local_model_guard_passes(monkeypatch):
+    """로컬 모델 가드(#1969)는 실제 Ollama 의 `/api/tags` 를 읽는다 — 테스트는 네트워크 없이 통과시킨다.
+
+    이게 없으면 Ollama 와 모델이 깔린 개발 기기에서만 초록이고 CI 에서는 빨갛다(2026-10-27 실측: MBP 통과).
+    가드 자체는 `tests/llm/test_local_model_guard.py` 가 import 시점에 잡아 둔 진짜 함수로 검사한다.
+    """
+    from nuri.llm import local_model_guard
+
+    monkeypatch.setattr(local_model_guard, "refuse_reason", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def mock_yfinance(monkeypatch):
     """모든 테스트에서 yfinance.download와 Ticker를 mock."""
     import pandas as pd

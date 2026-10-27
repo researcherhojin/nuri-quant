@@ -130,6 +130,17 @@ class TestRuntimeGuard:
             lc.generate("hi", cfg=cfg, session=s)
         assert e.value.code == "model_missing"
 
+    def test_a_model_the_local_guard_refuses_is_never_generated(self, cfg, monkeypatch):
+        """digest 고정 위에 한 겹 더 — /api/tags 가 원격으로 표시한 모델 (#1969)."""
+        from nuri.llm import local_model_guard
+
+        monkeypatch.setattr(local_model_guard, "refuse_reason", lambda url, model, **kw: "remote model")
+        s = FakeSession(cfg)
+        with pytest.raises(lc.LocalModelError) as e:
+            lc.generate("hi", cfg=cfg, session=s)
+        assert e.value.code == "model_not_local" and e.value.detail == "remote model"
+        assert [c[0] for c in s.calls] == ["GET", "GET"]
+
     def test_runtime_records_os_and_documented_env_but_not_the_hostname(self, cfg, monkeypatch):
         seen = []
 

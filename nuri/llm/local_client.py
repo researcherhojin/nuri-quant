@@ -232,6 +232,12 @@ def generate(
     s = session if session is not None else _session()
     rt = read_runtime(cfg, s)
     check_runtime(rt, cfg)
+    # digest 고정이 이미 막지만, 다른 로컬 전용 경로와 같은 가드도 건다 (#1969) — /api/tags 의 원격 표시.
+    from nuri.llm.local_model_guard import refuse_reason
+
+    reason = refuse_reason(cfg["base_url"], cfg["model"])
+    if reason:
+        raise LocalModelError("model_not_local", reason)
     _post(s, cfg, {"model": cfg["model"], "keep_alive": 0})  # 공식 언로드 — 캐시 0 에서 시작
     resp = _post(s, cfg, req)
     failures = verify_response(resp, bound=bound, num_ctx=req["options"]["num_ctx"], allow_length=allow_length)

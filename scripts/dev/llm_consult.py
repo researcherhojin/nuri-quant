@@ -290,6 +290,15 @@ def main() -> int:
 
     started = ensure_strata() if args.local_only else False
     try:
+        if args.local_only:
+            # 루프백 URL 뒤의 Ollama cloud 모델 거부 (#1969). /api/tags 404 를 "Ollama 아님" 으로 보는 건 고정된
+            # Strata 주소일 때뿐이다 — 다른 주소의 404 는 Ollama 앞의 프록시일 수 있어 실패로 닫는다.
+            from nuri.llm.local_model_guard import refuse_reason
+
+            reason = refuse_reason(LOCAL_URL, LOCAL_MODEL, require_ollama=LOCAL_URL != STRATA_URL)
+            if reason:
+                print(f"refused: --local-only needs a model held on this machine ({reason})", file=sys.stderr)
+                return 2
         return _run(args, prompt)
     finally:
         if started:
