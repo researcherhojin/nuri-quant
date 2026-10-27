@@ -50,7 +50,9 @@ def generate_regime_chart(output_dir: Path, db_path=None) -> Path:
     spy = load_spy_with_sma(db_path=db_path)
     if spy.empty:
         logger.warning("SPY 가격 데이터 없음")
-        return output_dir / "regime_evidence.html"
+        output_path = output_dir / "regime_evidence.html"
+        _save_empty_chart("SPY 가격 데이터 없음", output_path)
+        return output_path
 
     vix = load_vix_history(db_path=db_path)
 
