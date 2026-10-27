@@ -442,16 +442,3 @@ class TestSaveAndBasics:
         from nuri.collectors.institutional import InstitutionalCollector
 
         assert InstitutionalCollector().name == "institutional"
-
-
-class TestCollectNoUSTickets:
-    """Unrelated — kept from legacy test file."""
-
-    def test_no_us_tickers(self, monkeypatch, tmp_path):
-        import nuri.core.db as db_mod
-        from nuri.collectors.reddit import RedditCollector
-
-        path = tmp_path / "empty.db"
-        init_db(path)
-        monkeypatch.setattr(db_mod, "DB_PATH", path)
-        assert RedditCollector().collect() == []

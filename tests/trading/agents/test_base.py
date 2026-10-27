@@ -152,7 +152,7 @@ class TestNewAgentDataPoints:
         assert "btc_24h_change" in v.data_points
         assert "btc_dominance" in v.data_points
 
-    def test_retail_data_points(self, db_path):
+    def test_retired_retail_ignores_historical_data_points(self, db_path):
         from nuri.trading.agents.retail_agent import RetailAgent
 
         with get_db(db_path) as conn:
@@ -161,7 +161,7 @@ class TestNewAgentDataPoints:
                 ("2025-03-25", "wsb_mention_TEST", 5),
             )
         v = RetailAgent().analyze("TEST", db_path=db_path)
-        assert "wsb_mentions" in v.data_points
+        assert v.data_points == {} and v.abstained
 
 
 class TestBaseAgent:

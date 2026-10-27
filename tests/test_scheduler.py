@@ -1278,7 +1278,6 @@ class TestOrphanCollectorsWired:
     ORPHANS = {
         "cboe": "nuri.collectors.cboe.CBOECollector",
         "coingecko": "nuri.collectors.coingecko.CoinGeckoCollector",
-        "reddit": "nuri.collectors.reddit.RedditCollector",
         "fred_calendar": "nuri.collectors.fred_calendar.FREDCalendarCollector",
         # `make collect` 에도 없던 7 번째 — `korean_market` 에이전트가 읽는데
         # 갱신 job 이 아예 없었다 (institutional_flows 2026-04-14 정지).

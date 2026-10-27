@@ -178,20 +178,6 @@ class TestOptionsNeutralLow:
 # ─── retail_agent.py: lines 51-52 (mention spike) + 73 (BUY) ───────────
 
 
-class TestRetailBranches:
-    def test_wsb_spike_branch(self, db_path):
-        """WSB mentions=15 (between spike=10 and hot=30) → score-1 path."""
-        from nuri.trading.agents.retail_agent import RetailAgent
-
-        with get_db(db_path) as conn:
-            conn.execute(
-                "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, 'CBOE')",
-                ("2025-03-25", "wsb_mention_AAA", 15.0),
-            )
-        v = RetailAgent().analyze("AAA", db_path=db_path)
-        assert "관심 상승" in v.reasoning
-
-
 # ─── risk_agent.py: lines 42, 57-58, 75-76 ─────────────────────────────
 
 
@@ -486,33 +472,6 @@ class TestKoreanMarketScoreBranches:
 
 
 # ─── retail_agent: BUY action 분기 (line 73) ─────────────────────────────
-
-
-class TestRetailAgentBuyBranch:
-    def test_high_score_yields_buy_action(self, db_path, monkeypatch):
-        """score >= score_buy → BUY (line 73).
-
-        WSB mention 적정 (>0 + < spike_th) → score+1. score_buy 를 1 로 낮춰 BUY 진입.
-        """
-        from nuri.trading.agents import retail_agent
-
-        with get_db(db_path) as conn:
-            conn.execute(
-                "INSERT INTO macro (date, indicator, value, source) VALUES (?, ?, ?, ?)",
-                ("2026-04-30", "wsb_mention_AAPL", 5, "wsb"),
-            )
-
-        # WSB mention 5 (>0, <spike_th=10) → score+1. score_buy=1 → BUY.
-        original_cfg = dict(retail_agent._CFG)
-        monkeypatch.setattr(
-            retail_agent,
-            "_CFG",
-            {**original_cfg, "score_buy": 1},
-        )
-
-        v = retail_agent.RetailAgent().analyze("AAPL", db_path=db_path)
-        # 진입한 분기는 BUY 또는 HOLD (다른 데이터 영향) — coverage 위해 분기 진입 자체가 의미
-        assert v.action in {"BUY", "HOLD"}
 
 
 # ─── smart_money: ARK sells > buys 분기 (lines 91-93) ───────────────────

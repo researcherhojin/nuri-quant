@@ -16,7 +16,7 @@ Not every agent runs meaningfully on every ticker. Earlier docs framed this as "
 |---|---|---|---|
 | **Always-on** — run on every ticker with real reasoning | technical, fundamental, macro, risk, smart_money, wallstreet, options | 0.827 | Works on US + KR equities with standard fundamentals / prices / macro data |
 | **Specialized by ticker type** | korean_market (KR only), crypto (crypto only) | 0.123 | Returns low-conf HOLD outside specialization by design — this is correct behavior, not a bug |
-| **Data-coverage dependent** | retail (WSB mention counts) | 0.05 | Active only where WSB mention data exists (~40% of US universe); low-conf HOLD elsewhere |
+| **Retired input / compatibility slot** | retail | 0.05 (reserved, no vote) | Reddit source retired (#1979); always HOLD/0 with `abstained=True`, without reading historical rows |
 
 Live probe (2026-04-17):
 
@@ -120,7 +120,7 @@ probe_failed)` 를 돌려준다. 억제는 두 경우 모두 하되 "낡음 — 
 이 이슈에서 세 번 밟은 과교정의 재발이다.
 
 **Test:** `tests/trading/agents/test_abstained_verdicts.py::TestFailureIsNeverReportedAsAbstention`
-— `::test_partial_failure_is_not_an_abstention` (형제 성공 + 한 소스 실패, 5 경로) ·
+— `::test_partial_failure_is_not_an_abstention` (형제 성공 + 한 소스 실패, 4 경로; retail 은 #1979 에서 조회 없이 은퇴) ·
 `::test_degraded_verdicts_carry_zero_confidence` · `::test_a_failed_read_is_not_masked_by_a_reason_the_failure_itself_produced`
 · `::test_a_failed_freshness_probe_does_not_claim_staleness` · 짝
 `::test_a_real_risk_judgment_still_carries_the_veto`.
@@ -157,3 +157,8 @@ Weight drift is capped at ±30% per `adjustment_range` in `config/agents.yaml` (
 - Weights config: `consensus/registry.py:DEFAULT_WEIGHTS` + `config/agents.yaml`
 - Per-agent source: one file per agent in this directory
 - B-3 audit script (ad-hoc): `analyze_ticker("TICKER")` from the consensus module
+
+## Reddit 입력 은퇴 (#1979)
+
+과거 `macro.wsb_*` 행이 있어도 retail 은 읽지 않고 명시적으로 기권한다. 가중치 재배분이나 대체 입력은 별도 정책 변경이다.
+**Test:** `tests/trading/agents/test_retail.py::test_historical_reddit_data_cannot_vote`
