@@ -13,7 +13,9 @@
 | `alerts.yaml` | Alert thresholds + channel toggles (discord/telegram) + notification types | Direct YAML load |
 | `freshness.yaml` | Data freshness SLA (per-source `warn_hours`/`fail_hours`, optional `holiday_calendar`(#1469, 휴일 시간을 유효 나이에서 빼 WARN·FAIL 모두에 적용) · `warn_calendar`(#1677, WARN 만 휴장일 면제)) + `verdict_gate` (dashboard verdict 가 확인하는 입력 목록, #1180). Queries/labels stay in `nuri/core/freshness.py` | `nuri/core/freshness.py` (`_load_config`) |
 | `evidence.yaml` | Multi-stage thesis evidence packets (#1955): universe-coverage share, per-source max age and row counts, market indicator allowlist. Queries and the source list stay in code | `nuri/llm/evidence.py` (`load_config`) |
-| `llm_runtime.yaml` | Local-model runtime contract for thesis stages (#1957): loopback URL, model, registered Ollama version and digest, every pinned generation option, byte-bound overhead, stage prompt budget (#1961), canary prompt and registered hash. A change starts a new experiment | `nuri/llm/local_client.py` (`load_config`) |
+| `llm_runtime.yaml` | Local-model runtime contract for thesis stages (#1957): loopback URL, model, registered Ollama version and digest, every pinned generation option, byte-bound overhead, stage prompt budget (#1961), canary prompt and registered hash. Includes memory/simulation settings, `interactive.timeout_s` and the separate report context window; registered arm/runtime changes are guarded by the freeze manifest | `nuri/llm/local_client.py` (`load_config`) |
+| `thesis_freeze.yaml` | Declared experiment windows and expected arm fingerprints; edits are checked by the freeze regression tests | `nuri/llm/thesis_freeze.py` |
+| `thesis_pilot.yaml` | Pilot enablement and run settings; `experiment: null` disables it. Protocol decisions remain in the private plan | `nuri/llm/thesis_pilot.py` |
 | `stock_types.yaml` | Manual growth/value ticker override (bypasses auto-classification from PE + sector) | Direct YAML load |
 | `universe.yaml` | Universe groups: `us_core`, `us_sp500_extended`, `kr_kospi200`; current membership is in this YAML. `make universe-sync` previews changes; apply requires `make universe-sync-apply`. Removal requires the explicit `--allow-removal` option | `nuri/collectors/universe_sync.py` |
 | `portfolio.example.yaml` | Example template showing account + holdings shape | `scripts/ops/import_portfolio.py` (via `cp` to `portfolio.yaml`) |
@@ -53,7 +55,7 @@ Editing a value? → `rules.yaml`. Editing rationale / adding a new strategy? �
 
 ### `agents.yaml` — per-agent confidence shape
 
-Every agent (except `korean_market` which uses absolute scores) has a `confidence:` sub-block with a repeating shape:
+Every active scoring agent (except `korean_market` which uses absolute scores; the retired retail slot does not consume scoring settings) has a `confidence:` sub-block with a repeating shape:
 
 ```yaml
 <agent_name>:

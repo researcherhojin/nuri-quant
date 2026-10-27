@@ -224,6 +224,8 @@ The risk veto reads `alpha_action` (it falls back to a SELL action only for a ve
 - **BUY-candidate score** (`config/buy_signals.yaml`): combines the factor composite with 5-day momentum, RSI and 30-day breakout. Cross-sectional relative strength and dollar-volume surge are computed and shown as evidence but carry a weight of 0 until validated by a walk-forward test. A VIX above the `vix_gate` block level stops the run; an unknown or stale VIX, or one in the caution band, halves the allocation.
 - **Signals** (`config/signals.yaml`): 19 per-ticker, actionable signals used by the backtest detectors, plus 3 shadow signals marked `actionable: false`: 2 market-wide ones surfaced as warnings only (yield-curve inversion and HY-OAS widening) and the per-ticker `short_squeeze`, which is scored but never becomes a candidate (#1911).
 
+The registry keeps 10 specialist slots, but `retail` is a retired compatibility slot (#1979). Its verdict is always HOLD/0 with `abstained=True`, even if historical Reddit rows exist. The Reddit collector and scheduled/manual collection paths were removed; historical rows and configured weights were retained. An abstention is not a contributing HOLD vote.
+
 ## Database Access
 
 `nuri/core/db/connection.py` is the only module that imports `sqlite3`. The DB file is `data/portfolio.db` (WAL mode; override with `NURI_DB_PATH`). All upsert functions accept an optional `db_path`, which tests set to a `tmp_path` file for isolation. Schema versioning uses the `schema_version` table and the `_MIGRATIONS` list. Jobs exchange data through tables, with the one in-memory exception described in [Runtime Topology](#runtime-topology).
@@ -374,7 +376,7 @@ The total table count appears once, in the [Runtime Topology](#runtime-topology)
 | `prices` | OHLCV daily bars per ticker. Scheduled runs fetch the last few days, a weekly backfill covers a year, and longer history is loaded on demand. `source` names the writer (`yfinance` / `pykrx` / `kis`, #1727 — a later writer of the same (ticker, date) replaces it). `close` is never NULL: `upsert_prices` drops yfinance's unsettled half rows (#1480) and migration 66 purged the rows written before that (#1630) |
 | `portfolio` | Holdings (account, ticker, quantity, avg_price, currency, sector) |
 | `portfolio_changes` | #1720 append-only holdings quantity log, written by SQLite triggers on every `portfolio` INSERT and DELETE and every UPDATE that changes quantity, account or ticker (any writer), KST wall-clock `changed_at`. An account import (DELETE+INSERT) leaves a −old/+new pair per holding, which nets to zero when the quantity is unchanged. Holdings data: production DB only, not in MCP `ALLOWED` |
-| `macro` | FRED indicators, VIX, USD/KRW, Fear & Greed, put/call ratio, crypto and retail-sentiment series |
+| `macro` | FRED indicators, VIX, USD/KRW, Fear & Greed, put/call ratio, crypto series and retained historical retail-sentiment rows (Reddit collection retired in #1979) |
 | `signals` | TA-Lib technical indicators |
 | `fundamentals` | PE, ROE, margins, growth, beta |
 | `superinvestors` | 13F holdings (Buffett, etc.) |
@@ -442,6 +444,8 @@ Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db_migrations.py` 
 - `alerts.yaml`: alert thresholds and report timing
 - `research_sources.json`: registered public document sources and issuer identity checks; output style lives in `nuri/llm/research_briefing.py`
 - `walkforward*.yaml`, `eval/thesis_prompts.yaml`: walk-forward validation and thesis evaluation settings
+- `evidence.yaml`, `llm_runtime.yaml`: local thesis evidence freshness/budgets and runtime identity/options; interactive and report settings are separate blocks
+- `thesis_pilot.yaml`, `thesis_freeze.yaml`: pilot enablement and declared arm fingerprints; see [local thesis modes](RESEARCH_BRIEFING.md#local-thesis-modes) for the operational boundary
 
 ## Scripts (`scripts/`)
 
@@ -460,7 +464,7 @@ Scripts are grouped in category subdirectories since #557. The full per-script i
 - `deploy/sync_dev.sh`: dev↔dev state sync (gitignored files + ~/.claude Tier 3)
 - `deploy/autopull_receiver.sh`: Mac mini receiver (launchd 5-minute auto-pull)
 - `deploy/state_replicator.sh`: hourly snapshot to the development host's `data/replicas/`
-- `deploy/thesis_remote.sh`: `make thesis-remote`, runs Discord `/thesis` on the development host's local model (the Mac mini cannot load it), on the newest replica DB
+- `deploy/thesis_remote.sh`: `make thesis-remote`, runs Discord `/thesis` on the development host's local model (separate from the scored host's pilot workload), on the newest replica DB
 - `launchd/`: LaunchAgent plists (including `com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive, #838), the system LaunchDaemon in `system/`, and install/uninstall scripts
 
 ## Data Directory

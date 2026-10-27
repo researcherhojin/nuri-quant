@@ -85,7 +85,7 @@ Minimize dependence on paid APIs / cloud / commercial software. This is not a 10
 | Choice | Why |
 |------|------|
 | SQLite (not Postgres) | No separate server needed. Concurrent reads in WAL mode. Test isolation through `tmp_path`. |
-| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0, replaced `gpt-5.4-nano` on 2026-10-08). Portfolio reports (Tier 2) are **local only** (OpenAI path retired 2026-10-08). User narrative (Tier 1) is not allowed. Local LLMs (Ollama, and Strata for `scripts/dev/llm_consult.py` — LM Studio was removed on 2026-10-26) are **on-demand only — always-on operation retired (2026-07-08, #854)**: the trading pipeline uses no local LLM, so their contribution is 0 and only their upkeep cost is real. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
+| **Hybrid LLM stack** | Public RSS classification → OpenAI `gpt-6-luna` (Tier 0). Portfolio reports (Tier 2) are **local only**; external user narrative (Tier 1) is not allowed. Interactive/report inference runs on request; the scheduled thesis pilot (#1964) is separate local research. Strata question-and-answer and the Ollama multi-stage path are distinct. Neither supplies local-LLM input to trading consensus, and operating a pilot does not establish investment contribution. Sovereignty (§4.4) is unchanged. Details in §4.4.3. |
 | yfinance | Free data. openbb was removed in #1477 — a lower-bound override erased the exact pin, leaving it dead with no signal for 7 days, and yfinance alone has no gaps. |
 | GitHub Actions | Free for open source. Automates lint + test + coverage + security. |
 
@@ -288,6 +288,8 @@ Extended from a single-horizon structure, in which `_compute_weights` read only 
 
 **Why retail/crypto are `structurally_unsaturating`** (not "underpowered"): under their current behavior pattern, the two agents fire BUY+SELL with a frequency of 0. Even a natural wait will never saturate them. The intent is to use `default_weight` permanently. Changing the agents' emit policy is a separate issue (outside the PR scope).
 
+**Implementation update 2026-10-28 (#1979)**: the retail rationale above records the original weight-selection design. Retail is now a retired compatibility slot: it never reads historical Reddit rows and always returns `abstained=True`. Its configured weight is retained, but it contributes no vote. The existing crypto readiness classification and weight policy are unchanged.
+
 **API surface**: `/api/learning-memory/readiness` responds with a per-agent source list (canonical_30d / provisional_21d / default / structurally_unsaturating + per-horizon sample_count + eligible). 5-minute cache.
 
 **References**: `nuri/trading/agents/consensus/learning_memory.py` (`compute_canonical_weights` / `compute_provisional_weights` / `select_weight_source`) + `nuri/trading/agents/consensus/__init__.py` (`agent_readiness`), Migration 23 (`outcome_7/14/21d` columns), `nuri/trading/recommend/tracker.py::TRACK_HORIZONS`.
@@ -413,11 +415,13 @@ Check these before opening a PR.
 
 | Item | Standard | Current |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,649 tests, 463 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,649 tests, 463 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
 | Frontend tests | target ≥ 90% | 1,449 tests, 117 files (2026-10-12 full run, after the pipeline Run buttons were removed) |
 | E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |
 | Network | Forbidden | conftest.py mock |
+
+The historical 2026-09-29 `make ci-cov` baseline was 99% statements (150/25,528 uncovered), with 123/7,888 partial branches. The current measurement above is the fast-suite scope. The collection count also includes excluded slow/integration tests; fast-suite 100% does not establish their execution.
 
 ### 4.2 Code
 

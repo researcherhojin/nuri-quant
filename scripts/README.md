@@ -47,7 +47,7 @@ scripts/
 | `deploy_remote.sh` | generic SSH push (rsync) | `make deploy` |
 | `deploy_to_mini.sh` | MBP → Mac mini 1-command (7 steps) | `make deploy-mini` |
 | `ssh_dev2.sh` | 원격 ssh helper (IPv4 강제 + `.local` 해석 실패 시 fallback) | `deploy_to_mini.sh` · Makefile 내부 |
-| `thesis_remote.sh` | Discord `/thesis` 를 상대 머신(MBP)의 Strata 로 실행 — mini 는 모델을 못 올림, 최신 replica DB 사용 | `make thesis-remote ticker=X` (봇) |
+| `thesis_remote.sh` | Discord `/thesis` → MBP `make thesis-progress` → 로컬 Ollama B 팔, 허용 목록 JSONL 진행 이벤트; 최신 replica DB 사용 | `make thesis-remote ticker=X` (봇) |
 | `verify_head_sync.sh` | 로컬 · 원격 git HEAD 일치 판정 | `deploy_to_mini.sh` 내부 |
 | `autopull_receiver.sh` | Mac mini receiver (5min cron, NOT push) | launchd `com.nuri-quant.autopull` |
 | `build_frontend.sh` | frontend rebuild when code is newer than `.next` — backup/rollback + dashboard bounce; shared by autopull and deploy_to_mini (#1462) | `bash scripts/deploy/build_frontend.sh` |

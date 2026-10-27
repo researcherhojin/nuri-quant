@@ -85,7 +85,7 @@ Maintainer note: 이 파일은 `CLAUDE.md` 에서 import 되지 않고 "load on 
 | 선택 | 이유 |
 |------|------|
 | SQLite (not Postgres) | 별도 서버 불필요. WAL 모드 동시 읽기. `tmp_path` 테스트 격리. |
-| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna` (Tier 0, 2026-10-08 `gpt-5.4-nano` 에서 교체). 포트폴리오 리포트(Tier 2)는 **로컬 전용** (2026-10-08 OpenAI 경로 폐지). 사용자 narrative (Tier 1) 미허용. 로컬 LLM (Ollama, 그리고 `scripts/dev/llm_consult.py` 의 Strata — LM Studio 는 2026-10-26 제거) 은 **on-demand only — 상시 가동 폐지 (2026-07-08, #854)**: 매매 파이프라인은 로컬 LLM 을 쓰지 않아 기여 0, 유지비용만 실재. sovereignty (§4.4) 는 불변. 상세 §4.4.3. |
+| **Hybrid LLM stack** | 공개 RSS 분류 → OpenAI `gpt-6-luna`(Tier 0). 포트폴리오 리포트(Tier 2)는 **로컬 전용**, 사용자 narrative(Tier 1)의 외부 전송은 미허용. 대화형·리포트 추론은 요청 시 실행하며, 정시 thesis 파일럿(#1964)은 별도 로컬 연구 작업이다. Strata 질의응답과 Ollama 다단계 경로는 구분한다. 둘 다 매매 합의의 로컬 LLM 입력이 아니며 파일럿 가동은 투자 기여 입증이 아니다. sovereignty (§4.4)는 불변. 상세 §4.4.3. |
 | yfinance | 무료 데이터. openbb 는 #1477 로 제거 — 하한 override 가 정확 핀을 지워 7일간 무신호로 죽어 있었고 yfinance 단독으로 결손 없음. |
 | GitHub Actions | 오픈소스 무료. lint + test + coverage + security 자동화. |
 
@@ -288,6 +288,8 @@ base = regime_win_rate × 60% + profit_factor × 40%
 
 **retail/crypto 가 `structurally_unsaturating` 인 이유** ("underpowered" 가 아님): 두 agent 는 현 동작 패턴상 BUY+SELL 발동 빈도가 0 이다. Natural-wait 으로도 영영 saturate 되지 않는다. `default_weight` 를 영구 사용하는 것이 의도다. agent emit 정책 변경은 별도 이슈다 (PR scope 밖).
 
+**2026-10-28 구현 상태(#1979)**: 위 retail 설명은 원래의 가중치 선택 근거다. 현재 retail 은 은퇴한 호환 슬롯으로 과거 Reddit 행도 조회하지 않고 항상 `abstained=True` 를 반환한다. 설정 가중치는 보존돼 있지만 합의에 표를 더하지 않는다. crypto 의 기존 readiness 분류와 가중치 정책은 바뀌지 않았다.
+
 **API surface**: `/api/learning-memory/readiness` 가 per-agent source list 를 응답한다 (canonical_30d / provisional_21d / default / structurally_unsaturating + 호라이즌별 sample_count + eligible). 5분 캐시.
 
 **참조**: `nuri/trading/agents/consensus/learning_memory.py` (`compute_canonical_weights` / `compute_provisional_weights` / `select_weight_source`) + `nuri/trading/agents/consensus/__init__.py` (`agent_readiness`), Migration 23 (`outcome_7/14/21d` 컬럼), `nuri/trading/recommend/tracker.py::TRACK_HORIZONS`.
@@ -413,11 +415,13 @@ PR 전에 확인한다.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,649 tests, 463 files (statement coverage **99%** — 150/25,528 미커버 26개 파일, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,649 tests, 463 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
 | Frontend tests | 목표 ≥ 90% | 1,449 tests, 117 files (2026-10-12 전체 실행, 파이프라인 Run 버튼 제거 반영) |
 | E2E | 핵심 flow | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | 필수 | lint + test + coverage + security + privacy |
 | 네트워크 | 금지 | conftest.py mock |
+
+과거 기준선은 2026-09-29 `make ci-cov` 의 statement 99%(150/25,528 미커버), partial branch 123/7,888 이었다. 위 최신 수치는 fast suite 범위다. collection 수는 제외된 slow/integration 테스트도 포함하며, fast 100%를 미실행 범위의 검증으로 해석하지 않는다.
 
 ### 4.2 코드
 

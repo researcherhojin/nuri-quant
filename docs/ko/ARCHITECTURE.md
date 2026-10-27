@@ -224,6 +224,8 @@ risk veto 는 `alpha_action` 을 읽는다(alpha action 이 없는 verdict 에 �
 - **BUY 후보 점수**(`config/buy_signals.yaml`): factor composite 에 5일 momentum, RSI, 30일 breakout 을 결합한다. cross-sectional relative strength 와 dollar-volume surge 는 계산해 evidence 로 보여 주지만, walk-forward test 로 검증되기 전까지는 가중치가 0 이다. VIX 가 `vix_gate` 차단 수준을 넘으면 실행이 멈춘다. VIX 를 알 수 없거나 오래됐거나 caution 구간이면 배분이 절반으로 줄어든다.
 - **시그널**(`config/signals.yaml`): backtest detector 가 쓰는 ticker 단위 actionable 시그널 19개와, `actionable: false` 로 표시된 shadow 시그널 3개. 시장 전체 2개(수익률 곡선 역전, HY-OAS 확대)는 경고로만 surface 되고, ticker 단위 `short_squeeze` 는 scorecard 에만 잡히고 후보가 되지 않는다(#1911).
 
+등록 슬롯은 10개지만 `retail` 은 은퇴한 호환 슬롯이다(#1979). 과거 Reddit 행이 있어도 항상 HOLD/0, `abstained=True` 를 반환한다. Reddit 수집기와 정시·수동 수집 경로는 제거됐고 과거 행과 설정 가중치는 보존됐다. 기권은 합의에 기여하는 HOLD 표가 아니다.
+
 ## 데이터베이스 접근
 
 `sqlite3` 를 import 하는 module 은 `nuri/core/db/connection.py` 하나뿐이다. DB 파일은 `data/portfolio.db` 다(WAL 모드, `NURI_DB_PATH` 로 override). 모든 upsert 함수는 선택 인자 `db_path` 를 받으며, 테스트는 격리를 위해 이를 `tmp_path` 의 파일로 지정한다. schema 버전 관리에는 `schema_version` 테이블과 `_MIGRATIONS` 목록을 쓴다. job 들은 테이블을 통해 데이터를 주고받으며, 예외는 [런타임 토폴로지](#런타임-토폴로지)에서 설명한 in-memory hand-off 하나뿐이다.
@@ -374,7 +376,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 | `prices` | ticker 별 OHLCV 일봉. scheduled 실행은 최근 며칠을 가져오고, 주간 backfill 이 1년을 덮으며, 그보다 긴 이력은 필요할 때 로드한다. `source` 는 기록한 writer 를 나타낸다(`yfinance` / `pykrx` / `kis`, #1727 — 같은 (ticker, date) 를 나중에 쓴 writer 가 대체한다). `close` 는 절대 NULL 이 아니다. `upsert_prices` 가 yfinance 의 미확정 반쪽 행을 버리고(#1480), migration 66 이 그 이전에 쓰인 행을 삭제했다(#1630) |
 | `portfolio` | 보유 종목(account, ticker, quantity, avg_price, currency, sector) |
 | `portfolio_changes` | #1720 append-only 보유 수량 로그. 모든 `portfolio` INSERT·DELETE 와 quantity·account·ticker 를 바꾸는 모든 UPDATE 에서(writer 무관) SQLite trigger 가 쓰며, `changed_at` 은 KST wall-clock 이다. 계좌 import(DELETE+INSERT)는 보유 종목마다 −old/+new 쌍을 남기고, 수량이 그대로면 합이 0 이 된다. 보유 데이터: production DB 에만 있고 MCP `ALLOWED` 에는 없다 |
-| `macro` | FRED 지표, VIX, USD/KRW, Fear & Greed, put/call ratio, crypto, retail sentiment 시계열 |
+| `macro` | FRED 지표, VIX, USD/KRW, Fear & Greed, put/call ratio, crypto 시계열과 보존된 과거 retail sentiment 행(Reddit 수집은 #1979 에서 은퇴) |
 | `signals` | TA-Lib 기술 지표 |
 | `fundamentals` | PE, ROE, 마진, 성장률, beta |
 | `superinvestors` | 13F 보유 내역(Buffett 등) |
@@ -442,6 +444,8 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 - `alerts.yaml`: 알림 threshold 와 보고 시각
 - `research_sources.json`: 등록된 공개 문서 source 와 발행 주체 신원 확인. 출력 문체는 `nuri/llm/research_briefing.py` 에 있다
 - `walkforward*.yaml`, `eval/thesis_prompts.yaml`: walk-forward 검증과 thesis 평가 설정
+- `evidence.yaml`, `llm_runtime.yaml`: 로컬 thesis 근거의 신선도·예산과 런타임 식별·옵션; 대화형·리포트 설정은 별도 블록
+- `thesis_pilot.yaml`, `thesis_freeze.yaml`: 파일럿 활성화와 선언된 팔 지문; 운영 경계는 [로컬 thesis 모드](RESEARCH_BRIEFING.md#로컬-thesis-모드) 참조
 
 ## 스크립트 (`scripts/`)
 
@@ -460,7 +464,7 @@ script 는 #557 이후 category 별 하위 디렉터리로 묶여 있다. script
 - `deploy/sync_dev.sh`: dev↔dev 상태 동기화(gitignored 파일 + ~/.claude Tier 3)
 - `deploy/autopull_receiver.sh`: Mac mini receiver(launchd 5분 auto-pull)
 - `deploy/state_replicator.sh`: 개발 호스트의 `data/replicas/` 로 매시 snapshot
-- `deploy/thesis_remote.sh`: `make thesis-remote`, Discord `/thesis` 를 개발 호스트의 로컬 모델로 실행 (Mac mini 는 모델을 못 올림), 최신 replica DB 사용
+- `deploy/thesis_remote.sh`: `make thesis-remote`, Discord `/thesis` 를 개발 호스트의 로컬 모델로 실행 (채점 호스트의 파일럿 부하와 분리), 최신 replica DB 사용
 - `launchd/`: LaunchAgent plist(`com.nuri-quant.api` / `com.nuri-quant.dashboard` KeepAlive 포함, #838), `system/` 의 system LaunchDaemon, install/uninstall script
 
 ## 데이터 디렉터리
