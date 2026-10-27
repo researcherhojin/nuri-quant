@@ -237,6 +237,26 @@ class TestMarketPacket:
         counts = next(i for i in p["items"] if i["id"].startswith("macro_events:counts"))
         assert counts["fields"]["trade_war"] == 1
 
+    @pytest.mark.parametrize(
+        ("published", "age"),
+        [
+            ("2026-03-09T23:50:00+00:00", 0),
+            ("2026-03-10T08:50:00+09:00", 0),
+            ("2026-03-09 23:50:00", 0),
+            ("2026-03-08T23:50:00Z", 1),
+        ],
+    )
+    def test_macro_headline_age_uses_elapsed_time(self, db_path, cfg, published, age):
+        _rows(
+            db_path,
+            "INSERT INTO macro_events (fetched_at, published_at, source, headline, url, category) "
+            "VALUES (?, ?, 'wire', 'recent headline', 'age-fixture', 'trade_war')",
+            [("2026-03-09T23:55:00+00:00", published)],
+        )
+        packet = ev.build_market_packet(cutoff=CUTOFF, db_path=db_path, config=cfg)
+        headline = next(i for i in packet["items"] if i["source"] == "macro_events" and "headline" in i["fields"])
+        assert headline["age_days"] == age
+
     def test_etf_flows_report_the_change_between_snapshots_and_go_stale(self, db_path, cfg):
         _rows(
             db_path,
