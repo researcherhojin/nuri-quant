@@ -31,6 +31,10 @@ think: false
 template_overhead_tokens: 16
 
 timeout_s: 900
+# 단계 프롬프트 상한(토큰, #1961). 기준선 A 는 압축 뷰 전체를 한 번에 받는다 — MBP 실측 7,628 + mini 의 macro_events
+# ~1k + 지시 · 스키마 ~1k ≈ 10k. 8k 로 두면 A 만 증거를 덜 받아 B−A 가 정보량 비교가 된다. mini prefill 8.8k 34초 ·
+# 17.6k 80초 실측, num_ctx 32,768 안. 넘으면 그 실행은 over_budget 으로 실패한다.
+stage_prompt_budget_tokens: 14000
 
 # 계산 경로 지문. 고정 공개 프롬프트를 차가운 상태 · temperature 0 으로 돌린 출력의 SHA-256.
 # 채점 배치 전에 같아야 한다. null 이면 채점 배치를 거부한다 (`--canary` 로 재고 등록).
