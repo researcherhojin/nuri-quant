@@ -240,6 +240,13 @@ class TestCanary:
         assert lc.check_canary(cfg, session=FakeSession(cfg)) == got
 
 
+def test_the_scored_host_canary_is_registered():
+    """채점 배치는 등록값이 없으면 거부된다 — 2026-10-27 mini 에서 잰 값이 config 에 있어야 한다 (#1957)."""
+    import re
+
+    assert re.fullmatch(r"[0-9a-f]{64}", lc.load_config()["canary"]["scored_sha256"] or "")
+
+
 class TestCli:
     def test_runtime_match_and_mismatch(self, cfg, monkeypatch, capsys):
         monkeypatch.setattr(lc, "load_config", lambda: cfg)
