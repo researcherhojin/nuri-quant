@@ -165,11 +165,28 @@ def db(tmp_path, monkeypatch):
     return p
 
 
-def _run(db, tmp_path, ticker, *, arm="B", rating="Overweight", cutoff=CUTOFF, run_hash=None, archive=True, late=False):
+def _run(
+    db,
+    tmp_path,
+    ticker,
+    *,
+    arm="B",
+    rating="Overweight",
+    cutoff=CUTOFF,
+    run_hash=None,
+    archive=True,
+    late=False,
+    experiment="exp",
+    arm_hash="ah",
+    batch_status="ok",
+):
     run_hash = run_hash or f"{ticker}{arm}{cutoff.isoformat()}".ljust(16, "x")
+    batch = ledger.start_batch(experiment, "c", db_path=db)
+    if batch_status != "open":
+        ledger.end_batch(batch, "c" if batch_status == "ok" else "other", db_path=db)
     run = {
         "arm": arm,
-        "arm_hash": "ah",
+        "arm_hash": arm_hash,
         "ticker": ticker,
         "scored": True,
         "run_hash": run_hash,
@@ -182,6 +199,8 @@ def _run(db, tmp_path, ticker, *, arm="B", rating="Overweight", cutoff=CUTOFF, r
     }
     rid = ledger.record_run(
         run,
+        experiment=experiment,
+        batch_id=batch,
         cohort_date=cutoff.date().isoformat(),
         cutoff=cutoff.isoformat(),
         late=late,
@@ -253,9 +272,11 @@ class TestSettleAndReflect:
         assert query("SELECT COUNT(*) AS n FROM thesis_returns", db_path=db)[0]["n"] == 0
 
 
-def _settled_with_reflection(db, tmp_path, monkeypatch, ticker, cutoff, *, fetched_at, created_at, late=False):
+def _settled_with_reflection(
+    db, tmp_path, monkeypatch, ticker, cutoff, *, fetched_at, created_at, late=False, batch_status="ok"
+):
     """시계를 고정해 정산 수신 시각 · reflection 생성 시각을 정한다."""
-    _run(db, tmp_path, ticker, cutoff=cutoff, late=late)
+    _run(db, tmp_path, ticker, cutoff=cutoff, late=late, batch_status=batch_status)
     monkeypatch.setattr(tm, "_fetch", lambda tickers, s, e: {ticker: series()["T0"], "SPY": series()["SPY"]})
     monkeypatch.setattr(tm, "window", lambda c, n: [date.fromisoformat(SESSIONS[0]), date.fromisoformat(SESSIONS[-1])])
     monkeypatch.setattr(tm, "kst_now", lambda: fetched_at)
@@ -275,7 +296,7 @@ class TestPastContext:
 
     def test_numbers_come_from_code_and_model_text_is_masked_and_quoted(self, db, tmp_path, monkeypatch):
         self._ok(db, tmp_path, monkeypatch)
-        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db)
+        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db)
         assert text.startswith("Past analyses of T0 (most recent first):")
         assert "| Overweight | raw +10.0% | alpha +9.0% | 5 sessions]" in text
         assert (
@@ -295,11 +316,37 @@ class TestPastContext:
     def test_each_visibility_time_alone_hides_the_entry(self, db, tmp_path, monkeypatch, table, column):
         """보이는 기억 하나를 만든 뒤 세 시각 중 하나만 cutoff 뒤로 옮긴다 — 조건 하나를 지우면 그 경우가 빨개진다."""
         self._ok(db, tmp_path, monkeypatch)
-        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db) != ""  # 양성 대조
+        assert (
+            tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) != ""
+        )  # 양성 대조
         after = (self.LATER + timedelta(minutes=1)).astimezone(timezone.utc).isoformat()
         with get_db(db) as conn:
             conn.execute(f"UPDATE {table} SET {column} = ?", (after,))
-        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db) == ""
+        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) == ""
+
+    @pytest.mark.parametrize(("experiment", "arm_hash"), [("pilot", "ah"), ("exp", "other")])
+    def test_another_experiment_or_arm_definition_is_invisible(self, db, tmp_path, monkeypatch, experiment, arm_hash):
+        """파일럿 교훈은 확증 실행에, 프롬프트가 바뀐 팔의 교훈은 새 팔에 섞이지 않는다 (#1981)."""
+        self._ok(db, tmp_path, monkeypatch)
+        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) != ""
+        assert (
+            tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment=experiment, arm_hash=arm_hash, db_path=db)
+            == ""
+        )
+
+    @pytest.mark.parametrize("batch_status", ["canary_changed", "open"])
+    def test_a_run_from_an_unverified_batch_never_becomes_memory(self, db, tmp_path, monkeypatch, batch_status):
+        """끝 canary 가 바뀌었거나 끝나지 못한 배치 — reflection 도 기억도 없다 (#1981)."""
+        _settled_with_reflection(
+            db, tmp_path, monkeypatch, "T0", CUTOFF, fetched_at=AFTER, created_at=AFTER, batch_status=batch_status
+        )
+        assert query("SELECT COUNT(*) AS n FROM thesis_reflections", db_path=db)[0]["n"] == 0
+        with get_db(db) as conn:
+            conn.execute(
+                "INSERT INTO thesis_reflections SELECT id, 'd', 'h', 'lesson', 'rc', '2000-01-01T00:00:00+00:00' "
+                "FROM thesis_runs"
+            )
+        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) == ""
 
     def test_a_late_run_never_becomes_memory(self, db, tmp_path, monkeypatch):
         """진입 개장 뒤에 기록된 판정은 그날 가격을 봤을 수 있다 — reflection 도 기억도 없다."""
@@ -311,23 +358,25 @@ class TestPastContext:
                 "INSERT INTO thesis_reflections SELECT id, 'd', 'h', 'lesson', 'rc', '2000-01-01T00:00:00+00:00' "
                 "FROM thesis_runs"
             )
-        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db) == ""
+        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) == ""
 
     def test_another_tickers_lesson_appears_without_its_decision(self, db, tmp_path, monkeypatch):
         self._ok(db, tmp_path, monkeypatch, ticker="X1")
-        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db)
+        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db)
         assert text.startswith("Recent cross-ticker lessons:") and "| X1 | Overweight | raw +10.0%]" in text
         assert "decision" not in text and "Past analyses" not in text
 
     def test_same_ticker_and_cross_ticker_caps(self, db, tmp_path, monkeypatch):
         with get_db(db) as conn:
+            conn.execute("INSERT INTO thesis_batches VALUES ('bk', 'exp', 's', 'c', 'e', 'c', 'ok')")
             for i in range(7):
                 for t in ("T0", "X1"):
                     c = (CUTOFF - timedelta(days=30 * (i + 1))).isoformat()
                     conn.execute(
                         "INSERT INTO thesis_runs (cohort_date, arm, arm_hash, ticker, cutoff, late, scored, run_hash, "
-                        "packet_hashes, view_hash, prompt_hashes, call_hashes, runtime, budget_tokens, rating, outcome) "
-                        "VALUES (?, 'B', 'ah', ?, ?, 0, 1, ?, '[]', 'v', '[]', '[]', '{}', 14000, 'Hold', 'verdict')",
+                        "packet_hashes, view_hash, prompt_hashes, call_hashes, runtime, budget_tokens, rating, outcome, "
+                        "experiment, batch_id) "
+                        "VALUES (?, 'B', 'ah', ?, ?, 0, 1, ?, '[]', 'v', '[]', '[]', '{}', 14000, 'Hold', 'verdict', 'exp', 'bk')",
                         (c[:10], t, c, f"{t}{i}"),
                     )
                     rid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -340,11 +389,11 @@ class TestPastContext:
                         "INSERT INTO thesis_reflections VALUES (?, 'd', 'h', 'lesson', 'rc', '2000-01-01T00:00:00+00:00')",
                         (rid,),
                     )
-        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db)
+        text = tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db)
         assert text.count("| T0 |") == 5 and text.count("| X1 |") == 3
 
     def test_nothing_settled_gives_an_empty_block(self, db, tmp_path):
-        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), db_path=db) == ""
+        assert tm.past_context("T0", self.LATER, cfg=cfg(tmp_path), experiment="exp", arm_hash="ah", db_path=db) == ""
 
 
 def test_cli_settles_then_reflects(monkeypatch, tmp_path, capsys):

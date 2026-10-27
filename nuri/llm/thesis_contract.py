@@ -274,10 +274,12 @@ def run_baseline(
     cfg: Optional[dict[str, Any]] = None,
     scored: bool = False,
     session: Any = None,
+    canary_checked: bool = False,
 ) -> dict[str, Any]:
-    """팔 A — 같은 묶음 · 같은 스키마 · 호출 1회(+오류를 붙인 재시도 1회). 채점 모드는 canary 부터 확인한다."""
+    """팔 A — 같은 묶음 · 같은 스키마 · 호출 1회(+오류를 붙인 재시도 1회). 채점 모드는 canary 부터 확인한다
+    (배치가 이미 확인했으면 `canary_checked` — 실행마다 1,200 토큰 생성을 반복하지 않게, #1981)."""
     cfg = cfg if cfg is not None else lc.load_config()
-    if scored:
+    if scored and not canary_checked:
         lc.check_canary(cfg, session=session)
     view = compact_view(packets["ticker"], packets["market"])
     schema = run_schema(view)
@@ -395,7 +397,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--tickers", help="comma-separated tickers (fetches news live)")
     src.add_argument("--replay", type=Path, nargs="+", help="archived run files to replay from their packets")
-    p.add_argument("--scored", action="store_true", help="scored mode: check the registered canary first")
     p.add_argument("--db", type=Path, default=None)
     args = p.parse_args(argv)
     cfg = lc.load_config()
@@ -412,7 +413,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     else:
         jobs = [(t, build_packets(t, db_path=args.db)) for t in args.tickers.split(",") if t]
     for ticker, packets in jobs:
-        run = run_baseline(ticker, packets, cfg=cfg, scored=args.scored)
+        # 채점은 이 CLI 로 하지 않는다 — `python -m nuri.llm.thesis_arm --arms A --scored --experiment …` 만이
+        # 운영 역할 · 배치 canary · 실험 태그 · 원장 기록을 거친다 (#1981)
+        run = run_baseline(ticker, packets, cfg=cfg)
         path = archive(run, packets, cfg)
         print(f"{run['run_hash'][:16]}  {path}")
         runs.append(run)

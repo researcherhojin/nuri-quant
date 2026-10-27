@@ -162,6 +162,7 @@ def reflect_pending(*, cfg: dict[str, Any], db_path: Optional[Path] = None, sess
         "SELECT r.id, r.ticker, r.run_hash, r.rating, t.raw_return, t.alpha, t.benchmark FROM thesis_runs r "
         "JOIN thesis_returns t ON t.ticker = r.ticker AND t.cutoff = r.cutoff "
         "LEFT JOIN thesis_reflections f ON f.run_id = r.id "
+        "JOIN thesis_batches b ON b.batch_id = r.batch_id AND b.status = 'ok' "
         "WHERE r.scored = 1 AND r.arm = 'B' AND r.late = 0 AND r.rating != ? AND t.status = 'ok' "
         "AND f.run_id IS NULL "
         "ORDER BY r.id",
@@ -209,10 +210,20 @@ def _pct(x: float) -> str:
     return f"{x:+.1%}"
 
 
-def past_context(ticker: str, cutoff: datetime, *, cfg: dict[str, Any], db_path: Optional[Path] = None) -> str:
+def past_context(
+    ticker: str,
+    cutoff: datetime,
+    *,
+    cfg: dict[str, Any],
+    experiment: str,
+    arm_hash: str,
+    db_path: Optional[Path] = None,
+) -> str:
     """이 실행이 볼 수 있는 기억 — 같은 종목 최근 n 건(판정 + 교훈) + 다른 종목 교훈 n 건. 없으면 빈 문자열.
 
-    보이는 조건: 청산 종가 · 정산 수신 · reflection 생성이 모두 cutoff 이전. 숫자는 코드가 렌더하고,
+    보이는 조건: 청산 종가 · 정산 수신 · reflection 생성이 모두 cutoff 이전, 배치 끝 canary 가 확인된(`ok`) 배치,
+    같은 실험 · 같은 팔 정의(#1981 — 파일럿
+    교훈이 확증 실행에 섞이지 않게, 프롬프트가 바뀐 팔의 교훈이 섞이지 않게). 숫자는 코드가 렌더하고,
     모델 글(판정 · 교훈)은 한 줄로 펴고 숫자를 가리고 따옴표로 감싼다.
     """
     m = cfg["memory"]
@@ -221,10 +232,12 @@ def past_context(ticker: str, cutoff: datetime, *, cfg: dict[str, Any], db_path:
         "SELECT r.ticker, r.cohort_date, r.rating, t.raw_return, t.alpha, f.decision_text, f.reflection "
         "FROM thesis_reflections f JOIN thesis_runs r ON r.id = f.run_id "
         "JOIN thesis_returns t ON t.ticker = r.ticker AND t.cutoff = r.cutoff "
+        "JOIN thesis_batches b ON b.batch_id = r.batch_id AND b.status = 'ok' "
         "WHERE r.scored = 1 AND r.arm = 'B' AND r.late = 0 AND t.status = 'ok' "
+        "AND r.experiment = ? AND r.arm_hash = ? "
         "AND t.exit_close_at <= ? AND t.fetched_at <= ? AND f.created_at <= ? "
         "ORDER BY r.cutoff DESC, r.id DESC",
-        (at, at, at),
+        (experiment, arm_hash, at, at, at),
         db_path=db_path,
     )
     same = [r for r in rows if r["ticker"] == ticker][: int(m["same_ticker"])]

@@ -42,6 +42,8 @@ def db_path(tmp_path, monkeypatch):
     for day, ticker in [("2026-10-01", "AAA"), ("2026-10-01", "BBB"), ("2026-10-02", "AAA"), (TODAY, "CCC")]:
         tl.record_run(
             _run(ticker),
+            experiment="pilot",
+            batch_id="b1",
             cohort_date=day,
             cutoff="2026-10-01T09:00:00+09:00",
             late=False,
@@ -66,6 +68,21 @@ class TestWriter:
         assert json.loads(row["prompt_hashes"]) == ["p1"] and json.loads(row["call_hashes"]) == ["c1"]
         assert json.loads(row["runtime"]) == {"version": "v"} and row["canary_sha256"] == "cn"
 
+    @pytest.mark.parametrize("experiment", ["", "   "])
+    def test_a_blank_experiment_is_refused(self, db_path, experiment):
+        with pytest.raises(ValueError, match="experiment"):
+            tl.record_run(
+                _run(),
+                experiment=experiment,
+                batch_id="b1",
+                cohort_date="2026-10-03",
+                cutoff="2026-10-01T09:00:00+09:00",
+                late=False,
+                runtime={},
+                canary_sha256=None,
+                db_path=db_path,
+            )
+
     @pytest.mark.parametrize("role", ["", "dev", "productions"])
     def test_only_the_production_role_may_write(self, db_path, monkeypatch, role):
         """dev 복제본 · MBP 대화형 실행은 원장에 쓰지 않는다 — mini scheduler plist 에만 이 값이 있다."""
@@ -73,6 +90,8 @@ class TestWriter:
         with pytest.raises(tl.NotProductionError):
             tl.record_run(
                 _run(),
+                experiment="pilot",
+                batch_id="b1",
                 cohort_date="2026-10-03",
                 cutoff="2026-10-01T09:00:00+09:00",
                 late=False,
@@ -110,6 +129,8 @@ class TestSealAndTamper:
         _sealed(db_path)
         tl.record_run(
             _run("ZZZ"),
+            experiment="pilot",
+            batch_id="b1",
             cohort_date="2026-10-02",
             cutoff="2026-10-01T09:00:00+09:00",
             late=False,
@@ -123,6 +144,8 @@ class TestSealAndTamper:
         _sealed(db_path)
         tl.record_run(
             _run("ZZZ"),
+            experiment="pilot",
+            batch_id="b1",
             cohort_date="2026-09-30",
             cutoff="2026-10-01T09:00:00+09:00",
             late=False,
@@ -138,6 +161,13 @@ class TestSealAndTamper:
         with get_db(db_path) as conn:
             conn.execute("UPDATE thesis_runs SET arm_hash = 'other' WHERE cohort_date = '2026-10-02'")
         assert any("2026-10-02" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
+
+    def test_an_edited_experiment_is_caught(self, db_path):
+        """파일럿 행을 확증 실험으로 옮기면 잡힌다 (#1981)."""
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE thesis_runs SET experiment = 'confirmatory' WHERE cohort_date = '2026-10-01'")
+        assert any("2026-10-01" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
     def test_an_edited_late_flag_is_caught(self, db_path):
         _sealed(db_path)
@@ -245,3 +275,35 @@ class TestReportAndJob:
         ):
             scheduler._run_alpha_report()
         assert "thesis 원장 봉인 불일치" in caplog.text
+
+
+class TestBatches:
+    @pytest.fixture
+    def prod(self, tmp_path, monkeypatch):
+        p = tmp_path / "b.db"
+        init_db(p)
+        monkeypatch.setenv("NURI_ROLE", "production")
+        return p
+
+    @pytest.mark.parametrize(("end", "status"), [("c1", "ok"), ("c2", "canary_changed"), (None, "canary_changed")])
+    def test_the_end_canary_decides_the_batch_status(self, prod, end, status):
+        b = tl.start_batch("pilot", "c1", db_path=prod)
+        assert query("SELECT status FROM thesis_batches", db_path=prod)[0]["status"] == "open"
+        assert tl.end_batch(b, end, db_path=prod) == status
+        row = query("SELECT * FROM thesis_batches", db_path=prod)[0]
+        assert (row["status"], row["canary_end"], row["experiment"]) == (status, end, "pilot") and row["ended_at"]
+
+    def test_a_closed_or_unknown_batch_cannot_be_ended(self, prod):
+        b = tl.start_batch("pilot", "c1", db_path=prod)
+        tl.end_batch(b, "c1", db_path=prod)
+        with pytest.raises(ValueError, match="not open"):
+            tl.end_batch(b, "c1", db_path=prod)
+        with pytest.raises(ValueError, match="not open"):
+            tl.end_batch("nope", "c1", db_path=prod)
+
+    def test_a_batch_needs_production_and_an_experiment(self, prod, monkeypatch):
+        with pytest.raises(ValueError, match="experiment"):
+            tl.start_batch("  ", "c1", db_path=prod)
+        monkeypatch.setenv("NURI_ROLE", "dev")
+        with pytest.raises(tl.NotProductionError):
+            tl.start_batch("pilot", "c1", db_path=prod)
