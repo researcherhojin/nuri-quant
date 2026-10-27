@@ -33,21 +33,20 @@ class TestChartsMain:
 
 class TestEvidenceChartsMain:
     def test_evidence_charts_main_empty_db(self, db_path, tmp_path, capsys):
-        """빈 격리 DB 로 CLI 를 실행해 데이터 없는 차트의 HTML 을 실제로 쓴다."""
+        """빈 DB 에서도 CLI 가 보고한 다섯 차트 파일이 모두 존재해야 한다."""
         from nuri.analysis import evidence_charts
         from nuri.core.timezone import today_kst
 
         assert evidence_charts.main(["--output-root", str(tmp_path)]) == 0
-        files = list((tmp_path / today_kst() / "evidence").glob("*.html"))
-        # SPY 가 없는 레짐 차트는 현재 경로만 반환한다. 나머지 네 차트는 빈 안내 HTML 을 쓴다.
-        assert {f.name for f in files} == {
-            "portfolio_heatmap.html",
-            "signal_performance.html",
-            "fear_greed.html",
-            "sell_evidence.html",
-        }
+        directory = tmp_path / today_kst() / "evidence"
+        files = list(directory.glob("*.html"))
+        out = capsys.readouterr().out
+        names = [line.strip()[2:] for line in out.splitlines() if line.strip().startswith("- ")]
+        assert len(names) == 5
+        assert {f.name for f in files} == set(names)
         assert all("<html>" in f.read_text() for f in files)
-        assert "증거 차트 생성 완료:" in capsys.readouterr().out
+        assert "SPY 가격 데이터 없음" in (directory / "regime_evidence.html").read_text()
+        assert "증거 차트 생성 완료: 5개" in out
 
 
 class TestRebalanceAdvisorMain:
