@@ -410,6 +410,34 @@ def _record_collector_run(name: str, status: str, started_monotonic: float, *, r
         logger.warning(f"[{name}] collector_runs 기록 실패 (수집 자체는 영향 없음): {e}")
 
 
+def _run_thesis_pilot():
+    """thesis 파일럿의 밤 (#1964) — 배치를 새 세션으로 띄우고 곧바로 돌아온다.
+
+    `config/thesis_pilot.yaml` 의 experiment 가 null 이면 아무것도 하지 않는다. 배치는 이 프로세스의 자식이지만
+    다른 프로세스 그룹이라, 08:40 `self_restart`(launchctl kickstart -k)나 배포의 재기동이 죽이지 않는다
+    (launchd 는 job 의 프로세스 그룹만 정리한다 — `man launchd.plist` AbandonProcessGroup; 2026-10-27 실제
+    launchd 로 확인, #1964 댓글).
+    """
+    try:
+        from nuri.llm.thesis_pilot import launch_night
+
+        pid = launch_night()
+        if pid is not None:
+            logger.info(f"[thesis_pilot] 배치 프로세스 {pid} 시작")
+    except Exception as e:
+        logger.error(f"[thesis_pilot] 실행 실패: {e}", exc_info=True)
+
+
+def _run_thesis_pilot_check():
+    """파일럿 경보 (#1998) — 빠진 · 실패한 · 멈춘 밤과 canary 변화를 #ops 로. 꺼져 있으면 아무것도 하지 않는다."""
+    try:
+        from nuri.llm.thesis_pilot_ops import main as ops_main
+
+        ops_main(["check"])
+    except Exception as e:
+        logger.error(f"[thesis_pilot_check] 실행 실패: {e}", exc_info=True)
+
+
 def _run_premarket_brief():
     """Pre-market brief (DST-aware, US/Eastern tz). PR #TBD.
 
@@ -1123,6 +1151,22 @@ SCHEDULES = [
     # 일일 자가 재시작 (#780) — KST 08:40, 모닝 배치(07-08) 종료 후·KR 개장(09:00) 전 idle
     # window. yfinance fd 누수를 fresh 프로세스 교체로 회수 (plist 4096 천장도 결국 고갈).
     {"name": "self_restart", "func": _self_restart, "args": (), "cron": "40 8 * * *"},
+    # thesis 파일럿 (#1964 · #1998) — experiment 가 null 이면 둘 다 아무것도 하지 않는다.
+    # 09:10 화–토: 미국 세션 다음 날 아침. 미국 가격(06:17) · factors(08:10) 갱신 뒤, `self_restart`(08:40) 뒤라
+    # 재기동이 배치 도중에 오지 않는다. 미장 마감 브리프의 Ollama 창(16:30 ET ± 15분 + 75분 여유)은 두 DST
+    # 시기 모두 이보다 이르다. 09:00 KST 의 alpha_report 는 Ollama 를 쓰지 않는다. 종목당 A+B
+    # ~195초(2026-10-27 mini 리허설) × 10종목 ≈ 33분 — 다음 진입(22:30/23:30 KST)보다 한참 앞이다.
+    # 휴장 다음 날은 러너가 스스로 건너뛴다(`after_session`). tz 를 명시한다 — 없으면 프로세스의 지역 시간대로
+    # 해석돼(CI 의 UTC 러너에서 18:10 KST 로 계산됐다) 위 근거가 기기 설정에 기댄다.
+    {"name": "thesis_pilot", "func": _run_thesis_pilot, "args": (), "cron": "10 9 * * 2-6", "tz": "Asia/Seoul"},
+    # 12:00 매일: 그날 배치 · 정산이 끝난 뒤. `missing` 은 전날까지만 판정한다(지연 최대 하루).
+    {
+        "name": "thesis_pilot_check",
+        "func": _run_thesis_pilot_check,
+        "args": (),
+        "cron": "0 12 * * *",
+        "tz": "Asia/Seoul",
+    },
     # data/reports 날짜 디렉터리 30일 보존 (#1654) — 일요일 03:30 KST. `wallstreet` 과 같은 슬롯이지만
     # 그쪽은 DB 에만 쓰고 report 디렉터리를 읽지 않는다; `memory_snapshot`(04:00) 이 읽는
     # signal_results.csv 는 CONSUMED_ARTIFACTS 가드로 최신 보유 디렉터리가 남는다.
