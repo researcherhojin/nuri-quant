@@ -40,8 +40,9 @@ def git(repo, *args):
 
 
 @pytest.fixture
-def world(tmp_path):
-    """작은 저장소 — 파일럿 · 유니버스 · 동결 · 런타임 설정과 DB."""
+def world(tmp_path, monkeypatch):
+    """작은 저장소 — 파일럿 · 유니버스 · 동결 · 런타임 설정과 DB. 러너는 운영 역할에서만 원장에 쓴다."""
+    monkeypatch.setenv("NURI_ROLE", "production")
     repo = tmp_path / "repo"
     (repo / "config").mkdir(parents=True)
     (repo / "data").mkdir()
@@ -461,3 +462,131 @@ class TestEntryPoints:
         monkeypatch.setattr(tp, "launch_night", lambda repo: 99)
         assert tp.main(["run"]) == 7 and seen["pilot"] == PILOT
         assert tp.main(["launch"]) == 0 and "launched 99" in capsys.readouterr().out
+
+
+def night(db, cohort="2026-11-04"):
+    rows = [dict(r) for r in _query("SELECT * FROM thesis_pilot_nights WHERE cohort_date = ?", (cohort,), db)]
+    return rows[0] if rows else None
+
+
+def night_row(db, cohort="2026-11-04") -> dict:
+    n = night(db, cohort)
+    assert n is not None, "밤 기록이 없다"
+    return n
+
+
+def _query(sql, params, db):
+    from nuri.core.db import query
+
+    return query(sql, params, db_path=db)
+
+
+class TestNightRecords:
+    """밤마다의 결말이 원장에 남는다 — 경보 · 보고가 읽는다 (#1998)."""
+
+    def _fake(self, monkeypatch, rcs=(0, 0)):
+        TestRunNight()._fake(monkeypatch, rcs=rcs)
+
+    def test_a_ran_night_records_the_draw_the_exit_and_memory_samples(self, world, monkeypatch):
+        repo, db = world
+        self._fake(monkeypatch)
+        monkeypatch.setattr(tp, "memory_sample", lambda: (81.0, 6.0))
+        assert tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db) == 0
+        n = night_row(db)
+        record = tp.draw("pilot-x", COHORT, UNIVERSE, 5)
+        assert (n["outcome"], n["exit_code"], n["seed"], n["universe_hash"], n["tickers"]) == (
+            "ran",
+            0,
+            record["seed"],
+            record["universe_hash"],
+            5,
+        )
+        assert n["ended_at"] is not None
+        samples = _query("SELECT available_pct, swap_used_mb FROM thesis_pilot_samples", (), db)
+        assert samples and {(s["available_pct"], s["swap_used_mb"]) for s in samples} == {(81.0, 6.0)}
+
+    def test_memory_is_sampled_repeatedly_while_the_batch_runs(self, world, monkeypatch):
+        repo, db = world
+        TestRunNight()._fake(monkeypatch)
+        hashes = tf.current_hashes(lc.load_config(REPO / lc.CONFIG_PATH))
+        monkeypatch.setattr(tp, "freeze_command", lambda python: [python, "-c", f"print({json.dumps(hashes)!r})"])
+        monkeypatch.setattr(
+            tp,
+            "commands",
+            lambda pilot, tickers, python, db_path=None: [[python, "-c", "import time; time.sleep(0.5)"]],
+        )
+        monkeypatch.setattr(tp, "SAMPLE_SECONDS", 0.05)
+        monkeypatch.setattr(tp, "memory_sample", lambda: (1.0, 0.0))
+        assert tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db) == 0
+        assert len(_query("SELECT 1 FROM thesis_pilot_samples", (), db)) >= 3
+
+    def test_a_refused_night_is_recorded_with_its_reason(self, world, monkeypatch):
+        repo, db = world
+        self._fake(monkeypatch)
+        assert (
+            tp.run_night(PILOT, datetime(2026, 11, 4, 6, 40, tzinfo=KST), repo=repo, python=sys.executable, db_path=db)
+            == 5
+        )
+        assert (night_row(db)["outcome"], night_row(db)["exit_code"]) == ("refused:ollama_busy", 5)
+
+    def test_a_night_without_a_session_leaves_no_record(self, world, monkeypatch):
+        repo, db = world
+        self._fake(monkeypatch)
+        assert (
+            tp.run_night(PILOT, datetime(2026, 11, 2, 10, 0, tzinfo=KST), repo=repo, python=sys.executable, db_path=db)
+            == 0
+        )
+        assert night(db, "2026-11-02") is None
+
+    def test_outside_production_nothing_is_written_or_run(self, world, monkeypatch):
+        repo, db = world
+        self._fake(monkeypatch)
+        monkeypatch.delenv("NURI_ROLE")
+        assert tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db) == 5
+        assert night(db) is None and not (repo / "data" / "calls.jsonl").exists()
+
+    def test_a_second_run_of_the_cohort_is_refused_by_the_record_even_without_the_lock(self, world, monkeypatch):
+        """잠금이 풀린 뒤(첫 실행이 끝난 뒤)의 재실행 — 기본 키가 막고, 첫 기록을 덮어쓰지 않는다."""
+        repo, db = world
+        self._fake(monkeypatch)
+        assert tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db) == 0
+        first = night_row(db)
+        assert tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db) == 5
+        assert night(db) == first
+        assert len((repo / "data" / "calls.jsonl").read_text().splitlines()) == 2
+
+    def test_an_exception_is_recorded_and_raised(self, world, monkeypatch):
+        repo, db = world
+        self._fake(monkeypatch)
+        monkeypatch.setattr(tp, "pinned_worktree", lambda repo, path: (_ for _ in ()).throw(OSError("disk full")))
+        with pytest.raises(OSError):
+            tp.run_night(PILOT, NOW, repo=repo, python=sys.executable, db_path=db)
+        assert (night_row(db)["outcome"], night_row(db)["exit_code"]) == ("error:OSError", 1)
+
+
+class TestMemorySample:
+    def test_reads_the_available_level_and_swap_used(self, monkeypatch):
+        outs = {
+            "kern.memorystatus_level": "81\n",
+            "vm.swapusage": "total = 2048.00M  used = 512.50M  free = 1535.50M  (encrypted)\n",
+        }
+        monkeypatch.setattr(tp, "_out", lambda argv: outs[argv[-1]])
+        assert tp.memory_sample() == (81.0, 512.5)
+
+    def test_it_never_runs_the_pressure_tool(self, monkeypatch):
+        """`memory_pressure` 는 압박을 거는 도구다 — 읽기 전용 sysctl 만 부른다."""
+        seen = []
+        monkeypatch.setattr(tp, "_out", lambda argv: seen.append(argv) or "1")
+        tp.memory_sample()
+        assert [a[0] for a in seen] == ["sysctl", "sysctl"]
+
+    def test_an_unreadable_host_gives_none_instead_of_failing(self, monkeypatch):
+        def missing(argv):
+            raise FileNotFoundError(argv[0])
+
+        monkeypatch.setattr(tp, "_out", missing)
+        assert tp.memory_sample() == (None, None)
+
+    def test_unexpected_output_gives_none(self, monkeypatch):
+        monkeypatch.setattr(tp, "_out", lambda argv: "nothing useful")
+        assert tp.memory_sample() == (None, None)

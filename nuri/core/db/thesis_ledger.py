@@ -123,6 +123,56 @@ def _utc_now() -> str:
     return kst_now().astimezone(timezone.utc).isoformat()
 
 
+def start_night(experiment: str, cohort_date: str, *, db_path: Optional[Path] = None) -> bool:
+    """파일럿 밤 예약 — 이미 있으면 False(두 번째 실행). 기본 키가 원자적 예약이다 (#1998)."""
+    _require_production()
+    with get_db(db_path) as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO thesis_pilot_nights (experiment, cohort_date, started_at) VALUES (?, ?, ?)",
+            (experiment, cohort_date, _utc_now()),
+        )
+        return cur.rowcount == 1
+
+
+def record_draw(experiment: str, cohort_date: str, draw: dict[str, Any], *, db_path: Optional[Path] = None) -> None:
+    _require_production()
+    with get_db(db_path) as conn:
+        conn.execute(
+            "UPDATE thesis_pilot_nights SET seed = ?, universe_hash = ?, tickers = ? "
+            "WHERE experiment = ? AND cohort_date = ?",
+            (draw["seed"], draw["universe_hash"], len(draw["tickers"]), experiment, cohort_date),
+        )
+
+
+def end_night(
+    experiment: str, cohort_date: str, *, outcome: str, exit_code: int, db_path: Optional[Path] = None
+) -> None:
+    _require_production()
+    with get_db(db_path) as conn:
+        conn.execute(
+            "UPDATE thesis_pilot_nights SET ended_at = ?, outcome = ?, exit_code = ? "
+            "WHERE experiment = ? AND cohort_date = ?",
+            (_utc_now(), outcome, exit_code, experiment, cohort_date),
+        )
+
+
+def record_sample(
+    experiment: str,
+    cohort_date: str,
+    available_pct: Optional[float],
+    swap_used_mb: Optional[float],
+    *,
+    db_path: Optional[Path] = None,
+) -> None:
+    _require_production()
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO thesis_pilot_samples (experiment, cohort_date, at, available_pct, swap_used_mb) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (experiment, cohort_date, _utc_now(), available_pct, swap_used_mb),
+        )
+
+
 def start_batch(experiment: str, canary_sha256: str, *, db_path: Optional[Path] = None) -> str:
     """채점 배치 시작 — 시작 canary 를 남기고 `open`. 새 batch_id."""
     _require_production()

@@ -29,7 +29,7 @@ def db_path(tmp_path):
 class TestSchemaMigrations:
     """16 신규 migration (#25 audit / #26 flags / #27 runs / #28 messages / #29 walkforward_runs / #30 regime_posteriors / #31 hypotheses / #32 causal_audits / #33 agent_decisions / #34 decision_outcomes / #35 execution_blocks / #36 incidents / #37 dr_replicas / #38 collector_runs / #39 drift_alerts / #40 foundation_benchmarks) 적용 확인."""
 
-    def test_schema_version_at_77(self, db_path):
+    def test_schema_version_at_78(self, db_path):
         """Phase 1+2 + discord_outbox + agent_control/agent_dev_log channel CHECK 확장 (#582) +
         held_add_shadow (#518) + market_postmortem (#596 Phase 2) +
         incidents signal_evaluation_stale enum 확장 (#825) +
@@ -70,8 +70,9 @@ class TestSchemaMigrations:
         thesis_runs.arm_hash — 팔 정의 지문 (#1963) +
         thesis_runs.cutoff · thesis_returns · thesis_reflections — 정산과 메모리 (#1966) +
         thesis_runs.experiment — 파일럿과 확증 실행 구분 (#1981) +
-        thesis_runs.size — 모의 장부 팔 S 의 규모 (#1968)"""
-        assert get_schema_version(db_path) == 77
+        thesis_runs.size — 모의 장부 팔 S 의 규모 (#1968) +
+        thesis_pilot_nights · thesis_pilot_samples — 파일럿 밤 기록과 메모리 표본 (#1998)"""
+        assert get_schema_version(db_path) == 78
 
     def test_block_type_allowlist_matches_sql_check(self, db_path):
         """`_BLOCK_TYPES`(파이썬 검증) 와 execution_blocks CHECK(스키마) 는 같아야 한다.
