@@ -33,6 +33,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from nuri.core.timezone import kst_now
 from nuri.llm import evidence, live_news
 from nuri.llm import local_client as lc
+from nuri.llm.tradingagents.prompts import RATING_SCALE
 from nuri.llm.tradingagents.rating import RATING_REVIEW, RECOMMENDATION_GUIDE, PortfolioRating
 
 RUN_SCHEMA = "thesis_run/v1"
@@ -74,6 +75,27 @@ class Verdict(BaseModel):
         max_length=MAX_RATIONALE_CHARS,
         description="Which side carried the call and why, in words. Do not write numbers.",
     )
+
+
+_LLM_DIR = Path(__file__).resolve().parent
+#: 팔 A 의 동작을 정하는 파일 — 프롬프트 · 스키마 · 검증 · 재시도, 호출과 그 검사(local_client).
+#: `tradingagents/prompts.py` 는 통째로 넣지 않는다: B 전용 문구가 바뀌어도 A 의 지문이 움직이면 A 를 다시
+#: 재야 하는 것처럼 보인다(Codex 리뷰). A 가 쓰는 문구(RATING_SCALE)만 `ARM_A_TEXTS` 로 넣는다.
+ARM_A_FILES: tuple[str, ...] = ("thesis_contract.py", "tradingagents/rating.py", "local_client.py")
+ARM_A_TEXTS: tuple[str, ...] = (RATING_SCALE,)
+_RUNTIME_KEYS = ("model", "expected", "options", "stage_prompt_budget_tokens", "template_overhead_tokens")
+
+
+def definition_hash(files: tuple[str, ...], cfg: dict[str, Any], texts: tuple[str, ...] = ()) -> str:
+    """팔 정의 지문 — 동작을 정하는 소스 파일의 바이트(주석 포함)와 런타임 설정. 사전등록(E) 이후 무엇이든
+    바뀌면 새 실험이므로 가장 보수적인 쪽(파일 전체)을 해시한다."""
+    h = hashlib.sha256()
+    for name in sorted(files):
+        h.update(name.encode() + b"\0" + (_LLM_DIR / name).read_bytes() + b"\0")
+    for text in texts:
+        h.update(text.encode() + b"\0")
+    h.update(_canonical({k: cfg.get(k) for k in _RUNTIME_KEYS}).encode())
+    return h.hexdigest()
 
 
 @dataclass(frozen=True)
@@ -144,7 +166,7 @@ def build_prompt(ticker: str, view: View, schema: dict[str, Any], errors: Option
         f"At most {MAX_CLAIMS} claims.",
         "Write no numbers in point or rationale: the values are filled in from the evidence you cite.",
         "If one side has no real case in the evidence, set its insufficient flag to true instead of inventing one.",
-        f"rating: {RECOMMENDATION_GUIDE}",
+        RATING_SCALE,  # B 의 Research Manager 와 같은 글 (#1963)
         "SCHEMA",
         json.dumps(schema, ensure_ascii=False, separators=(",", ":")),
     ]
@@ -169,19 +191,7 @@ def check(raw: str, view: View) -> tuple[Optional[Verdict], list[str], int, int]
             0,
             0,
         )
-    errors: list[str] = []
-    bad = 0
-    for n, c in enumerate(v.claims):
-        if c.evidence_id not in view.values:
-            errors.append(f"claims[{n}]: evidence_id {_quote(c.evidence_id)} is not in the evidence")
-            bad += 1
-        elif c.field not in view.values[c.evidence_id]:
-            # 재시도가 같은 실수를 되풀이했다(2026-10-27 MBP) — 그 줄에서 고를 수 있는 필드를 함께 알려준다
-            shown = ", ".join(sorted(view.values[c.evidence_id]))
-            errors.append(
-                f"claims[{n}]: field {_quote(c.field)} is not shown on {c.evidence_id}; its fields are: {shown}"
-            )
-            bad += 1
+    errors, bad = check_claims(v.claims, view)
     # 근거 없는 판정을 막는다 — 부족하다고 하지 않은 쪽은 주장이 있어야 하고, 양쪽 다 부족하면 Hold 다
     # (원본 등급 설명: "Choose Hold only when the evidence is ... too thin to support a call").
     for side in ("bull", "bear"):
@@ -194,6 +204,24 @@ def check(raw: str, view: View) -> tuple[Optional[Verdict], list[str], int, int]
     if v.bull_insufficient and v.bear_insufficient and v.rating != PortfolioRating.HOLD:
         errors.append("both sides are insufficient, so the rating must be Hold")
     return (None if errors else v), errors, len(v.claims), bad
+
+
+def check_claims(claims: list[Claim], view: View) -> tuple[list[str], int]:
+    """(오류, 거부된 주장 수) — 주장이 그 단계가 실제로 본 ID · 필드만 가리키는가. B 의 단계들도 쓴다."""
+    errors: list[str] = []
+    bad = 0
+    for n, c in enumerate(claims):
+        if c.evidence_id not in view.values:
+            errors.append(f"claims[{n}]: evidence_id {_quote(c.evidence_id)} is not in the evidence")
+            bad += 1
+        elif c.field not in view.values[c.evidence_id]:
+            # 재시도가 같은 실수를 되풀이했다(2026-10-27 MBP) — 그 줄에서 고를 수 있는 필드를 함께 알려준다
+            shown = ", ".join(sorted(view.values[c.evidence_id]))
+            errors.append(
+                f"claims[{n}]: field {_quote(c.field)} is not shown on {c.evidence_id}; its fields are: {shown}"
+            )
+            bad += 1
+    return errors, bad
 
 
 def mask_numbers(text: str) -> tuple[str, int]:
@@ -294,6 +322,7 @@ def run_baseline(
     run: dict[str, Any] = {
         "schema": RUN_SCHEMA,
         "arm": "A",
+        "arm_hash": definition_hash(ARM_A_FILES, cfg, ARM_A_TEXTS),
         "ticker": ticker,
         "scored": scored,
         "packet_hashes": [packets["ticker"]["packet_hash"], packets["market"]["packet_hash"]],
@@ -303,13 +332,17 @@ def run_baseline(
         "outcome": outcome,
         "budget_tokens": budget,
         "errors": errors,
+        "retries": max(0, len(calls) - 1),
+        # 검사에 걸린 호출 수 — 재시도가 검사를 통과하면 판정은 유효하다(그 호출도 차가운 캐시 · 잘림 없음을
+        # 같은 검사로 통과했다). 이 수를 따로 남겨 E 가 어떻게 셀지 정할 수 있게 한다.
+        "call_failures": sum(c["call_failed"] for c in calls),
         "claims_total": claims_total,
         "claims_rejected": claims_rejected,
         "masked_numbers": masked,
         "rendered": rendered,
     }
     run["run_hash"] = _sha(
-        {k: run[k] for k in ("packet_hashes", "view_hash", "rating", "outcome", "budget_tokens")}
+        {k: run[k] for k in ("arm_hash", "packet_hashes", "view_hash", "rating", "outcome", "budget_tokens")}
         | {"calls": [c["content_hash"] for c in calls]}
     )
     return run
@@ -345,12 +378,14 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
         "runs": n,
         "outcomes": dict(sorted(outcomes.items())),
         "review_rate": round(sum(r["rating"] == RATING_REVIEW for r in runs) / n, 3) if n else None,
-        "first_try_rate": round(sum(len(r["calls"]) == 1 and r["rating"] != RATING_REVIEW for r in runs) / n, 3)
+        # 재시도 없이 판정까지 간 비율 — B 는 단계가 여럿이라 호출 수가 아니라 재시도 수로 센다
+        "first_try_rate": round(sum(r["retries"] == 0 and r["rating"] != RATING_REVIEW for r in runs) / n, 3)
         if n
         else None,
         "claims": claims,
         "rejected_claim_rate": round(sum(r["claims_rejected"] for r in runs) / claims, 3) if claims else None,
         "masked_numbers": sum(r["masked_numbers"] for r in runs),
+        "call_failures": sum(r.get("call_failures", 0) for r in runs),
         "max_prompt_tokens": max((c["prompt_tokens"] or 0 for r in runs for c in r["calls"]), default=None),
     }
 

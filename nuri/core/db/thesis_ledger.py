@@ -40,12 +40,13 @@ def record_run(
 
     with get_db(db_path) as conn:
         cur = conn.execute(
-            """INSERT INTO thesis_runs (cohort_date, arm, ticker, scored, run_hash, packet_hashes, view_hash,
+            """INSERT INTO thesis_runs (cohort_date, arm, arm_hash, ticker, scored, run_hash, packet_hashes, view_hash,
                    prompt_hashes, call_hashes, runtime, canary_sha256, budget_tokens, rating, outcome, code_rev)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 cohort_date,
                 run["arm"],
+                run["arm_hash"],
                 run["ticker"],
                 int(bool(run["scored"])),
                 run["run_hash"],

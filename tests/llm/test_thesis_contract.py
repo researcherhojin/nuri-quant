@@ -270,7 +270,7 @@ def _run(monkeypatch, packets, cfg, answers, **kw):
 class TestRunBaseline:
     def test_a_first_try_answer_is_rendered_and_hashed(self, monkeypatch, packets, cfg):
         run, fake = _run(monkeypatch, packets, cfg, [verdict()])
-        assert run["rating"] == "Overweight" and len(run["calls"]) == 1 and run["errors"] == []
+        assert run["rating"] == "Overweight" and len(run["calls"]) == 1 and run["errors"] == [] and run["retries"] == 0
         assert run["calls"][0]["prompt_sha256"] and run["calls"][0]["prompt_tokens"] == 900
         assert run["rendered"].startswith("**Rating**: Overweight")
         again, _ = _run(monkeypatch, packets, cfg, [verdict()])
@@ -380,6 +380,7 @@ class TestArchiveSummaryCli:
             {
                 "rating": "Hold",
                 "outcome": "verdict",
+                "retries": 0,
                 "calls": [{"prompt_tokens": 10}],
                 "claims_total": 4,
                 "claims_rejected": 0,
@@ -388,6 +389,7 @@ class TestArchiveSummaryCli:
             {
                 "rating": "REVIEW",
                 "outcome": "review_model",
+                "retries": 1,
                 "calls": [{"prompt_tokens": 12}, {"prompt_tokens": None}],
                 "claims_total": 4,
                 "claims_rejected": 2,
@@ -403,9 +405,45 @@ class TestArchiveSummaryCli:
             "claims": 8,
             "rejected_claim_rate": 0.25,
             "masked_numbers": 1,
+            "call_failures": 0,
             "max_prompt_tokens": 12,
         }
         assert tc.summarize([])["review_rate"] is None
+
+
+class TestDefinitionHash:
+    def test_it_moves_with_each_arm_a_file_the_shared_text_and_the_runtime(self, tmp_path, monkeypatch):
+        import shutil
+
+        dst = tmp_path / "llm"
+        for name in (*tc.ARM_A_FILES, "tradingagents/prompts.py"):
+            (dst / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy(tc._LLM_DIR / name, dst / name)
+        monkeypatch.setattr(tc, "_LLM_DIR", dst)
+        cfg = {"stage_prompt_budget_tokens": 1}
+        base = tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS)
+        assert tc.definition_hash(tc.ARM_A_FILES, cfg, ("other scale",)) != base
+        assert tc.definition_hash(tc.ARM_A_FILES, {"stage_prompt_budget_tokens": 2}, tc.ARM_A_TEXTS) != base
+        for name in tc.ARM_A_FILES:
+            original = (dst / name).read_bytes()
+            (dst / name).write_bytes(original + b"#")
+            assert tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS) != base, name
+            (dst / name).write_bytes(original)
+        # B 전용 문구만 바뀌면 A 의 지문은 그대로다
+        (dst / "tradingagents/prompts.py").write_bytes(b"BULL_KEY_POINTS = 'changed'\n")
+        assert tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS) == base
+
+    def test_the_run_records_and_binds_it(self, monkeypatch, packets, cfg):
+        a, _ = _run(monkeypatch, packets, cfg, [verdict()])
+        assert a["arm_hash"] == tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS)
+        monkeypatch.setattr(tc, "definition_hash", lambda *a, **k: "other")
+        b, _ = _run(monkeypatch, packets, cfg, [verdict()])
+        assert b["arm_hash"] == "other" and b["run_hash"] != a["run_hash"]
+
+    def test_arm_a_gets_the_shared_rating_scale(self, view):
+        from nuri.llm.tradingagents.prompts import RATING_SCALE
+
+        assert RATING_SCALE in tc.build_prompt("T0", view, {})
 
 
 def test_build_packets_fetches_news_before_the_cutoff(monkeypatch):

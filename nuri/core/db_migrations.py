@@ -2272,4 +2272,13 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
     """,
     ),
+    (
+        74,
+        "thesis_runs.arm_hash — 팔 정의 지문 (#1963)",
+        # 팔의 프롬프트 · 스키마 · 검증 · 역할 배정을 정하는 소스 파일과 런타임 설정의 해시
+        # (`thesis_contract.definition_hash`). 봉인 필드 세트는 thesis_v2 — v1 으로 봉인된 행은 없다(ledger_seal 주석).
+        """
+        ALTER TABLE thesis_runs ADD COLUMN arm_hash TEXT;
+    """,
+    ),
 ]
