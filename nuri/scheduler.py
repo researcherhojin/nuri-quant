@@ -548,6 +548,19 @@ def _run_alpha_report():
                     )
             except Exception:  # noqa: BLE001 — 봉인은 Surface, 본 작업과 무관
                 logger.error("[alpha_report] 판정 원장 봉인 실패", exc_info=True)
+            # thesis 실험 원장 (#1962) — 같은 날짜 봉인 규칙, 자체 try (한 체인의 실패가 다른 체인을 막지 않게)
+            try:
+                from nuri.core.db.ledger_seal import THESIS_RUNS
+                from nuri.core.db.ledger_seal import seal_closed_days as _seal
+                from nuri.core.db.ledger_seal import verify as _verify
+
+                _seal(str(today_kst()), chain=THESIS_RUNS)
+                if _verify(chain=THESIS_RUNS):
+                    logger.warning(
+                        "[alpha_report] thesis 원장 봉인 불일치 — python -m nuri.core.db.ledger_seal --chain thesis_runs"
+                    )
+            except Exception:  # noqa: BLE001 — 봉인은 Surface, 본 작업과 무관
+                logger.error("[alpha_report] thesis 원장 봉인 실패", exc_info=True)
         # stage **이전** 상태를 찍어야 skip 사유가 구분된다 (stage 후엔 항상 True).
         # ⚠️ 자체 try — 이건 관측용 부가 정보다. 여기서 실패했다고 본 작업(stage)까지
         # 막으면 observability 가 관측 대상을 죽인다. DB 가 없는 CI 에서 실제로 그랬고,

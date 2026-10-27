@@ -210,6 +210,37 @@ class TestAnchor:
         assert "봉인" not in format_progress_reason({"n": 0})
 
 
+class TestHashCompatibility:
+    """Chain 일반화(#1962) 전 코드로 계산한 봉인값 — 해시 형식이 바뀌면 운영 원장의 과거 봉인이 전부 불일치가 된다.
+
+    origin/main(60c04521)의 `ledger_seal.py` 를 이 픽스처에 그대로 돌려 얻은 값이다.
+    """
+
+    def test_seals_match_the_pre_refactor_values(self, db_path):
+        _sealed(db_path)
+        rows = query("SELECT date, n_rows, digest, seal_hash FROM recommendation_seals ORDER BY date", db_path=db_path)
+        assert [tuple(r.values()) for r in rows] == [
+            (
+                "2026-10-01",
+                2,
+                "8b7a918b3985939e7a920ec2a3bbeaa5ac3f67f19ab58293ee2be63be180772f",
+                "93ecc90261ad3fb72dc4bbba6aba968fff9c0d0072b3568636cad5aef9db7800",
+            ),
+            (
+                "2026-10-02",
+                1,
+                "b6060cb72f57d4ea7f161f4ab78f2e2b7711572cb4e81cbddc0f2588c6b8b65a",
+                "94cb0b4a6a710ca2ce242e68ef8851bc5d746b3df96c921a0a9007e11ae7771d",
+            ),
+            (
+                "2026-10-05",
+                1,
+                "9a9d2e04f0212c0fce07ed55de39c5da0c11f7e4b12c995f977d30a9f42681d6",
+                "1a23b402836e8dd2fa68b14d1d10bf5eb20eae93385c112ecac4b29616a7f300",
+            ),
+        ]
+
+
 class TestDailyJob:
     """봉인은 월간 리포트 job 안에서 **매일**, production 에서만 돈다 (#1718)."""
 
@@ -227,7 +258,10 @@ class TestDailyJob:
             patch("nuri.core.events.emit_event") as emitted,
         ):
             scheduler._run_alpha_report()
-        sealed.assert_called_once()
+        # 판정 원장 한 번, thesis 실험 원장(#1962) 한 번 — 각자 자기 체인으로
+        assert sealed.call_count == 2
+        assert "chain" not in sealed.call_args_list[0].kwargs
+        assert sealed.call_args_list[1].kwargs["chain"] is seal.THESIS_RUNS
         payload = emitted.call_args.kwargs["payload"]
         assert payload["sealed_days"] == 1 and payload["seal_problems"] == 0
 
