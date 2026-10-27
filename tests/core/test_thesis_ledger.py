@@ -40,7 +40,15 @@ def db_path(tmp_path, monkeypatch):
     init_db(p)
     monkeypatch.setenv("NURI_ROLE", "production")
     for day, ticker in [("2026-10-01", "AAA"), ("2026-10-01", "BBB"), ("2026-10-02", "AAA"), (TODAY, "CCC")]:
-        tl.record_run(_run(ticker), cohort_date=day, runtime={"version": "v"}, canary_sha256="cn", db_path=p)
+        tl.record_run(
+            _run(ticker),
+            cohort_date=day,
+            cutoff="2026-10-01T09:00:00+09:00",
+            late=False,
+            runtime={"version": "v"},
+            canary_sha256="cn",
+            db_path=p,
+        )
     return p
 
 
@@ -63,7 +71,15 @@ class TestWriter:
         """dev 복제본 · MBP 대화형 실행은 원장에 쓰지 않는다 — mini scheduler plist 에만 이 값이 있다."""
         monkeypatch.setenv("NURI_ROLE", role)
         with pytest.raises(tl.NotProductionError):
-            tl.record_run(_run(), cohort_date="2026-10-03", runtime={}, canary_sha256=None, db_path=db_path)
+            tl.record_run(
+                _run(),
+                cohort_date="2026-10-03",
+                cutoff="2026-10-01T09:00:00+09:00",
+                late=False,
+                runtime={},
+                canary_sha256=None,
+                db_path=db_path,
+            )
         assert query("SELECT COUNT(*) AS n FROM thesis_runs", db_path=db_path)[0]["n"] == 4
 
 
@@ -92,12 +108,28 @@ class TestSealAndTamper:
 
     def test_a_row_inserted_into_a_sealed_date_is_caught(self, db_path):
         _sealed(db_path)
-        tl.record_run(_run("ZZZ"), cohort_date="2026-10-02", runtime={}, canary_sha256=None, db_path=db_path)
+        tl.record_run(
+            _run("ZZZ"),
+            cohort_date="2026-10-02",
+            cutoff="2026-10-01T09:00:00+09:00",
+            late=False,
+            runtime={},
+            canary_sha256=None,
+            db_path=db_path,
+        )
         assert any("행 수 1 → 2" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
     def test_a_backdated_row_is_caught(self, db_path):
         _sealed(db_path)
-        tl.record_run(_run("ZZZ"), cohort_date="2026-09-30", runtime={}, canary_sha256=None, db_path=db_path)
+        tl.record_run(
+            _run("ZZZ"),
+            cohort_date="2026-09-30",
+            cutoff="2026-10-01T09:00:00+09:00",
+            late=False,
+            runtime={},
+            canary_sha256=None,
+            db_path=db_path,
+        )
         assert any("2026-09-30" in p and "소급 삽입" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
     def test_an_edited_arm_hash_is_caught(self, db_path):
@@ -106,6 +138,19 @@ class TestSealAndTamper:
         with get_db(db_path) as conn:
             conn.execute("UPDATE thesis_runs SET arm_hash = 'other' WHERE cohort_date = '2026-10-02'")
         assert any("2026-10-02" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
+
+    def test_an_edited_late_flag_is_caught(self, db_path):
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE thesis_runs SET late = 1 WHERE cohort_date = '2026-10-02'")
+        assert any("2026-10-02" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
+
+    def test_an_edited_cutoff_is_caught(self, db_path):
+        """cutoff 가 진입(그 뒤 첫 개장)을 정한다 (#1966) — 사후에 옮기면 잡힌다."""
+        _sealed(db_path)
+        with get_db(db_path) as conn:
+            conn.execute("UPDATE thesis_runs SET cutoff = '2026-10-02T09:00:00+09:00' WHERE cohort_date = '2026-10-01'")
+        assert any("2026-10-01" in p and "봉인 필드 변경" in p for p in seal.verify(db_path=db_path, chain=CHAIN))
 
     def test_a_rewritten_recorded_time_is_caught(self, db_path):
         """기록 시각은 "개장 전에 기록됐다" 의 증거라 봉인 대상이다 — 고치면 잡힌다."""

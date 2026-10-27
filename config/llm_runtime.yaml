@@ -49,4 +49,21 @@ canary:
   # (기기 간 출력 차이, #1957) — 채점 배치는 mini 에서만 이 값과 대조한다.
   scored_sha256: 2ba85186f445db9f43235cc3949a07d579c738bdce333780e23a8e11b2fd94a9
 
+# 다단계 팔 B 의 메모리 (#1966) — TradingAgents memory log 기본값을 따른다(`holding_period_days: 5`,
+# `get_past_context(n_same=5, n_cross=3)`, US 벤치마크 SPY). 팔 B 의 정의 지문에만 들어간다.
+memory:
+  holding_sessions: 5
+  same_ticker: 5
+  cross_ticker: 3
+  benchmark: SPY
+  # 마지막 세션 종가(16:00 ET) 뒤 이만큼 지나야 받는다 — 일봉이 확정된 뒤
+  settle_after_close_hours: 3
+  # 이만큼 지나도 봉이 없으면 missing 으로 확정한다(상장폐지 · 거래정지)
+  give_up_days: 7
+  reflection_num_predict: 300
+  # NYSE 조기 마감(13:00 ET) — nyse.com/markets/hours-calendars (2026-10-27 확인, 2027 까지 공지). 목록 밖 날짜는
+  # 16:00 ET 로 본다(실제보다 늦게 잡는 쪽이라 기억이 미래를 보지 않는다). 새 해 공지가 나오면 더한다.
+  early_closes: ["2026-11-27", "2026-12-24", "2027-11-26"]
+  decision_chars: 1500
+
 archive_dir: data/thesis_runtime
