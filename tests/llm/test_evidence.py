@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import copy
+import sys
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 
@@ -371,6 +373,25 @@ class TestTickerNews:
             ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=late)
         ok = _news(fetched_at=UTC_CUTOFF)
         ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=ok)
+
+    def test_a_packet_built_in_the_same_second_as_the_fetch_is_accepted(self, db_path, cfg, monkeypatch):
+        """#1973 — 조회 직후 기본 cutoff(지금)로 만들면 같은 초 안이다. 초 단위로 올리고 내리던 비교는 이걸 거부했다."""
+        from nuri.llm import live_news
+
+        clock = iter(CUTOFF + timedelta(microseconds=k) for k in (100, 200, 300, 400))
+        now = lambda: next(clock)  # noqa: E731
+        monkeypatch.setattr(live_news, "kst_now", now)
+        monkeypatch.setattr(ev, "kst_now", now)
+        search = SimpleNamespace(news=[], quotes=[{"symbol": "T0"}])
+        monkeypatch.setitem(sys.modules, "yfinance", SimpleNamespace(Search=lambda t, news_count: search))
+        news = live_news.fetch("T0")
+        p = ev.build_packet("T0", db_path=db_path, config=cfg, universe=UNIVERSE, news=news)
+        assert p["sources"]["ticker_news"]["status"] == "ok"
+
+    def test_a_fetch_one_microsecond_after_the_cutoff_is_refused(self, db_path, cfg):
+        late = _news(fetched_at="2026-03-10 00:00:00.000001")
+        with pytest.raises(ValueError, match="after the cutoff"):
+            ev.build_packet("T0", cutoff=CUTOFF, db_path=db_path, config=cfg, universe=UNIVERSE, news=late)
 
     def test_news_for_another_ticker_is_refused(self, db_path, cfg):
         with pytest.raises(ValueError, match="fetched for T1"):
