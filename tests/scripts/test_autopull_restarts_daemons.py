@@ -390,3 +390,96 @@ class TestAutopullWaitsForGreenCi:
         self._held(
             world, CI_STUB_JSON=_runs({"head_branch": "feature", "status": "completed", "conclusion": "success"})
         )
+
+
+class TestAutopullDefersForAnOpenThesisBatch:
+    """채점 배치가 도는 동안 autopull 은 주기를 건너뛴다 (#1989) — pull 도 재기동도 없다.
+
+    재기동은 배치를 죽이고, pull 만 해도 늦게 import 되는 모듈 · 디스크에서 읽는 팔 정의 해시가 새 코드로 바뀐다.
+    """
+
+    @staticmethod
+    def _db(world, status: str | None, hours_ago: float = 0.5) -> None:
+        from datetime import timedelta, timezone
+
+        from nuri.core.db import get_db, init_db
+        from nuri.core.timezone import kst_now
+
+        path = world.work / "data" / "portfolio.db"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        init_db(path)
+        if status is None:
+            return
+        # start_batch 의 _utc_now 와 같은 형식 (UTC ISO, 마이크로초 · +00:00)
+        started = (kst_now() - timedelta(hours=hours_ago)).astimezone(timezone.utc).isoformat()
+        with get_db(path) as conn:
+            conn.execute(
+                "INSERT INTO thesis_batches (batch_id, experiment, started_at, canary_start, status) "
+                "VALUES ('b', 'pilot', ?, 'c', ?)",
+                (started, status),
+            )
+
+    def test_an_open_recent_batch_defers_pull_and_restart(self, world):
+        self._db(world, "open")
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        out = world.run()
+        assert "kickstart" not in out
+        assert not (world.work / "nuri" / "core" / "rules.py").exists(), "열린 배치 중에 pull 했다"
+        assert "thesis batch open" in world.autopull_log()
+
+    @pytest.mark.parametrize(("status", "hours_ago"), [("open", 7.0), ("ok", 0.5), ("canary_changed", 0.5), (None, 0)])
+    def test_a_stale_or_finished_batch_or_no_table_does_not_block(self, world, status, hours_ago):
+        """6시간 넘게 열린 배치는 멈춘 것 — 배포를 영원히 막지 않는다. 끝난 배치 · 빈 표도 막지 않는다."""
+        self._db(world, status, hours_ago)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        out = world.run()
+        assert (world.work / "nuri" / "core" / "rules.py").exists()
+        assert "kickstart" in out
+
+    def test_the_cap_is_configurable(self, world):
+        self._db(world, "open", hours_ago=2.0)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run(THESIS_DEFER_HOURS="1")
+        assert (world.work / "nuri" / "core" / "rules.py").exists()
+
+    def test_an_empty_db_file_does_not_block(self, world):
+        (world.work / "data").mkdir(parents=True, exist_ok=True)
+        (world.work / "data" / "portfolio.db").write_bytes(b"")
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run()
+        assert (world.work / "nuri" / "core" / "rules.py").exists()
+
+    def test_an_unreadable_db_defers_instead_of_reading_as_zero(self, world):
+        """읽지 못한 표를 0 건으로 치면 열린 배치가 있어도 배포한다 — 보류하고 이유를 남긴다."""
+        (world.work / "data").mkdir(parents=True, exist_ok=True)
+        (world.work / "data" / "portfolio.db").write_bytes(b"not a database" * 100)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        out = world.run()
+        assert "kickstart" not in out
+        assert not (world.work / "nuri" / "core" / "rules.py").exists()
+        assert "thesis_batches unreadable" in world.autopull_log()
+
+    def test_a_failing_sqlite_cli_defers(self, world):
+        self._db(world, "ok")
+        stub = world.work.parent / "bin" / "sqlite3"
+        stub.write_text("#!/bin/sh\necho 'Error: database is locked' >&2\nexit 5\n")
+        stub.chmod(0o755)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run()
+        assert not (world.work / "nuri" / "core" / "rules.py").exists()
+        assert "database is locked" in world.autopull_log()
+
+    @pytest.mark.parametrize("hours", ["oops", "-1", "0", "100", "6 hours')) OR 1=1; --"])
+    def test_an_invalid_cap_falls_back_to_six_hours(self, world, hours):
+        """시간 값은 SQL 에 들어간다 — 무효 값은 수정자 오류로 0 건이 되거나 질의를 바꾼다. 6 으로 본다."""
+        self._db(world, "open", hours_ago=2.0)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run(THESIS_DEFER_HOURS=hours)
+        assert not (world.work / "nuri" / "core" / "rules.py").exists()
+        assert "THESIS_DEFER_HOURS" in world.autopull_log()
+
+    def test_an_injected_cap_cannot_turn_finished_batches_into_a_block(self, world):
+        self._db(world, "ok")
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run(THESIS_DEFER_HOURS="6 hours')) OR 1=1 OR ('")
+        assert (world.work / "nuri" / "core" / "rules.py").exists()

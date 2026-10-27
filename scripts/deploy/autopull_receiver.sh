@@ -125,6 +125,46 @@ if [ "$CI_VERDICT" != "green" ]; then
     exit 0
 fi
 
+# ── thesis 채점 배치 보호 (#1989) ────────────────────────────────────────
+# 채점 배치(thesis_batches.status='open')가 도는 동안은 이 주기를 통째로 건너뛴다 — pull 도 재기동도 안 한다.
+# 재기동은 배치를 중간에 죽이고, pull 만 해도 배치가 늦게 import 하는 모듈과 팔 정의 해시(디스크의 파일을
+# 읽는다)가 새 코드로 바뀌어 한 배치 안에 정의가 섞인다. 상한(THESIS_DEFER_HOURS, 기본 6시간)보다 오래 열린
+# 배치는 멈춘 것으로 보고 무시한다 — 멈춘 배치가 배포를 영원히 막지 않게. DB 파일이나 테이블이 없으면
+# (migration 76 이전) 막지 않는다. 표를 **읽지 못하면**(잠김 · 손상) 보류한다 — 0 으로 떨어뜨리면 열린 배치가
+# 있어도 배포해 버린다. sqlite3 CLI 자체가 없으면 보호를 못 하므로 WARN 을 남기고 진행한다(macOS 기본 탑재).
+# 시간 값은 SQL 에 들어가므로 1~99 의 정수만 받는다 — 그 밖의 값은 수정자 오류로 0 건을 내거나 질의를 바꾼다.
+# 막지 않는 것: 대시보드 빌드·재기동(위 ensure_frontend_build) — pull 도 python 재기동도 아니라 배치와 무관하다.
+# Test: tests/scripts/test_autopull_restarts_daemons.py::TestAutopullDefersForAnOpenThesisBatch
+THESIS_DEFER_HOURS="${THESIS_DEFER_HOURS:-6}"
+if ! [[ "$THESIS_DEFER_HOURS" =~ ^[1-9][0-9]?$ ]]; then
+    log "WARN: THESIS_DEFER_HOURS='${THESIS_DEFER_HOURS:0:20}' 무효 — 6 으로 본다"
+    THESIS_DEFER_HOURS=6
+fi
+open_thesis_batches() {
+    local db="${NURI_DB_PATH:-$REPO/data/portfolio.db}" out
+    [ -f "$db" ] || { echo 0; return; }
+    command -v sqlite3 >/dev/null 2>&1 || { echo "no-cli"; return; }
+    # 표 이름은 문장 준비 시점에 확인되므로(CASE 로 감싸도 "no such table") 존재 확인을 따로 한다.
+    q() { sqlite3 -readonly -cmd ".timeout 5000" "$db" "$1" 2>&1; }
+    out=$(q "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'thesis_batches';") \
+        || { echo "unreadable: ${out:0:120}"; return; }
+    [ "$out" = "0" ] && { echo 0; return; }
+    out=$(q "SELECT COUNT(*) FROM thesis_batches WHERE status = 'open' AND julianday(started_at) > julianday('now', '-${THESIS_DEFER_HOURS} hours');") \
+        || { echo "unreadable: ${out:0:120}"; return; }
+    [[ "$out" =~ ^[0-9]+$ ]] && echo "$out" || echo "unreadable: ${out:0:120}"
+}
+OPEN_BATCHES=$(open_thesis_batches)
+case "$OPEN_BATCHES" in
+    0) ;;
+    no-cli) log "WARN: sqlite3 CLI 없음 — thesis 배치 보호 없이 진행" ;;
+    unreadable*)
+        log "defer ${UPSTREAM:0:7}: thesis_batches ${OPEN_BATCHES} — 읽을 수 있을 때까지 배포하지 않는다"
+        exit 0 ;;
+    *)
+        log "defer ${UPSTREAM:0:7}: thesis batch open (${OPEN_BATCHES}) — 배치가 끝나거나 ${THESIS_DEFER_HOURS}h 가 지나면 배포한다"
+        exit 0 ;;
+esac
+
 # 새 커밋 발견
 log "new commits detected: ${BEFORE:0:7}..${UPSTREAM:0:7}"
 git log --oneline --no-decorate "${BEFORE}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
