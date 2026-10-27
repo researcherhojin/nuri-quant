@@ -31,7 +31,8 @@ from dotenv import load_dotenv
 
 from nuri.agents.discord.embeds import build_status_embed
 from nuri.agents.discord.thesis_stream import run as _run_thesis_stream
-from nuri.llm.thesis_events import STAGE_LABELS, public_event
+from nuri.agents.discord.thesis_view import progress_embed, result_embed
+from nuri.llm.thesis_events import public_event
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +137,25 @@ def build_bot():
             await interaction.followup.send("분석 스레드를 만들 수 없습니다. 봇 권한을 확인하세요.")
             return
 
+        states: dict[str, str] = {}
+        progress = await thread.send(
+            embed=discord.Embed.from_dict(progress_embed(ticker, states)),
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
+        async def update_progress(*, finished: bool = False) -> None:
+            try:
+                await progress.edit(embed=discord.Embed.from_dict(progress_embed(ticker, states, finished=finished)))
+            except discord.HTTPException:
+                # 표시 갱신 실패가 실행을 중단하거나 최종 결과 전송을 막으면 안 된다.
+                logger.warning("thesis progress display unavailable")
+
         async def on_stage(value: dict[str, str]) -> None:
             event = public_event(value)
             if event is not None and event["event"] == "stage":
-                labels = {"started": "시작", "ok": "완료", "absent": "결과 없음", "failed": "실패"}
-                await thread.send(
-                    f"{STAGE_LABELS[event['stage']]} · {labels[event['status']]}",
-                    allowed_mentions=discord.AllowedMentions.none(),
-                )
+                if states.get(event["stage"]) != event["status"]:
+                    states[event["stage"]] = event["status"]
+                    await update_progress()
 
         try:
             rc, value = await _run_thesis_stream("thesis-remote", ticker, on_stage)
@@ -151,20 +163,12 @@ def build_bot():
         except Exception:
             logger.exception("thesis stream failed; details stay in the local log")
             rc, event = 1, None
-        if rc == 0 and event is not None and event["event"] == "result" and event["outcome"] != "failed":
-            status = "완료" if event["outcome"] == "verdict" else "검토 필요"
-            body = f"판정: {event['rating']}\n상태: {status}\n실행: {event['run_hash'][:16]}"
-        else:
-            rc = rc or 2
-            body = "분석을 완료하지 못했습니다. 상세 오류는 로컬 실행 기록에 보관했습니다."
-        embed_dict = build_status_embed(
-            title=f"Thesis · {ticker}",
-            success=(rc == 0),
-            body=body,
-            fields={"분석": "탐색용"},
+        await update_progress(finished=True)
+        # 상호작용 토큰(15분)이 만료돼도 봇 권한으로 최종 결과를 보낸다.
+        await thread.send(
+            embed=discord.Embed.from_dict(result_embed(ticker, states, rc, event)),
+            allowed_mentions=discord.AllowedMentions.none(),
         )
-        # 상호작용 토큰(15분)이 만료돼도 스레드는 봇 권한으로 최종 카드를 보낼 수 있다.
-        await thread.send(embed=discord.Embed.from_dict(embed_dict), allowed_mentions=discord.AllowedMentions.none())
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)
