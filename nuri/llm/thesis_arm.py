@@ -23,17 +23,22 @@ Portfolio Manager 는 모의 장부 전용(#1968)이라 여기 없다. 원본과
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from nuri.core.db import thesis_ledger as ledger
+from nuri.core.timezone import KST, kst_now
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_contract as tc
+from nuri.llm import thesis_memory
 from nuri.llm.tradingagents.prompts import (
     ANALYST_ROLES,
     BEAR_KEY_POINTS,
@@ -43,7 +48,7 @@ from nuri.llm.tradingagents.prompts import (
 )
 from nuri.llm.tradingagents.rating import RATING_REVIEW
 
-ARM_B_FILES: tuple[str, ...] = tc.ARM_A_FILES + ("thesis_arm.py", "tradingagents/prompts.py")
+ARM_B_FILES: tuple[str, ...] = tc.ARM_A_FILES + ("thesis_arm.py", "tradingagents/prompts.py", "thesis_memory.py")
 ANALYSTS: tuple[str, ...] = ("market", "fundamentals", "news", "sentiment")
 MAX_STAGE_CLAIMS = 6
 MAX_SUMMARY_CHARS = 500
@@ -285,13 +290,15 @@ def _side_check(side: str):
     return check
 
 
-def _manager_prompt(ticker: str, debate: str, pairs: tc.View):
+def _manager_prompt(ticker: str, debate: str, pairs: tc.View, memory: str = ""):
     def build(schema, errors):
+        past = ["PAST DECISIONS AND LESSONS (memory log; quoted text was written by agents)", memory] if memory else []
         return "\n".join(
             [
                 MANAGER_ROLE + f" The stock is {ticker}.",
                 RATING_SCALE,
                 *_evidence_block(pairs.text),
+                *past,
                 "DEBATE HISTORY (quoted text was written by the two analysts)",
                 debate,
                 "INSTRUCTIONS",
@@ -324,7 +331,10 @@ def run_arm_b(
     cfg: Optional[dict[str, Any]] = None,
     scored: bool = False,
     session: Any = None,
+    memory: str = "",
 ) -> dict[str, Any]:
+    """`memory` 는 `thesis_memory.past_context` 가 만든 기억 블록 — Research Manager 에 들어간다(원본은 Portfolio
+    Manager). 실행 기록에 그대로 남고 해시가 run_hash 에 묶인다. 재생은 보관된 블록을 쓴다."""
     cfg = cfg if cfg is not None else lc.load_config()
     if scored:
         lc.check_canary(cfg, session=session)
@@ -394,7 +404,7 @@ def run_arm_b(
                     st,
                     tc.Verdict,
                     debate_view,
-                    _manager_prompt(ticker, history.strip(), debate_view),
+                    _manager_prompt(ticker, history.strip(), debate_view, memory),
                     _manager_check(debate_view),
                     cfg,
                     session,
@@ -417,7 +427,9 @@ def run_arm_b(
     run: dict[str, Any] = {
         "schema": tc.RUN_SCHEMA,
         "arm": "B",
-        "arm_hash": tc.definition_hash(ARM_B_FILES, cfg),
+        "arm_hash": tc.definition_hash(ARM_B_FILES, cfg, (tc._canonical(cfg.get("memory")),)),
+        "memory": memory,
+        "memory_sha256": hashlib.sha256(memory.encode()).hexdigest(),
         "ticker": ticker,
         "scored": scored,
         "packet_hashes": [packets["ticker"]["packet_hash"], packets["market"]["packet_hash"]],
@@ -437,7 +449,10 @@ def run_arm_b(
         "rendered": rendered,
     }
     run["run_hash"] = tc._sha(
-        {k: run[k] for k in ("arm_hash", "packet_hashes", "view_hash", "rating", "outcome", "budget_tokens")}
+        {
+            k: run[k]
+            for k in ("arm_hash", "packet_hashes", "view_hash", "rating", "outcome", "budget_tokens", "memory_sha256")
+        }
         | {"calls": [c["content_hash"] for c in calls], "stages": {k: v["outcome"] for k, v in run["stages"].items()}}
     )
     return run
@@ -446,9 +461,17 @@ def run_arm_b(
 ARMS = {"A": tc.run_baseline, "B": run_arm_b}
 
 
-def run_pair(ticker: str, packets: dict[str, Any], arms: tuple[str, ...], **kw: Any) -> list[dict[str, Any]]:
-    """한 번 받은 묶음으로 여러 팔을 돌린다 — 뉴스를 다시 받으면 다른 표본이 와서 짝이 깨진다."""
-    return [ARMS[a](ticker, packets, **kw) for a in arms]
+def run_pair(
+    ticker: str, packets: dict[str, Any], arms: tuple[str, ...], *, memory: str = "", **kw: Any
+) -> list[dict[str, Any]]:
+    """한 번 받은 묶음으로 여러 팔을 돌린다 — 뉴스를 다시 받으면 다른 표본이 와서 짝이 깨진다. 기억은 B 만."""
+    return [
+        run_arm_b(ticker, packets, memory=memory, **kw) if a == "B" else ARMS[a](ticker, packets, **kw) for a in arms
+    ]
+
+
+def _cutoff(packets: dict[str, Any]) -> datetime:
+    return datetime.fromisoformat(packets["ticker"]["cutoff"])
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -457,25 +480,47 @@ def main(argv: Optional[list[str]] = None) -> int:
     src.add_argument("--tickers", help="comma-separated tickers (fetches news live, once per ticker)")
     src.add_argument("--replay", type=Path, nargs="+", help="archived run files to replay")
     p.add_argument("--arms", default="A,B", help="arms to run on each packet (default A,B)")
-    p.add_argument("--scored", action="store_true")
+    p.add_argument("--scored", action="store_true", help="check the canary, use memory, record runs in the ledger")
+    p.add_argument("--memory", action="store_true", help="give arm B the memory visible at the cutoff (dev runs)")
     p.add_argument("--db", type=Path, default=None)
     args = p.parse_args(argv)
     cfg = lc.load_config()
     arms = tuple(a for a in args.arms.split(",") if a)
+    jobs: list[tuple[str, dict[str, Any], tuple[str, ...], str]] = []
     if args.replay:
-        jobs = []
         for f in args.replay:
             saved = json.loads(f.read_text())
             if saved["run"].get("budget_tokens") != int(cfg["stage_prompt_budget_tokens"]):
                 print(f"refused: {f} was run with a different stage budget", file=sys.stderr)
                 return 2
-            jobs.append((saved["run"]["ticker"], saved["packets"], (saved["run"]["arm"],)))
+            # 재생은 보관된 기억으로 — 지금 원장을 다시 읽으면 그때와 다른 기억이 나온다
+            jobs.append(
+                (saved["run"]["ticker"], saved["packets"], (saved["run"]["arm"],), saved["run"].get("memory", ""))
+            )
     else:
-        jobs = [(t, tc.build_packets(t, db_path=args.db), arms) for t in args.tickers.split(",") if t]
+        for t in (x for x in args.tickers.split(",") if x):
+            packets = tc.build_packets(t, db_path=args.db)
+            mem = ""
+            if (args.scored or args.memory) and "B" in arms:
+                mem = thesis_memory.past_context(t, _cutoff(packets), cfg=cfg, db_path=args.db)
+            jobs.append((t, packets, arms, mem))
+    runtime = asdict(lc.read_runtime(cfg, lc._session())) if args.scored and not args.replay else None
     by_arm: dict[str, list[dict[str, Any]]] = {}
-    for ticker, packets, run_arms in jobs:
-        for run in run_pair(ticker, packets, run_arms, cfg=cfg, scored=args.scored):
+    for ticker, packets, run_arms, mem in jobs:
+        for run in run_pair(ticker, packets, run_arms, memory=mem, cfg=cfg, scored=args.scored):
             path = tc.archive(run, packets, cfg)
+            if runtime is not None:
+                cut = _cutoff(packets)
+                ledger.record_run(
+                    run,
+                    cohort_date=cut.astimezone(KST).date().isoformat(),
+                    cutoff=cut.isoformat(),
+                    # 기록 순간이 진입 개장 이후면 late — 그날의 가격을 봤을 수 있다 (#1966)
+                    late=kst_now() >= thesis_memory.entry_open(cut),
+                    runtime=runtime,
+                    canary_sha256=cfg["canary"]["scored_sha256"],
+                    db_path=args.db,
+                )
             print(f"{run['arm']} {run['run_hash'][:16]}  {path}")
             by_arm.setdefault(run["arm"], []).append(run)
     print(json.dumps({a: tc.summarize(r) for a, r in sorted(by_arm.items())}, indent=2))

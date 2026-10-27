@@ -8,7 +8,11 @@
 - 분석가 역할 설명은 원본 첫 문장을 바탕으로 하되 도구 이름 · 도구 사용 지시 · "Markdown table" 지시는 뺐다.
   분석가는 도구 대신 근거 묶음의 자기 몫을 받고, 산문 보고서 대신 근거 ID 를 가리키는 주장으로 답한다.
 - 시장(기술) 분석가 원본은 지표 목록(10일 지수이동평균 · 거래량 가중 이동평균 등)을 고르게 하는데, 우리 묶음에는 그 지표가 없어
-  목록을 뺐다. 감성 분석가는 원본의 StockTwits · Reddit 대신 보유와 무관한 시장 심리 지표를 받는다(#1967 보류).
+  목록을 뺐다. 감성 분석가는 원본의 StockTwits · Reddit 대신 보유와 무관한 시장 심리 지표를 받는다 — 두 소스는
+  약관상 제외했다(#1967: Reddit Data API Terms §2.4 · §2.8 · §3.1, StockTwits 신규 등록 중단).
+- reflection(`memory/reflection.py`)은 원본 지시를 따르되 "cite the figure" 대신 **숫자를 쓰지 말라** 고 한다 —
+  수익률 · 알파는 코드가 기억 항목 옆에 렌더한다(다른 단계와 같은 숫자 규칙). 보유 창은 원본의 "분석일 다음 첫
+  종가" 대신 "기준 시점 이후 첫 개장" 에서 센다 — A 와 B 가 같은 진입을 갖게(#1966).
 - 언어 지시(`get_language_instruction`)는 원본 기본값 English 와 같아 생략했다.
 """
 
@@ -70,3 +74,21 @@ ANALYST_ROLES = {
         "fund flows and market-wide sentiment gauges."
     ),
 }
+
+
+def reflection_prompt(holding_days: int) -> str:
+    """원본 `Reflector._system_prompt` — 숫자 인용 지시만 바꿨다(위 "바꾼 점")."""
+    return (
+        "You are a trading analyst reviewing your own past decision now that the outcome is known.\n"
+        f"The outcome covers {holding_days} trading days from the first open after the analysis cutoff, "
+        "which may be shorter than the horizon the decision was written for.\n"
+        "Write exactly 2-4 sentences of plain prose (no bullets, no headers, no markdown).\n\n"
+        "Cover in order:\n"
+        f"1. What the {holding_days}-day alpha shows about the directional call (describe it in words; do not "
+        "write numbers, the figures are shown beside your lesson), and say so plainly if the window is too short "
+        "to judge the thesis.\n"
+        "2. Which part of the investment thesis this window supports or undercuts.\n"
+        "3. One concrete lesson to apply to the next similar analysis.\n\n"
+        "Be specific and terse. Your output will be stored verbatim in a memory log "
+        "and re-read by future analysts, so every word must earn its place."
+    )

@@ -2281,4 +2281,40 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE thesis_runs ADD COLUMN arm_hash TEXT;
     """,
     ),
+    (
+        75,
+        "thesis_runs.cutoff + thesis_returns + thesis_reflections — 정산과 메모리 (#1966)",
+        # 진입은 묶음 기준 시점(cutoff) 이후 첫 NYSE 개장 — A · B 가 같은 진입을 갖게 실행마다 cutoff 를 남긴다(봉인
+        # 필드, thesis_v3). 그 개장 뒤에 기록된 실행은 late=1(봉인) — 기억에 쓰지 않고, 채점에서 어떻게 셀지는 E 가 정한다. 수익률은 (종목, cutoff) 의 성질이라 한 번 계산해 두 팔이 공유한다. 가격은 DB 가 아니라
+        # 정산 시점에 한 번 받은 계열(같은 조정 기준)이고, 그 계열과 받은 시각을 그대로 남긴다(TradingAgents
+        # settlement.py 와 같은 방식). reflection 은 B 의 채점 실행마다 하나 — 메모리로 다음 실행에 들어간다.
+        # 정산 · reflection 은 사후에 정당하게 쓰이므로 봉인 대상이 아니다. 쓰기는 NURI_ROLE=production 에서만.
+        """
+        ALTER TABLE thesis_runs ADD COLUMN cutoff TEXT;
+        ALTER TABLE thesis_runs ADD COLUMN late INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE IF NOT EXISTS thesis_returns (
+            ticker TEXT NOT NULL,
+            cutoff TEXT NOT NULL,
+            status TEXT NOT NULL CHECK (status IN ('ok', 'missing')),
+            entry_session TEXT NOT NULL,
+            exit_session TEXT NOT NULL,
+            exit_close_at TEXT NOT NULL,
+            raw_return REAL,
+            benchmark TEXT NOT NULL,
+            benchmark_return REAL,
+            alpha REAL,
+            series TEXT NOT NULL,
+            fetched_at TEXT NOT NULL,
+            PRIMARY KEY (ticker, cutoff)
+        );
+        CREATE TABLE IF NOT EXISTS thesis_reflections (
+            run_id INTEGER PRIMARY KEY REFERENCES thesis_runs(id),
+            decision_text TEXT NOT NULL,
+            decision_sha256 TEXT NOT NULL,
+            reflection TEXT NOT NULL,
+            call_content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+    """,
+    ),
 ]

@@ -365,6 +365,35 @@ class TestPairingAndDefinition:
         assert a["run_hash"] != b["run_hash"]
 
 
+class TestMemory:
+    def test_the_memory_block_reaches_only_the_research_manager(self, monkeypatch, packets):
+        fake = FakeGenerate()
+        monkeypatch.setattr(lc, "generate", fake)
+        run = arm.run_arm_b("T0", packets, cfg=dict(CFG), memory="Past analyses of T0: lesson")
+        prompts = dict(fake.prompts)
+        assert "PAST DECISIONS AND LESSONS" in prompts["manager"] and "lesson" in prompts["manager"]
+        assert all("PAST DECISIONS" not in p for s, p in fake.prompts if s != "manager")
+        assert run["memory"] == "Past analyses of T0: lesson"
+
+    def test_no_memory_no_block(self, monkeypatch, packets):
+        _, fake = run_b(monkeypatch, packets)
+        assert "PAST DECISIONS" not in dict(fake.prompts)["manager"]
+
+    def test_the_memory_is_bound_into_the_run_hash(self, monkeypatch, packets):
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        a = arm.run_arm_b("T0", packets, cfg=dict(CFG), memory="")
+        b = arm.run_arm_b("T0", packets, cfg=dict(CFG), memory="x")
+        assert a["memory_sha256"] != b["memory_sha256"] and a["run_hash"] != b["run_hash"]
+
+    def test_memory_settings_move_b_but_not_a(self, monkeypatch, packets):
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        one = dict(CFG, memory={"same_ticker": 5})
+        two = dict(CFG, memory={"same_ticker": 4})
+        a1, b1 = arm.run_pair("T0", packets, ("A", "B"), cfg=one)
+        a2, b2 = arm.run_pair("T0", packets, ("A", "B"), cfg=two)
+        assert a1["arm_hash"] == a2["arm_hash"] and b1["arm_hash"] != b2["arm_hash"]
+
+
 class TestCli:
     def test_tickers_build_one_packet_and_run_both_arms(self, monkeypatch, packets, tmp_path, capsys):
         cfg = dict(CFG, archive_dir=str(tmp_path))
@@ -376,6 +405,79 @@ class TestCli:
         out = capsys.readouterr().out
         assert built == ["T0"]
         assert '"A": {' in out and '"B": {' in out and "Hold" not in out
+
+    def test_memory_is_built_per_ticker_at_its_cutoff_and_given_to_b_only(self, monkeypatch, packets, tmp_path, capsys):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        seen = []
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        packets["ticker"]["cutoff"] = "2026-03-10T09:00:00+09:00"
+        monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
+        monkeypatch.setattr(
+            arm.thesis_memory, "past_context", lambda t, c, cfg, db_path=None: seen.append((t, c.isoformat())) or "MEM"
+        )
+        assert arm.main(["--tickers", "T0", "--memory"]) == 0
+        assert seen == [("T0", "2026-03-10T09:00:00+09:00")]
+        runs = [json.loads(p.read_text())["run"] for p in (tmp_path / "runs").glob("*.json")]
+        assert {r["arm"]: r.get("memory") for r in runs} == {"A": None, "B": "MEM"}
+
+    def test_scored_mode_records_each_run_with_its_cutoff(self, monkeypatch, packets, tmp_path):
+        cfg = dict(CFG, archive_dir=str(tmp_path), canary={"scored_sha256": "cn"})
+        recorded = []
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        monkeypatch.setattr(lc, "check_canary", lambda c, session=None: "cn")
+        monkeypatch.setattr(lc, "read_runtime", lambda c, s: lc.Runtime("v", "d", "os", "b", {}, "h"))
+        packets["ticker"]["cutoff"] = "2026-03-10T09:00:00+09:00"
+        monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
+        monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: "")
+        monkeypatch.setattr(arm.ledger, "record_run", lambda run, **kw: recorded.append((run["arm"], kw)))
+        assert arm.main(["--tickers", "T0", "--scored"]) == 0
+        assert [a for a, _ in recorded] == ["A", "B"]
+        kw = recorded[1][1]
+        assert kw["cutoff"] == "2026-03-10T09:00:00+09:00" and kw["cohort_date"] == "2026-03-10"
+        assert kw["canary_sha256"] == "cn" and kw["runtime"]["version"] == "v"
+
+    def test_an_interactive_run_writes_nothing_even_on_the_production_host(self, monkeypatch, packets, tmp_path):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        monkeypatch.setenv("NURI_ROLE", "production")
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
+        monkeypatch.setattr(arm.ledger, "record_run", lambda *a, **k: pytest.fail("interactive run wrote the ledger"))
+        assert arm.main(["--tickers", "T0"]) == 0
+
+    def test_a_run_recorded_after_the_entry_open_is_late(self, monkeypatch, packets, tmp_path):
+        cfg = dict(CFG, archive_dir=str(tmp_path), canary={"scored_sha256": "cn"})
+        recorded = []
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        monkeypatch.setattr(lc, "check_canary", lambda c, session=None: "cn")
+        monkeypatch.setattr(lc, "read_runtime", lambda c, s: lc.Runtime("v", "d", "os", "b", {}, "h"))
+        packets["ticker"]["cutoff"] = "2026-10-23T09:00:00+09:00"  # 진입 10-23 09:30 ET = 22:30 KST
+        monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
+        monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: "")
+        monkeypatch.setattr(arm.ledger, "record_run", lambda run, **kw: recorded.append(kw["late"]))
+        from datetime import datetime, timedelta, timezone
+
+        kst = timezone(timedelta(hours=9))
+        monkeypatch.setattr(arm, "kst_now", lambda: datetime(2026, 10, 23, 22, 29, tzinfo=kst))
+        arm.main(["--tickers", "T0", "--scored", "--arms", "A"])
+        monkeypatch.setattr(arm, "kst_now", lambda: datetime(2026, 10, 23, 22, 30, tzinfo=kst))
+        arm.main(["--tickers", "T0", "--scored", "--arms", "A"])
+        assert recorded == [False, True]
+
+    def test_replay_uses_the_archived_memory(self, monkeypatch, packets, tmp_path):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        fake = FakeGenerate()
+        monkeypatch.setattr(lc, "generate", fake)
+        run = arm.run_arm_b("T0", packets, cfg=cfg, memory="ARCHIVED MEMORY")
+        path = tc.archive(run, packets, cfg)
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: pytest.fail("re-read the ledger"))
+        fake.prompts.clear()
+        assert arm.main(["--replay", str(path)]) == 0
+        assert "ARCHIVED MEMORY" in dict(fake.prompts)["manager"]
 
     def test_replay_runs_the_archived_arm_and_refuses_another_budget(self, monkeypatch, packets, tmp_path, capsys):
         cfg = dict(CFG, archive_dir=str(tmp_path))
