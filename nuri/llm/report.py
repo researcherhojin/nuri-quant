@@ -630,7 +630,10 @@ def _generate_ollama(prompt: str) -> str:
         return ""
     import requests as _requests
 
+    from nuri.llm.local_client import load_config
+
     try:
+        num_ctx = int(load_config()["report"]["num_ctx"])
         resp = _requests.post(
             f"{OLLAMA_HOST}/api/generate",
             json={
@@ -641,7 +644,7 @@ def _generate_ollama(prompt: str) -> str:
                 # num_predict 2000 을 다 쓰고 8개 섹션 중 4개에서 잘렸다(done_reason=length, 2026-10-08).
                 # **Test:** tests/llm/test_report.py::TestLLMDeep::test_ollama_request_turns_thinking_off
                 "think": False,
-                "options": {"temperature": 0.3, "num_predict": 2000},
+                "options": {"temperature": 0.3, "num_predict": 2000, "num_ctx": num_ctx},
             },
             timeout=300,
             # 가드와 같은 경로로 보낸다 (#1969) — requests 는 루프백 요청도 HTTP_PROXY · ALL_PROXY 로 보내므로,
