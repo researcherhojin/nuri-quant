@@ -29,7 +29,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Callable, Literal, Optional
 
 import requests
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -333,6 +333,7 @@ def run_arm_b(
     session: Any = None,
     memory: str = "",
     canary_checked: bool = False,
+    progress: Optional[Callable[[dict[str, str]], None]] = None,
 ) -> dict[str, Any]:
     """`memory` 는 `thesis_memory.past_context` 가 만든 기억 블록 — Research Manager 에 들어간다(원본은 Portfolio
     Manager). 실행 기록에 그대로 남고 해시가 run_hash 에 묶인다. 재생은 보관된 블록을 쓴다."""
@@ -346,9 +347,20 @@ def run_arm_b(
     def infra() -> Optional[str]:
         return next((s.outcome for s in stages if s.outcome.startswith(INFRA_PREFIXES)), None)
 
+    def start_stage(name: str) -> Stage:
+        if progress is not None:
+            progress({"event": "stage", "stage": name, "status": "started"})
+        return Stage(name)
+
+    def finish_stage(st: Stage) -> None:
+        stages.append(st)
+        if progress is not None:
+            status = st.outcome if st.outcome in {"ok", "absent"} else "failed"
+            progress({"event": "stage", "stage": st.name, "status": status})
+
     analysts: dict[str, Stage] = {}
     for role in ANALYSTS:
-        st = Stage(f"analyst:{role}")
+        st = start_stage(f"analyst:{role}")
         if not views[role].values:
             st.outcome = "absent"  # 이 역할의 근거가 하나도 없다 — 호출하지 않는다
         else:
@@ -356,7 +368,7 @@ def run_arm_b(
                 st, AnalystReport, views[role], _analyst_prompt(role, ticker, views[role]), _analyst_check, cfg, session
             )
         analysts[role] = st
-        stages.append(st)
+        finish_stage(st)
         if infra():
             break
 
@@ -371,7 +383,7 @@ def run_arm_b(
         reports = _reports_text(analysts, views)
         debate_pairs: list[tuple[str, str, Any]] = []
         for side in ("bull", "bear"):
-            st = Stage(f"researcher:{side}")
+            st = start_stage(f"researcher:{side}")
             if not report_view.values:
                 st.outcome = "absent"
             else:
@@ -384,7 +396,7 @@ def run_arm_b(
                     cfg,
                     session,
                 )
-            stages.append(st)
+            finish_stage(st)
             if infra():
                 break
             if st.outcome == "ok":
@@ -397,7 +409,7 @@ def run_arm_b(
                 history += f"\n{side} analyst: argument absent"
         if not infra():
             debate_view = _pair_view(debate_pairs)
-            st = Stage("manager")
+            st = start_stage("manager")
             if not debate_view.values:
                 st.outcome = "absent"  # 인용된 근거가 없다 — 빈 enum 스키마를 보내지 않는다
             else:
@@ -410,7 +422,7 @@ def run_arm_b(
                     cfg,
                     session,
                 )
-            stages.append(st)
+            finish_stage(st)
             verdict = st.result if st.outcome == "ok" else None
 
     budget = int(cfg["stage_prompt_budget_tokens"])

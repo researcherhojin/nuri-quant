@@ -399,8 +399,12 @@ thesis:
 	@test -n "$(ticker)" || (echo "usage: make thesis ticker=<TICKER> [question=\"...\"]"; exit 1)
 	$(PYTHON) -m nuri.llm.thesis_query --ticker "$(ticker)" $(if $(question),--question "$(question)") --print
 
-# 상대 머신(DEV2_HOST — mini 에서는 MBP)에서 `make thesis` 를 돌린다. mini 는 Strata 모델(77GB)을
-# 못 올린다 (RAM 32GB). 맥락 조회·모델 호출은 원격 loopback 안에서만 — scripts/deploy/thesis_remote.sh.
+# 대화형 B 팔은 MBP 에서 실행해 mini 채점 작업과 분리한다. stdout 은 허용 목록 이벤트뿐이다.
+# 맥락 조회·모델 호출은 원격 loopback 안에서만 — scripts/deploy/thesis_remote.sh.
+.PHONY: thesis-progress
+thesis-progress:
+	$(PYTHON) -m nuri.llm.thesis_interactive --ticker "$(ticker)"
+
 thesis-remote:
 	@test -n "$(ticker)" || (echo "usage: make thesis-remote ticker=<TICKER>"; exit 1)
 	bash scripts/deploy/thesis_remote.sh "$(ticker)"

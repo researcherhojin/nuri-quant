@@ -167,7 +167,7 @@ These values are verified against the code by `make verify-doc-counts`, which ru
 
 | Metric | Value |
 |--------|-------|
-| Backend tests | 9,560 collected across 459 files |
+| Backend tests | 9,595 collected across 461 files |
 | Frontend test files | 117 vitest files |
 | Data collectors | 30 collector modules in `nuri/collectors/` |
 | Scheduler jobs | 55 cron entries |

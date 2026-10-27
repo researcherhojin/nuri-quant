@@ -74,5 +74,8 @@ sim:
 # 운영 회고 전용. thesis 팔의 옵션·해시에는 들어가지 않는다 (#1960).
 report:
   num_ctx: 32768
+# 대화형 실행은 채점과 별도다. 진행 메시지와 최종 카드는 스레드의 봇 권한으로 보낸다.
+interactive:
+  timeout_s: 3600
 
 archive_dir: data/thesis_runtime
