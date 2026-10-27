@@ -1,0 +1,12 @@
+# thesis 파일럿 러너 (#1964). 러너: nuri/llm/thesis_pilot.py
+#
+# experiment 가 null 이면 아무것도 돌지 않는다(출하 상태). 파일럿 기간은 따로 적지 않는다 —
+# config/thesis_freeze.yaml 에 같은 experiment 의 창이 오늘(KST)을 덮을 때만 돈다(그 창이 곧 기간이고, 그동안
+# 팔 정의가 얼어 있다). 종목 · 판정 · 결과는 원장과 비공개 보관소에만 남는다.
+experiment: null
+# 밤마다 공개 유니버스(us_core ∪ us_sp500_extended)에서 시드 고정 추출하는 종목 수
+tickers_per_night: 10
+# 같은 묶음에서 돌릴 팔 — S 는 B 를 소비한다(B 없이 S 불가)
+arms: [A, B]
+# 미장 마감 브리프(16:30 ET ± 15분 창에서 Ollama 호출)와 겹치지 않게 — 16:30 ET 기준 -15분부터 이만큼 뒤까지 시작하지 않는다
+brief_quiet_minutes: 75
