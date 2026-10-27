@@ -172,6 +172,14 @@ def _age(observed: Optional[str], cutoff_day: date) -> Optional[int]:
     return (cutoff_day - date.fromisoformat(str(observed)[:10])).days
 
 
+def _timestamp_age(observed: str, cutoff: datetime) -> int:
+    """발행 시각의 실제 경과 일수. DB 의 naive 시각은 수집기 계약대로 UTC 다."""
+    published = datetime.fromisoformat(str(observed))
+    if published.tzinfo is None:
+        published = published.replace(tzinfo=timezone.utc)
+    return (cutoff - published).days
+
+
 def _as_cutoff(cutoff: Optional[datetime]) -> datetime:
     c = cutoff or kst_now()
     if c.tzinfo is None:
@@ -493,7 +501,7 @@ def build_market_packet(
                         "id": f"macro_events:{r['id']}",
                         "source": "macro_events",
                         "observed": str(r["published_at"]),
-                        "age_days": _age(r["published_at"], cutoff_day),
+                        "age_days": _timestamp_age(r["published_at"], c),
                         "fields": {k: r[k] for k in ("source", "category", "sentiment", "headline")},
                     }
                 )
