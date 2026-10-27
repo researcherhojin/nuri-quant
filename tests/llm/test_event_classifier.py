@@ -2,6 +2,7 @@
 
 Network-free: 모든 Ollama 호출은 monkeypatch로 mock.
 """
+
 from unittest.mock import MagicMock
 
 import pytest
@@ -125,11 +126,14 @@ class TestOpenAIPath_R152:
         return fake_client, ec_mod
 
     def test_openai_success(self, monkeypatch):
-        fake, mod = self._patch_wrapper(monkeypatch, returns={
-            "category": "fed_dovish",
-            "sentiment": 0.4,
-            "confidence": 0.85,
-        })
+        fake, mod = self._patch_wrapper(
+            monkeypatch,
+            returns={
+                "category": "fed_dovish",
+                "sentiment": 0.4,
+                "confidence": 0.85,
+            },
+        )
         result = mod.classify_event("Fed cuts rates by 50bps", use_llm=True)
         assert result["category"] == "fed_dovish"
         assert result["sentiment"] == 0.4
@@ -142,6 +146,7 @@ class TestOpenAIPath_R152:
 
     def test_unavailable_falls_back_to_regex(self, monkeypatch):
         from nuri.llm.openai_client import ExternalLLMUnavailable
+
         _, mod = self._patch_wrapper(
             monkeypatch,
             raises=ExternalLLMUnavailable("network down"),
@@ -154,6 +159,7 @@ class TestOpenAIPath_R152:
     def test_disabled_falls_back_to_regex(self, monkeypatch):
         """NURI_DISABLE_EXTERNAL_LLM 시 wrapper raises Disabled → regex로 폴백."""
         from nuri.llm.openai_client import ExternalLLMDisabled
+
         _, mod = self._patch_wrapper(
             monkeypatch,
             raises=ExternalLLMDisabled("opt-out"),
@@ -163,6 +169,7 @@ class TestOpenAIPath_R152:
 
     def test_response_error_falls_back_to_regex(self, monkeypatch):
         from nuri.llm.openai_client import ExternalLLMResponseError
+
         _, mod = self._patch_wrapper(
             monkeypatch,
             raises=ExternalLLMResponseError("non-JSON garbage"),
@@ -172,11 +179,14 @@ class TestOpenAIPath_R152:
 
     def test_unknown_category_from_llm_normalizes_to_neutral(self, monkeypatch):
         """LLM이 미지의 category 반환 시 normalize로 neutral 변환."""
-        _, mod = self._patch_wrapper(monkeypatch, returns={
-            "category": "alien_invasion",
-            "sentiment": 0.9,
-            "confidence": 0.95,
-        })
+        _, mod = self._patch_wrapper(
+            monkeypatch,
+            returns={
+                "category": "alien_invasion",
+                "sentiment": 0.9,
+                "confidence": 0.95,
+            },
+        )
         result = mod.classify_event("Aliens land in Times Square", use_llm=True)
         assert result["category"] == "neutral"
         assert result["confidence"] == 0.2  # normalize의 unknown-category marker
@@ -184,9 +194,11 @@ class TestOpenAIPath_R152:
     def test_use_llm_false_skips_wrapper_entirely(self, monkeypatch):
         """use_llm=False일 때 wrapper가 호출되지 않아야 한다 (offline test path)."""
         from nuri.llm import openai_client as cli_mod
+
         fake_client = MagicMock()
         monkeypatch.setattr(cli_mod, "_singleton", fake_client)
 
         from nuri.llm import event_classifier as mod
+
         mod.classify_event("Fed cuts rates", use_llm=False)
         assert fake_client.chat_json.call_count == 0

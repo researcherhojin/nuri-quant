@@ -2347,4 +2347,37 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE thesis_runs ADD COLUMN size REAL;
     """,
     ),
+    (
+        78,
+        "thesis_pilot_nights · thesis_pilot_samples — 파일럿 밤 기록과 메모리 표본 (#1998)",
+        # 밤 하나 = (실험, 코호트) 하나. 러너가 아무것도 돌리기 전에 넣으므로 기본 키가 곧 코호트 예약이다 — 잠금이
+        # 풀린 뒤의 두 번째 실행도 여기서 막힌다. 거절(`refused:<이유>`)도 남겨 경보가 "왜 안 돌았나" 를 안다.
+        # 추첨 시드 · 유니버스 해시도 여기 — 유니버스는 `universe_sync` 로 바뀌므로 그날의 것을 남긴다.
+        # 표본은 배치 중 1분마다의 가용 메모리 비율 · 스왑 사용량(macOS `sysctl kern.memorystatus_level` ·
+        # `vm.swapusage`, 못 읽으면 NULL). "Pages free" 는 회수 가능한 캐시를 빼고 세어 109~1,731MB 로 출렁였는데
+        # 같은 시각 가용 비율은 81% 였다(2026-10-27 mini 리허설) — 압박 지표로 쓸 수 없다.
+        # 쓰기는 NURI_ROLE=production 에서만(thesis_ledger).
+        """
+        CREATE TABLE IF NOT EXISTS thesis_pilot_nights (
+            experiment TEXT NOT NULL,
+            cohort_date TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT,
+            outcome TEXT,
+            exit_code INTEGER,
+            seed TEXT,
+            universe_hash TEXT,
+            tickers INTEGER,
+            PRIMARY KEY (experiment, cohort_date)
+        );
+        CREATE TABLE IF NOT EXISTS thesis_pilot_samples (
+            experiment TEXT NOT NULL,
+            cohort_date TEXT NOT NULL,
+            at TEXT NOT NULL,
+            available_pct REAL,
+            swap_used_mb REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_thesis_pilot_samples ON thesis_pilot_samples(experiment, cohort_date);
+    """,
+    ),
 ]

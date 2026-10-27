@@ -30,9 +30,11 @@ import hashlib
 import json
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -42,6 +44,7 @@ from zoneinfo import ZoneInfo
 import yaml
 
 from nuri.core.db import query
+from nuri.core.db import thesis_ledger as ledger
 from nuri.core.market_calendar import nyse_holidays
 from nuri.core.timezone import KST, kst_now
 from nuri.llm import local_client as lc
@@ -52,6 +55,7 @@ UNIVERSE_PATH = Path("config/universe.yaml")
 US_SECTIONS = ("us_core", "us_sp500_extended")
 WORK_DIR = Path("data/thesis_pilot")
 ARMS = {"A", "B", "S"}
+SAMPLE_SECONDS = 60  # 배치 중 메모리 표본 간격 (#1998)
 NY = ZoneInfo("America/New_York")
 
 
@@ -204,6 +208,78 @@ def pinned_worktree(repo: Path, path: Path) -> Path:
     return path
 
 
+def _out(argv: list[str]) -> str:
+    return subprocess.run(argv, capture_output=True, text=True, timeout=10, check=True).stdout
+
+
+def memory_sample() -> tuple[Optional[float], Optional[float]]:
+    """(가용 메모리 %, 스왑 사용 MB) — macOS `sysctl kern.memorystatus_level`(`memory_pressure` 가 "System-wide
+    memory free percentage" 로 보여주는 값, `man memory_pressure`: 총 메모리 대비 가용 메모리) · `vm.swapusage` 의 used.
+    `vm_stat` 의 "Pages free" 는 회수 가능한 캐시를 빼서 압박이 없어도 100MB 대로 떨어진다(2026-10-27 mini 실측).
+    `memory_pressure` 자체는 압박을 거는 도구라 부르지 않는다. 못 읽으면 None — 표본 때문에 배치를 멈추지 않는다."""
+    level = swap = None
+    try:
+        level = float(_out(["sysctl", "-n", "kern.memorystatus_level"]).strip())
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    try:
+        used = re.search(r"used = ([\d.]+)M", _out(["sysctl", "-n", "vm.swapusage"]))
+        swap = float(used.group(1)) if used else None
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return level, swap
+
+
+def _sample(experiment: str, cohort: str, stop: threading.Event, db_path: Optional[Path]) -> None:
+    while True:
+        ledger.record_sample(experiment, cohort, *memory_sample(), db_path=db_path)
+        if stop.wait(SAMPLE_SECONDS):
+            return
+
+
+def _night(
+    pilot: Pilot, cohort: date, *, repo: Path, python: str, db_path: Optional[Path], lock: Any
+) -> tuple[int, str]:
+    """추첨 → 고정 트리 → 트리 안 동결 재확인 → 배치 · 정산(메모리 표본과 함께). (종료 코드, 결과)."""
+    record = draw(pilot.experiment, cohort, us_universe(repo / UNIVERSE_PATH), pilot.tickers_per_night)
+    ledger.record_draw(pilot.experiment, cohort.isoformat(), record, db_path=db_path)
+    work = repo / WORK_DIR
+    draws = work / "draws"
+    draws.mkdir(exist_ok=True)
+    (draws / f"{pilot.experiment}-{cohort.isoformat()}.json").write_text(json.dumps(record))
+    tree = pinned_worktree(repo, work / f"wt-{pilot.experiment}-{cohort.isoformat()}")
+    # 자식들이 잠금 fd 를 물려받는다 — flock 은 열린 파일에 걸리므로, 이 프로세스가 죽어도 배치가 사는 동안
+    # 잠금이 남는다. 그 사이 다음 실행이 트리를 지우고 두 번째 배치를 띄우지 못한다 (Codex 리뷰).
+    fds = (lock.fileno(),)
+    try:
+        # 실행할 바로 그 코드로 다시 확인한다 — 위 사전 점검과 트리 생성 사이에 배포가 끼어들 수 있다
+        out = subprocess.run(freeze_command(python), cwd=tree, capture_output=True, text=True, pass_fds=fds)
+        reason = (
+            freeze_status(thesis_freeze.load(tree / thesis_freeze.FREEZE_PATH), pilot, cohort, json.loads(out.stdout))
+            if out.returncode == 0
+            else "freeze_unreadable"
+        )
+        if reason is not None:
+            print(f"refused: {reason} in the pinned tree", file=sys.stderr)
+            return 5, f"refused:{reason}"
+        stop = threading.Event()
+        sampler = threading.Thread(
+            target=_sample, args=(pilot.experiment, cohort.isoformat(), stop, db_path), daemon=True
+        )
+        sampler.start()
+        try:
+            rcs = [
+                exit_code(subprocess.run(cmd, cwd=tree, check=False, pass_fds=fds).returncode)
+                for cmd in commands(pilot, record["tickers"], python, db_path=db_path)
+            ]
+        finally:
+            stop.set()
+            sampler.join()
+    finally:
+        subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(tree)], check=False)
+    return max(rcs), "ran"
+
+
 def run_night(
     pilot: Pilot,
     now: datetime,
@@ -212,7 +288,8 @@ def run_night(
     python: str,
     db_path: Optional[Path] = None,
 ) -> int:
-    """배치 프로세스 본체 — 잠금 · 사전 점검 · 추첨 · 고정 트리에서 배치와 정산 · 정리."""
+    """배치 프로세스 본체 — 잠금 · 사전 점검 · 밤 예약 · 추첨 · 고정 트리에서 배치와 정산 · 정리.
+    `no_session` 이 아닌 결말(실행 · 거절 · 예외)은 모두 `thesis_pilot_nights` 에 남는다 — 경보가 읽는다 (#1998)."""
     cohort = now.astimezone(KST).date()
     # 자식은 고정 트리에서 돈다 — 상대 경로면 다른 DB 를 가리킨다 (Codex 리뷰)
     db_path = Path(os.path.abspath(db_path)) if db_path is not None else None
@@ -224,6 +301,11 @@ def run_night(
         except BlockingIOError:
             print("refused: locked", file=sys.stderr)
             return 4
+        try:
+            ledger.require_production()
+        except ledger.NotProductionError:
+            print("refused: not_production", file=sys.stderr)
+            return 5
         reason = preflight(
             pilot,
             now,
@@ -231,37 +313,26 @@ def run_night(
             config_path=repo / lc.CONFIG_PATH,
             db_path=db_path,
         )
-        if reason is not None:
-            print(f"refused: {reason}", file=sys.stderr)
-            return 0 if reason == "no_session" else 5
-        record = draw(pilot.experiment, cohort, us_universe(repo / UNIVERSE_PATH), pilot.tickers_per_night)
-        draws = work / "draws"
-        draws.mkdir(exist_ok=True)
-        (draws / f"{pilot.experiment}-{cohort.isoformat()}.json").write_text(json.dumps(record))
-        tree = pinned_worktree(repo, work / f"wt-{pilot.experiment}-{cohort.isoformat()}")
-        # 자식들이 잠금 fd 를 물려받는다 — flock 은 열린 파일에 걸리므로, 이 프로세스가 죽어도 배치가 사는 동안
-        # 잠금이 남는다. 그 사이 다음 실행이 트리를 지우고 두 번째 배치를 띄우지 못한다 (Codex 리뷰).
-        fds = (lock.fileno(),)
+        if reason == "no_session":
+            print("refused: no_session", file=sys.stderr)
+            return 0
+        if not ledger.start_night(pilot.experiment, cohort.isoformat(), db_path=db_path):
+            # 잠금이 풀린 뒤의 두 번째 실행 — 그 밤의 기록은 첫 실행의 것이다(덮어쓰지 않는다)
+            print("refused: night already recorded", file=sys.stderr)
+            return 5
+        rc, outcome = 1, "error"
         try:
-            # 실행할 바로 그 코드로 다시 확인한다 — 위 사전 점검과 트리 생성 사이에 배포가 끼어들 수 있다
-            out = subprocess.run(freeze_command(python), cwd=tree, capture_output=True, text=True, pass_fds=fds)
-            reason = (
-                freeze_status(
-                    thesis_freeze.load(tree / thesis_freeze.FREEZE_PATH), pilot, cohort, json.loads(out.stdout)
-                )
-                if out.returncode == 0
-                else "freeze_unreadable"
-            )
             if reason is not None:
-                print(f"refused: {reason} in the pinned tree", file=sys.stderr)
-                return 5
-            rcs = [
-                exit_code(subprocess.run(cmd, cwd=tree, check=False, pass_fds=fds).returncode)
-                for cmd in commands(pilot, record["tickers"], python, db_path=db_path)
-            ]
+                print(f"refused: {reason}", file=sys.stderr)
+                rc, outcome = 5, f"refused:{reason}"
+            else:
+                rc, outcome = _night(pilot, cohort, repo=repo, python=python, db_path=db_path, lock=lock)
+            return rc
+        except Exception as e:
+            outcome = f"error:{type(e).__name__}"
+            raise
         finally:
-            subprocess.run(["git", "-C", str(repo), "worktree", "remove", "--force", str(tree)], check=False)
-        return max(rcs)
+            ledger.end_night(pilot.experiment, cohort.isoformat(), outcome=outcome, exit_code=rc, db_path=db_path)
 
 
 def launch(argv: list[str], log_path: Path, cwd: Path) -> subprocess.Popen:
