@@ -414,10 +414,14 @@ class TestCli:
         packets["ticker"]["cutoff"] = "2026-03-10T09:00:00+09:00"
         monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
         monkeypatch.setattr(
-            arm.thesis_memory, "past_context", lambda t, c, cfg, db_path=None: seen.append((t, c.isoformat())) or "MEM"
+            arm.thesis_memory,
+            "past_context",
+            lambda t, c, cfg, experiment, arm_hash, db_path=None: (
+                seen.append((t, c.isoformat(), experiment, arm_hash)) or "MEM"
+            ),
         )
-        assert arm.main(["--tickers", "T0", "--memory"]) == 0
-        assert seen == [("T0", "2026-03-10T09:00:00+09:00")]
+        assert arm.main(["--tickers", "T0", "--memory", "--experiment", "pilot"]) == 0
+        assert seen == [("T0", "2026-03-10T09:00:00+09:00", "pilot", arm.arm_b_hash(cfg))]
         runs = [json.loads(p.read_text())["run"] for p in (tmp_path / "runs").glob("*.json")]
         assert {r["arm"]: r.get("memory") for r in runs} == {"A": None, "B": "MEM"}
 
@@ -432,11 +436,15 @@ class TestCli:
         monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
         monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: "")
         monkeypatch.setattr(arm.ledger, "record_run", lambda run, **kw: recorded.append((run["arm"], kw)))
-        assert arm.main(["--tickers", "T0", "--scored"]) == 0
+        monkeypatch.setattr(arm.ledger, "require_production", lambda: None)
+        monkeypatch.setattr(arm.ledger, "start_batch", lambda e, c, db_path=None: "b1")
+        monkeypatch.setattr(arm.ledger, "end_batch", lambda b, c, db_path=None: "ok")
+        assert arm.main(["--tickers", "T0", "--scored", "--experiment", "pilot"]) == 0
         assert [a for a, _ in recorded] == ["A", "B"]
         kw = recorded[1][1]
         assert kw["cutoff"] == "2026-03-10T09:00:00+09:00" and kw["cohort_date"] == "2026-03-10"
-        assert kw["canary_sha256"] == "cn" and kw["runtime"]["version"] == "v"
+        assert kw["canary_sha256"] == "cn" and kw["runtime"]["version"] == "v" and kw["experiment"] == "pilot"
+        assert kw["batch_id"] == "b1"
 
     def test_an_interactive_run_writes_nothing_even_on_the_production_host(self, monkeypatch, packets, tmp_path):
         cfg = dict(CFG, archive_dir=str(tmp_path))
@@ -458,14 +466,89 @@ class TestCli:
         monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: copy.deepcopy(packets))
         monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: "")
         monkeypatch.setattr(arm.ledger, "record_run", lambda run, **kw: recorded.append(kw["late"]))
+        monkeypatch.setattr(arm.ledger, "require_production", lambda: None)
+        monkeypatch.setattr(arm.ledger, "start_batch", lambda e, c, db_path=None: "b1")
+        monkeypatch.setattr(arm.ledger, "end_batch", lambda b, c, db_path=None: "ok")
         from datetime import datetime, timedelta, timezone
 
         kst = timezone(timedelta(hours=9))
         monkeypatch.setattr(arm, "kst_now", lambda: datetime(2026, 10, 23, 22, 29, tzinfo=kst))
-        arm.main(["--tickers", "T0", "--scored", "--arms", "A"])
+        arm.main(["--tickers", "T0", "--scored", "--experiment", "pilot", "--arms", "A"])
         monkeypatch.setattr(arm, "kst_now", lambda: datetime(2026, 10, 23, 22, 30, tzinfo=kst))
-        arm.main(["--tickers", "T0", "--scored", "--arms", "A"])
+        arm.main(["--tickers", "T0", "--scored", "--experiment", "pilot", "--arms", "A"])
         assert recorded == [False, True]
+
+    def _scored_rig(self, monkeypatch, packets, tmp_path, canary):
+        cfg = dict(CFG, archive_dir=str(tmp_path), canary={"scored_sha256": "cn"})
+        built = []
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        monkeypatch.setattr(lc, "check_canary", canary)
+        monkeypatch.setattr(lc, "read_runtime", lambda c, s: lc.Runtime("v", "d", "os", "b", {}, "h"))
+        packets["ticker"]["cutoff"] = "2026-03-10T09:00:00+09:00"
+        monkeypatch.setattr(tc, "build_packets", lambda t, db_path=None: built.append(t) or copy.deepcopy(packets))
+        monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **k: "")
+        monkeypatch.setattr(arm.ledger, "record_run", lambda run, **kw: None)
+        ended = []
+        monkeypatch.setattr(arm.ledger, "start_batch", lambda e, c, db_path=None: "b1")
+        monkeypatch.setattr(
+            arm.ledger, "end_batch", lambda b, c, db_path=None: ended.append((b, c)) or ("ok" if c == "cn" else "bad")
+        )
+        self.ended = ended
+        return built
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--tickers", "T0", "--scored"],
+            ["--tickers", "T0", "--scored", "--experiment", "   "],
+            ["--tickers", "T0", "--memory"],
+        ],
+    )
+    def test_scored_and_memory_need_a_nonblank_experiment(self, monkeypatch, packets, tmp_path, capsys, argv):
+        built = self._scored_rig(monkeypatch, packets, tmp_path, lambda c, session=None: pytest.fail("canary ran"))
+        with pytest.raises(SystemExit):
+            arm.main(argv)
+        assert "--experiment" in capsys.readouterr().err and built == []
+
+    def test_a_replay_never_scores(self, monkeypatch, packets, tmp_path, capsys):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        monkeypatch.setattr(lc, "generate", FakeGenerate())
+        path = tc.archive(arm.run_arm_b("T0", packets, cfg=cfg), packets, cfg)
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "check_canary", lambda c, session=None: pytest.fail("canary ran"))
+        with pytest.raises(SystemExit):
+            arm.main(["--replay", str(path), "--scored", "--experiment", "pilot"])
+        assert "never scores" in capsys.readouterr().err
+
+    def test_a_non_production_host_is_refused_before_any_work(self, monkeypatch, packets, tmp_path):
+        monkeypatch.setenv("NURI_ROLE", "dev")
+        built = self._scored_rig(monkeypatch, packets, tmp_path, lambda c, session=None: pytest.fail("canary ran"))
+        with pytest.raises(arm.ledger.NotProductionError):
+            arm.main(["--tickers", "T0", "--scored", "--experiment", "pilot"])
+        assert built == []
+
+    def test_the_canary_runs_once_at_start_and_once_at_end(self, monkeypatch, packets, tmp_path):
+        monkeypatch.setenv("NURI_ROLE", "production")
+        calls = []
+        self._scored_rig(monkeypatch, packets, tmp_path, lambda c, session=None: calls.append(1) or "cn")
+        assert arm.main(["--tickers", "T0,T1", "--scored", "--experiment", "pilot"]) == 0
+        assert len(calls) == 2
+
+    def test_a_canary_change_during_the_batch_exits_non_zero(self, monkeypatch, packets, tmp_path, capsys):
+        monkeypatch.setenv("NURI_ROLE", "production")
+        calls = []
+
+        def canary(c, session=None):
+            calls.append(1)
+            if len(calls) == 2:
+                raise lc.LocalModelError("canary_mismatch", "x")
+            return "cn"
+
+        self._scored_rig(monkeypatch, packets, tmp_path, canary)
+        assert arm.main(["--tickers", "T0", "--scored", "--experiment", "pilot"]) == 3
+        assert "canary changed during the batch" in capsys.readouterr().err
+        assert self.ended == [("b1", None)]  # 이미 기록된 실행은 배치 상태로 무효가 남는다
 
     def test_replay_uses_the_archived_memory(self, monkeypatch, packets, tmp_path):
         cfg = dict(CFG, archive_dir=str(tmp_path))

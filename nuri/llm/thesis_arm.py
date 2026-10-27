@@ -332,11 +332,12 @@ def run_arm_b(
     scored: bool = False,
     session: Any = None,
     memory: str = "",
+    canary_checked: bool = False,
 ) -> dict[str, Any]:
     """`memory` 는 `thesis_memory.past_context` 가 만든 기억 블록 — Research Manager 에 들어간다(원본은 Portfolio
     Manager). 실행 기록에 그대로 남고 해시가 run_hash 에 묶인다. 재생은 보관된 블록을 쓴다."""
     cfg = cfg if cfg is not None else lc.load_config()
-    if scored:
+    if scored and not canary_checked:
         lc.check_canary(cfg, session=session)
     full = tc.compact_view(packets["ticker"], packets["market"])
     views = {role: role_view(packets, role) for role in ANALYSTS}
@@ -427,7 +428,7 @@ def run_arm_b(
     run: dict[str, Any] = {
         "schema": tc.RUN_SCHEMA,
         "arm": "B",
-        "arm_hash": tc.definition_hash(ARM_B_FILES, cfg, (tc._canonical(cfg.get("memory")),)),
+        "arm_hash": arm_b_hash(cfg),
         "memory": memory,
         "memory_sha256": hashlib.sha256(memory.encode()).hexdigest(),
         "ticker": ticker,
@@ -458,6 +459,11 @@ def run_arm_b(
     return run
 
 
+def arm_b_hash(cfg: dict[str, Any]) -> str:
+    """팔 B 의 정의 지문 — 메모리 설정까지. 메모리는 같은 지문의 과거 실행만 읽는다 (#1981)."""
+    return tc.definition_hash(ARM_B_FILES, cfg, (tc._canonical(cfg.get("memory")),))
+
+
 ARMS = {"A": tc.run_baseline, "B": run_arm_b}
 
 
@@ -481,11 +487,24 @@ def main(argv: Optional[list[str]] = None) -> int:
     src.add_argument("--replay", type=Path, nargs="+", help="archived run files to replay")
     p.add_argument("--arms", default="A,B", help="arms to run on each packet (default A,B)")
     p.add_argument("--scored", action="store_true", help="check the canary, use memory, record runs in the ledger")
+    p.add_argument(
+        "--experiment", default="", help="experiment tag recorded on every scored run (required with --scored)"
+    )
     p.add_argument("--memory", action="store_true", help="give arm B the memory visible at the cutoff (dev runs)")
     p.add_argument("--db", type=Path, default=None)
     args = p.parse_args(argv)
     cfg = lc.load_config()
     arms = tuple(a for a in args.arms.split(",") if a)
+    experiment = args.experiment.strip()
+    if args.scored and args.replay:
+        p.error("--replay reproduces archived runs; it never scores (use --tickers for a scored batch)")
+    if (args.scored or args.memory) and not experiment:
+        p.error("--scored and --memory need --experiment (pilot and confirmatory runs must not share memory)")
+    batch_id = ""
+    if args.scored:
+        # 배치 시작에 확인한다 — 끝까지 돌린 뒤 기록 단계에서 거부당하지 않게, canary 는 실행마다가 아니라 배치마다
+        ledger.require_production()
+        batch_id = ledger.start_batch(experiment, lc.check_canary(cfg), db_path=args.db)
     jobs: list[tuple[str, dict[str, Any], tuple[str, ...], str]] = []
     if args.replay:
         for f in args.replay:
@@ -502,17 +521,24 @@ def main(argv: Optional[list[str]] = None) -> int:
             packets = tc.build_packets(t, db_path=args.db)
             mem = ""
             if (args.scored or args.memory) and "B" in arms:
-                mem = thesis_memory.past_context(t, _cutoff(packets), cfg=cfg, db_path=args.db)
+                mem = thesis_memory.past_context(
+                    t, _cutoff(packets), cfg=cfg, experiment=experiment, arm_hash=arm_b_hash(cfg), db_path=args.db
+                )
             jobs.append((t, packets, arms, mem))
-    runtime = asdict(lc.read_runtime(cfg, lc._session())) if args.scored and not args.replay else None
+    runtime = asdict(lc.read_runtime(cfg, lc._session())) if args.scored else None
     by_arm: dict[str, list[dict[str, Any]]] = {}
     for ticker, packets, run_arms, mem in jobs:
-        for run in run_pair(ticker, packets, run_arms, memory=mem, cfg=cfg, scored=args.scored):
+        # 채점 배치는 위에서 canary 를 이미 확인했다 — 실행마다 다시 돌리지 않는다
+        for run in run_pair(
+            ticker, packets, run_arms, memory=mem, cfg=cfg, scored=args.scored, canary_checked=args.scored
+        ):
             path = tc.archive(run, packets, cfg)
             if runtime is not None:
                 cut = _cutoff(packets)
                 ledger.record_run(
                     run,
+                    experiment=experiment,
+                    batch_id=batch_id,
                     cohort_date=cut.astimezone(KST).date().isoformat(),
                     cutoff=cut.isoformat(),
                     # 기록 순간이 진입 개장 이후면 late — 그날의 가격을 봤을 수 있다 (#1966)
@@ -524,6 +550,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(f"{run['arm']} {run['run_hash'][:16]}  {path}")
             by_arm.setdefault(run["arm"], []).append(run)
     print(json.dumps({a: tc.summarize(r) for a, r in sorted(by_arm.items())}, indent=2))
+    if runtime is not None:
+        # 배치 끝 canary — 도중에 런타임이 바뀌었으면(앱 자동 업데이트 등) 이 배치의 실행은 믿을 수 없다.
+        # 실행은 이미 기록됐다(기록 시각이 "개장 전" 의 증거) — 배치 상태로 무효를 남긴다.
+        try:
+            end = lc.check_canary(cfg)
+        except lc.LocalModelError as e:
+            print(f"canary changed during the batch: {e.code}", file=sys.stderr)
+            end = None
+        if ledger.end_batch(batch_id, end, db_path=args.db) != "ok":
+            return 3
     return 0
 
 

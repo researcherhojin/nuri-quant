@@ -2317,4 +2317,25 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         );
     """,
     ),
+    (
+        76,
+        "thesis_runs.experiment · batch_id + thesis_batches — 실험 구분과 배치 canary (#1981)",
+        # 메모리는 같은 실험 · 같은 팔 정의의 기억만 읽는다 — 파일럿 reflection 이 확증 실행에 섞이지 않게.
+        # 실행은 기록 시각이 "개장 전" 의 증거라 즉시 쓰고, 배치의 시작 · 끝 canary 와 상태를 따로 남긴다. 끝 canary 가
+        # 바뀌었거나(canary_changed) 끝나지 못한(open) 배치의 실행은 기억에 쓰지 않는다. experiment · batch_id 는 봉인
+        # 필드(thesis_v4) — 첫 채점 행은 파일럿이 쓰므로 그 전에는 봉인이 없다.
+        """
+        ALTER TABLE thesis_runs ADD COLUMN experiment TEXT NOT NULL DEFAULT '';
+        ALTER TABLE thesis_runs ADD COLUMN batch_id TEXT NOT NULL DEFAULT '';
+        CREATE TABLE IF NOT EXISTS thesis_batches (
+            batch_id TEXT PRIMARY KEY,
+            experiment TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            canary_start TEXT NOT NULL,
+            ended_at TEXT,
+            canary_end TEXT,
+            status TEXT NOT NULL CHECK (status IN ('open', 'ok', 'canary_changed'))
+        );
+    """,
+    ),
 ]

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from datetime import timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -25,6 +27,11 @@ def _json(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
+def require_production() -> None:
+    """채점 배치는 시작 전에 이걸 부른다 — 끝까지 돌린 뒤 기록 단계에서 거부당하지 않게 (#1981)."""
+    _require_production()
+
+
 def _require_production() -> None:
     if os.getenv("NURI_ROLE", "").strip().lower() != PRODUCTION_ROLE:
         raise NotProductionError("thesis ledger tables are written only where NURI_ROLE=production (the scored host)")
@@ -33,6 +40,8 @@ def _require_production() -> None:
 def record_run(
     run: dict[str, Any],
     *,
+    experiment: str,
+    batch_id: str,
     cohort_date: str,
     cutoff: str,
     late: bool,
@@ -46,14 +55,19 @@ def record_run(
     그 개장 뒤에 일어났는가 — 호출자가 실제 기록 시각으로 계산한다.
     """
     _require_production()
+    if not experiment.strip():
+        raise ValueError("a scored run needs a non-blank experiment tag")
     from .provenance import code_rev
 
     with get_db(db_path) as conn:
         cur = conn.execute(
-            """INSERT INTO thesis_runs (cohort_date, arm, arm_hash, ticker, cutoff, late, scored, run_hash, packet_hashes,
-                   view_hash, prompt_hashes, call_hashes, runtime, canary_sha256, budget_tokens, rating, outcome, code_rev)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO thesis_runs (experiment, batch_id, cohort_date, arm, arm_hash, ticker, cutoff, late, scored,
+                   run_hash, packet_hashes, view_hash, prompt_hashes, call_hashes, runtime, canary_sha256, budget_tokens,
+                   rating, outcome, code_rev)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
+                experiment,
+                batch_id,
                 cohort_date,
                 run["arm"],
                 run["arm_hash"],
@@ -100,3 +114,39 @@ def record_reflection(row: dict[str, Any], *, db_path: Optional[Path] = None) ->
                VALUES (:run_id, :decision_text, :decision_sha256, :reflection, :call_content_hash, :created_at)""",
             row,
         )
+
+
+def _utc_now() -> str:
+    from nuri.core.timezone import kst_now
+
+    return kst_now().astimezone(timezone.utc).isoformat()
+
+
+def start_batch(experiment: str, canary_sha256: str, *, db_path: Optional[Path] = None) -> str:
+    """채점 배치 시작 — 시작 canary 를 남기고 `open`. 새 batch_id."""
+    _require_production()
+    if not experiment.strip():
+        raise ValueError("a scored batch needs a non-blank experiment tag")
+    batch_id = uuid.uuid4().hex
+    with get_db(db_path) as conn:
+        conn.execute(
+            "INSERT INTO thesis_batches (batch_id, experiment, started_at, canary_start, status) "
+            "VALUES (?, ?, ?, ?, 'open')",
+            (batch_id, experiment, _utc_now(), canary_sha256),
+        )
+    return batch_id
+
+
+def end_batch(batch_id: str, canary_sha256: Optional[str], *, db_path: Optional[Path] = None) -> str:
+    """배치 끝 — 끝 canary 가 시작과 같으면 `ok`, 다르거나 못 쟀으면 `canary_changed`. 상태를 돌려준다."""
+    _require_production()
+    with get_db(db_path) as conn:
+        row = conn.execute("SELECT canary_start, status FROM thesis_batches WHERE batch_id = ?", (batch_id,)).fetchone()
+        if row is None or row[1] != "open":
+            raise ValueError(f"batch {batch_id} is not open")
+        status = "ok" if canary_sha256 is not None and canary_sha256 == row[0] else "canary_changed"
+        conn.execute(
+            "UPDATE thesis_batches SET ended_at = ?, canary_end = ?, status = ? WHERE batch_id = ?",
+            (_utc_now(), canary_sha256, status, batch_id),
+        )
+    return status

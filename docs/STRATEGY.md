@@ -413,7 +413,7 @@ Check these before opening a PR.
 
 | Item | Standard | Current |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,355 tests, 455 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,374 tests, 455 files (statement coverage **99%** — 150/25,528 uncovered in 26 files, partial branch 123/7,888, `make ci-cov` 2026-09-29) |
 | Frontend tests | target ≥ 90% | 1,449 tests, 117 files (2026-10-12 full run, after the pipeline Run buttons were removed) |
 | E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |
