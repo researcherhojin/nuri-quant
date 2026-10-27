@@ -12,4 +12,9 @@
 #       arms: {A: <64 hex>, B: <64 hex>, S: <64 hex>}   # A · B · S 중 얼릴 것만
 #
 # 창은 파일럿(#1964)과 사전등록(E)이 정한다.
-freezes: []
+freezes:
+  # 파일럿 (#1964) — 20 세션 밤. 2026-10-27 main c7fee3e4 의 지문(#1965 병합 뒤). 채택 근거는 #1964 댓글.
+  - experiment: pilot-2026-10-28
+    start: 2026-10-28
+    end: 2026-11-24
+    arms: {A: 72da3275be1707718b33b9e6524438db07a1fea3f6572a1ab139e2c5dd284394, B: 844bf394addafc95966b59bd0a34c47362e1698975cb9dd412c046664bd5afba, S: bbdd7f2b0f829cfc9d7171d31bff12f95e843cc175b40830ce46588aacc41909}

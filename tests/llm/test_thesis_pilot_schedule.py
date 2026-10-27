@@ -82,9 +82,11 @@ class TestRegistration:
 
 
 class TestWrappers:
-    def test_the_tracked_config_launches_nothing(self, monkeypatch):
-        """출하 상태(experiment: null) — 스케줄러가 불러도 아무 프로세스도 뜨지 않는다."""
-        monkeypatch.chdir(REPO)
+    def test_a_disabled_config_launches_nothing(self, monkeypatch, tmp_path):
+        """experiment: null — 스케줄러가 불러도 아무 프로세스도 뜨지 않는다."""
+        (tmp_path / "config").mkdir()
+        (tmp_path / tp.PILOT_PATH).write_text("experiment: null\n")
+        monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(tp, "launch", lambda *a, **k: pytest.fail("disabled pilot launched a process"))
         scheduler._run_thesis_pilot()
 
