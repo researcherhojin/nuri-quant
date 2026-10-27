@@ -2231,4 +2231,45 @@ _MIGRATIONS: list[tuple[int, str, str]] = [
         ALTER TABLE prices ADD COLUMN source TEXT;
     """,
     ),
+    (
+        73,
+        "thesis_runs + thesis_run_seals — 다단계 thesis 실험 원장과 봉인 (#1962)",
+        # `theses` 는 쓸 수 없다 — draft 삽입이 기존 active 를 superseded 로 내린다(thesis_ops.py).
+        # 실행 한 번에 한 행, 추가 전용. 봉인 필드 목록은 `ledger_seal.THESIS_FIELDS_V1`(동결). 정산 컬럼은
+        # 나중에 정당하게 쓰이므로 이 표에 두지 않는다(#1966 이 자기 migration 으로 더한다).
+        # 쓰기는 `thesis_ledger.record_run()` 하나, `NURI_ROLE=production`(mini scheduler plist)에서만.
+        # 보유 정보는 없지만 실험 결과라 레포 · MCP 로 나가지 않는다 (MCP ALLOWED 미등재).
+        """
+        CREATE TABLE IF NOT EXISTS thesis_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cohort_date TEXT NOT NULL,
+            arm TEXT NOT NULL,
+            ticker TEXT NOT NULL,
+            scored INTEGER NOT NULL,
+            run_hash TEXT NOT NULL,
+            packet_hashes TEXT NOT NULL,
+            view_hash TEXT NOT NULL,
+            prompt_hashes TEXT NOT NULL,
+            call_hashes TEXT NOT NULL,
+            runtime TEXT NOT NULL,
+            canary_sha256 TEXT,
+            budget_tokens INTEGER NOT NULL,
+            rating TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            code_rev TEXT,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_thesis_runs_cohort ON thesis_runs(cohort_date, arm);
+        CREATE TABLE IF NOT EXISTS thesis_run_seals (
+            date TEXT PRIMARY KEY,
+            n_rows INTEGER NOT NULL,
+            digest TEXT NOT NULL,
+            prev_hash TEXT NOT NULL,
+            seal_hash TEXT NOT NULL,
+            field_set TEXT NOT NULL,
+            sealed_at TEXT DEFAULT (datetime('now')),
+            code_rev TEXT
+        );
+    """,
+    ),
 ]

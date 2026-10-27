@@ -120,6 +120,10 @@ def format_progress_reason(report: dict[str, Any]) -> str:
     if seal:
         # 전체 해시 — 이 줄이 DB 밖에 남는 유일한 앵커다. 앞 12자(48비트)는 맞춰 만들 수 있다 (#1719)
         parts.append(f"봉인 {seal['date']} · {seal['seal_hash']}")
+    thesis_seal = report.get("thesis_ledger_seal")
+    if thesis_seal:
+        # thesis 실험 원장의 머리도 같은 이유로 전체 해시 (#1962)
+        parts.append(f"thesis 봉인 {thesis_seal['date']} · {thesis_seal['seal_hash']}")
 
     d = _days_until(report.get("evaluation_date"), report.get("as_of") or today_kst())
     if d is not None:
@@ -225,9 +229,10 @@ def stage_alpha_progress_brief(
     # 판정 원장 봉인 머리를 DB 밖(Discord)에 남긴다 (#1718) — DB 를 고칠 수 있으면 체인도 다시
     # 계산할 수 있으므로, 타임스탬프가 찍힌 외부 기록이 있어야 체인이 증거가 된다.
     try:
-        from nuri.core.db.ledger_seal import latest_seal
+        from nuri.core.db.ledger_seal import THESIS_RUNS, latest_seal
 
         report["ledger_seal"] = latest_seal(db_path=db_path)
+        report["thesis_ledger_seal"] = latest_seal(db_path=db_path, chain=THESIS_RUNS)
     except Exception:  # noqa: BLE001 — 앵커는 부가 정보, 리포트를 막지 않는다
         logger.warning("alpha progress report: 봉인 머리 조회 실패", exc_info=True)
     outbox_id = stage_brief(
