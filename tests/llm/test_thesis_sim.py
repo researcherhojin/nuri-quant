@@ -26,6 +26,7 @@ def claim(side, eid, f, point="p"):
 def b_run(outcome="verdict", memory=""):
     return {
         "outcome": outcome,
+        "ticker": "T0",
         "scored": True,
         "run_hash": "bh",
         "packet_hashes": ["tp", "mp"],
@@ -155,11 +156,12 @@ class TestSizesAndSigns:
         assert run["outcome"] == "review_model" and fake.stages() == ["trader", "trader"]
         assert any(error in e for e in run["stages"]["trader"]["errors"])
 
-    def test_a_pm_size_must_match_the_rating(self, monkeypatch):
-        bad = PM_OK | {"rating": "Underweight", "size": 0.5}
+    @pytest.mark.parametrize(("size", "error"), [(0.5, "size must be negative for Underweight"), (0.3, "schema")])
+    def test_a_pm_size_must_match_the_rating(self, monkeypatch, size, error):
+        bad = PM_OK | {"rating": "Underweight", "size": size}
         run, _ = run_s(monkeypatch, {"pm": [bad, bad]})
         assert run["outcome"] == "review_model" and run["size"] is None
-        assert "size must be negative for Underweight" in run["stages"]["portfolio_manager"]["errors"]
+        assert any(error in e for e in run["stages"]["portfolio_manager"]["errors"])
 
     def test_the_schema_lists_the_allowed_sizes(self):
         assert sim.TraderProposal.model_json_schema()["properties"]["size"]["enum"] == list(sim.SIZES)
@@ -270,7 +272,7 @@ class TestBook:
         assert sim.metrics([1.0, 1.0, 1.0])["SR"] is None
 
     def test_three_books_on_identical_rows(self):
-        a = {D[0]: [100.0, 101.0], D[-1]: [101.0, 110.0]}
+        a = {d: [100.0, 101.0 if d != D[-1] else 110.0] for d in D}
         rows = [row(1, "c1", "A", a) | {"size": -0.5, "b_rating": "Overweight"}]
         out = sim.books(rows, cost_bps=0, sleeves=1)
         assert out["simulated"]["CR"] == pytest.approx(-0.05) and out["rating_only"]["CR"] == pytest.approx(0.05)
@@ -297,7 +299,7 @@ class TestBookRows:
                 )
             conn.execute(
                 "INSERT INTO thesis_returns VALUES ('T0', 'C', ?, ?, ?, 'x', 0.1, 'SPY', 0.0, 0.1, ?, 'f')",
-                (ret_status, D[0], D[-1], json.dumps({"T0": {D[0]: [1.0, 1.0], D[-1]: [1.0, 1.1]}})),
+                (ret_status, D[0], D[-1], json.dumps({"T0": {d: [1.0, 1.0 if d != D[-1] else 1.1] for d in D}})),
             )
 
     def test_a_clean_pair_is_selected(self, db):
@@ -340,3 +342,71 @@ def test_no_user_facing_path_imports_the_simulated_book():
                 if any(m.startswith("nuri.llm.thesis_sim") for m in names):
                     offenders.append(str(f.relative_to(root)))
     assert offenders == []
+
+
+class TestReplayAndCalendar:
+    def test_s_archive_replays_only_s_with_the_original_b(self, monkeypatch, tmp_path):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        fake = Fake()
+        monkeypatch.setattr(lc, "generate", fake)
+        original_b = b_run(memory="ARCHIVED LESSON")
+        run = sim.run_arm_s("T0", original_b, cfg=cfg)
+        path = arm.tc.archive(run, {}, cfg)
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(arm, "run_arm_b", lambda *a, **kw: pytest.fail("reran B"))
+        monkeypatch.setattr(arm.thesis_memory, "past_context", lambda *a, **kw: pytest.fail("read memory"))
+        fake.prompts.clear()
+        assert arm.main(["--replay", str(path)]) == 0
+        assert fake.stages() == ["trader", "risk:aggressive", "risk:conservative", "risk:neutral", "pm"]
+        replayed = json.loads(path.read_text())["run"]
+        assert replayed["run_hash"] == run["run_hash"]
+        assert replayed["b_run"] == original_b
+        assert "ARCHIVED LESSON" in dict(fake.prompts)["pm"]
+
+    def test_missing_sessions_are_rejected(self):
+        sparse = {D[0]: [100.0, 100.0], D[-1]: [100.0, 104.0]}
+        with pytest.raises(ValueError, match="missing.*2026-10-26"):
+            sim.book_values([row(1, "c1", "T0", sparse)], sizes={1: 1.0}, cost_bps=0, sleeves=1)
+
+    def test_idle_sessions_count_in_the_metric_period(self):
+        rows = [
+            row(1, "c1", "T0", {D[0]: [100.0, 101.0]}, exit_=D[0]),
+            row(2, "c2", "T1", {D[-1]: [100.0, 101.0]}, entry=D[-1]),
+        ]
+        values = sim.book_values(rows, sizes={1: 1.0, 2: 1.0}, cost_bps=0, sleeves=1)
+        assert values == pytest.approx([1.0, 1.01, 1.01, 1.01, 1.01, 1.02])
+
+    @pytest.mark.parametrize("change", ["missing", "hash", "ticker"])
+    def test_s_replay_refuses_missing_or_mismatched_b(self, monkeypatch, tmp_path, capsys, change):
+        cfg = dict(CFG, archive_dir=str(tmp_path))
+        monkeypatch.setattr(lc, "generate", Fake())
+        run = sim.run_arm_s("T0", b_run(), cfg=cfg)
+        if change == "missing":
+            run.pop("b_run", None)
+        elif change == "hash":
+            run["b_run"]["run_hash"] = "different"
+        else:
+            run["b_run"]["ticker"] = "OTHER"
+        path = arm.tc.archive(run, {}, cfg)
+        monkeypatch.setattr(lc, "load_config", lambda: cfg)
+        monkeypatch.setattr(lc, "generate", lambda *a, **kw: pytest.fail("called the model"))
+        assert arm.main(["--replay", str(path)]) == 2
+        assert "no matching archived B input" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("price", [float("nan"), float("inf"), 0.0, -1.0])
+    def test_invalid_daily_prices_are_rejected(self, price):
+        series = {d: [100.0, price if d == D[1] else 104.0] for d in D}
+        with pytest.raises(ValueError, match="invalid prices"):
+            sim.book_values([row(1, "c1", "T0", series)], sizes={1: 1.0}, cost_bps=0, sleeves=1)
+
+    def test_market_holidays_do_not_need_prices(self):
+        series = {"2026-11-25": [100.0, 101.0], "2026-11-27": [101.0, 102.0]}
+        r = row(1, "c1", "T0", series, entry="2026-11-25", exit_="2026-11-27")
+        assert sim.book_values([r], sizes={1: 1.0}, cost_bps=0, sleeves=1) == pytest.approx([1.0, 1.01, 1.02])
+
+    def test_fills_use_entry_open_and_never_a_later_open(self):
+        series = {d: [999.0, 110.0] for d in D}
+        series[D[0]] = [100.0, 110.0]
+        series["2026-10-30"] = [1.0, 5000.0]  # 보유 창 밖 가격은 집계하지 않는다
+        values = sim.book_values([row(1, "c1", "T0", series)], sizes={1: 1.0}, cost_bps=0, sleeves=1)
+        assert values == pytest.approx([1.0] + [1.1] * len(D))

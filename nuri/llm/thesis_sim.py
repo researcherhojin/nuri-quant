@@ -25,12 +25,14 @@ import json
 import math
 import sys
 from collections import defaultdict
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from nuri.core.db import query
+from nuri.core.market_calendar import nyse_holidays
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_arm as arm
 from nuri.llm import thesis_contract as tc
@@ -260,6 +262,7 @@ def run_arm_s(
         "ticker": ticker,
         "scored": b_run["scored"],
         "b_run_hash": b_run["run_hash"],
+        "b_run": b_run,  # S 재생은 B 를 다시 생성하지 않고 이 입력을 쓴다
         "packet_hashes": b_run["packet_hashes"],
         "view_hash": b_run["view_hash"],
         "calls": calls,
@@ -308,9 +311,26 @@ def book_values(rows: list[dict[str, Any]], *, sizes: dict[int, float], cost_bps
     by_cohort: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for r in rows:
         by_cohort[r["cohort"]].append(r)
-    days = sorted({d for r in rows for d in r["series"][r["ticker"]] if r["entry_session"] <= d <= r["exit_session"]})
-    if not days:
+    if not rows:
         return [1.0]
+    start = date.fromisoformat(min(r["entry_session"] for r in rows))
+    end = date.fromisoformat(max(r["exit_session"] for r in rows))
+    holidays = nyse_holidays(start, end)
+    days = []
+    day = start
+    while day <= end:
+        if day.weekday() < 5 and day not in holidays:
+            days.append(day.isoformat())
+        day += timedelta(days=1)
+    # 결측을 기간 단축이나 전일 가격으로 숨기지 않는다. 쉬는 칸도 같은 거래일 축을 쓴다.
+    for r in rows:
+        series = r["series"][r["ticker"]]
+        for d in days:
+            if r["entry_session"] <= d <= r["exit_session"]:
+                if d not in series:
+                    raise ValueError(f"missing session {d} for {r['ticker']}")
+                if not all(math.isfinite(v) and v > 0 for v in series[d]):
+                    raise ValueError(f"invalid prices on {d} for {r['ticker']}")
     pnl = {d: 0.0 for d in days}
     c = cost_bps / 10_000.0
     for cohort_rows in by_cohort.values():

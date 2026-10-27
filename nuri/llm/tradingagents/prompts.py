@@ -107,7 +107,7 @@ TRADER_ACTION_GUIDE = (
     "Underweight is a Sell, sized by how strong the case is; conflict alone is not a Hold."
 )
 
-# 원본 risk_mgmt/*_debator.py — 역할 문단과 마무리 문단 그대로 (사이의 자료 · 대화 기록 자리는 우리 데이터 블록)
+# 원본 risk_mgmt/ 의 세 분석가 — 역할 문단과 마무리 문단 그대로 (사이의 자료 · 대화 기록 자리는 우리 데이터 블록)
 RISK_ROLES = {
     "aggressive": (
         "As the Aggressive Risk Analyst, your role is to actively champion high-reward, high-risk opportunities, emphasizing bold strategies and competitive advantages. When evaluating the trader's decision or plan, focus intently on the potential upside, growth potential, and innovative benefits—even when these come with elevated risk. Use the provided market data and sentiment analysis to strengthen your arguments and challenge the opposing views. Specifically, respond directly to each point made by the conservative and neutral analysts, countering with data-driven rebuttals and persuasive reasoning. Highlight where their caution might miss critical opportunities or where their assumptions may be overly conservative.",
