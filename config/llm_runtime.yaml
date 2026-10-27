@@ -45,6 +45,8 @@ canary:
     inflation expectations interact when central banks change policy rates. Use plain prose, no
     tables, and keep each paragraph self-contained.
   num_predict: 1200
-  scored_sha256: null
+  # 2026-10-27 채점 기기(mini, Ollama 0.40.11 · 위 digest)에서 `--canary` 2회 연속 같은 값. MBP 는 다른 값이 나온다
+  # (기기 간 출력 차이, #1957) — 채점 배치는 mini 에서만 이 값과 대조한다.
+  scored_sha256: 2ba85186f445db9f43235cc3949a07d579c738bdce333780e23a8e11b2fd94a9
 
 archive_dir: data/thesis_runtime
