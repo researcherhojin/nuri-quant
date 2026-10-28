@@ -1,6 +1,7 @@
 """#1965: 단계 이벤트에는 허용 필드만 있으며 인터랙티브 실행은 원장을 쓰지 않는다."""
 
 import json
+from typing import Any
 
 import pytest
 
@@ -61,9 +62,15 @@ def test_absent_stages_are_reported_without_a_model_call(monkeypatch, packets):
 
 
 def test_cli_only_emits_allowlisted_events(monkeypatch, packets, tmp_path, capsys):
-    cfg = dict(CFG, archive_dir=str(tmp_path))
+    cfg: dict[str, Any] = dict(CFG, archive_dir=str(tmp_path), expected={"version": "0.40.11", "digest": "test"})
     monkeypatch.setattr(lc, "load_config", lambda: cfg)
-    monkeypatch.setattr(lc, "generate", FakeGenerate())
+    fake = FakeGenerate()
+
+    def generate(prompt, **kwargs):
+        assert kwargs["cfg"]["expected"]["version"] == "0.40.12"
+        return fake(prompt, **kwargs)
+
+    monkeypatch.setattr(lc, "generate", generate)
     monkeypatch.setattr(cli.tc, "build_packets", lambda ticker, db_path=None: packets)
     monkeypatch.setattr(arm.ledger, "record_run", lambda *a, **kw: pytest.fail("interactive ledger write"))
     assert cli.main(["--ticker", "TEST"]) == 0
@@ -71,10 +78,15 @@ def test_cli_only_emits_allowlisted_events(monkeypatch, packets, tmp_path, capsy
     assert len(events) == 15 and events[-1]["event"] == "result"
     assert all(public_event(e) == e for e in events)
     assert len(list((tmp_path / "runs").glob("*.json"))) == 1
+    assert cfg["expected"]["version"] == "0.40.11"
 
 
 def test_error_text_is_archived_and_never_emitted(monkeypatch, packets, tmp_path, capsys):
-    monkeypatch.setattr(lc, "load_config", lambda: dict(CFG, archive_dir=str(tmp_path)))
+    monkeypatch.setattr(
+        lc,
+        "load_config",
+        lambda: dict(CFG, archive_dir=str(tmp_path), expected={"version": "0.40.11", "digest": "test"}),
+    )
     monkeypatch.setattr(cli.tc, "build_packets", lambda ticker, db_path=None: packets)
 
     def fail(*a, **kw):
@@ -89,7 +101,11 @@ def test_error_text_is_archived_and_never_emitted(monkeypatch, packets, tmp_path
 
 @pytest.mark.parametrize("outcome,expected,rc", [("review_model", "review", 0), ("transport:Timeout", "failed", 1)])
 def test_review_and_failure_remain_distinct(monkeypatch, packets, tmp_path, capsys, outcome, expected, rc):
-    monkeypatch.setattr(lc, "load_config", lambda: dict(CFG, archive_dir=str(tmp_path)))
+    monkeypatch.setattr(
+        lc,
+        "load_config",
+        lambda: dict(CFG, archive_dir=str(tmp_path), expected={"version": "0.40.11", "digest": "test"}),
+    )
     monkeypatch.setattr(cli.tc, "build_packets", lambda ticker, db_path=None: packets)
     monkeypatch.setattr(
         arm,
@@ -165,3 +181,37 @@ def test_failed_stage_progress_has_only_a_generic_status(monkeypatch, packets):
     assert run["outcome"].startswith("transport:")
     assert events[-1] == {"event": "stage", "stage": "analyst:market", "status": "failed"}
     assert "PRIVATE" not in json.dumps(events)
+
+
+def test_interactive_pin_preserves_scored_runtime_and_digest(monkeypatch, tmp_path):
+    from copy import deepcopy
+
+    from nuri.llm import thesis_freeze
+
+    scored = lc.load_config()
+    original = deepcopy(scored)
+    hashes = thesis_freeze.current_hashes(scored)
+    interactive = cli.interactive_config(scored)
+    assert interactive["expected"]["version"] == "0.40.12"
+    assert interactive["expected"]["digest"] == scored["expected"]["digest"]
+    assert interactive["base_url"] == scored["base_url"]
+    assert scored == original
+    assert thesis_freeze.current_hashes(scored) == hashes
+    assert thesis_freeze.check() == []
+    rt = lc.Runtime("0.40.12", scored["expected"]["digest"], "os", "build", {}, "host")
+    lc.check_runtime(rt, interactive)
+    with pytest.raises(lc.LocalModelError, match="runtime_mismatch"):
+        lc.check_runtime(rt, scored)
+    from dataclasses import replace
+
+    rt = replace(rt, digest="wrong")
+    with pytest.raises(lc.LocalModelError, match="runtime_mismatch"):
+        lc.check_runtime(rt, interactive)
+
+
+@pytest.mark.parametrize("text", ["{}", "version: latest", "version: 12", "[]", "version: 0.40.12\nmodel: other"])
+def test_interactive_pin_rejects_invalid_or_extra_overrides(tmp_path, text):
+    path = tmp_path / "runtime.yaml"
+    path.write_text(text)
+    with pytest.raises(ValueError, match="explicit version"):
+        cli.interactive_config(lc.load_config(), path)

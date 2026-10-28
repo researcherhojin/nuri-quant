@@ -1,0 +1,3 @@
+# 비채점 Discord /thesis 전용. 자동 업데이트를 무조건 허용하지 않고 검증한 버전을 명시한다.
+# 채점 파일럿 config/llm_runtime.yaml 및 모델 digest/로컬 전용 검사는 그대로 유지한다.
+version: "0.40.12"
