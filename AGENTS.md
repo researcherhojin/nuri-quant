@@ -99,7 +99,7 @@ make lint                                    # ruff
 make typecheck                               # pyright, same pin as CI Backend Lint (0 errors required)
 make verify-quick                            # pre-commit smoke (84.9s)
 make verify-all                              # tests + lint + frontend (320.8s)
-make verify-doc-counts                       # README/docs numbers vs code
+make verify-doc-counts                       # docs numbers vs code
 make spellcheck-ci                           # cspell (required CI check)
 make help                                    # every target
 ```
