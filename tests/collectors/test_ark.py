@@ -449,3 +449,29 @@ class TestArkSourceStaleness:
         rows = query("SELECT fund, csv_date FROM ark_source_dates", db_path=held)
         assert {r["fund"] for r in rows} == set(ARK_HOLDINGS_FILES)
         assert {r["csv_date"] for r in rows} == {"2026-01-02"}
+
+
+def test_collect_uses_renamed_arkw_csv(db_path):
+    """구 URL이 200으로 낡은 CSV를 줘도 개명된 소스 날짜를 기록한다."""
+    from nuri.collectors.ark import ARKCollector
+
+    current_url = (
+        "https://assets.ark-funds.com/fund-documents/funds-etf-csv/"
+        "ARK_NEXT_GENERATION_TECHNOLOGY_ETF_ARKW_HOLDINGS.csv"
+    )
+    old_url = current_url.replace("TECHNOLOGY", "INTERNET")
+
+    def response(url, **kwargs):
+        date = "10/06/2026" if url == old_url else "10/27/2026"
+        return _resp(
+            "date,fund,company,ticker,cusip,shares,market value ($),weight (%)\n"
+            f"{date},ARKW,Example Company,ZZZZ,000000000,100,1000,1.0\n"
+        )
+
+    with patch("nuri.collectors.ark.requests.get", side_effect=response) as get:
+        ARKCollector().collect(db_path=db_path)
+
+    assert current_url in [call.args[0] for call in get.call_args_list]
+    assert old_url not in [call.args[0] for call in get.call_args_list]
+    rows = query("SELECT csv_date FROM ark_source_dates WHERE fund = 'ARKW'", db_path=db_path)
+    assert rows[0]["csv_date"] == "2026-10-27"

@@ -415,7 +415,7 @@ PR 전에 확인한다.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,661 tests, 463 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,662 tests, 463 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
 | Frontend tests | 목표 ≥ 90% | 1,449 tests, 117 files (2026-10-12 전체 실행, 파이프라인 Run 버튼 제거 반영) |
 | E2E | 핵심 flow | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | 필수 | lint + test + coverage + security + privacy |
