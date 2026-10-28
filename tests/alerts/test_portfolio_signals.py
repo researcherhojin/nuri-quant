@@ -458,12 +458,13 @@ def test_cli_shows_sleeve_breach(db_path, capsys):
 
 
 def _stale_portfolio(db_path, days: int):
-    from datetime import timedelta
+    from datetime import UTC, timedelta
 
     from nuri.core.db import get_db
     from nuri.core.timezone import kst_now
 
-    stamp = (kst_now() - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    # writer 와 같은 UTC naive (#2017)
+    stamp = (kst_now() - timedelta(days=days)).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
     with get_db(db_path) as conn:
         conn.execute(
             "INSERT INTO portfolio (ticker, account, quantity, avg_price, updated_at) VALUES (?,?,?,?,?)",
@@ -484,18 +485,18 @@ def test_warn_never_becomes_a_card(db_path):
     소음이 되고, 소음이 된 알림은 읽히지 않는다.
 
     빈 fixture 는 모든 소스가 FAIL("데이터 없음") 이라 WARN 을 하나 **만들어야** 이 축이
-    검증된다. `portfolio` 정책이 24h WARN / 72h FAIL 이고 `updated_at` 이 KST naive 라
-    30시간을 정확히 심을 수 있다 (이전 재료였던 certification 정책은 #1619 로 삭제).
+    검증된다. `portfolio` 정책이 24h WARN / 72h FAIL 이고 `updated_at` 이 writer 와 같은 UTC naive 라
+    30시간을 정확히 심을 수 있다 (#2017) (이전 재료였던 certification 정책은 #1619 로 삭제).
     이 테스트가 없으면 필터를 `("FAIL", "WARN")` 으로 넓혀도 스위트가 초록이다
     (뮤테이션 실측 2026-08-18).
     """
-    from datetime import timedelta
+    from datetime import UTC, timedelta
 
     from nuri.core.db import get_db
     from nuri.core.freshness import check_freshness
     from nuri.core.timezone import kst_now
 
-    stamp = (kst_now() - timedelta(hours=30)).strftime("%Y-%m-%d %H:%M:%S")
+    stamp = (kst_now() - timedelta(hours=30)).astimezone(UTC).strftime("%Y-%m-%d %H:%M:%S")
     with get_db(db_path) as conn:
         conn.execute(
             "INSERT INTO portfolio (account, ticker, quantity, avg_price, sector, updated_at) VALUES (?, ?, ?, ?, ?, ?)",

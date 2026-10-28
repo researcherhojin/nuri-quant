@@ -593,6 +593,28 @@ class TestCheckFreshness:
         assert set(result.keys()) == expected_keys
 
 
+class TestPortfolioUpdatedAtIsUtc:
+    """`portfolio.updated_at` 은 writer 3곳 모두 `datetime('now')`(오프셋 없는 UTC)로 찍는다 (#2017).
+
+    정책이 그 값을 KST naive 로 읽던 동안 방금 한 sync 가 9시간 묵은 것으로 보였다 —
+    WARN/FAIL 이 9시간 일찍 울린다(2026-10-28 실측: 15:39 KST import → age 9.0h).
+    """
+
+    def test_a_sync_just_now_is_fresh(self, db_path):
+        from nuri.core.db import replace_portfolio_account
+        from nuri.core.freshness import check_freshness
+
+        replace_portfolio_account(
+            "test",
+            [{"account": "test", "ticker": "AAA", "quantity": 1, "avg_price": 1.0, "currency": "USD", "sector": "X"}],
+            db_path=db_path,
+        )
+
+        result = check_freshness("portfolio", db_path=db_path)
+        assert result["status"] == "PASS"
+        assert result["age_hours"] < 1
+
+
 class TestWarnWhenStaleDoesNotRideTheWallClock:
     """`TestCheckFreshness.test_warn_when_data_is_stale` 의 시계 고정 잠금 (tests/CLAUDE.md "Time-bomb" 4차).
 
