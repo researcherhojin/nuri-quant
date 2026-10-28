@@ -96,7 +96,7 @@ These entry points share neither an output contract nor a scoring purpose:
 | Mode | Entry point | Runtime and output |
 |---|---|---|
 | Legacy question and answer | `make thesis ticker=TEST`, `/nuri-thesis` | `thesis_query.py` → `llm_consult.py --local-only`; local Strata by default, private Markdown archive |
-| Discord interactive | `/thesis ticker:TEST` → `make thesis-remote` | Mini delegates to the development host's `make thesis-progress`; local Ollama B arm, unscored, progress thread and allowlisted final card |
+| Discord interactive | `/thesis ticker:TEST` → `make thesis-remote` | Mini delegates to the development host's `make thesis-progress`; unscored local Ollama B arm, progress thread and allowlisted final card. Runtime version is explicitly pinned in `config/llm_interactive.yaml`; the scored pilot keeps its independent version and digest contract in `config/llm_runtime.yaml` |
 | Scheduled pilot | `thesis_pilot` scheduler job | Scored local execution on the production host, pinned source tree and experiment guard; production thesis ledger |
 | Report and retro lessons | `report.py` Ollama backend | Local Ollama; the request explicitly uses `report.num_ctx` from `config/llm_runtime.yaml` (#1960) |
 
@@ -112,7 +112,7 @@ On the receiving checkout, `make -n thesis-progress ticker=TEST` checks target a
 `thesis_remote.sh` selects the newest replica DB, but warns and falls back to the development DB if no replica exists;
 a completed run alone therefore does not establish data freshness.
 
-The local client validates the loopback endpoint, local model identity, registered runtime and prompt budget before generation.
+The local client validates the loopback endpoint, local model identity, registered runtime and prompt budget before generation. The interactive CLI applies its explicit version pin to a deep copy of the scored runtime config, preserving the scored pilot version and model digest; updating the interactive pin is a reviewed config change.
 A loopback address alone does not establish local execution: the model guard rejects remote/cloud or unlisted models.
 There is no external-model fallback. Pilot enablement is in `config/thesis_pilot.yaml`, declared fingerprints are in
 `config/thesis_freeze.yaml`, and scheduling is in `nuri/scheduler.py`. Changing a declared arm/runtime is not a documentation fix.

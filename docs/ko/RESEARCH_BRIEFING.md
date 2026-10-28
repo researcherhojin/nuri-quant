@@ -96,7 +96,7 @@ v9는 단순 항목 나열을 줄이고 근거에서 실적·비용·현금흐�
 | 모드 | 진입점 | 런타임과 출력 |
 |---|---|---|
 | 기존 질의응답 | `make thesis ticker=TEST`, `/nuri-thesis` | `thesis_query.py` → `llm_consult.py --local-only`; 기본 로컬 Strata, 비공개 Markdown archive |
-| Discord 대화형 | `/thesis ticker:TEST` → `make thesis-remote` | Mini 가 개발 호스트의 `make thesis-progress` 로 위임; 로컬 Ollama B 팔, unscored, 진행 스레드와 허용 목록 최종 카드 |
+| Discord 대화형 | `/thesis ticker:TEST` → `make thesis-remote` | Mini 가 개발 호스트의 `make thesis-progress` 로 위임; 비채점 로컬 Ollama B 팔, 진행 스레드와 허용 목록 최종 카드. 런타임 버전은 `config/llm_interactive.yaml` 에 명시하며, 채점 파일럿은 `config/llm_runtime.yaml` 의 버전·digest 계약을 별도로 유지 |
 | 정시 파일럿 | `thesis_pilot` scheduler job | 운영 호스트의 로컬 채점 실행, 고정 소스 트리와 실험 가드; 운영 thesis 원장 |
 | 리포트와 회고 교훈 | `report.py` Ollama 백엔드 | 로컬 Ollama; 요청에 `config/llm_runtime.yaml` 의 `report.num_ctx` 를 명시(#1960) |
 
@@ -112,7 +112,7 @@ subprocess 제한은 `config/llm_runtime.yaml` 의 `interactive.timeout_s`(현�
 `thesis_remote.sh` 는 최신 replica DB 를 고르지만 replica 가 없으면 경고 후 개발 DB 로 fallback 한다.
 따라서 실행 완료만으로 자료의 신선도를 입증할 수 없다.
 
-로컬 client 는 생성 전에 loopback endpoint·로컬 모델 식별·등록 런타임·prompt budget 을 검증한다.
+로컬 client 는 생성 전에 loopback endpoint·로컬 모델 식별·등록 런타임·prompt budget 을 검증한다. 대화형 CLI 는 채점 런타임 설정의 복사본에만 별도 버전 pin 을 적용해 채점 파일럿의 버전과 모델 digest 를 보존한다. 대화형 pin 갱신도 검토된 설정 변경이다.
 loopback 주소만으로 로컬 실행이 보장되지는 않는다. 모델 가드는 remote/cloud 또는 미등록 모델을 거부한다.
 외부 모델 fallback 은 없다. 파일럿 활성화는 `config/thesis_pilot.yaml`, 선언 지문은
 `config/thesis_freeze.yaml`, 스케줄은 `nuri/scheduler.py` 가 정본이다. 선언된 팔·런타임 변경은 문서 수정이 아니다.
