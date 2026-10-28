@@ -52,6 +52,9 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 
 `FRESHNESS_POLICIES` per data source. `check_freshness(key)` returns PASS/WARN/FAIL. 임계(`warn_hours`/`fail_hours`)는 `config/freshness.yaml` 이 정본이고 `_load_config()` 가 기동 시 주입한다 — 키 목록은 양방향 대조라 config 누락/잉여 둘 다 ValueError (#1180). 쿼리·라벨은 구현이라 코드에 남는다. `VERDICT_GATE_KEYS`/`stale_verdict_inputs()` 는 dashboard verdict 의 stale gate 입력 (FAIL 만 센다). WARN 은 "예정 도착보다 늦음" 이다 (#1677): 임계는 각 소스의 실제 도착 시각(cron·공표 지연)으로 정하고, `warn_calendar` (`us_market` = 주말 + NYSE 휴장, `weekend` = 한국용 토·일, 달력은 `nuri/core/market_calendar.py`)가 장이 없던 날을 **WARN 에서만** 뺀다 — FAIL 은 verdict_gate 입력이라 그대로 둔다. **Test:** `tests/core/test_freshness.py::TestWarnCalendar::test_closed_days_never_rescue_a_fail`.
 
+⚠️ **오프셋 없는 시각은 KST 로 파싱된다 — `datetime('now')` 로 찍힌 열은 쿼리에서 옮겨야 한다** (#2017). `_parse_timestamp` 는 오프셋 없는 값을 KST 로 본다. `portfolio.updated_at` 은 writer 3곳(`upsert_portfolio` · `replace_portfolio_account` · API PATCH) 모두 SQLite `datetime('now')` = UTC 라, 방금 한 sync 가 9시간 묵어 보였고 WARN/FAIL 이 9시간 일찍 울렸다(2026-10-28 운영 실측 age 9.0h → 수정 후 0.2h). 정책 쿼리가 `datetime(MAX(updated_at), '+9 hours')` 로 옮긴다. 시각(날짜 아님) 열을 읽는 정책을 추가하면 writer 가 무엇으로 찍는지 먼저 볼 것.
+**Test:** `tests/core/test_freshness.py::TestPortfolioUpdatedAtIsUtc::test_a_sync_just_now_is_fresh` — 실제 writer 로 쓰고 age < 1h 를 단언한다(옛 쿼리면 `9.0 < 1` 로 FAIL).
+
 정책을 추가/삭제하면 `tests/core/test_freshness.py::TestFreshnessPolicies::test_expected_policy_keys` 가 **일부러**
 깨진다 — 양방향 allowlist 라 등재할 때 "왜 이 정책이 생겼는지" 한 줄을 그 테스트에 같이
 적는다 (#1071 `factors` / #1101 `signals` / #1145 `ark` 가 전례).
