@@ -1,8 +1,10 @@
 """`verify_doc_counts.sh` 는 한 클레임의 **모든** 등장 위치를 검사한다.
 
-README 는 같은 수치를 두 번 말한다 — mermaid 노드의 `SQLite WAL · 51 tables` 와
+README 는 같은 수치를 두 번 말했다 — mermaid 노드의 `SQLite WAL · 51 tables` 와
 Project Stats 표의 같은 문구. 예전 `extract_num` 은 `head -1` 로 **첫 번째만** 읽어서,
-두 번째 site 가 틀려도 게이트가 초록으로 통과했다. 문서에 박힌 숫자의 절반이
+두 번째 site 가 틀려도 게이트가 초록으로 통과했다. #2020 에서 README 의 수치가 빠져
+한 파일에 같은 수치가 두 번 나오는 곳이 없어졌다 — 사본의 ARCHITECTURE 에 두 번째 등장을
+만들어 같은 계약을 검사한다. 문서에 박힌 숫자의 절반이
 사실상 검사되지 않는 상태였고, 그건 "게이트가 있다" 는 인상만 주는 쪽이 더 나쁘다.
 
 Gotcha-Test Pair: `extract_nums` 를 `head -1` 로 되돌리면 두 번째 테스트가 FAIL.
@@ -11,6 +13,7 @@ Gotcha-Test Pair: `extract_nums` 를 `head -1` 로 되돌리면 두 번째 테�
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,6 +22,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "scripts" / "verify" / "verify_doc_counts.sh"
+DOC = "docs/ARCHITECTURE.md"
 
 
 def _db_tables_line(cwd: Path) -> str:
@@ -44,32 +48,29 @@ def _db_tables_line(cwd: Path) -> str:
 
 
 def _table_marker(repo: Path) -> str:
-    """README 가 지금 말하는 `<N> tables` 문구를 읽어온다.
+    """ARCHITECTURE 가 지금 말하는 `<N> tables` 문구를 읽어온다.
 
     예전에는 `"51 tables"` 를 리터럴로 박아 뒀는데, 마이그레이션이 테이블을 추가하면
     marker 가 문서에서 사라져 `replace` 가 아무것도 못 바꾸고 **변조 없는 실행**이 된다.
     그러면 이 테스트는 "drift 를 못 잡았다" 고 실패하지만 원인은 게이트가 아니라
     fixture 다 — 진짜 회귀와 구분이 안 된다 (#1083 에서 51→53 이 되며 실제로 겪음).
     """
-    import re
-
-    m = re.search(r"\b(\d+) tables\b", (repo / "README.md").read_text(encoding="utf-8"))
-    assert m, "README 에 `<N> tables` 문구가 없다 — 이 테스트의 대조 대상이 사라졌다"
+    m = re.search(r"\b(\d+) tables\b", (repo / DOC).read_text(encoding="utf-8"))
+    assert m, "ARCHITECTURE 에 `<N> tables` 문구가 없다 — 이 테스트의 대조 대상이 사라졌다"
     return m.group(0)
 
 
 @pytest.fixture
 def repo_copy(tmp_path):
-    """README + 검사에 필요한 파일만 복사한 얕은 레포 사본.
+    """검사에 필요한 파일만 복사한 얕은 레포 사본. ARCHITECTURE 에는 두 번째 등장을 덧붙인다.
 
     `.venv` 는 심볼릭 링크로 빌려온다 — `live_db_tables` 가 `[ -x .venv/bin/python ]`
     를 요구하고, 없으면 그 체크가 통째로 skip 돼 검증 대상이 사라진다. 링크된 venv 는
-    실제 스키마(51)를 측정하고, 대조 대상인 README 는 사본 것이 쓰인다.
+    실제 스키마를 측정하고, 대조 대상인 ARCHITECTURE 는 사본 것이 쓰인다.
     """
     dst = tmp_path / "repo"
     dst.mkdir()
     for rel in (
-        "README.md",
         "CLAUDE.md",
         "docs/ARCHITECTURE.md",
         "docs/ko/ARCHITECTURE.md",
@@ -97,6 +98,10 @@ def repo_copy(tmp_path):
         (dst / sub).mkdir(parents=True, exist_ok=True)
     (dst / "pyproject.toml").write_text("")  # _common.sh 의 레포 루트 판별 마커
     (dst / ".venv").symlink_to(REPO_ROOT / ".venv")
+    doc = dst / DOC
+    phrase = re.search(r"SQLite WAL · \d+ tables", doc.read_text(encoding="utf-8"))
+    assert phrase, "ARCHITECTURE 의 `SQLite WAL · <N> tables` 문구가 사라졌다"
+    doc.write_text(doc.read_text(encoding="utf-8") + f"\n{phrase.group(0)}\n", encoding="utf-8")
     return dst
 
 
@@ -112,13 +117,13 @@ class TestMultiSiteVerification:
 
         `head -1` 시절에는 이 변조가 통과했다 — 그게 이 테스트의 존재 이유다.
         """
-        readme = repo_copy / "README.md"
-        text = readme.read_text()
+        doc = repo_copy / DOC
+        text = doc.read_text()
         marker = _table_marker(repo_copy)
-        assert text.count(marker) >= 2, "README 가 이 수치를 한 번만 말하면 다중 site 계약이 사라진 것"
+        assert text.count(marker) >= 2, "사본이 이 수치를 한 번만 말하면 다중 site 계약이 사라진 것"
 
         head, sep, tail = text.partition(marker)  # 첫 번째는 그대로 두고
-        readme.write_text(head + sep + tail.replace(marker, "99 tables", 1))  # 두 번째만 변조
+        doc.write_text(head + sep + tail.replace(marker, "99 tables", 1))  # 두 번째만 변조
 
         line = _db_tables_line(repo_copy)
         assert "DRIFT" in line, f"두 번째 site 의 drift 가 통과함 — head -1 회귀: {line}"
@@ -126,6 +131,6 @@ class TestMultiSiteVerification:
 
     def test_drift_at_the_first_site_is_caught(self, repo_copy):
         """첫 번째 위치 검사는 회귀하지 않았는지 (기존 동작 보존)."""
-        readme = repo_copy / "README.md"
-        readme.write_text(readme.read_text().replace(_table_marker(repo_copy), "99 tables", 1))
+        doc = repo_copy / DOC
+        doc.write_text(doc.read_text().replace(_table_marker(repo_copy), "99 tables", 1))
         assert "DRIFT" in _db_tables_line(repo_copy)

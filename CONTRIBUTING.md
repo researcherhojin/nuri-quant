@@ -35,7 +35,7 @@ The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
 | 1 | Working-tree drift (`scripts/verify/check_drift.py --strict`): an uncommitted change that makes local checks pass while CI runs the committed version | Yes |
 | 2 | `ruff check nuri/ tests/ scripts/` | Yes |
 | 2b | `shellcheck` on `scripts/**/*.sh` | Yes when installed; a warning otherwise, CI enforces |
-| 2c | Count claims in README, ARCHITECTURE, STRATEGY and the scoped `CLAUDE.md` / rules files match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
+| 2c | Count claims in ARCHITECTURE, STRATEGY and the scoped `CLAUDE.md` / rules files match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
 | 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) and a `pyright` ratchet on the lines the push adds | Yes when `npx` is available; skipped with a warning otherwise, CI enforces the spellcheck |
 | 3 | Tests (only without `--skip-tests`) | Yes |
 | 4 / 4b | Privacy scan of the tree and of unpushed commit messages (`scripts/verify/check_privacy_leak.py`) | Yes |

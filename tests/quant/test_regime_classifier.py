@@ -863,16 +863,16 @@ class TestClassifierDeep:
 
 class TestRegimeEnumeration:
     """Lock-tests for `BASE_REGIMES` / `SPECIAL_REGIMES` / `ALL_REGIMES` constants
-    added 2026-04-29 in PR #494 to give README claim "10 regimes (6 base + 4
-    special)" a code-truth source. STRATEGY §5.3.1 Gotcha-Test Pair — these tests
+    added 2026-04-29 in PR #494 to give the "10 regimes (6 base + 4 special)"
+    claim a code-truth source. STRATEGY §5.3.1 Gotcha-Test Pair — these tests
     fail if anyone changes the count without also updating the verify-doc-counts
-    pipeline / README claims.
+    pipeline / ARCHITECTURE claims (moved from the README in #2020).
 
     Why these matter: `verify_doc_counts.sh live_regimes()` reads `len(ALL_REGIMES)`
-    and compares to README's `· N regimes` pattern. If ALL_REGIMES drifts silently
-    (e.g., someone adds a 5th special regime) without updating the README claim,
+    and compares to ARCHITECTURE's `covers all N regimes` pattern. If ALL_REGIMES drifts
+    silently (e.g., someone adds a 5th special regime) without updating that claim,
     the next CI / `make verify-doc-counts` run breaks. These tests catch the
-    inverse: someone changes the tuple shape but the README claim still says 10.
+    inverse: someone changes the tuple shape but the ARCHITECTURE claim still says 10.
     """
 
     def test_base_regimes_count_is_six(self):
@@ -890,12 +890,12 @@ class TestRegimeEnumeration:
         )
 
     def test_all_regimes_total_is_ten(self):
-        """Critical README sync — '10 regimes (6 base + 4 special)' canonical."""
+        """Critical doc sync — '10 regimes (6 base + 4 special)' canonical."""
         from nuri.quant.regime.classifier import ALL_REGIMES
 
         assert len(ALL_REGIMES) == 10, (
             f"ALL_REGIMES count drifted: expected 10, got {len(ALL_REGIMES)}. "
-            f"Update README.md '· N regimes' AND verify_doc_counts.sh in same PR."
+            f"Update docs/ARCHITECTURE.md (+ ko) 'covers all N regimes' AND verify_doc_counts.sh in same PR."
         )
 
     def test_special_regimes_synced_with_sizing_dict(self):
