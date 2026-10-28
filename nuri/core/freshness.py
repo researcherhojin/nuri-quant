@@ -295,8 +295,10 @@ FRESHNESS_POLICIES: dict[str, dict] = {
     "portfolio": {
         # P0 stale-data fix (#507 audit 2026-04-30): broker 매도/매수 발생 후 yaml
         # sync 누락 시 0주 ticker 에 SELL 권고가 누설됨. 24h 이상이면 WARN, 72h
-        # FAIL — `import_portfolio.py` 매일 수동 실행 가정. updated_at 은 KST naive.
-        "query": "SELECT MAX(updated_at) FROM portfolio",
+        # FAIL — `import_portfolio.py` 매일 수동 실행 가정. updated_at 은 writer 3곳 모두
+        # `datetime('now')` = 오프셋 없는 **UTC** 라 여기서 KST 로 옮긴다 — KST naive 로 읽던
+        # 동안 방금 한 sync 가 9시간 묵어 보였다 (#2017).
+        "query": "SELECT datetime(MAX(updated_at), '+9 hours') FROM portfolio",
         "label": "포트폴리오 sync",
     },
     "news": {
