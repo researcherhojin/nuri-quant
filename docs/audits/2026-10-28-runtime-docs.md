@@ -50,3 +50,25 @@ availability claim. No live inference or scored pilot is run for this doc change
 The four pre-registered Strategy sections (§3.11 and §3.12 in both editions),
 experiment configuration and application source are compared with the base.
 They must remain byte-identical.
+
+## Post-merge follow-up — 2026-10-28
+
+The interactive-runtime correction was merged in #2014, followed by the
+English/Korean Research Briefing update in #2015 (`e81aa300`). The briefings
+now point to `config/llm_interactive.yaml` for the exploratory runtime pin and
+state that the scored pilot retains its independent version and digest
+contract. This is a documentation pointer; the runtime values remain canonical
+in configuration.
+
+Fresh repository evidence at follow-up:
+
+- `git status --short`: clean before this follow-up note.
+- Local branches/worktrees: only `main`; no additional worktrees.
+- Open pull requests: none reported by `gh pr list --state open`.
+- Latest main CI run `40643484457` (Main CI Catch-up): completed successfully;
+  latest workflow for #2015 `40643438654`: completed successfully.
+- Two remote Dependabot branches remain visible and are retained as open
+  dependency-update work, not deleted as stale feature branches.
+
+No private analysis output, holdings, account data or host identifiers are part
+of this public audit record.
