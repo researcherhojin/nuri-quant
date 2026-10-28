@@ -159,61 +159,47 @@ JOBS=$(live_scheduler_jobs)
 # check_claim 이 fail 이 아니라 warn 을 부르고 스크립트는 exit 0 으로 통과한다
 # (실측: 뮤테이션 시 "19 passed, 1 warnings", EXIT 0). 감시가 초록불인 채 죽는다.
 check_claim "collectors"     "$COLL" "nuri/collectors/CLAUDE.md"  '[0-9]+ Data Collectors' || true
-check_claim "collectors"     "$COLL" "README.md"                  '[0-9]+ collector modules in' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ARCHITECTURE.md"       '— [0-9]+ REST endpoints' || true
 check_claim "endpoints"      "$EP"   "docs/ko/ARCHITECTURE.md"    '## API \([0-9]+ endpoints\)' || true
 check_claim "endpoints"      "$EP"   "docs/ko/ARCHITECTURE.md"    '— [0-9]+ REST endpoints' || true
 check_claim "endpoints"      "$EP"   "nuri/api/CLAUDE.md"         'read surface \([0-9]+ endpoints\)' || true
-# README 사이트 등록 (#1288). 등록 전까지 README 는 72 였고 라이브는 73 이었다 —
-# `live_endpoints` 는 이미 있었는데 **사이트만 미등록**이라 조용히 낡았다.
-check_claim "endpoints"      "$EP"   "README.md"                  '[0-9]+ declared in' || true
 check_claim "test_files_be"  "$TFBE" "docs/ARCHITECTURE.md"       'backend tests across [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "docs/ko/ARCHITECTURE.md"    'backend tests across [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "docs/STRATEGY.md"           'Backend tests.*tests, [0-9]+ files' || true
 check_claim "test_files_be"  "$TFBE" "docs/ko/STRATEGY.md"        'Backend tests.*tests, [0-9]+ files' || true
-check_claim "test_files_be"  "$TFBE" "README.md"                  'collected across [0-9]+ files' || true
 check_claim "test_files_fe"  "$TFFE" "docs/ARCHITECTURE.md"       'frontend vitest \([0-9]+ files\)' || true
 check_claim "test_files_fe"  "$TFFE" "docs/ko/ARCHITECTURE.md"    'frontend vitest \([0-9]+ files\)' || true
 check_claim "test_files_fe"  "$TFFE" "docs/STRATEGY.md"           'Frontend tests.*tests, [0-9]+ files' || true
 check_claim "test_files_fe"  "$TFFE" "docs/ko/STRATEGY.md"        'Frontend tests.*tests, [0-9]+ files' || true
-# 같은 이유로 README 도 등록 — 등록 전 README 는 134, 라이브는 136 이었다.
-check_claim "test_files_fe"  "$TFFE" "README.md"                  '[0-9]+ vitest files' || true
 check_claim "e2e_specs"      "$E2E"  "docs/ARCHITECTURE.md"       'Playwright E2E \([0-9]+ spec files\)' || true
 check_claim "e2e_specs"      "$E2E"  "docs/ko/ARCHITECTURE.md"    'Playwright E2E \([0-9]+ spec files\)' || true
 # Python-dependent checks: skip silently when .venv absent (CI contract — see live_regimes comment)
 if [ -n "$REGIMES" ]; then
-    check_claim "regimes"    "$REGIMES" "README.md"                '· [0-9]+ regimes' || true
+    # README 가 유일한 사이트였다 — README 를 줄이며 ARCHITECTURE 의 같은 수치로 옮겼다 (#2020).
+    check_claim "regimes"    "$REGIMES" "docs/ARCHITECTURE.md"     'covers all [0-9]+ regimes' || true
+    check_claim "regimes"    "$REGIMES" "docs/ko/ARCHITECTURE.md"  'regime [0-9]+개를 모두' || true
 else
     info "regimes: skipped (no .venv/bin/python — local check via make verify-doc-counts)"
 fi
 if [ -n "$DBT" ]; then
-    check_claim "db_tables"  "$DBT"  "README.md"                   'SQLite WAL · [0-9]+ tables' || true
-    # 스케줄러 다이어그램이 README 에서 ARCHITECTURE 로 옮겨갔다 (#1595) — 사이트도 따라간다.
     check_claim "db_tables"  "$DBT"  "docs/ARCHITECTURE.md"        'SQLite WAL · [0-9]+ tables' || true
     check_claim "db_tables"  "$DBT"  "docs/ko/ARCHITECTURE.md"     'SQLite WAL · [0-9]+ tables' || true
 else
     info "db_tables: skipped (no .venv/bin/python)"
 fi
 # grep/wc-based (no Python) — always run, including CI
-check_claim "migrations"       "$MIG"   "README.md"            '[0-9]+ forward-only migrations' || true
-# ARCHITECTURE 도 같은 수치를 적는데 게이트가 없어 조용히 갈렸다 (2026-07-30 실측 46 vs 49).
+# ARCHITECTURE 의 수치에 게이트가 없어 조용히 갈렸던 적이 있다 (2026-07-30 실측 46 vs 49).
 check_claim "migrations"       "$MIG"   "docs/ARCHITECTURE.md" '\([0-9]+ migrations as of' || true
 check_claim "migrations"       "$MIG"   "docs/ko/ARCHITECTURE.md" '\([0-9]+ migrations as of' || true
 check_claim "scheduler_jobs"   "$JOBS"  "docs/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
 check_claim "scheduler_jobs"   "$JOBS"  "docs/ko/ARCHITECTURE.md" '[0-9]+ cron jobs in' || true
-# README 는 같은 수치를 **세 군데** 적는데 (다이어그램 노드 · 산문 · Project Stats 표)
-# 전부 미등록이라 셋 다 48 로 굳어 있었다 (2026-08-03 실측, 실제 49). ARCHITECTURE 만
-# 보던 migrations 누락(#864)과 같은 패턴 — 한 사이트만 등록하면 나머지가 조용히 드리프트한다.
-check_claim "scheduler_jobs"   "$JOBS"  "README.md" \
-    '[0-9]+ (cron jobs · in-process|independent cron jobs|cron entries)' || true
 TESTS_BE=$(live_tests_be)
 if [ -n "$TESTS_BE" ]; then
     check_comma_claim "tests_be" "$TESTS_BE" "docs/ARCHITECTURE.md" '[0-9,]+ backend tests across' || true
     check_comma_claim "tests_be" "$TESTS_BE" "docs/ko/ARCHITECTURE.md" '[0-9,]+ backend tests across' || true
     check_comma_claim "tests_be" "$TESTS_BE" "docs/STRATEGY.md"     '[0-9,]+ tests, [0-9]+ files \(statement' || true
     check_comma_claim "tests_be" "$TESTS_BE" "docs/ko/STRATEGY.md"  '[0-9,]+ tests, [0-9]+ files \(statement' || true
-    check_comma_claim "tests_be" "$TESTS_BE" "README.md"            '[0-9,]+ collected across' || true
 else
     info "tests_be: skipped (no .venv/bin/python — CI contract; local make verify-doc-counts covers)"
 fi

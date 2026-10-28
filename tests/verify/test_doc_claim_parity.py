@@ -157,7 +157,6 @@ def repo_copy(tmp_path):
     dst = tmp_path / "repo"
     dst.mkdir()
     for rel in (
-        "README.md",
         "docs/ARCHITECTURE.md",
         "docs/ko/ARCHITECTURE.md",
         "docs/STRATEGY.md",
@@ -221,11 +220,11 @@ def _live_marker(text: str, pattern: str) -> str:
 class TestRoundTrip:
     def test_corrupted_count_is_repaired_and_then_verifies(self, repo_copy):
         """망가뜨림 → sync → verify 통과. 게이트와 fixer 가 같은 걸 본다는 증명."""
-        readme = repo_copy / "README.md"
-        original = readme.read_text()
+        doc = repo_copy / "docs" / "ARCHITECTURE.md"  # README 는 #2020 에서 수치 사이트가 아니게 됐다
+        original = doc.read_text()
         marker = _live_marker(original, r"SQLite WAL · \d+ tables")
-        readme.write_text(original.replace(marker, "SQLite WAL · 88 tables"))
-        assert "88 tables" in readme.read_text(), "손상이 안 걸렸다 — 아래 검증이 공짜로 통과한다"
+        doc.write_text(original.replace(marker, "SQLite WAL · 88 tables"))
+        assert "88 tables" in doc.read_text(), "손상이 안 걸렸다 — 아래 검증이 공짜로 통과한다"
 
         before = _run(VERIFY, repo_copy)
         assert "DRIFT" in before.stdout, f"손상시켰는데 verify 가 통과함:\n{before.stdout}"
@@ -235,7 +234,7 @@ class TestRoundTrip:
 
         after = _run(VERIFY, repo_copy)
         assert "DRIFT" not in after.stdout, f"sync 후에도 drift 잔존:\n{after.stdout}"
-        assert marker in readme.read_text()
+        assert marker in doc.read_text()
 
     def test_the_test_count_rules_run_when_nothing_is_deselected(self, repo_copy):
         """수집 요약에 deselect 가 없어도 테스트-수 동기화가 돈다 (#1084).

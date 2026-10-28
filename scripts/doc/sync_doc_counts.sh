@@ -130,7 +130,6 @@ banner "Doc Count Sync"
 # .claude/rules/architecture.md 는 사이트에서 제외됨 — always-loaded 파일에서
 # 인벤토리/카운트를 걷어냈다. verify_doc_counts.sh 의 같은 주석 참조.
 update_claim live_collectors     nuri/collectors/CLAUDE.md     '[0-9]+ Data Collectors'
-update_claim live_collectors     README.md                     '[0-9]+ collector modules in'
 
 # Endpoints (3 sites)
 update_claim live_endpoints      docs/ARCHITECTURE.md          '## API \([0-9]+ endpoints\)'
@@ -144,10 +143,6 @@ update_claim live_test_files_be  docs/ARCHITECTURE.md          'backend tests ac
 update_claim live_test_files_be  docs/ko/ARCHITECTURE.md       'backend tests across [0-9]+ files'
 update_claim live_test_files_be  docs/STRATEGY.md              'Backend tests.*tests, [0-9]+ files'
 update_claim live_test_files_be  docs/ko/STRATEGY.md           'Backend tests.*tests, [0-9]+ files'
-update_claim live_test_files_be  README.md                     'collected across [0-9]+ files'
-# README 미등록 사이트 2건 추가 (#1288) — verify_doc_counts.sh 와 짝을 맞춘다.
-update_claim live_endpoints      README.md                     '[0-9]+ declared in'
-update_claim live_test_files_fe  README.md                     '[0-9]+ vitest files'
 
 # Frontend test files (2 sites)
 update_claim live_test_files_fe  docs/ARCHITECTURE.md          'frontend vitest \([0-9]+ files\)'
@@ -159,24 +154,19 @@ update_claim live_test_files_fe  docs/ko/STRATEGY.md           'Frontend tests.*
 update_claim live_e2e_specs      docs/ARCHITECTURE.md          'Playwright E2E \([0-9]+ spec files\)'
 update_claim live_e2e_specs      docs/ko/ARCHITECTURE.md       'Playwright E2E \([0-9]+ spec files\)'
 
-update_claim live_regimes        README.md                     '· [0-9]+ regimes'
-update_claim live_db_tables      README.md                     'SQLite WAL · [0-9]+ tables'
+# regime 수는 README 에만 적혀 있었다 — ARCHITECTURE 로 옮겼다 (#2020). verify 쪽과 패턴을 맞출 것.
+update_claim live_regimes        docs/ARCHITECTURE.md          'covers all [0-9]+ regimes'
+update_claim live_regimes        docs/ko/ARCHITECTURE.md       'regime [0-9]+개를 모두'
 update_claim live_db_tables      docs/ARCHITECTURE.md          'SQLite WAL · [0-9]+ tables'
 update_claim live_db_tables      docs/ko/ARCHITECTURE.md       'SQLite WAL · [0-9]+ tables'
 
 # grep/wc 기반 — verify 가 하드 게이트하는데 sync 에는 없어서, 이 셋이 drift 하면
 # 게이트가 빨간불인 채 고칠 방법이 없었다 (#916).
-update_claim live_migrations     README.md                     '[0-9]+ forward-only migrations'
-# ARCHITECTURE 도 같은 수치를 적는데 등록이 안 돼 있었다 — 2026-07-30 실측 46 vs 실제 49.
+# ARCHITECTURE 의 수치가 등록이 안 돼 있었던 적이 있다 — 2026-07-30 실측 46 vs 실제 49.
 update_claim live_migrations     docs/ARCHITECTURE.md          '\([0-9]+ migrations as of'
 update_claim live_migrations     docs/ko/ARCHITECTURE.md       '\([0-9]+ migrations as of'
 update_claim live_scheduler_jobs docs/ARCHITECTURE.md          '[0-9]+ cron jobs in'
 update_claim live_scheduler_jobs docs/ko/ARCHITECTURE.md       '[0-9]+ cron jobs in'
-# README 는 같은 수치를 세 군데 적는데 (다이어그램 · 산문 · Project Stats) 전부 미등록이라
-# 셋 다 48 로 굳어 있었다 — 2026-08-03 실측, 실제 49. verify 쪽과 패턴을 맞춰 둘 것.
-update_claim live_scheduler_jobs README.md                     '[0-9]+ cron jobs · in-process'
-update_claim live_scheduler_jobs README.md                     '[0-9]+ independent cron jobs'
-update_claim live_scheduler_jobs README.md                     '[0-9]+ cron entries'
 
 # Pytest collect count — runs pytest which is slow; do last so failures above
 # don't waste the call. Updates any "[0-9,]+ backend tests" / "[0-9,]+ tests,"
@@ -230,7 +220,6 @@ if [ -n "$TESTS_BE" ]; then
     update_comma_number docs/ko/ARCHITECTURE.md '[0-9,]+ backend tests across'
     update_comma_number docs/STRATEGY.md     '[0-9,]+ tests, [0-9]+ files \(statement'
     update_comma_number docs/ko/STRATEGY.md  '[0-9,]+ tests, [0-9]+ files \(statement'
-    update_comma_number README.md            '[0-9,]+ collected across'
 fi
 
 echo ""

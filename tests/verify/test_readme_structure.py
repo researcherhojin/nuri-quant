@@ -1,13 +1,9 @@
-"""README 가 standard-readme 규격 구조를 유지한다.
+"""README 가 짧고, 처음 온 사람이 찾는 순서를 유지한다 (#2020).
 
-규격: https://github.com/RichardLitt/standard-readme/blob/main/spec.md
-
-순서는 취향이 아니라 계약이다 — 처음 온 사람이 Install 다음에 Usage 를, 맨 끝에서
-License 를 찾는다는 전제로 씌어 있다. 이 레포의 README 는 한때 Usage(`Common
-Commands`)가 14개 중 10번째에 있어 Install 과 7개 섹션 떨어져 있었고, 253줄인데
-목차가 없었으며, 필수인 Contributing 이 다른 섹션 안 링크 한 줄로만 존재했다.
-
-ToC 는 특히 조용히 썩는다 — 섹션을 하나 추가하고 목차를 잊어도 렌더링은 멀쩡하다.
+#918 에서 standard-readme 규격(ToC · Background · Install · Usage · Maintainers …)을 잠갔다.
+그 규격은 지켜졌지만 README 는 214줄로 자라 내부 레퍼런스가 됐다 — 7행 작업 표, 스테이지 표,
+수치 표, 뱃지 32개. #2020 에서 상세를 `docs/ARCHITECTURE.md` 로 넘기고, 잠금도 바꿨다:
+섹션 이름보다 **길이**와 **읽는 순서**(무엇인가 → 어떻게 돌리나 → 더 읽을 곳 → License)를 지킨다.
 """
 
 from __future__ import annotations
@@ -20,101 +16,50 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 README = REPO_ROOT / "README.md"
 
-# spec 이 요구하는 상대 순서. 사이에 커스텀(Extra) 섹션이 끼는 건 허용되므로
-# 동등성이 아니라 **부분순서**로 검사한다.
-REQUIRED_ORDER = [
-    "Table of Contents",
-    "Background",
-    "Install",
-    "Usage",
-    "Maintainers",
-    "Acknowledgements",
-    "Contributing",
-    "License",
-]
+# 상대 순서. 사이에 다른 섹션이 끼는 건 허용하므로 동등성이 아니라 부분순서로 검사한다.
+REQUIRED_ORDER = ["How it works", "Quick start", "Documentation", "Contributing", "License"]
 
-# spec 이 필수로 못박은 섹션 (문서 저장소가 아니므로 Install/Usage 도 필수)
-REQUIRED_SECTIONS = {"Table of Contents", "Install", "Usage", "Contributing", "License"}
+# 이 줄 수를 넘으면 목차가 필요해진다 — 그 전에 상세를 docs/ 로 옮긴다.
+MAX_LINES = 100
 
 
 def _headings() -> list[str]:
     return [m.group(1).strip() for m in re.finditer(r"^## (.+)$", README.read_text(), re.M)]
 
 
-def _github_anchor(heading: str) -> str:
-    a = re.sub(r"[^\w\s-]", "", heading.lower())
-    return re.sub(r"\s+", "-", a.strip())
-
-
-def _toc_links() -> list[tuple[str, str]]:
-    body = README.read_text()
-    start = body.index("## Table of Contents")
-    end = body.index("\n## ", start + 1)
-    return re.findall(r"^- \[([^\]]+)\]\(#([^)]+)\)$", body[start:end], re.M)
-
-
 class TestRequiredSections:
     def test_all_required_sections_present(self):
-        missing = REQUIRED_SECTIONS - set(_headings())
-        assert not missing, f"standard-readme 필수 섹션 누락: {sorted(missing)}"
+        missing = set(REQUIRED_ORDER) - set(_headings())
+        assert not missing, f"필수 섹션 누락: {sorted(missing)}"
 
     def test_license_is_last(self):
-        """spec: License must be last section."""
         assert _headings()[-1] == "License", _headings()[-1]
-
-    def test_toc_is_required_because_readme_exceeds_100_lines(self):
-        """spec: ToC 는 100줄 넘는 README 에서 필수. 짧아졌다면 이 테스트를 지워도 된다."""
-        n = len(README.read_text().splitlines())
-        assert n > 100, f"README 가 {n}줄로 줄었다 — ToC 필수 조건 재검토"
-        assert "## Table of Contents" in README.read_text()
 
 
 class TestSectionOrder:
-    def test_spec_sections_appear_in_prescribed_order(self):
-        """Extra 섹션이 사이에 끼는 건 허용, 상대 순서가 뒤집히면 FAIL.
+    def test_sections_appear_in_reading_order(self):
+        """다른 섹션이 사이에 끼는 건 허용, 상대 순서가 뒤집히면 FAIL.
 
-        Gotcha-Test Pair: Usage 를 Install 앞으로 옮기거나 License 를 위로 올리면 FAIL.
+        Gotcha-Test Pair: Quick start 를 How it works 앞으로 옮기거나 License 를 위로 올리면 FAIL.
         """
         present = [h for h in _headings() if h in REQUIRED_ORDER]
         expected = [h for h in REQUIRED_ORDER if h in present]
-        assert present == expected, f"섹션 순서가 규격과 다름:\n  실제   {present}\n  기대   {expected}"
+        assert present == expected, f"섹션 순서가 다름:\n  실제   {present}\n  기대   {expected}"
 
-    def test_usage_directly_follows_install_ignoring_nothing_between(self):
-        """spec 순서상 Install → Usage 사이에는 다른 spec 섹션이 없어야 한다.
 
-        과거 이 둘 사이에 7개 섹션이 있었다 — 설치한 사람이 다음에 뭘 치는지 찾으려면
-        Tech Stack 과 Project Stats 를 지나쳐야 했다.
+class TestStaysShort:
+    def test_readme_fits_without_a_table_of_contents(self):
+        """214줄짜리 README 로 돌아가는 경로를 막는다 (#2020).
+
+        넘으면 두 길 중 하나다: 늘어난 내용을 docs/ 로 옮기거나, 목차를 다시 들이고 이 상한을 올린다.
         """
-        heads = _headings()
-        gap = heads[heads.index("Install") + 1 : heads.index("Usage")]
-        assert not gap, f"Install 과 Usage 사이에 {gap}"
-
-
-class TestTableOfContents:
-    def test_every_toc_link_resolves_to_a_heading(self):
-        anchors = {_github_anchor(h) for h in _headings()}
-        broken = [(t, a) for t, a in _toc_links() if a not in anchors]
-        assert not broken, f"가리키는 헤딩이 없는 ToC 링크: {broken}"
-
-    def test_every_section_is_listed_in_the_toc(self):
-        """섹션을 추가하고 목차를 잊는 게 가장 흔한 부패 경로 — 렌더링은 멀쩡하다.
-
-        Gotcha-Test Pair: `## ` 섹션을 추가하고 ToC 에 안 넣으면 FAIL.
-        """
-        listed = {a for _, a in _toc_links()}
-        missing = [h for h in _headings() if h != "Table of Contents" and _github_anchor(h) not in listed]
-        assert not missing, f"ToC 에 없는 섹션: {missing}"
-
-    def test_toc_order_matches_document_order(self):
-        """목차 순서가 본문 순서와 다르면 목차가 지도 역할을 못 한다."""
-        listed = [a for _, a in _toc_links()]
-        doc = [_github_anchor(h) for h in _headings() if h != "Table of Contents"]
-        assert listed == doc, f"ToC 순서 불일치:\n  ToC  {listed}\n  본문 {doc}"
+        n = len(README.read_text().splitlines())
+        assert n <= MAX_LINES, f"README 가 {n}줄 — 상세는 docs/ARCHITECTURE.md 로"
 
 
 class TestShortDescription:
     def test_short_description_is_under_120_chars(self):
-        """spec: short description 은 120자 미만, 자기 줄에."""
+        """short description 은 120자 미만, 자기 줄에."""
         body = README.read_text()
         m = re.search(r"^\*\*(.+?)\*\*$", body, re.M)
         assert m, "굵은 한 줄 요약을 찾지 못함"
