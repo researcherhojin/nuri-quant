@@ -62,6 +62,8 @@ flowchart LR
 
 **Collect.** collector 는 각자의 스케줄에 따라 외부 API 를 읽고 각각 테이블 하나에 쓴다(여러 테이블에 쓰는 것도 있다). `technical` collector 는 `prices` 로부터 TA-Lib 지표를 계산한다. 운영자는 `config/portfolio.yaml` 에서 보유 종목을 가져오거나(`scripts/ops/import_portfolio.py`, `make setup` 이 실행하거나 수동으로 실행) portfolio API 로 수정한다. 데이터베이스 trigger 가 모든 insert 와 delete, 그리고 수량·계좌·ticker 를 바꾸는 모든 update 를 `portfolio_changes` 에 기록한다.
 
+**Data sources.** universe 는 미국 주식과 KOSPI 200 이다. 한국 가격은 pykrx 에서 오고, KOSPI 200 목록은 FinanceDataReader 의 KOSPI 상장 종목 중 시가총액 상위 200개로 근사한다(`nuri/collectors/universe_sync.py`). 한국 fundamentals 는 yfinance 에서 온다. KIS Open API credential 이 설정되면 KIS 가 한국 P/E, P/B, 시가총액과 선택적 실시간 시세를 제공한다([KIS_INTEGRATION.md](KIS_INTEGRATION.md)).
+
 **Analyze.** 매일 실행되는 `factors` job 은 종가가 14개 이상인 모든 ticker 에 대해 factor composite 를 계산한다([점수 모델](#점수-모델) 참조). 이를 읽는 쪽에는 BUY 후보 emitter, held-add shadow check, thesis criteria, rebalance advisor 등이 있다. `factors` 를 읽는 consensus agent 는 없으며, 이 job 은 consensus job 뒤에 실행된다. regime 이나 macro score 테이블을 유지하는 scheduled job 은 없다. 각 소비처가 필요할 때 계산하고([레짐 분류기](#레짐-분류기-기본-6--특수-4) 참조), 결정 기록과 candidate run 은 자신이 사용한 값을 보관한다.
 
 **Consensus 와 결정 기록.** consensus job 은 `portfolio` 의 모든 ticker 에 대해 specialist agent 를 실행하고, 그 verdict 에 가중치를 매기고, risk veto 와 divergence penalty 를 적용한 뒤([점수 모델](#점수-모델) 참조), ticker 당 하루 한 행씩 `recommendations` 에 쓴다. 이어서 같은 결과를 Python 객체로 `record_decisions()` 에 넘긴다. 이 함수는 시장 맥락과 가격 레벨을 더해 `decisions` 와 `decision_evidence` 에 쓴다. gate 는 적용하지 않는다.
@@ -484,7 +486,7 @@ data/
 
 ## 테스트
 
-9,669 backend tests across 463 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+9,661 backend tests across 462 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-12 의 frontend 전체 실행은 파일 117개에서 테스트 1,449개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 
