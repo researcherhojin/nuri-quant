@@ -3,7 +3,7 @@
 #918 에서 standard-readme 규격(ToC · Background · Install · Usage · Maintainers …)을 잠갔다.
 그 규격은 지켜졌지만 README 는 214줄로 자라 내부 레퍼런스가 됐다 — 7행 작업 표, 스테이지 표,
 수치 표, 뱃지 32개. #2020 에서 상세를 `docs/ARCHITECTURE.md` 로 넘기고, 잠금도 바꿨다:
-섹션 이름보다 **읽는 순서**(구조 → 어떻게 돌리나 → 더 읽을 곳 → License)를 지킨다. #2026 에서
+섹션 이름보다 **읽는 순서**(무엇을 주나 → 어떻게 돌리나 → 어떻게 동작하나 → 더 읽을 곳 → License)를 지킨다. #2026 에서
 줄 수 상한은 뺐다 — 목표는 길이가 아니라 가독성과 정확성이다.
 """
 
@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 README = REPO_ROOT / "README.md"
 
 # 상대 순서. 사이에 다른 섹션이 끼는 건 허용하므로 동등성이 아니라 부분순서로 검사한다.
-REQUIRED_ORDER = ["Architecture", "Quick start", "Documentation", "Contributing", "License"]
+REQUIRED_ORDER = ["What it produces", "Quick start", "Architecture", "Documentation", "Contributing", "License"]
 
 
 def _headings() -> list[str]:
@@ -38,7 +38,7 @@ class TestSectionOrder:
     def test_sections_appear_in_reading_order(self):
         """다른 섹션이 사이에 끼는 건 허용, 상대 순서가 뒤집히면 FAIL.
 
-        Gotcha-Test Pair: Quick start 를 Architecture 앞으로 옮기거나 License 를 위로 올리면 FAIL.
+        Gotcha-Test Pair: Architecture 를 Quick start 앞으로 옮기거나 License 를 위로 올리면 FAIL (#2034).
         """
         present = [h for h in _headings() if h in REQUIRED_ORDER]
         expected = [h for h in REQUIRED_ORDER if h in present]
