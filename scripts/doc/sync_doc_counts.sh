@@ -172,12 +172,12 @@ update_claim live_scheduler_jobs docs/ko/ARCHITECTURE.md       '[0-9]+ cron jobs
 # don't waste the call. Updates any "[0-9,]+ backend tests" / "[0-9,]+ tests,"
 # phrase where the number has a thousands-comma format.
 #
-# NOTE (codex P3, 2026-04-17): README line "(2,993 backend + 917 frontend +
-# 39 e2e)" only has the backend number auto-synced. Frontend "917 tests" and
-# e2e "39 tests" are TEST counts (not file counts), so syncing them would
-# require running `npm exec vitest` + `npx playwright test --list` — both
-# slow and requiring a full npm install. Left unmanaged: if those change,
-# update README manually for now. File counts (60 / 6) are still covered.
+# NOTE (codex P3, 2026-04-17): only the backend TEST count is synced here. The
+# frontend totals in docs/ARCHITECTURE.md, docs/STRATEGY.md and
+# frontend/CLAUDE.md are dated by hand: the vitest figure from a full
+# `npx vitest run`, the Playwright figure from `npx playwright test --list`.
+# Both need a full npm install and are slow, so they stay manual (#2036).
+# Their FILE counts are synced above.
 TESTS_BE=$(live_tests_be || echo "")
 if [ -n "$TESTS_BE" ]; then
     # Portable thousands separator — `printf "%'d"` depends on LC_NUMERIC
