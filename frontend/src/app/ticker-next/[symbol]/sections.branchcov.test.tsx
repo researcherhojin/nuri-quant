@@ -187,6 +187,21 @@ describe("CurrentJudgment", () => {
     expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 
+  it("flags a legacy fundamental reason that states the debt ratio as a multiple", () => {
+    judge({ final_action: "SELL", verdicts: [{ agent_name: "fundamental", action: "SELL", reasoning: "부채비율 1.8x" }] });
+    expect(screen.getByRole("note")).toHaveTextContent(T.LEGACY_CALCULATION_NOTE);
+  });
+
+  it("does not flag a fundamental reason that states the debt ratio as a percentage", () => {
+    judge({ final_action: "SELL", verdicts: [{ agent_name: "fundamental", action: "SELL", reasoning: "부채비율 180%" }] });
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("does not flag a fundamental verdict that carries no reasoning", () => {
+    judge({ final_action: "SELL", verdicts: [{ agent_name: "fundamental", action: "SELL", reasoning: null }] });
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
   it("keeps the stored order of supporting reasons when the result is not a risk veto", () => {
     judge({ final_action: "BUY", scoring_detail: { final_action_source: "weighted_sum" }, verdicts: [
       { agent_name: "technical", action: "BUY", reasoning: "Technical support reason" },
