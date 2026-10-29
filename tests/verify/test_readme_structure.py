@@ -150,7 +150,7 @@ class TestMermaidRendersInBothThemes:
         """
         # README 는 개요 하나만, 상세는 ARCHITECTURE 에 (#1595). System Flow 는 #1770.
         placement = {
-            README: ("Operator places every order by hand",),  # System Flow 의 부분 (#2026)
+            README: ("Operator trades by hand",),  # System Flow 의 부분 (#2026)
             ARCHITECTURE: (
                 "30-day outcomes, 21-day provisional: the only learning edge",  # 데이터가 어디로 흐르는가
                 "no job calls another",  # 무엇이 그것을 돌리는가

@@ -21,32 +21,32 @@ Every day, Nuri-Quant reviews each holding in a portfolio of US and Korean equit
 
 ```mermaid
 flowchart TB
-    SRC["External sources<br/>prices · macro · news · filings"]
+    SRC["External sources"]
     COL["Collect"]
     TAB[("Collector tables")]
     PF[("portfolio")]
-    FAC["Analyze<br/>factors"]
-    CON["Consensus<br/>specialist agents · risk veto"]
-    DEC[("decisions · decision_evidence")]
+    CON["Consensus"]
+    FAC["Analyze"]
     BUY["BUY candidates"]
+    DEC[("decisions")]
     REC[("recommendations")]
-    TRK["Track<br/>outcomes"]
-    OUT["Delivery<br/>dashboard · Discord · MCP"]
-    YOU(["Operator places every order by hand"])
+    OUT["Delivery"]
+    TRK["Track"]
+    YOU(["Operator trades by hand"])
 
     SRC --> COL --> TAB
     TAB --> CON
     PF --> CON
     TAB --> FAC --> BUY
-    CON ==>|"record_decisions(): in memory"| DEC
+    CON ==>|in memory| DEC
     CON --> REC
     BUY --> REC
+    REC -.->|agent weights| CON
+    DEC --> OUT
+    REC --> OUT
     REC --> TRK
     TRK --> REC
-    REC -.->|"30d hit rates; 21d provisional"| CON
-    REC --> OUT
-    DEC --> OUT
-    OUT --> YOU --> PF
+    OUT --> YOU
 
     classDef step  stroke:#3b82f6,stroke-width:2px
     classDef store stroke:#64748b,stroke-width:2px
@@ -56,7 +56,7 @@ flowchart TB
     class YOU human
 ```
 
-Boxes are steps, cylinders are database tables and the rounded box is a person. A thin arrow is a fetch from an external source, a read or a write through the database, or the operator's own action. The thick arrow passes data in memory, and the dashed arrow is the only path by which past results change later recommendations. Every node and arrow comes from the System Flow in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#system-flow), whose edges a test ties to the code; `tests/verify/test_readme_structure.py` fails if this diagram draws one that the System Flow lacks.
+Boxes are steps, cylinders are database tables and the rounded box is a person. A thin arrow is a fetch from an external source, a read or a write through the database, or delivery to the operator. The operator's trades change `portfolio` by hand, a loop the diagram leaves out. The thick arrow passes data in memory, and the dashed arrow is the only path by which past results change later recommendations. Every node and arrow comes from the System Flow in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#system-flow), whose edges a test ties to the code; `tests/verify/test_readme_structure.py` fails if this diagram draws one that the System Flow lacks.
 
 | Stage | Package | Runs as | Writes |
 |-------|---------|---------|--------|
