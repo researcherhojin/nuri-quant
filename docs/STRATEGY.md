@@ -416,7 +416,7 @@ Check these before opening a PR.
 | Item | Standard | Current |
 |---|---|---|
 | Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,665 tests, 462 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
-| Frontend tests | target ≥ 90% | 1,449 tests, 117 files (2026-10-12 full run, after the pipeline Run buttons were removed) |
+| Frontend tests | target ≥ 90% | 1,460 tests, 117 files (2026-10-29 full run) |
 | E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |
 | Network | Forbidden | conftest.py mock |
