@@ -26,8 +26,8 @@ live_test_files_fe() { find frontend \( -name "*.test.ts" -o -name "*.test.tsx" 
 live_e2e_specs()    { find frontend/e2e -name "*.spec.ts" \
     ! -path '*/node_modules/*' 2>/dev/null | wc -l | tr -d ' '; }
 
-# 2026-04-29: regime + DB-table counts. README claims "10 regimes (6 base + 4 special)"
-# and "32 tables" were drift-prone (no code-truth verification). Backed by
+# 2026-04-29: regime + DB-table counts. The README then claimed "10 regimes (6 base + 4 special)"
+# and "32 tables" with no code-truth verification; both now live in docs/ARCHITECTURE.md (#2020). Backed by
 # nuri.quant.regime.classifier.ALL_REGIMES tuple + live init_db sqlite_master count.
 #
 # CI contract preservation: this script must run in <1s with no Python env (per
@@ -75,9 +75,9 @@ live_tests_be() {
 # claim's phrasing (e.g., "Playwright E2E (6 spec files)" — the '2' in 'E2E' is
 # ignored because 6 is last). One number per line of output.
 #
-# All occurrences, not just the first: a README states the same count in more
-# than one place (mermaid node + stats table), and `head -1` verified only the
-# first, leaving every later copy free to drift silently — a gate that reads as
+# All occurrences, not just the first: a document can state the same count in
+# more than one place (the README once did, in a diagram node and a stats
+# table), and `head -1` verified only the first, leaving every later copy free to drift silently — a gate that reads as
 # green while half the numbers it names are unchecked.
 # Usage: extract_nums <file> <ctx_pattern>
 extract_nums() {
