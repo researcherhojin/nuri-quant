@@ -10,29 +10,35 @@
 
 </div>
 
-Every day, Nuri-Quant reviews each holding in a portfolio of US and Korean equities and records a dated BUY, SELL or HOLD with the evidence behind it. Later, it grades each recommendation against what the market actually did, and those grades set how much each agent counts in the next review.
+Each day, Nuri-Quant reviews every holding in a portfolio of US and Korean equities. It records a dated BUY, SELL or HOLD recommendation with supporting evidence. It later evaluates each recommendation against market outcomes and uses those results to set each specialist agent's weight in the next review.
 
 > [!IMPORTANT]
-> - **Recommendation only.** The system never places an order. The operator executes every trade by hand.
-> - **No performance claim.** No investment edge is claimed unless a pre-registered evaluation passes ([`docs/STRATEGY.md`](docs/STRATEGY.md) §3.11).
+> - **Recommendations only.** The system never places an order. The operator places every order manually.
+> - **No performance claim.** The project claims no investment edge unless a pre-registered evaluation passes ([`docs/STRATEGY.md`](docs/STRATEGY.md) §3.11).
 > - **Not investment advice.** The output is a research record for one operator's own decisions.
 
 ## Architecture
 
 ```mermaid
 flowchart TB
-    SRC["External sources"]
-    COL["Collect"]
-    TAB[("Collector tables")]
-    PF[("portfolio")]
-    CON["Consensus"]
-    FAC["Analyze"]
-    BUY["BUY candidates"]
-    DEC[("decisions")]
-    REC[("recommendations")]
-    OUT["Delivery"]
-    TRK["Track"]
-    YOU(["Operator trades by hand"])
+    subgraph INPUTS["Inputs"]
+        SRC["External sources"]
+        PF[("portfolio")]
+    end
+    subgraph RESEARCH["Daily research · scheduled jobs"]
+        COL["Collect"]
+        TAB[("Collector tables")]
+        CON["Consensus"]
+        FAC["Analyze"]
+        BUY["BUY candidates"]
+        DEC[("decisions")]
+        REC[("recommendations")]
+        TRK["Track"]
+    end
+    subgraph OUTPUT["Output"]
+        OUT["Delivery"]
+        YOU(["Operator trades by hand"])
+    end
 
     SRC --> COL --> TAB
     TAB --> CON
@@ -51,41 +57,45 @@ flowchart TB
     classDef step  stroke:#3b82f6,stroke-width:2px
     classDef store stroke:#64748b,stroke-width:2px
     classDef human stroke:#f59e0b,stroke-width:2px
+    classDef zone  fill:none,stroke:#94a3b8,stroke-width:1px
     class COL,FAC,CON,BUY,TRK,OUT step
     class SRC,TAB,PF,REC,DEC store
     class YOU human
+    class INPUTS,RESEARCH,OUTPUT zone
 ```
 
-Boxes are steps, cylinders are database tables and the rounded box is a person. A thin arrow is a fetch from an external source, a read or a write through the database, or delivery to the operator. The operator's trades change `portfolio` by hand, a loop the diagram leaves out. The thick arrow passes data in memory, and the dashed arrow is the only path by which past results change later recommendations. Every node and arrow comes from the System Flow in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#system-flow), whose edges a test ties to the code; `tests/verify/test_readme_structure.py` fails if this diagram draws one that the System Flow lacks.
+Rectangular boxes represent steps, cylinders represent database tables, and the rounded box represents the operator. The three frames group the steps for reading; they are not separate hosts or processes. Thin arrows represent external data retrieval, database reads or writes, or delivery to the operator. The operator manually updates `portfolio` after trading; this loop is omitted from the diagram. The thick arrow represents an in-memory data transfer. The dashed arrow shows the only path through which past results influence later recommendations.
 
-| Stage | Package | Runs as | Writes |
+This diagram is a subset of the [System Flow](docs/ARCHITECTURE.md#system-flow). A test checks the System Flow's key edges against the code, and another fails if this diagram shows a node or edge that the System Flow lacks.
+
+| Stage | Package | Execution | Writes |
 |-------|---------|---------|--------|
-| **Collect** | `nuri/collectors` | Collector jobs, from every 5 minutes in market hours to weekly | `prices`, `signals`, `fundamentals`, `macro`, `news`, … |
+| **Collect** | `nuri/collectors` | Collector jobs, with schedules ranging from every 5 minutes during market hours to weekly | `prices`, `signals`, `fundamentals`, `macro`, `news`, … |
 | **Analyze** | `nuri/analysis` | The `factors` job | `factors` |
 | **Consensus** | `nuri/trading/agents` | The `consensus` job | `recommendations` |
 | **Decide** | `nuri/trading/engine` | Inside the consensus job (`record_decisions()`) | `decisions`, `decision_evidence` |
-| **Track** | `nuri/trading/recommend` | Outcome and P&L jobs | `recommendations.outcome_*`, `decision_outcomes` |
+| **Track** | `nuri/trading/recommend` | Outcome and profit-and-loss (P&L) jobs | `recommendations.outcome_*`, `decision_outcomes` |
 
-Three properties the diagram encodes:
+The diagram highlights three properties:
 
-- **No orchestrator.** `nuri/scheduler.py` registers independent APScheduler cron jobs. Each job reads tables that other jobs wrote, so an arrow is a data dependency, not a call.
-- **One in-memory hand-off.** The thick arrow: the consensus job passes its result to `record_decisions()` as a Python object, not through a table.
-- **One learning path.** The dashed arrow: each agent's weight comes from its 30-day hit rate, from its 21-day rate while 30-day samples are too few, and is its default weight while both are. Weights stay within a capped range and are normalized together. Nothing else feeds back.
+- **No orchestrator.** `nuri/scheduler.py` registers independent APScheduler cron jobs. Each job reads tables written by other jobs, so the arrows represent data dependencies rather than calls between jobs.
+- **One in-memory hand-off.** The thick arrow shows the consensus job passing its result to `record_decisions()` as a Python object rather than through a database table.
+- **One learning path.** The dashed arrow shows how results determine agent weights. Each agent's weight is based on its 30-day hit rate. If the 30-day sample is too small, the system uses the 21-day hit rate; if both samples are too small, it uses the agent's default weight. Weights remain within a capped range and are normalized together. This is the only feedback path.
 
-The universe is US equities and the KOSPI 200. The backend is Python (FastAPI, APScheduler, SQLite in WAL mode) and the dashboard is Next.js. Delivery channels read different subsets: the MCP server, for one, exposes neither holdings nor decisions. Production runs on one host under launchd, and its automatic deploy takes a commit only after main CI passes. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the full read/write table, the schedule, the data sources and the deployment.
+The investment universe covers US equities and the KOSPI 200. The Python backend uses FastAPI, APScheduler and SQLite with write-ahead logging (WAL). The dashboard uses Next.js. Each delivery channel reads a different subset of the data; for example, the Model Context Protocol (MCP) server exposes neither holdings nor decisions. Production runs on a single host managed by launchd. Automatic deployment accepts a commit only after CI passes on `main`. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full read/write table, schedule, data sources and deployment details.
 
 ## What it produces
 
 | Output | Where |
 |--------|-------|
-| A dated BUY / SELL / HOLD per holding, with the agent verdicts, market context and price levels behind it | Dashboard `/decisions` |
-| Each recommendation's return at 7, 14, 21, 30, 60 and 90 days | `recommendations`; only the 30-day result (21-day while provisional) feeds the agent weights |
-| BUY candidates outside the portfolio, gated by [`config/buy_signals.yaml`](config/buy_signals.yaml) | US pre-market brief on Discord |
-| Indices, regime, macro score, holding reviews, data freshness and pipeline status | Dashboard Overview `/` |
+| A dated BUY / SELL / HOLD recommendation for each holding, with supporting agent verdicts, market context and price levels | Dashboard `/decisions` |
+| Each recommendation's return at 7, 14, 21, 30, 60 and 90 days | `recommendations`; only the 30-day result, or the provisional 21-day result, affects agent weights |
+| BUY candidates outside the portfolio that meet the criteria in [`config/buy_signals.yaml`](config/buy_signals.yaml) | US pre-market brief on Discord |
+| Indices, market regime, macroeconomic score, reviews of portfolio holdings, data freshness and pipeline status | Dashboard Overview `/` |
 | US and Korean post-market briefs | Discord |
-| Candidates, macro facts, freshness and live quotes, without holdings | Read-only MCP server (`nuri/mcp`) |
+| Candidates, macroeconomic facts, data freshness and live quotes, excluding portfolio holdings | Read-only MCP server (`nuri/mcp`) |
 
-When an input of the dashboard verdict fails its freshness SLA, the verdict is replaced by a notice naming the stale input.
+When an input to the dashboard's one-line verdict fails its freshness service-level agreement (SLA), the dashboard replaces the verdict with a notice naming the stale input.
 
 ## Quick start
 
@@ -111,7 +121,7 @@ make help         # every target
 ```
 
 - Every API key is optional. A collector without credentials is skipped or falls back to a keyless source.
-- Leave the Discord and Telegram variables unset on a development machine, so that only the production host posts.
+- Leave the Discord and Telegram environment variables unset on development machines so that only the production host sends messages.
 - Full walkthrough: [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md).
 
 ## Documentation
@@ -122,13 +132,13 @@ make help         # every target
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Pipeline, schedule, data sources, database, deployment, CI/CD |
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | Setup from a fresh clone |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
-| [`SECURITY.md`](SECURITY.md) | Security policy and LLM data-egress rules |
+| [`SECURITY.md`](SECURITY.md) | Security policy and rules governing data sent to large language models (LLMs) |
 
 Every guide is in [`docs/`](docs/), with Korean editions in [`docs/ko/`](docs/ko/).
 
 ## Acknowledgements
 
-- The specialist-agent consensus follows [TradingAgents](https://github.com/TauricResearch/TradingAgents), with rule-based agents in place of LLM agents.
+- The consensus approach follows [TradingAgents](https://github.com/TauricResearch/TradingAgents), using rule-based specialist agents in place of LLM agents.
 - Data freshness policies follow [Dagster](https://docs.dagster.io/guides/observe/asset-freshness-policies).
 - Portfolio optimization uses [Riskfolio-Lib](https://riskfolio-lib.readthedocs.io/).
 - The investment rules are based on O'Neil (CAN SLIM) and Minervini (SEPA).
