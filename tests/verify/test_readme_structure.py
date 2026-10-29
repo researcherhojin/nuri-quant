@@ -272,23 +272,38 @@ class TestReadmeDiagramFollowsSystemFlow:
         re.compile(r"^classDef \w+ [\w:#,.\- ]+$"),
         re.compile(r"^class [\w,]+ \w+$"),
     )
+    # 읽기용 묶음(#2032). 프레임은 node 가 아니다 — 화살표 끝이 될 수 없고, node ID 와 겹칠 수 없다.
+    _FRAME_OPEN = re.compile(r'^subgraph (\w+)\["[^"]*"\]$')
 
     def test_every_line_is_a_form_this_test_reads(self):
         d = self._readme_diagram()
         nodes = self._nodes(d)
+        frames: set[str] = set()
+        depth = 0
         unread = []
         for raw in d.splitlines():
             line = raw.strip()
             if not line:
                 continue
             if _LINKISH.search(re.sub(r'"[^"]*"', '""', line)):
-                _edges(line)  # 화살표 줄은 엄격 파서가 읽어야 한다 (못 읽으면 거기서 FAIL)
+                strays = {end for edge in _edges(line) for end in edge} - nodes
+                assert not strays, f"선언된 node 가 아닌 끝점(프레임 등)으로 가는 화살표: {sorted(strays)}"
                 continue
-            if not any(f.match(line) for f in self._LINE_FORMS):
+            if m := self._FRAME_OPEN.match(line):
+                frame = m.group(1)
+                assert frame not in nodes, f"프레임 ID 가 node ID 와 겹친다: {frame}"
+                assert frame not in frames, f"프레임 ID 가 두 번 쓰였다: {frame}"
+                frames.add(frame)
+                depth += 1
+            elif line == "end":
+                depth -= 1
+                assert depth >= 0, "열지 않은 프레임을 닫는다 (`end` 가 남는다)"
+            elif not any(f.match(line) for f in self._LINE_FORMS):
                 unread.append(line)
             elif line.startswith("class "):
-                unknown = set(line.split()[1].split(",")) - nodes
-                assert not unknown, f"class 줄이 선언되지 않은 node 를 가리킨다: {sorted(unknown)}"
+                unknown = set(line.split()[1].split(",")) - nodes - frames
+                assert not unknown, f"class 줄이 선언되지 않은 node/프레임을 가리킨다: {sorted(unknown)}"
+        assert depth == 0, "닫히지 않은 프레임이 있다"
         assert not unread, f"이 테스트가 읽지 않는 줄 — 노드·화살표를 몰래 더할 수 있다: {unread}"
 
     def test_every_edge_exists_in_the_system_flow(self):
