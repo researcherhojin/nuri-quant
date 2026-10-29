@@ -79,7 +79,7 @@ flowchart LR
 - `alpha_tracking` 은 BUY·SELL 추천을 `agent_decisions` 에 mirror 하고(`decision_id = 'rec_{id}'`) `decision_outcomes` 를 쓴다. 그 내용은 자산군에 benchmark 가 있으면(`config/rules.yaml` 의 `measurement_mode.benchmark_by_asset_class`) 그 benchmark 와 대비한 7·14·30일 수익률, 그리고 alpha 다.
 - `alpha_report` 는 모든 호스트에서 매일 실행되며 실행 event 를 기록한다. 마감된 추천 날짜를 `recommendation_seals` hash chain 에 봉인하고 월간 [`docs/STRATEGY.md`](STRATEGY.md) §3.11 진행 보고를 적재하는 일은 `NURI_ROLE=production` 인 곳에서만 한다.
 
-**Learn.** feedback edge 는 정확히 하나다. consensus job 이 agent 가중치를 계산할 때 learning memory(`nuri/trading/agents/consensus/learning_memory.py`)는 look-back window 안에서 `agent_verdicts` 와 30일 outcome 이 있는 추천을 읽고, 잠정 21일 outcome 으로 fallback 하며, 각 agent 의 기본 가중치를 hit rate 에 따라 상한이 있는 범위 안에서 움직인다(`config/agents.yaml` `consensus.learning_memory`). `decision_outcomes`, `decisions.pnl_*`, `strategy_memory` 는 가중치에 들어가지 않는다.
+**Learn.** feedback edge 는 정확히 하나다. consensus job 이 agent 가중치를 계산할 때 learning memory(`nuri/trading/agents/consensus/learning_memory.py`)는 look-back window 안에서 `agent_verdicts` 와 30일 outcome 이 있는 추천을 읽고, 잠정 21일 outcome 으로 fallback 하며, 각 agent 의 기본 가중치를 hit rate 에 따라 상한이 있는 범위 안에서 움직인다(`config/agents.yaml` `consensus.learning_memory`). 그 뒤 가중치는 합이 1 이 되도록 정규화된다. `decision_outcomes`, `decisions.pnl_*`, `strategy_memory` 는 가중치에 들어가지 않는다.
 
 **Operate.** 모든 매매는 운영자가 손으로 실행한다([`docs/STRATEGY.md`](STRATEGY.md) §7.1). `nuri/trading/execution/` 을 import 하는 다른 module 은 없다. 그 broker 들은 이 package 자체의 smoke-test 명령(`python -m nuri.trading.execution.broker`, 기본은 dry run)으로만 닿을 수 있다. `trades` 테이블은 `POST` / `PUT /api/trades` 와 `make trade-log` 명령으로 쓰인다.
 
