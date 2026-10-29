@@ -25,7 +25,7 @@ flowchart TB
         SRC["External sources"]
         PF[("portfolio")]
     end
-    subgraph RESEARCH["Daily research · scheduled jobs"]
+    subgraph RESEARCH["Daily research"]
         COL["Collect"]
         TAB[("Collector tables")]
         CON["Consensus"]
@@ -35,10 +35,8 @@ flowchart TB
         REC[("recommendations")]
         TRK["Track"]
     end
-    subgraph OUTPUT["Output"]
-        OUT["Delivery"]
-        YOU(["Operator trades by hand"])
-    end
+    OUT["Delivery"]
+    YOU(["Operator trades by hand"])
 
     SRC --> COL --> TAB
     TAB --> CON
@@ -61,10 +59,10 @@ flowchart TB
     class COL,FAC,CON,BUY,TRK,OUT step
     class SRC,TAB,PF,REC,DEC store
     class YOU human
-    class INPUTS,RESEARCH,OUTPUT zone
+    class INPUTS,RESEARCH zone
 ```
 
-Rectangular boxes represent steps, cylinders represent database tables, and the rounded box represents the operator. The three frames group the steps for reading; they are not separate hosts or processes. Thin arrows represent external data retrieval, database reads or writes, or delivery to the operator. The operator manually updates `portfolio` after trading; this loop is omitted from the diagram. The thick arrow represents an in-memory data transfer. The dashed arrow shows the only path through which past results influence later recommendations.
+Rectangular boxes represent steps, cylinders represent database tables, and the rounded box represents the operator. The two frames group the inputs and the scheduled research jobs for reading; they are not separate hosts or processes. Thin arrows represent external data retrieval, database reads or writes, or delivery to the operator. The operator manually updates `portfolio` after trading; this loop is omitted from the diagram. The thick arrow represents an in-memory data transfer. The dashed arrow shows the only path through which past results influence later recommendations.
 
 This diagram is a subset of the [System Flow](docs/ARCHITECTURE.md#system-flow). A test checks the System Flow's key edges against the code, and another fails if this diagram shows a node or edge that the System Flow lacks.
 
