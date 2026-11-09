@@ -7,6 +7,8 @@
 - 시간대 없는 ISO 시각은 None 이다. 원본은 naive datetime 을 그대로 두는데, 그러면 비교 시 기기 시간대로
   해석될 수 있다(원본 #1126 이 epoch 쪽에서 고친 것과 같은 축).
 - `relatedTickers` 대조를 원본처럼 대문자로 하되, 기사 dict 가 아닌 항목은 버린다.
+- 원본은 `Ticker.get_news` 피드를 거르지 않는다. 여기서는 `feed_tagged` 로 `content.finance.stockTickers` 에
+  그 종목이 있는 기사만 남긴다(#2065) — 피드에 다른 종목이 주인공인 기사가 섞여서(#2064 수집기와 같은 기준).
 """
 
 from __future__ import annotations
@@ -69,6 +71,21 @@ def tagged(articles: list[Any], symbol: str) -> list[dict[str, Any]]:
         for a in articles
         if isinstance(a, dict) and canonical in (str(t).upper() for t in a.get("relatedTickers") or [])
     ]
+
+
+def _stock_tickers(article: dict[str, Any]) -> list[str]:
+    content = article.get("content")
+    finance = content.get("finance") if isinstance(content, dict) else None
+    tickers = finance.get("stockTickers") if isinstance(finance, dict) else None
+    if not isinstance(tickers, list):
+        return []
+    return [str(t["symbol"]).upper() for t in tickers if isinstance(t, dict) and t.get("symbol")]
+
+
+def feed_tagged(articles: list[Any], symbol: str) -> list[dict[str, Any]]:
+    """`Ticker.get_news` 피드 중 `content.finance.stockTickers` 에 `symbol` 이 있는 기사 — 필드가 없으면 버린다."""
+    canonical = symbol.upper()
+    return [a for a in articles if isinstance(a, dict) and canonical in _stock_tickers(a)]
 
 
 def answered(news: Optional[list[Any]], quotes: Optional[list[Any]], symbol: str) -> bool:

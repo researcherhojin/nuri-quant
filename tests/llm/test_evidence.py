@@ -403,7 +403,10 @@ class TestTickerNews:
         monkeypatch.setattr(live_news, "kst_now", now)
         monkeypatch.setattr(ev, "kst_now", now)
         search = SimpleNamespace(news=[], quotes=[{"symbol": "T0"}])
-        monkeypatch.setitem(sys.modules, "yfinance", SimpleNamespace(Search=lambda t, news_count: search))
+        ticker = lambda t: SimpleNamespace(get_news=lambda count, tab: [])  # noqa: E731 — 빈 피드 → Search
+        monkeypatch.setitem(
+            sys.modules, "yfinance", SimpleNamespace(Ticker=ticker, Search=lambda t, news_count: search)
+        )
         news = live_news.fetch("T0")
         p = ev.build_packet("T0", db_path=db_path, config=cfg, universe=UNIVERSE, news=news)
         assert p["sources"]["ticker_news"]["status"] == "ok"
