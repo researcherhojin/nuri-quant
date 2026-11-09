@@ -338,7 +338,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 - `FRED_API_KEY`: FRED macro 데이터(yfinance fallback)
 - `FINNHUB_API_KEY`: 미국 institutional flow
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET`, `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET`, `KIS_PROD_ACCOUNT` / `KIS_PAPER_ACCOUNT` / `KIS_HTS_ID`: KIS Open API. credential 은 환경 변수, 그다음 `config/kis/kis_devlp.yaml`(gitignored), 그다음 home 디렉터리 fallback 순으로 찾는다([KIS_INTEGRATION.md](KIS_INTEGRATION.md))
-- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ`: Toss Open API(IP allowlist: 다른 머신은 403 을 받고, 그러면 macro collector 는 USD/KRW 를 FRED 나 yfinance 에서 가져온다)
+- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ`: Toss Open API(IP allowlist: 다른 머신은 토큰은 발급되지만 데이터 요청이 401 이다. 그러면 macro collector 는 USD/KRW 를 FRED `DEXKOUS` 에서 가져오는데, 주 단위로 공개돼 일주일 넘게 묵을 수 있다. yfinance `KRW=X` 는 FRED 가 아무것도 돌려주지 않을 때(키가 없을 때 등)만 쓴다)
 
 **전달**
 
