@@ -91,13 +91,21 @@ This shipped: production ran an Apr-13 build for 3.5 months (108 `frontend/` com
 
 `package.json` has no comment syntax, so the reasoning lives here.
 
-`overrides.eslint = { "minimatch": ">=10.2.5" }` is **not** cosmetic. The blanket
+`overrides.eslint = { "minimatch": ">=11.0.1" }` is **not** cosmetic. The blanket
 `overrides["brace-expansion"] = ">=5.0.9"` (GHSA-mh99-v99m-4gvg) is incompatible with
 the `minimatch@3` that eslint 9 ships — v5 changed the export shape, so eslint dies at
 startup with `TypeError: expand is not a function` and lints **zero** files. The advisory
 range (`<=5.0.7`) covers the entire 1.x line by semver, so there is no v1 pin that both
 satisfies the advisory and keeps eslint alive. Forcing minimatch ≥10 into eslint's subtree
 is what makes both true at once.
+
+The floor is `>=11.0.1` since #2061 (GHSA-g3hv-75wg-m249 covers `>=7 <11.0.1`, no 10.x
+backport). `@typescript-eslint/typescript-estree` carries the same scoped override because
+it sits outside eslint's subtree. Keep both **scoped**: the top-level `minimatch@3` that the
+eslint plugins resolve through `^3` must stay on 3.x, which is why alert #263 was dismissed
+rather than fixed with a blanket override. The consumers only call `new Minimatch()`,
+`.match()` and `minimatch()`; minimatch 11 removed `makeRe()`, `Minimatch#regexp` and
+`AST`, so check those call sites again before the next major.
 
 Two things that do **not** work, already tried (#913):
 
@@ -107,7 +115,7 @@ Two things that do **not** work, already tried (#913):
 Symptom if someone drops it: eslint prints `Oops! Something went wrong!` with a
 `brace-expansion` stack trace and lints **nothing**. `npm run lint` is silent on success, so
 confirm by file count rather than by absence of output — `npx eslint --format json | jq length`
-should be **271** (2026-10-12).
+should be **271** (2026-10-12; unchanged on minimatch 11.0.5, 2026-11-09).
 
 ## E2E (Playwright) — runs against the real backend, gated by CI since #1234
 
