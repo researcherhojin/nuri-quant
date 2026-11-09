@@ -338,7 +338,7 @@ Configured in `.env` (see `.env.example`) unless noted otherwise. Every key is o
 - `FRED_API_KEY`: FRED macro data (yfinance fallback)
 - `FINNHUB_API_KEY`: US institutional flows
 - `KIS_PROD_APP_KEY` / `KIS_PROD_APP_SECRET`, `KIS_PAPER_APP_KEY` / `KIS_PAPER_APP_SECRET`, `KIS_PROD_ACCOUNT` / `KIS_PAPER_ACCOUNT` / `KIS_HTS_ID`: KIS Open API; credentials are looked up in the environment, then `config/kis/kis_devlp.yaml` (gitignored), then a home-directory fallback ([KIS_INTEGRATION.md](KIS_INTEGRATION.md))
-- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ`: Toss Open API (IP allowlist: other machines receive 403, and the macro collector then takes USD/KRW from FRED or yfinance)
+- `TOSS_API_KEY` / `TOSS_SECRET_KEY` / `TOSS_ACCOUNT_SEQ`: Toss Open API (IP allowlist: on other machines the token is issued but data calls return 401. The macro collector then takes USD/KRW from FRED `DEXKOUS`, which is published weekly and can be more than a week old; yfinance `KRW=X` is used only when FRED returns nothing, e.g. without a key)
 
 **Delivery**
 
