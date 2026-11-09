@@ -59,7 +59,10 @@
     "js-yaml": ">=4.3.1 <5",
     "nanoid": ">=3.3.17 <4",
     "eslint": {
-      "minimatch": ">=10.2.5"
+      "minimatch": ">=11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": ">=11.0.1"
     },
     "qs": ">=6.16.0",
     "@humanfs/node": ">=0.16.8",
