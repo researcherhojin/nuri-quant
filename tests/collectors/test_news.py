@@ -8,10 +8,22 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 
-def _related(items):
-    """Search 응답처럼 `relatedTickers` 를 붙인다 — 수집기는 그 종목이 있는 기사만 남긴다 (#1921).
-    `db_with_portfolio` 의 미국 보유는 AAPL·NVDA 다. dict 가 아닌 항목(malformed)은 그대로 둔다."""
-    return [{**i, "relatedTickers": ["AAPL", "NVDA"]} if isinstance(i, dict) else i for i in items]
+def _tagged(items):
+    """`get_news` 응답처럼 `content.finance.stockTickers` 를 붙인다 — 수집기는 그 종목이 있는 기사만 남긴다
+    (#2063). `db_with_portfolio` 의 미국 보유는 AAPL·NVDA 다. `content` 가 없는 항목은 그대로 둔다."""
+    tickers = [{"symbol": "AAPL"}, {"symbol": "NVDA"}]
+    return [
+        {**i, "content": {**i["content"], "finance": {"stockTickers": tickers}}}
+        if isinstance(i, dict) and isinstance(i.get("content"), dict)
+        else i
+        for i in items
+    ]
+
+
+def _yf(news=None, error=None):
+    """`yf.Ticker(t).get_news(...)` → news 또는 예외."""
+    get_news = MagicMock(side_effect=error) if error else MagicMock(return_value=news)
+    return MagicMock(Ticker=MagicMock(return_value=MagicMock(get_news=get_news)))
 
 
 class TestNewsCollectorScenarios:
@@ -30,9 +42,7 @@ class TestNewsCollectorScenarios:
                 }
             }
         ]
-        monkeypatch.setitem(
-            sys.modules, "yfinance", MagicMock(Search=MagicMock(return_value=MagicMock(news=_related(raw))))
-        )
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(_tagged(raw)))
         results = NewsCollector().collect()
         assert results[0]["title"] == "Apple beats"
 
@@ -42,9 +52,7 @@ class TestNewsCollectorScenarios:
         from nuri.collectors.news import NewsCollector
 
         raw = [{"content": {"title": "No link", "canonicalUrl": {"url": ""}, "pubDate": "2025-01-28T00:00:00Z"}}]
-        monkeypatch.setitem(
-            sys.modules, "yfinance", MagicMock(Search=MagicMock(return_value=MagicMock(news=_related(raw))))
-        )
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(_tagged(raw)))
         assert NewsCollector().collect() == []
 
     def test_collect_date_in_column(self, monkeypatch, db_with_portfolio):
@@ -62,9 +70,7 @@ class TestNewsCollectorScenarios:
                 }
             }
         ]
-        monkeypatch.setitem(
-            sys.modules, "yfinance", MagicMock(Search=MagicMock(return_value=MagicMock(news=_related(raw))))
-        )
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(_tagged(raw)))
         results = NewsCollector().collect()
         assert results[0]["date"] == "2025-01-28"
 
@@ -73,7 +79,7 @@ class TestNewsCollectorScenarios:
 
         from nuri.collectors.news import NewsCollector
 
-        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Search=MagicMock(return_value=MagicMock(news=[]))))
+        monkeypatch.setitem(sys.modules, "yfinance", _yf([]))
         assert NewsCollector().collect() == []
 
     def test_collect_exception(self, monkeypatch, db_with_portfolio):
@@ -81,7 +87,7 @@ class TestNewsCollectorScenarios:
 
         from nuri.collectors.news import NewsCollector
 
-        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Search=MagicMock(side_effect=Exception("API error"))))
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(error=Exception("API error")))
         assert NewsCollector().collect() == []
 
 
@@ -113,9 +119,7 @@ class TestYfinanceFallback:
             }
         ]
 
-        mock_yf = MagicMock()
-        mock_yf.Search.return_value.news = _related(nested)
-        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(_tagged(nested)))
 
         results = NewsCollector().collect()
         assert len(results) >= 1
@@ -124,9 +128,10 @@ class TestYfinanceFallback:
         assert first["source"] == "Yahoo Finance"
         assert first["date"] == "2026-04-17"  # UTC 15:30 → KST 00:30 다음날
 
-    def test_fallback_parses_flat_payload(self, monkeypatch, db_with_portfolio):
-        """구형 yfinance: {title, link, publisher, providerPublishTime: epoch} 구조 파싱."""
-        import sys
+    def test_fallback_parses_flat_payload(self):
+        """구형 yfinance: {title, link, publisher, providerPublishTime: epoch} 구조 파싱.
+
+        `get_news`(yfinance 1.8.0)는 nested 만 주므로 파서 단독 계약으로 잠근다 (#2063)."""
         from datetime import datetime, timezone
 
         from nuri.collectors.news import NewsCollector
@@ -152,11 +157,7 @@ class TestYfinanceFallback:
             },
         ]
 
-        mock_yf = MagicMock()
-        mock_yf.Search.return_value.news = _related(flat)
-        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
-
-        results = NewsCollector().collect()
+        results = NewsCollector()._parse_yfinance_news(flat, "AAPL")
         by_url = {r["url"]: r for r in results}
 
         assert "https://ex.com/flat/1" in by_url
@@ -168,10 +169,8 @@ class TestYfinanceFallback:
         expected = datetime.fromtimestamp(epoch_next_day, tz=KST).strftime("%Y-%m-%d")
         assert by_url["https://ex.com/flat/2"]["date"] == expected
 
-    def test_fallback_handles_mixed_and_malformed_items(self, monkeypatch, db_with_portfolio):
-        """빈 content / 누락 필드 / 잘못된 타입 혼재 — 크래시 없이 skip."""
-        import sys
-
+    def test_fallback_handles_mixed_and_malformed_items(self):
+        """빈 content / 누락 필드 / 잘못된 타입 혼재 — 크래시 없이 skip (파서 단독, #2063)."""
         from nuri.collectors.news import NewsCollector
 
         mixed = [
@@ -198,11 +197,7 @@ class TestYfinanceFallback:
             {"title": "Good flat", "link": "https://ok.com/2", "publisher": "Z", "providerPublishTime": 1745000000},
         ]
 
-        mock_yf = MagicMock()
-        mock_yf.Search.return_value.news = _related(mixed)
-        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
-
-        results = NewsCollector().collect()
+        results = NewsCollector()._parse_yfinance_news(mixed, "AAPL")
         urls = {r["url"] for r in results}
         assert "https://ok.com/1" in urls
         assert "https://ok.com/2" in urls
@@ -215,9 +210,7 @@ class TestYfinanceFallback:
 
         from nuri.collectors.news import NewsCollector
 
-        mock_yf = MagicMock()
-        mock_yf.Search.side_effect = RuntimeError("network fail")
-        monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(error=RuntimeError("network fail")))
 
         results = NewsCollector().collect()
         assert results == []
@@ -259,27 +252,23 @@ class TestNewsCollectorDefaultDateFallback:
         from nuri.core.timezone import today_kst
 
         raw = [{"content": {"title": "No date anywhere", "canonicalUrl": {"url": "https://example.com/x"}}}]
-        monkeypatch.setitem(
-            sys.modules, "yfinance", MagicMock(Search=MagicMock(return_value=MagicMock(news=_related(raw))))
-        )
+        monkeypatch.setitem(sys.modules, "yfinance", _yf(_tagged(raw)))
         results = NewsCollector().collect()
         assert len(results) >= 1
         assert results[0]["date"] == today_kst()
 
 
-class TestSearchSourceKeepsOnlyRelatedArticles:
-    """#1921: `Ticker.news` 가 2026-10-02 부터 빈 목록이라 `Search` 로 옮겼다.
-
-    Search 는 검색어 매칭이라 다른 종목 기사가 섞인다. 이 테이블을 SELL 촉매 게이트가 읽으므로
-    `relatedTickers` 에 그 종목이 있는 기사만 남아야 한다.
+class TestGetNewsKeepsOnlyTaggedArticles:
+    """#1921 → #2063: `get_news` 는 다른 종목이 주인공인 기사도 준다. 이 테이블을 SELL 촉매 게이트가 읽으므로
+    `content.finance.stockTickers` 에 그 종목이 있는 기사만 남아야 한다 — 필드가 없거나 모양이 다르면 버린다.
     """
 
     @staticmethod
-    def _item(url, related):
-        item = {"title": f"t {url}", "link": url, "publisher": "P", "providerPublishTime": 1_800_000_000}
-        if related is not None:
-            item["relatedTickers"] = related
-        return item
+    def _item(url, tickers):
+        content = {"title": f"t {url}", "canonicalUrl": {"url": url}, "pubDate": "2026-11-08T12:00:00Z"}
+        if tickers is not None:
+            content["finance"] = {"stockTickers": tickers}
+        return {"id": url, "content": content}
 
     def test_only_articles_tagged_with_the_ticker_are_kept(self, monkeypatch):
         import sys
@@ -287,17 +276,33 @@ class TestSearchSourceKeepsOnlyRelatedArticles:
         from nuri.collectors.news import NewsCollector
 
         raw = [
-            self._item("https://x/keep", ["AAPL", "MSFT"]),
-            self._item("https://x/other", ["MSFT"]),
+            self._item("https://x/keep", [{"symbol": "AAPL"}, {"symbol": "MSFT"}]),
+            self._item("https://x/other", [{"symbol": "MSFT"}]),
             self._item("https://x/untagged", None),
+            self._item("https://x/bare-string", ["AAPL"]),
+            self._item("https://x/not-a-list", {"symbol": "AAPL"}),
+            {"title": "flat", "link": "https://x/flat", "providerPublishTime": 1_800_000_000},
         ]
-        mock_yf = MagicMock()
-        mock_yf.Search.return_value.news = raw
+        mock_yf = _yf(raw)
         monkeypatch.setitem(sys.modules, "yfinance", mock_yf)
 
         got = NewsCollector()._fetch_ticker_news("AAPL")
         assert [r["url"] for r in got] == ["https://x/keep"]
-        mock_yf.Search.assert_called_once_with("AAPL", news_count=NewsCollector.NEWS_COUNT)
+        mock_yf.Ticker.assert_called_once_with("AAPL")
+        mock_yf.Ticker.return_value.get_news.assert_called_once_with(count=NewsCollector.NEWS_COUNT, tab="news")
+
+    def test_click_through_url_is_used_when_canonical_is_missing(self, monkeypatch):
+        """yfinance 1.8.0 은 `canonicalUrl` · `clickThroughUrl` 에 `url` 만 담는다 — 앞의 것이 없으면 뒤의 것."""
+        import sys
+
+        from nuri.collectors.news import NewsCollector
+
+        item = self._item("https://x/canonical", [{"symbol": "AAPL"}])
+        item["content"]["canonicalUrl"] = None
+        item["content"]["clickThroughUrl"] = {"url": "https://x/click"}
+        monkeypatch.setitem(sys.modules, "yfinance", _yf([item]))
+
+        assert [r["url"] for r in NewsCollector()._fetch_ticker_news("AAPL")] == ["https://x/click"]
 
 
 class TestParserGuardsItsOwnInput:

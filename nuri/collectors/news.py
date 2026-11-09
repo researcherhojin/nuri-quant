@@ -1,6 +1,6 @@
 # pyright: reportAttributeAccessIssue=false
 """
-뉴스 수집기 — yfinance `Ticker.news` 직접 호출.
+뉴스 수집기 — yfinance `Ticker.get_news` 직접 호출.
 
 openbb 1차 경로(news.company)는 #1477 로 제거 — 상류 bug(#274) 이후로도 실제 수집은 늘 이 경로였다.
 
@@ -15,7 +15,7 @@ from nuri.core.db import upsert_news
 
 
 class NewsCollector(BaseCollector):
-    """yfinance `Ticker.news` 로 종목별 뉴스 수집."""
+    """yfinance `Ticker.get_news` 로 종목별 뉴스 수집."""
 
     def __init__(self):
         super().__init__("news")
@@ -54,27 +54,39 @@ class NewsCollector(BaseCollector):
             self.logger.info(f"뉴스 {len(records)}건 수집")
         return records
 
-    #: 종목당 요청 기사 수. Search 는 검색어 매칭이라 아래에서 `relatedTickers` 로 다시 거른다.
+    #: 종목당 요청 기사 수. 다른 종목이 주인공인 기사도 섞이므로 아래에서 `stockTickers` 로 다시 거른다.
     NEWS_COUNT = 20
 
     def _fetch_ticker_news(self, ticker: str) -> list[dict]:
-        """단일 종목 뉴스 (yfinance Search).
+        """단일 종목 뉴스 (yfinance `Ticker.get_news`).
 
-        `Ticker.news` 는 2026-10-02 부터 **예외 없이 빈 목록**을 준다 (#1921, yfinance 1.7.0 고정 상태에서
-        Yahoo 쪽 변화) — 수집기는 그걸 "기사 없음" 으로 받아 3주 동안 매시간 0행을 `finished` 로 남겼다.
-        `Search(ticker).news` 는 같은 flat 형식으로 기사를 주지만 검색어 매칭이라 다른 종목 기사가 섞인다.
-        이 테이블은 SELL 촉매 게이트(`core/catalyst.has_recent_catalyst`)가 읽으므로, `relatedTickers` 에
-        그 종목이 **있는** 기사만 남긴다 — 필드가 없는 기사는 관련성을 알 수 없어 버린다.
+        Yahoo 가 옛 경로(`/xhr/ncp`)를 없애 `get_news()` 가 2026-10-02 부터 **예외 없이 빈 목록**을 줬고
+        (#1921), 그동안 검색어 매칭인 `Search(ticker).news` 로 우회했다. yfinance 1.8.0(#2058)이 Yahoo 뉴스
+        GraphQL API 로 고쳤다(상류 #3004/#3018 — 최신순, 항목마다 `content.finance.stockTickers`). 2026-11-09
+        실측(미국 16종목, 관련 기사): Search 253 → get_news 299, NVDA 0 → 20, COST 4 → 20 (#2063).
+        이 테이블은 SELL 촉매 게이트(`core/catalyst.has_recent_catalyst`)가 읽으므로 `stockTickers` 에 그 종목이
+        **있는** 기사만 남긴다 — 필드가 없는 기사는 관련성을 알 수 없어 버린다. 빈 결과가 이어지는 사고는
+        `news` freshness 정책(#1921)이 잡는다.
         """
         try:
             import yfinance as yf
 
-            raw = yf.Search(ticker, news_count=self.NEWS_COUNT).news or []
-            related = [i for i in raw if isinstance(i, dict) and ticker in (i.get("relatedTickers") or [])]
+            raw = yf.Ticker(ticker).get_news(count=self.NEWS_COUNT, tab="news") or []
+            related = [i for i in raw if isinstance(i, dict) and ticker in self._stock_tickers(i)]
             return self._parse_yfinance_news(related, ticker)
         except Exception as e:
-            self.logger.debug(f"{ticker}: yfinance news 폴백 실패 — {e}")
+            self.logger.debug(f"{ticker}: yfinance news 조회 실패 — {e}")
             return []
+
+    @staticmethod
+    def _stock_tickers(item: dict) -> list[str]:
+        """`get_news` 항목의 `content.finance.stockTickers[].symbol` — 구조가 다르면 빈 목록."""
+        content = item.get("content")
+        finance = content.get("finance") if isinstance(content, dict) else None
+        tickers = finance.get("stockTickers") if isinstance(finance, dict) else None
+        if not isinstance(tickers, list):
+            return []
+        return [t["symbol"] for t in tickers if isinstance(t, dict) and isinstance(t.get("symbol"), str)]
 
     def _parse_yfinance_news(self, raw: list, ticker: str) -> list[dict]:
         """yfinance Ticker.news → news record list.

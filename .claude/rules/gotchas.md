@@ -3,7 +3,7 @@
 Most gotchas live in scoped CLAUDE.md or in code lock-tests (Gotcha-Test Pair, see `.claude/rules/invariants.md`). Cross-scope ones:
 
 - **의존성·CI 게이트 gotcha 는 `.claude/rules/ci-deps.md`** (path-scoped: `.github/**` · lock 파일 · `pyproject.toml` · `check_lock_major_bump.py` 편집 시 자동 로드) — override 하한이 부모 핀을 지우는 문제, dependabot semver 가 lock major 를 못 보는 문제, venv 캐시 인터프리터 동반 문제. 여기 없다고 없는 게 아니다.
-- **Korean stock tickers**: `.KS` suffix (e.g., `005930.KS`). yfinance returns most fundamentals but **`trailingPE` is missing for KR individuals** — use `forward_pe`. ETFs return empty `info`. Full quirks: `nuri/collectors/CLAUDE.md` "Korean Ticker `.KS` Suffix Convention".
+- **Korean stock tickers**: `.KS` suffix (e.g., `005930.KS`). yfinance returns most fundamentals but **`trailingPE` is missing for KR individuals** — use `forward_pe`. KR ETFs return `info` metadata but no fundamentals (no PE either). Full quirks: `nuri/collectors/CLAUDE.md` "Korean Ticker `.KS` Suffix Convention".
 - **Concurrency asymmetry**: yfinance 10-thread OK; pykrx/KRX **must be sequential** + `time.sleep(0.1)`. New external APIs require concurrency measurement before integration.
 
 - **CI 의 `Doc Count Drift Check` 는 반쪽이다** *(facts, no fix)*: 그 job 에는 `.venv` 가 없어 `verify_doc_counts.sh` 의 Python 기반 수치(백엔드 테스트 수 · DB 테이블 수 · 레짐 수)가 빈 값으로 **건너뛰어진다.** 이 셋은 pre-push 훅(`pre_push_check.sh` 2c, 로컬 `.venv`)에서만 검사된다 — 훅을 우회한 push 는 CI 초록이어도 이 수치가 틀릴 수 있다.
