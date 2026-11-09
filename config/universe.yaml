@@ -93,7 +93,7 @@ us_core:
   - XLC
   - XLRE
 us_sp500_extended:
-  description: 미국 S&P 500 + extras — us_core에 없는 추가 종목 (465개)
+  description: 미국 S&P 500 + extras — us_core에 없는 추가 종목 (459개)
   tickers:
   - A
   - ABT
@@ -132,7 +132,6 @@ us_sp500_extended:
   - ARE
   - ARES
   - ATO
-  - AVB
   - AVY
   - AWK
   - AXON
@@ -229,7 +228,6 @@ us_sp500_extended:
   - DVA
   - DVN
   - DXCM
-  - EA
   - EBAY
   - ECHO
   - ECL
@@ -244,7 +242,6 @@ us_sp500_extended:
   - EOG
   - EPAM
   - EQIX
-  - EQR
   - EQT
   - ERIE
   - ES
@@ -347,7 +344,6 @@ us_sp500_extended:
   - KMB
   - KMI
   - KR
-  - KVUE
   - L
   - LDOS
   - LEN
@@ -441,7 +437,6 @@ us_sp500_extended:
   - PPL
   - PRU
   - PSA
-  - PSKY
   - PSX
   - PTC
   - PWR
@@ -539,7 +534,6 @@ us_sp500_extended:
   - VYLR
   - WAB
   - WAT
-  - WBD
   - WDAY
   - WDC
   - WEC
