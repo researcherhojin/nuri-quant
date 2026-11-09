@@ -36,7 +36,7 @@ Korean equities are addressed by KRX 6-digit code suffixed with `.KS` (e.g., `00
 
 - ✅ Price history (`Ticker.history`), volume, dividend events
 - ✅ Fundamentals (`Ticker.info`) for individual stocks: PE, ROE, margins, growth, debt — **but `trailingPE` is NOT provided for KR individuals** (yfinance provider limit). Use `forward_pe` instead (182/209 KR coverage as of 2026-07-08 dev DB — live number, re-probe before citing).
-- ❌ Fundamentals for ETFs return empty (expected — ETF wrapper, no underlying P&L).
+- ❌ Fundamentals for ETFs are absent (expected — ETF wrapper, no underlying P&L). `info` itself is not empty: `069500.KS` returns 72 keys (`quoteType` `ETF`) with no `trailingPE` / `forwardPE`, same on yfinance 1.7.0 and 1.8.0 (2026-11-09) — detect ETFs by `quoteType`, not by an empty `info`.
 
 KIS Open API is NOT needed for KR fundamentals (was previously believed required — corrected during #418 KIS Open API integration audit).
 
