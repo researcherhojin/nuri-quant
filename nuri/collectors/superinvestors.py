@@ -63,7 +63,8 @@ class SuperinvestorCollector(BaseCollector):
         Args (via kwargs):
             quarters: 수집할 분기 수 (기본 8, 최대 20)
         """
-        from edgar import Company, set_identity
+        from edgar.entity import Company
+        from edgar.settings import set_identity
         from tqdm import tqdm
 
         set_identity(EDGAR_IDENTITY)

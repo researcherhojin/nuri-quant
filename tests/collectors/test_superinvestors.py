@@ -52,7 +52,7 @@ class TestSuperinvestorsDeep:
 
         mock_co = MagicMock()
         mock_co.get_filings.return_value = []
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             c = SuperinvestorCollector()
             result = c.collect(num_quarters=1)
         assert isinstance(result, list)
@@ -65,7 +65,7 @@ class TestSuperinvestorsDeep:
         mock_filing.obj.side_effect = Exception("parse error")
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             c = SuperinvestorCollector()
             result = c.collect(num_quarters=1)
         assert isinstance(result, list)
@@ -92,7 +92,7 @@ class TestSuperinvestorsCollect:
         mock_filing.obj.return_value = mock_info
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             c = SuperinvestorCollector()
             result = c.collect(num_quarters=1)
         assert isinstance(result, list)
@@ -117,7 +117,7 @@ class TestSuperinvestorsCollect:
         mock_filing.obj.return_value = mock_info
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             c = SuperinvestorCollector()
             c.run(num_quarters=1)
 
@@ -137,7 +137,7 @@ class TestSuperinvestorsMultiple:
         mock_filing.obj.return_value = mock_info
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             c = SuperinvestorCollector()
             result = c.collect(num_quarters=1)
         assert isinstance(result, list)
@@ -180,8 +180,8 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company.get_filings.return_value = mock_filings
 
         with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"TestInvestor": "0001234567"}):
-            with patch("edgar.set_identity"):
-                with patch("edgar.Company", return_value=mock_company):
+            with patch("edgar.settings.set_identity"):
+                with patch("edgar.entity.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
                     result = c.collect(quarters=1)
 
@@ -195,8 +195,8 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = []
         with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"NoFiling": "000000"}):
-            with patch("edgar.set_identity"):
-                with patch("edgar.Company", return_value=mock_company):
+            with patch("edgar.settings.set_identity"):
+                with patch("edgar.entity.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
                     result = c.collect()
         assert result == []
@@ -215,8 +215,8 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
         with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"Bad": "000001"}):
-            with patch("edgar.set_identity"):
-                with patch("edgar.Company", return_value=mock_company):
+            with patch("edgar.settings.set_identity"):
+                with patch("edgar.entity.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
                     result = c.collect(quarters=1)
         assert result == []
@@ -237,8 +237,8 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
         with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"Empty": "000002"}):
-            with patch("edgar.set_identity"):
-                with patch("edgar.Company", return_value=mock_company):
+            with patch("edgar.settings.set_identity"):
+                with patch("edgar.entity.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
                     result = c.collect(quarters=1)
         assert result == []
@@ -267,8 +267,8 @@ class TestSuperinvestorCollectorEdgarFlow:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
         with patch("nuri.collectors.superinvestors.SUPERINVESTORS", {"NaN": "000003"}):
-            with patch("edgar.set_identity"):
-                with patch("edgar.Company", return_value=mock_company):
+            with patch("edgar.settings.set_identity"):
+                with patch("edgar.entity.Company", return_value=mock_company):
                     c = SuperinvestorCollector()
                     result = c.collect(quarters=1)
         tickers = [r["ticker"] for r in result]
@@ -414,7 +414,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Warren Buffett": "0001067983"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
 
         collector = SuperinvestorCollector()
         results = collector.collect(quarters=1)
@@ -428,7 +430,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert SuperinvestorCollector().collect() == []
 
     def test_collect_filing_parse_failure(self, monkeypatch, db_with_portfolio):
@@ -442,7 +446,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert SuperinvestorCollector().collect() == []
 
     def test_collect_empty_infotable(self, monkeypatch, db_with_portfolio):
@@ -458,7 +464,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert SuperinvestorCollector().collect() == []
 
     def test_collect_zero_total_value(self, monkeypatch, db_with_portfolio):
@@ -477,7 +485,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert SuperinvestorCollector().collect() == []
 
     def test_collect_nan_ticker(self, monkeypatch, db_with_portfolio):
@@ -501,7 +511,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar", MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda cik: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         results = SuperinvestorCollector().collect()
         assert all(r["ticker"] == "AAPL" for r in results)
 
@@ -511,11 +523,9 @@ class TestSuperinvestorCollectorEdgarMoreScenarios:
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test": "000"})
         import sys
 
-        monkeypatch.setitem(
-            sys.modules,
-            "edgar",
-            MagicMock(Company=MagicMock(side_effect=RuntimeError("network")), set_identity=MagicMock()),
-        )
+        edgar_mock = MagicMock(Company=MagicMock(side_effect=RuntimeError("network")), set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert SuperinvestorCollector().collect() == []
 
     def test_save_empty(self, db_with_portfolio):
@@ -668,13 +678,14 @@ class TestCollectFiltersNaTicker:
         # SUPERINVESTORS dict 짧게
         monkeypatch.setattr("nuri.collectors.superinvestors.SUPERINVESTORS", {"Test Whale": "0001234567"})
 
-        # `from edgar import Company, set_identity` 는 함수 내부 import → sys.modules mock
+        # `from edgar.entity import Company` · `from edgar.settings import set_identity` 는 함수 내부 import → sys.modules mock
         import sys
 
         edgar_mock = MagicMock()
         edgar_mock.Company = lambda cik: company_mock
         edgar_mock.set_identity = lambda *a, **kw: None
-        monkeypatch.setitem(sys.modules, "edgar", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
 
         c = SuperinvestorCollector()
         results = c.collect(quarters=1)

@@ -252,7 +252,7 @@ class TestRegistryResolvesAtRuntime:
             m.get_filings.return_value = []
             return m
 
-        with patch("edgar.set_identity"), patch("edgar.Company", side_effect=_company):
+        with patch("edgar.settings.set_identity"), patch("edgar.entity.Company", side_effect=_company):
             SuperinvestorCollector().collect(quarters=1)
 
         assert seen == ["0000000001"], f"레지스트리가 안 좁혀졌다 — {len(seen)}곳을 돌았다"
