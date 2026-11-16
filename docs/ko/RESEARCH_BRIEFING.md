@@ -115,7 +115,7 @@ subprocess 제한은 `config/llm_runtime.yaml` 의 `interactive.timeout_s`(현�
 로컬 client 는 생성 전에 loopback endpoint·로컬 모델 식별·등록 런타임·prompt budget 을 검증한다. 대화형 CLI 는 채점 런타임 설정의 복사본에만 별도 버전 pin 을 적용해 채점 파일럿의 버전과 모델 digest 를 보존한다. 대화형 pin 갱신도 검토된 설정 변경이다.
 loopback 주소만으로 로컬 실행이 보장되지는 않는다. 모델 가드는 remote/cloud 또는 미등록 모델을 거부한다.
 외부 모델 fallback 은 없다. 파일럿 활성화는 `config/thesis_pilot.yaml`, 선언 지문은
-`config/thesis_freeze.yaml`, 스케줄은 `nuri/scheduler.py` 가 정본이다. 선언된 팔·런타임 변경은 문서 수정이 아니다.
+`config/thesis_freeze.yaml`, 스케줄은 `nuri/scheduler.py` 가 정본이다. 선언된 팔·근거 패킷(`P`: `evidence.py`·`live_news.py`·`yahoo_news.py`·`config/evidence.yaml`)·런타임 변경은 문서 수정이 아니다.
 파일럿 설정이나 리허설 통과가 정시 실행을 입증하지는 않는다. 운영 원장을
 `NURI_ROLE=production .venv/bin/python -m nuri.llm.thesis_pilot_ops report` 로 확인한다.
 프로토콜 선택·표본·결과는 비공개로 유지한다. 분석 진입점은 `python -m nuri.llm.thesis_dates --help` 이며,

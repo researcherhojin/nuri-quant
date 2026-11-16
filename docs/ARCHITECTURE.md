@@ -447,7 +447,7 @@ Add incremental schema changes to `_MIGRATIONS` in `nuri/core/db_migrations.py` 
 - `research_sources.json`: registered public document sources and issuer identity checks; output style lives in `nuri/llm/research_briefing.py`
 - `walkforward*.yaml`, `eval/thesis_prompts.yaml`: walk-forward validation and thesis evaluation settings
 - `evidence.yaml`, `llm_runtime.yaml`: local thesis evidence freshness/budgets and runtime identity/options; interactive and report settings are separate blocks
-- `thesis_pilot.yaml`, `thesis_freeze.yaml`: pilot enablement and declared arm fingerprints; see [local thesis modes](RESEARCH_BRIEFING.md#local-thesis-modes) for the operational boundary
+- `thesis_pilot.yaml`, `thesis_freeze.yaml`: pilot enablement and declared arm fingerprints plus the evidence-packet fingerprint `P` (#2066); see [local thesis modes](RESEARCH_BRIEFING.md#local-thesis-modes) for the operational boundary
 
 ## Scripts (`scripts/`)
 

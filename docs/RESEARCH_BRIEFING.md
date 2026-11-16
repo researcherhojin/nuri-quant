@@ -115,7 +115,7 @@ a completed run alone therefore does not establish data freshness.
 The local client validates the loopback endpoint, local model identity, registered runtime and prompt budget before generation. The interactive CLI applies its explicit version pin to a deep copy of the scored runtime config, preserving the scored pilot version and model digest; updating the interactive pin is a reviewed config change.
 A loopback address alone does not establish local execution: the model guard rejects remote/cloud or unlisted models.
 There is no external-model fallback. Pilot enablement is in `config/thesis_pilot.yaml`, declared fingerprints are in
-`config/thesis_freeze.yaml`, and scheduling is in `nuri/scheduler.py`. Changing a declared arm/runtime is not a documentation fix.
+`config/thesis_freeze.yaml`, and scheduling is in `nuri/scheduler.py`. Changing a declared arm, the evidence packet (`P`: `evidence.py`, `live_news.py`, `yahoo_news.py`, `config/evidence.yaml`) or the runtime is not a documentation fix.
 Pilot configuration or a passing rehearsal does not prove that a scheduled night ran; inspect the production ledger with
 `NURI_ROLE=production .venv/bin/python -m nuri.llm.thesis_pilot_ops report`.
 Protocol choices, samples and results remain private. The analysis entry point is `python -m nuri.llm.thesis_dates --help`;
