@@ -270,6 +270,14 @@ Citi 11,343 포지션 / 이 테이블 **전체**는 8명 × 10분기 15,600 행)
 스윕의 한계는 명시돼 있다 — 테이블명이 f-string 변수인 쿼리(`coverage.py::_table_tickers`)는
 리터럴에 이름이 없어 안 보이므로 `_COVERAGE_FILTERS` 로 따로 처리했다.
 
+## edgartools 6: 이름은 정의 모듈에서 import (#2077)
+
+edgartools 6.0 은 최상위 이름을 모듈 `__getattr__` 로 지연 노출한다. 런타임은 그대로 되지만 pyright 는
+`from edgar import Company` 를 `ModuleType` 으로 보고 호출부마다 `reportCallIssue` 를 낸다(CI Backend Lint 실패).
+`Company` 는 `edgar.entity`, `set_identity` 는 `edgar.settings` 에서 import 하고 **테스트 mock 도 같은 경로로**
+건다 — `patch("edgar.Company")` 나 `sys.modules["edgar"]` 교체는 더 이상 호출을 가로채지 못해 실 SEC 호출로
+샌다(구 mock 으로 되돌리면 collector 테스트 11개 FAIL 실측). **Lock:** `make typecheck`(pyright, CI 와 같은 핀).
+
 ## KIS 실시간 시세의 날짜와 저장 (`kis_realtime.py`, #1636)
 
 - 미국 현재가의 `date` 는 `us_session_date()`(뉴욕 거래일)이고 한국은 `today_kst()` 다. KST 아침의 미국 시세는 뉴욕 기준 **전날** 세션이라 KST 날짜를 찍으면 일일 수집기와 다른 행이 된다 — 최신 날짜로 종목을 정렬하는 리더에서 SPY 만 하루 앞서 보이고, 섹터 순환 감지(#1631)가 ETF 를 전부 건너뛴다.
