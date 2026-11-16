@@ -1213,11 +1213,9 @@ class TestFilingsPartials:
         filings.__getitem__ = lambda self, i: filing
         company_inst.get_filings = lambda **k: filings
         mock_company_cls.return_value = company_inst
-        monkeypatch.setitem(
-            sys.modules,
-            "edgar",
-            MagicMock(Company=mock_company_cls, set_identity=lambda x: None),
-        )
+        edgar_mock = MagicMock(Company=mock_company_cls, set_identity=lambda x: None)
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
 
     def test_revenue_no_digit_columns_skips(self, monkeypatch):
         """Branch 62->66: Revenue 행 있으나 digit column 없음 → 다음 metric 으로."""

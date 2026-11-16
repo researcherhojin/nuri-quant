@@ -2,6 +2,7 @@
 
 Split from tests/test_collectors_all.py for module-level isolation.
 """
+
 from datetime import date
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +13,7 @@ class TestFilings:
     def test_parse_10k_no_filings(self):
         mock_co = MagicMock()
         mock_co.get_filings.return_value = []
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             from nuri.collectors.filings import parse_10k
 
             result = parse_10k("AAPL")
@@ -29,14 +30,16 @@ class TestFilings:
         from nuri.collectors.filings import collect_filings
 
         mock_data = {
-            "ticker": "AAPL", "filing_date": "2026-01-15",
-            "revenue": 400e9, "net_income": 100e9,
-            "total_assets": 350e9, "total_debt": 120e9,
+            "ticker": "AAPL",
+            "filing_date": "2026-01-15",
+            "revenue": 400e9,
+            "net_income": 100e9,
+            "total_assets": 350e9,
+            "total_debt": 120e9,
         }
         with patch("nuri.collectors.filings.parse_10k", return_value=mock_data):
             result = collect_filings(tickers=["AAPL"])
         assert len(result) == 1
-
 
 
 class TestFilingsDeep:
@@ -48,7 +51,7 @@ class TestFilingsDeep:
         mock_filing.obj.return_value = mock_obj
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             from nuri.collectors.filings import parse_10k
 
             result = parse_10k("AAPL")
@@ -57,8 +60,7 @@ class TestFilingsDeep:
     def test_collect_filings_multiple(self):
         from nuri.collectors.filings import collect_filings
 
-        mock_data = {"ticker": "AAPL", "filing_date": "2026-01-15",
-                     "revenue": 400e9, "net_income": 100e9}
+        mock_data = {"ticker": "AAPL", "filing_date": "2026-01-15", "revenue": 400e9, "net_income": 100e9}
         with patch("nuri.collectors.filings.parse_10k", return_value=mock_data):
             result = collect_filings(tickers=["AAPL", "NVDA"])
         assert len(result) == 2
@@ -69,14 +71,18 @@ class TestFilingsDeep:
 # ##############################################################################
 
 
-
 class TestFilingsSave:
     def test_save_filings(self, rich_db):
         from nuri.collectors.filings import collect_filings
 
-        mock_data = {"ticker": "AAPL", "filing_date": "2026-01-15",
-                     "revenue": 400e9, "net_income": 100e9,
-                     "total_assets": 350e9, "total_debt": 120e9}
+        mock_data = {
+            "ticker": "AAPL",
+            "filing_date": "2026-01-15",
+            "revenue": 400e9,
+            "net_income": 100e9,
+            "total_assets": 350e9,
+            "total_debt": 120e9,
+        }
         with patch("nuri.collectors.filings.parse_10k", return_value=mock_data):
             result = collect_filings(tickers=["AAPL"])
         assert len(result) == 1
@@ -85,7 +91,6 @@ class TestFilingsSave:
 # ##############################################################################
 # Source: test_coverage_round13.py
 # ##############################################################################
-
 
 
 class TestFilingsRealLike:
@@ -97,7 +102,7 @@ class TestFilingsRealLike:
         mock_filing.obj.return_value = mock_obj
         mock_co = MagicMock()
         mock_co.get_filings.return_value = [mock_filing]
-        with patch("edgar.Company", return_value=mock_co), patch("edgar.set_identity"):
+        with patch("edgar.entity.Company", return_value=mock_co), patch("edgar.settings.set_identity"):
             from nuri.collectors.filings import parse_10k
 
             result = parse_10k("MSFT")
@@ -106,10 +111,15 @@ class TestFilingsRealLike:
     def test_collect_save_flow(self, rich_db):
         from nuri.collectors.filings import collect_filings
 
-        with patch("nuri.collectors.filings.parse_10k", return_value={
-            "ticker": "AAPL", "filing_date": "2026-01-15",
-            "revenue": 400e9, "net_income": 100e9,
-        }):
+        with patch(
+            "nuri.collectors.filings.parse_10k",
+            return_value={
+                "ticker": "AAPL",
+                "filing_date": "2026-01-15",
+                "revenue": 400e9,
+                "net_income": 100e9,
+            },
+        ):
             result = collect_filings(tickers=["AAPL", "NVDA", "TSLA"])
         assert len(result) == 3
 
@@ -119,23 +129,26 @@ class TestFilingsRealLike:
 # ##############################################################################
 
 
-
 class TestFilingsCollectorParse10K:
     def _mock_income_df(self):
-        return pd.DataFrame({
-            "concept": ["Revenue", "NetIncome", "OperatingIncome"],
-            "dimension": [False, False, False],
-            "is_breakdown": [False, False, False],
-            "2024": [100e9, 25e9, 30e9],
-        })
+        return pd.DataFrame(
+            {
+                "concept": ["Revenue", "NetIncome", "OperatingIncome"],
+                "dimension": [False, False, False],
+                "is_breakdown": [False, False, False],
+                "2024": [100e9, 25e9, 30e9],
+            }
+        )
 
     def _mock_balance_df(self):
-        return pd.DataFrame({
-            "concept": ["Assets", "Liabilities", "CashAndCashEquivalents"],
-            "dimension": [False, False, False],
-            "is_breakdown": [False, False, False],
-            "2024": [400e9, 250e9, 60e9],
-        })
+        return pd.DataFrame(
+            {
+                "concept": ["Assets", "Liabilities", "CashAndCashEquivalents"],
+                "dimension": [False, False, False],
+                "is_breakdown": [False, False, False],
+                "2024": [400e9, 250e9, 60e9],
+            }
+        )
 
     def test_parse_10k_success(self):
         from nuri.collectors.filings import parse_10k
@@ -157,8 +170,8 @@ class TestFilingsCollectorParse10K:
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
 
-        with patch("edgar.set_identity"):
-            with patch("edgar.Company", return_value=mock_company):
+        with patch("edgar.settings.set_identity"):
+            with patch("edgar.entity.Company", return_value=mock_company):
                 result = parse_10k("AAPL")
         assert result is not None
         assert result["ticker"] == "AAPL"
@@ -169,16 +182,16 @@ class TestFilingsCollectorParse10K:
 
         mock_company = MagicMock()
         mock_company.get_filings.return_value = []
-        with patch("edgar.set_identity"):
-            with patch("edgar.Company", return_value=mock_company):
+        with patch("edgar.settings.set_identity"):
+            with patch("edgar.entity.Company", return_value=mock_company):
                 result = parse_10k("FAKE")
         assert result is None
 
     def test_parse_10k_exception(self):
         from nuri.collectors.filings import parse_10k
 
-        with patch("edgar.set_identity"):
-            with patch("edgar.Company", side_effect=RuntimeError("network")):
+        with patch("edgar.settings.set_identity"):
+            with patch("edgar.entity.Company", side_effect=RuntimeError("network")):
                 result = parse_10k("FAIL")
         assert result is None
 
@@ -199,8 +212,8 @@ class TestFilingsCollectorParse10K:
         mock_filings.__bool__ = lambda self: True
         mock_company = MagicMock()
         mock_company.get_filings.return_value = mock_filings
-        with patch("edgar.set_identity"):
-            with patch("edgar.Company", return_value=mock_company):
+        with patch("edgar.settings.set_identity"):
+            with patch("edgar.entity.Company", return_value=mock_company):
                 result = parse_10k("AAPL")
         assert result is not None
         assert "total_assets" in result
@@ -230,24 +243,41 @@ class TestFilingsCollectorParse10K:
     def test_print_filings_with_data(self, capsys):
         from nuri.collectors.filings import print_filings
 
-        data = [{"ticker": "AAPL", "filing_date": "2025-02-01", "revenue": 100e9,
-                 "net_income": 25e9, "total_assets": 400e9, "cash": 60e9}]
+        data = [
+            {
+                "ticker": "AAPL",
+                "filing_date": "2025-02-01",
+                "revenue": 100e9,
+                "net_income": 25e9,
+                "total_assets": 400e9,
+                "cash": 60e9,
+            }
+        ]
         print_filings(data)
         out = capsys.readouterr().out
         assert "AAPL" in out
-
 
 
 class TestFilingsCollectorMoreParse10K:
     def test_parse_10k_success(self, monkeypatch):
         from nuri.collectors.filings import parse_10k
 
-        inc_df = pd.DataFrame({"concept": ["Revenue", "NetIncome", "OperatingIncome"],
-                                "dimension": [False, False, False], "is_breakdown": [False, False, False],
-                                "2024": [100e9, 20e9, 30e9]})
-        bs_df = pd.DataFrame({"concept": ["TotalAssets", "TotalLiabilities", "CashAndCashEquivalents"],
-                               "dimension": [False, False, False], "is_breakdown": [False, False, False],
-                               "2024": [400e9, 250e9, 50e9]})
+        inc_df = pd.DataFrame(
+            {
+                "concept": ["Revenue", "NetIncome", "OperatingIncome"],
+                "dimension": [False, False, False],
+                "is_breakdown": [False, False, False],
+                "2024": [100e9, 20e9, 30e9],
+            }
+        )
+        bs_df = pd.DataFrame(
+            {
+                "concept": ["TotalAssets", "TotalLiabilities", "CashAndCashEquivalents"],
+                "dimension": [False, False, False],
+                "is_breakdown": [False, False, False],
+                "2024": [400e9, 250e9, 50e9],
+            }
+        )
         mock_obj = MagicMock()
         mock_obj.income_statement = MagicMock(to_dataframe=MagicMock(return_value=inc_df))
         mock_obj.balance_sheet = MagicMock(to_dataframe=MagicMock(return_value=bs_df))
@@ -258,8 +288,9 @@ class TestFilingsCollectorMoreParse10K:
         mock_company.get_filings.return_value = [mock_filing]
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar",
-                            MagicMock(Company=lambda ticker: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda ticker: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         result = parse_10k("AAPL")
         assert result is not None and result["revenue"] == 100e9
 
@@ -270,8 +301,9 @@ class TestFilingsCollectorMoreParse10K:
         mock_company.get_filings.return_value = []
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar",
-                            MagicMock(Company=lambda t: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda t: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert parse_10k("AAPL") is None
 
     def test_parse_10k_exception(self, monkeypatch):
@@ -279,8 +311,9 @@ class TestFilingsCollectorMoreParse10K:
 
         from nuri.collectors.filings import parse_10k
 
-        monkeypatch.setitem(sys.modules, "edgar",
-                            MagicMock(Company=MagicMock(side_effect=Exception("EDGAR error")), set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=MagicMock(side_effect=Exception("EDGAR error")), set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert parse_10k("AAPL") is None
 
     def test_parse_10k_no_data_fields(self, monkeypatch):
@@ -296,22 +329,29 @@ class TestFilingsCollectorMoreParse10K:
         mock_company.get_filings.return_value = [mock_filing]
         import sys
 
-        monkeypatch.setitem(sys.modules, "edgar",
-                            MagicMock(Company=lambda t: mock_company, set_identity=MagicMock()))
+        edgar_mock = MagicMock(Company=lambda t: mock_company, set_identity=MagicMock())
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         assert parse_10k("AAPL") is None
 
     def test_collect_filings(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.filings import collect_filings
 
-        monkeypatch.setattr("nuri.collectors.filings.parse_10k",
-                            lambda ticker: {"ticker": ticker, "filing_date": "2025-02-15", "form": "10-K", "revenue": 100e9})
+        monkeypatch.setattr(
+            "nuri.collectors.filings.parse_10k",
+            lambda ticker: {"ticker": ticker, "filing_date": "2025-02-15", "form": "10-K", "revenue": 100e9},
+        )
         assert len(collect_filings(tickers=["AAPL", "NVDA"])) == 2
 
     def test_collect_filings_some_none(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.filings import collect_filings
 
         def mock_parse(ticker):
-            return {"ticker": "AAPL", "filing_date": "2025-02-15", "form": "10-K", "revenue": 100e9} if ticker == "AAPL" else None
+            return (
+                {"ticker": "AAPL", "filing_date": "2025-02-15", "form": "10-K", "revenue": 100e9}
+                if ticker == "AAPL"
+                else None
+            )
 
         monkeypatch.setattr("nuri.collectors.filings.parse_10k", mock_parse)
         assert len(collect_filings(tickers=["AAPL", "NVDA"])) == 1
@@ -325,7 +365,18 @@ class TestFilingsCollectorMoreParse10K:
     def test_print_filings_with_data(self, capsys):
         from nuri.collectors.filings import print_filings
 
-        print_filings([{"ticker": "AAPL", "filing_date": "2025-02-15", "revenue": 100e9, "net_income": 20e9, "total_assets": 400e9, "cash": 50e9}])
+        print_filings(
+            [
+                {
+                    "ticker": "AAPL",
+                    "filing_date": "2025-02-15",
+                    "revenue": 100e9,
+                    "net_income": 20e9,
+                    "total_assets": 400e9,
+                    "cash": 50e9,
+                }
+            ]
+        )
         assert "AAPL" in capsys.readouterr().out
 
     def test_print_filings_missing_fields(self, capsys):
@@ -335,13 +386,16 @@ class TestFilingsCollectorMoreParse10K:
         assert "XYZ" in capsys.readouterr().out
 
 
-
 class TestCollectFilingsDefaultTickers:
     def test_collect_filings_default(self, monkeypatch, db_with_portfolio):
         from nuri.collectors.filings import collect_filings
 
         def mock_parse(ticker):
-            return {"ticker": ticker, "filing_date": "2025-02-15", "form": "10-K", "revenue": 50e9} if not ticker.endswith(".KS") else None
+            return (
+                {"ticker": ticker, "filing_date": "2025-02-15", "form": "10-K", "revenue": 50e9}
+                if not ticker.endswith(".KS")
+                else None
+            )
 
         monkeypatch.setattr("nuri.collectors.filings.parse_10k", mock_parse)
         results = collect_filings()

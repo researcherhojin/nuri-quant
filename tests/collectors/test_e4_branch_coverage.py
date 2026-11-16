@@ -181,8 +181,8 @@ class TestFilingsExceptionPaths:
         mock_company.get_filings.return_value = [mock_filing]
 
         with (
-            patch("edgar.set_identity"),
-            patch("edgar.Company", return_value=mock_company),
+            patch("edgar.settings.set_identity"),
+            patch("edgar.entity.Company", return_value=mock_company),
         ):
             result = parse_10k("AAPL")
         # Inc raised but balance still parsed → result is not None
@@ -216,8 +216,8 @@ class TestFilingsExceptionPaths:
         mock_company.get_filings.return_value = [mock_filing]
 
         with (
-            patch("edgar.set_identity"),
-            patch("edgar.Company", return_value=mock_company),
+            patch("edgar.settings.set_identity"),
+            patch("edgar.entity.Company", return_value=mock_company),
         ):
             result = parse_10k("AAPL")
         assert result is not None
@@ -306,7 +306,9 @@ class TestFilingsMain:
 
         fake_edgar = MagicMock()
         fake_edgar.Company.return_value.get_filings.return_value = []  # 10-K 없음 경로
-        monkeypatch.setitem(sys.modules, "edgar", fake_edgar)
+        edgar_mock = fake_edgar
+        monkeypatch.setitem(sys.modules, "edgar.entity", edgar_mock)
+        monkeypatch.setitem(sys.modules, "edgar.settings", edgar_mock)
         monkeypatch.setattr(sys, "argv", ["filings", "--ticker", "FAKE"])
         with pytest.raises(SystemExit) as exc:
             runpy.run_module("nuri.collectors.filings", run_name="__main__")

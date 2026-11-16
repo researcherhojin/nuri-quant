@@ -26,7 +26,8 @@ EDGAR_IDENTITY = "Nuri-Quant research@nuri-quant.dev"
 
 def parse_10k(ticker: str) -> dict | None:
     """최신 10-K에서 핵심 재무 지표 추출."""
-    from edgar import Company, set_identity
+    from edgar.entity import Company
+    from edgar.settings import set_identity
 
     set_identity(EDGAR_IDENTITY)
 
