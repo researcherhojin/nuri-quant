@@ -31,7 +31,9 @@ describe("Rate — 분모 없이는 렌더되지 않는다 (#1429)", () => {
 
     const fill = container.querySelector<HTMLElement>("[role=presentation] > div");
     // 62/645 = 9.61% — 100% 로 그리면(분모를 denominator 로 잡으면) 이 단언이 깨진다
-    expect(fill?.style.width).toBe(`${(62 / 645) * 100}%`);
+    // jsdom 31 은 CSS 길이를 유효숫자 몇 자리로 직렬화한다("9.6124%") — 문자열이 아니라 수치로 비교
+    expect(fill?.style.width).toMatch(/%$/);
+    expect(parseFloat(fill!.style.width)).toBeCloseTo((62 / 645) * 100, 2);
   });
 
   it("분모에서 빠진 것을 이름으로 밝힌다 — 조용한 탈락 금지", () => {
