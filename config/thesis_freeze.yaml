@@ -9,7 +9,7 @@
 #     - experiment: <ledger 의 experiment 태그>
 #       start: 2026-11-02
 #       end: 2026-11-20
-#       arms: {A: <64 hex>, B: <64 hex>, S: <64 hex>}   # A · B · S 중 얼릴 것만
+#       arms: {A: <64 hex>, B: <64 hex>, S: <64 hex>, P: <64 hex>}   # 얼릴 것만. P = 모든 팔이 읽는 근거 패킷(#2066)
 #
 # 창은 파일럿(#1964)과 사전등록(E)이 정한다.
 freezes:
@@ -17,4 +17,5 @@ freezes:
   - experiment: pilot-2026-10-28
     start: 2026-10-28
     end: 2026-11-24
-    arms: {A: 72da3275be1707718b33b9e6524438db07a1fea3f6572a1ab139e2c5dd284394, B: 844bf394addafc95966b59bd0a34c47362e1698975cb9dd412c046664bd5afba, S: bbdd7f2b0f829cfc9d7171d31bff12f95e843cc175b40830ce46588aacc41909}
+    # P 는 2026-11-16 main 의 패킷 지문(#2069 반영 뒤)을 창 도중에 더한 것 — 남은 밤의 입력을 얼린다 (#2066).
+    arms: {A: 72da3275be1707718b33b9e6524438db07a1fea3f6572a1ab139e2c5dd284394, B: 844bf394addafc95966b59bd0a34c47362e1698975cb9dd412c046664bd5afba, S: bbdd7f2b0f829cfc9d7171d31bff12f95e843cc175b40830ce46588aacc41909, P: cab9416e2e9661868956d8a0b3d9a1575175303d4d914a52060f201781deb95d}
