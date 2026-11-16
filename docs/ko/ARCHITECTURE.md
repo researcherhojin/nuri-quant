@@ -447,7 +447,7 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 - `research_sources.json`: 등록된 공개 문서 source 와 발행 주체 신원 확인. 출력 문체는 `nuri/llm/research_briefing.py` 에 있다
 - `walkforward*.yaml`, `eval/thesis_prompts.yaml`: walk-forward 검증과 thesis 평가 설정
 - `evidence.yaml`, `llm_runtime.yaml`: 로컬 thesis 근거의 신선도·예산과 런타임 식별·옵션; 대화형·리포트 설정은 별도 블록
-- `thesis_pilot.yaml`, `thesis_freeze.yaml`: 파일럿 활성화와 선언된 팔 지문; 운영 경계는 [로컬 thesis 모드](RESEARCH_BRIEFING.md#로컬-thesis-모드) 참조
+- `thesis_pilot.yaml`, `thesis_freeze.yaml`: 파일럿 활성화와 선언된 팔 지문 및 근거 패킷 지문 `P`(#2066); 운영 경계는 [로컬 thesis 모드](RESEARCH_BRIEFING.md#로컬-thesis-모드) 참조
 
 ## 스크립트 (`scripts/`)
 
