@@ -21,7 +21,7 @@ REPO = Path(__file__).resolve().parents[2]
 CFG = {"stage_prompt_budget_tokens": 1000, "memory": {"holding_sessions": 5}, "sim": {"sleeves": 5}}
 START, END = date(2026, 11, 2), date(2026, 11, 20)
 # 손으로 적지 않는다 — 팔에 파일이 더해지면 여기도 따라온다
-FROZEN_FILES = sorted(set(tc.ARM_A_FILES) | set(arm.ARM_B_FILES) | set(sim.ARM_S_FILES))
+FROZEN_FILES = sorted(set(tc.ARM_A_FILES) | set(arm.ARM_B_FILES) | set(sim.ARM_S_FILES) | set(tf.PACKET_FILES))
 
 
 def test_the_declared_windows_hold_today():
@@ -80,6 +80,22 @@ class TestDoneWhen:
         out = tf.violations(frozen(), START, tf.current_hashes({**CFG, **change}))
         assert [v.split(" arm ")[1][0] for v in out] == moved
 
+    @pytest.mark.parametrize("name", tf.PACKET_FILES)
+    def test_a_packet_file_moves_only_p(self, llm_copy, name):
+        """패킷 파일은 어느 팔 지문에도 없다 — P 만 움직이고, 그래서 열린 창의 A · B · S 는 그대로다 (#2066)."""
+        before = tf.current_hashes(CFG)
+        (llm_copy / name).write_bytes((llm_copy / name).read_bytes() + b"\n# edit\n")
+        after = tf.current_hashes(CFG)
+        assert [k for k in before if before[k] != after[k]] == [tf.PACKET]
+
+    def test_the_evidence_config_moves_only_p(self, tmp_path, monkeypatch):
+        before = tf.current_hashes(CFG)
+        p = tmp_path / "evidence.yaml"
+        p.write_text(tf.EVIDENCE_CONFIG.read_text() + "\nextra_for_test: 1\n")
+        monkeypatch.setattr(tf, "EVIDENCE_CONFIG", p)
+        after = tf.current_hashes(CFG)
+        assert [k for k in before if before[k] != after[k]] == [tf.PACKET]
+
     def test_only_the_declared_arms_are_frozen(self):
         only_a = [tf.Freeze("pilot", START, END, {"A": tf.current_hashes(CFG)["A"]})]
         assert tf.violations(only_a, START, tf.current_hashes({**CFG, "sim": {"sleeves": 4}})) == []
@@ -101,6 +117,10 @@ class TestFreezeFile:
             f"    arms: {{B: {'b' * 64}}}\n"
         )
         assert tf.load(p) == [tf.Freeze("pilot", START, END, {"B": "b" * 64})]
+
+    def test_the_open_pilot_window_freezes_the_packet(self):
+        """Done when (#2066) — 실제 선언이 패킷을 얼린다. 위 파라미터 테스트가 패킷 파일 편집을 창 안에서 빨갛게 만든다."""
+        assert any(tf.PACKET in f.arms for f in tf.load(REPO / tf.FREEZE_PATH))
 
     @pytest.mark.parametrize(
         "text",
@@ -131,6 +151,7 @@ class TestFreezeFile:
             {"freezes": [entry(start=END, end=START)]},
             {"freezes": [entry(arms={})]},
             {"freezes": [entry(arms={"C": "a" * 64})]},
+            {"freezes": [entry(arms={"p": "a" * 64})]},
             {"freezes": [entry(arms={"A": "A" * 64})]},
             {"freezes": [entry(arms={"A": "a" * 63})]},
             {"freezes": [entry(arms={"A": None})]},

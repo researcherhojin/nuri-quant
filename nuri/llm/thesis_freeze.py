@@ -7,6 +7,9 @@
 - **검사** — fast 테스트가 지금 지문을 다시 계산해, 오늘이 창 안이고 지문이 다르면 실패한다. 네트워크 · DB 없음.
 - **같은 지문** — A · B · S 가 원장에 쓰는 것과 같은 계산이어야 한다. A · S 는 실행 안에서 바로 계산하므로 여기서
   같은 식을 쓰고, 각 팔 테스트가 `run["arm_hash"] == current_hashes(cfg)[arm]` 로 묶는다.
+- **패킷 지문 `P`** — 모든 팔이 읽는 근거 묶음을 만드는 파일 · `config/evidence.yaml` 은 어느 팔 지문에도 없다.
+  팔 지문에 합치면 열린 창의 A · B · S 가 모두 움직이므로 따로 둔다(#2066). 런타임 설정은 넣지 않는다 — 모델이
+  바뀌어도 패킷은 그대로다. 팔이 아니라 원장에는 없고, 창이 `P` 를 적었을 때만 얼린다.
 - **잘못 쓴 선언은 실패** — 오타 하나로 가드가 꺼지지 않게, 모르는 키 · 팔, 중복 키, 64자 hex 가 아닌 지문,
   따옴표 날짜, start > end 를 모두 거부한다.
 
@@ -26,6 +29,7 @@ from typing import Any
 import yaml
 
 from nuri.core.timezone import kst_now
+from nuri.llm import evidence as ev
 from nuri.llm import local_client as lc
 from nuri.llm import thesis_arm as arm
 from nuri.llm import thesis_contract as tc
@@ -33,6 +37,9 @@ from nuri.llm import thesis_sim as sim
 
 FREEZE_PATH = Path("config/thesis_freeze.yaml")
 ARMS = ("A", "B", "S")
+PACKET = "P"
+PACKET_FILES: tuple[str, ...] = ("evidence.py", "live_news.py", "tradingagents/yahoo_news.py")
+EVIDENCE_CONFIG = Path(ev.__file__).resolve().parents[2] / ev.CONFIG_PATH
 _HASH = re.compile(r"[0-9a-f]{64}")
 _KEYS = {"experiment", "start", "end", "arms"}
 
@@ -46,13 +53,15 @@ class Freeze:
 
 
 def current_hashes(cfg: dict[str, Any]) -> dict[str, str]:
-    """원장에 기록되는 팔별 지문 — A 는 `run_baseline`, B 는 `arm_b_hash`, S 는 `run_arm_s` 와 같은 식."""
+    """원장에 기록되는 팔별 지문 — A 는 `run_baseline`, B 는 `arm_b_hash`, S 는 `run_arm_s` 와 같은 식. `P` 는
+    패킷 지문(원장에 없음)."""
     return {
         "A": tc.definition_hash(tc.ARM_A_FILES, cfg, tc.ARM_A_TEXTS),
         "B": arm.arm_b_hash(cfg),
         "S": tc.definition_hash(
             sim.ARM_S_FILES, cfg, (tc._canonical(cfg.get("memory")), tc._canonical(cfg.get("sim")))
         ),
+        PACKET: tc.definition_hash(PACKET_FILES, {}, (tc._canonical(ev.load_config(EVIDENCE_CONFIG)),)),
     }
 
 
@@ -77,8 +86,8 @@ def parse(doc: Any) -> list[Freeze]:
         if start > end:
             raise ValueError(f"{where}: start is after end")
         arms = e["arms"]
-        if not isinstance(arms, dict) or not arms or not set(arms) <= set(ARMS):
-            raise ValueError(f"{where}: arms maps a non-empty subset of {list(ARMS)} to hashes")
+        if not isinstance(arms, dict) or not arms or not set(arms) <= {*ARMS, PACKET}:
+            raise ValueError(f"{where}: arms maps a non-empty subset of {[*ARMS, PACKET]} to hashes")
         for k, h in arms.items():
             if not isinstance(h, str) or not _HASH.fullmatch(h):
                 raise ValueError(f"{where}.arms.{k}: a 64-character lowercase hex hash is required")
