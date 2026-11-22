@@ -66,6 +66,11 @@ docs/SOURCE_OF_TRUTH.md
 # 취약점 지도에 가깝다. 사용자 결정 (2026-08-18): local-only.
 docs/DECISION_SYSTEM_ROADMAP.md
 
+# 로컬 전용 자격 증명, 운영 문서, 운영 스크립트.
+/.private/
+/docs/private/
+/scripts/private/
+
 # TLS/SSL 인증서 + 개인 키 (defense-in-depth)
 *.pem
 *.key
@@ -168,12 +173,12 @@ test-results/
 *.cover
 
 # ─── Data & runtime artifacts ──────────────────────────────────
-# SQLite DB files in data/ — glob form so future DB names (e.g. nuri.db,
-# nuri.db-wal) are caught automatically. Only matches direct children;
-# tests/fixtures/*.db remain trackable.
+# SQLite DB files and sidecars in data/. Only matches direct children,
+# so tests/fixtures/*.db remain trackable.
 data/*.db
-data/*.db-wal
-data/*.db-shm
+data/*.db-*
+data/*.sqlite-*
+data/*.sqlite3-*
 data/backups/
 # state_replicator 가 push 하는 prod DB 사본 — #947 이후 실제로 생성된다
 data/replicas/
@@ -252,7 +257,7 @@ frontend/test-results/
 # project-scoped assets so any Claude Code user working on this repo
 # picks them up automatically.
 #
-# Skills allowlist: project 전용 `nuri-*` prefix 만 tracked.
+# Skills allowlist: 프로젝트 `nuri-*`의 SKILL.md만 공유.
 # 머신별 개인 설치 skill (agents-langchain, prompt-engineer 등) 은
 # 자동 ignored — repo 를 clone 한 다른 환경에 강제되지 않음.
 .claude/*
@@ -260,6 +265,8 @@ frontend/test-results/
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/nuri-*/
+.claude/skills/nuri-*/*
+!.claude/skills/nuri-*/SKILL.md
 !.claude/agents/
 .claude/agents/*
 !.claude/agents/nuri-*.md
@@ -272,6 +279,8 @@ frontend/test-results/
 .claude/output-styles/*
 !.claude/output-styles/nuri-*.md
 !.claude/commands/nuri-*.md
+# 공유 규칙보다 로컬 표시가 우선한다.
+*.local.md
 
 # ─── OS ────────────────────────────────────────────────────────
 .DS_Store
