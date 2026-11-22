@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="473" viewBox="0 0 1200 473" role="img" aria-labelledby="title description">
+  <title id="title">Production deployment</title>
+  <desc id="description">GitHub Actions checks the main commit. The launchd receiver fetches main and checks CI for the exact SHA. After success it fast-forwards and applies affected changes. Runtime checks verify the services.</desc>
+  <defs>
+    <style>
+      svg { --ink: #17243a; --muted: #40516b; --edge: #516884; --border: #9cacc0; --canvas: #fff;
+             --neutral: #f1f5f9; --panel: #f8fbff; --blue: #e5f1ff; --blue-border: #6e99c9;
+             --green: #e6f6ee; --green-border: #5e9a7c; --gold: #fff1d7; --gold-border: #ae803c; }
+      @media (prefers-color-scheme: dark) {
+        svg { --ink: #f0f6fc; --muted: #bdcde1; --edge: #a4bad4; --border: #64758a; --canvas: #0d1117;
+               --neutral: #1a2636; --panel: #141e2c; --blue: #162e4c; --blue-border: #6da5e4;
+               --green: #18392f; --green-border: #6db69a; --gold: #3e3020; --gold-border: #d3a15e; }
+      }
+      text { fill: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .title { font-size: 34px; font-weight: 750; }
+      .section { font-size: 17px; font-weight: 750; letter-spacing: 1px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 19px; fill: var(--muted); }
+      .route { font-size: 17px; font-weight: 600; fill: var(--muted); }
+      rect { stroke-width: 1.6; }
+      .canvas { fill: var(--canvas); stroke: var(--border); }
+      .panel { fill: var(--panel); stroke: var(--blue-border); }
+      .neutral { fill: var(--neutral); stroke: var(--border); }
+      .blue { fill: var(--blue); stroke: var(--blue-border); }
+      .green { fill: var(--green); stroke: var(--green-border); }
+      .gold { fill: var(--gold); stroke: var(--gold-border); }
+      .arrow { fill: none; stroke: var(--edge); stroke-width: 2.5; marker-end: url(#tip); }
+      .auxiliary { stroke-dasharray: 6 5; }
+      .tip { fill: none; stroke: var(--edge); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 9 5 1 9" class="tip"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="471" rx="24" class="canvas"/>
+  <text x="36" y="55" class="title">Production deployment</text>
+
+  <text x="36" y="86" class="body">A successful main run gates each production update</text>
+  <rect x="36" y="112" width="239" height="194" rx="18" class="neutral"/>
+  <text x="54" y="143" class="section">DEVELOPMENT</text>
+  <rect x="53" y="170" width="203" height="89" rx="14" class="neutral"/>
+  <text x="71" y="202" class="heading">Git push</text>
+  <text x="71" y="228" class="body">Submit changes</text>
+  <rect x="333" y="112" width="361" height="194" rx="18" class="panel"/>
+  <text x="351" y="143" class="section">GITHUB</text>
+  <rect x="352" y="170" width="155" height="89" rx="14" class="gold"/>
+  <text x="370" y="202" class="heading">main</text>
+  <text x="370" y="228" class="body">Commit SHA</text>
+  <rect x="558" y="170" width="116" height="89" rx="14" class="gold"/>
+  <text x="576" y="202" class="heading">Main CI</text>
+  <text x="576" y="228" class="body">Checks</text>
+  <rect x="752" y="112" width="412" height="194" rx="18" class="panel"/>
+  <text x="770" y="143" class="section">PRODUCTION MAC MINI · LAUNCHD</text>
+  <rect x="772" y="170" width="371" height="89" rx="14" class="blue"/>
+  <text x="790" y="202" class="heading">Autopull receiver</text>
+  <text x="790" y="228" class="body">Fetches and verifies the exact SHA</text>
+  <path id="push-main" d="M257 214H351" class="arrow"/>
+  <path id="main-ci" d="M508 214H557" class="arrow"/>
+  <path id="autopull-ci" d="M771 214H675" class="arrow auxiliary"/>
+  <rect x="36" y="334" width="1128" height="113" rx="18" class="neutral"/>
+  <text x="54" y="365" class="section">AFTER CI SUCCEEDS</text>
+  <text x="58" y="400" class="heading">Fast-forward</text>
+  <text x="58" y="426" class="body">Updates the checkout</text>
+  <path id="fast-forward-rebuild" d="M315 400H379" class="arrow"/>
+  <text x="407" y="400" class="heading">Apply affected changes</text>
+  <text x="407" y="426" class="body">Sync, rebuild or restart as needed</text>
+  <path id="rebuild-health" d="M789 400H842" class="arrow"/>
+  <text x="869" y="400" class="heading">Runtime checks</text>
+  <text x="869" y="426" class="body">API and scheduler health</text>
+</svg>

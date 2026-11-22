@@ -21,6 +21,12 @@ for API liveness. [Fresh-clone walkthrough](../docs/FRESH_CLONE_SETUP.md)
 | `DASHBOARD_PASSWORD` | Enables cookie authentication when set. Read from `frontend/.env.local`, not the repository-root `.env` |
 | `AUTH_SECRET` | Cookie signing key (falls back to `DASHBOARD_PASSWORD`) |
 
+## Architecture
+
+![Dashboard page requests and API routes through Next.js to FastAPI and SQLite](../.github/assets/frontend-architecture.svg)
+
+The production API binds to loopback. Browser API calls use relative URLs through Next.js. [Production processes](../docs/ARCHITECTURE.md#processes-and-deployment)
+
 ## Commands
 
 ```bash

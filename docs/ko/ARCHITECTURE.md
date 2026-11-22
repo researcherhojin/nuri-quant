@@ -2,7 +2,7 @@
 
 *English (official) edition: [../ARCHITECTURE.md](../ARCHITECTURE.md)*
 
-`main`의 데이터 흐름, 실행 프로세스, 검증 절차를 다룬다. 추천 흐름은 [README 개요](../../README.md#system-overview)에서, 로컬 실행 절차는 [새 클론 설정 가이드](FRESH_CLONE_SETUP.md)에서 볼 수 있다.
+`main`의 데이터 흐름, 실행 프로세스, 검증 절차를 다룬다. 배포 구성은 [README 아키텍처](../../README.md#architecture)에서, 로컬 실행 절차는 [새 클론 설정 가이드](FRESH_CLONE_SETUP.md)에서 볼 수 있다.
 
 `make verify-doc-counts`는 `scripts/verify/verify_doc_counts.sh`에 지정한 문서 수치를 검사한다. 수치별 측정 명령은 [수치 claim 검증](#수치-claim-검증)에 있다.
 
@@ -12,19 +12,25 @@
 
 ```mermaid
 flowchart LR
-    SRC["External sources<br/>prices · macro · news · filings"]
-    COL["Collect<br/>scheduled collector jobs"]
-    TAB[("Collector tables<br/>prices · signals · macro · macro_events · …")]
-    PF[("portfolio<br/>imported by the operator")]
-    FAC["Analyze<br/>factors"]
-    CON["Consensus<br/>specialist agents · risk veto"]
-    REC[("recommendations")]
-    DEC[("decisions · decision_evidence")]
-    BUY["BUY candidates<br/>pre-market brief"]
-    TRK["Track<br/>outcomes · alpha"]
-    OUTCOMES[("decision_outcomes")]
-    OUT["Delivery<br/>Discord · dashboard"]
-    YOU(["Operator places every order by hand"])
+    subgraph INPUTS["Inputs"]
+        SRC["External sources<br/>prices · macro · news · filings"]
+        PF[("Portfolio")]
+    end
+    subgraph RESEARCH["Scheduled research"]
+        COL["Collect"]
+        TAB[("Collector tables")]
+        FAC["Analyze<br/>factors"]
+        CON["Consensus<br/>specialist agents · risk veto"]
+        REC[("recommendations")]
+        DEC[("decisions · decision_evidence")]
+        BUY["BUY candidates<br/>pre-market brief"]
+        TRK["Track<br/>outcomes · alpha"]
+        OUTCOMES[("decision_outcomes")]
+    end
+    subgraph DELIVERY["Delivery"]
+        OUT["Discord · dashboard"]
+        YOU(["Operator places every order by hand"])
+    end
 
     SRC --> COL --> TAB
     TAB --> CON
@@ -47,6 +53,8 @@ flowchart LR
     class COL,FAC,CON,BUY,TRK,OUT step
     class SRC,TAB,PF,REC,DEC,OUTCOMES store
     class YOU human
+    classDef zone fill:none,stroke:#94a3b8,stroke-width:1px
+    class INPUTS,RESEARCH,DELIVERY zone
 ```
 
 다이어그램은 주 경로를 보여 준다. 표는 각 단계의 입력과 출력을 나열하며, 기록 관리용 쓰기(`collector_runs` 와 `pipeline_events` 의 lifecycle event)는 생략했다.
@@ -181,6 +189,8 @@ outcome tracking 은 07:05 의 consensus job 보다 앞선 07:02 로 스케줄�
 시각은 호스트 로컬 시간이며, production 호스트는 KST 로 동작한다. 평일 cron 은 휴장일 달력을 참조하지 않으므로 거래소 휴장일에도 실행된다. KST 자정 이후에 걸리는 미국 세션 job(가격 polling 과 refresh, `technical`, `ark`, 미국 post-market brief)은 KST 기준 화요일부터 토요일까지 실행된다. 주간 batch(fundamentals, 13F filing, estimates, analyst rating, 가격 backfill)는 일요일에 실행된다. 어떤 스테이지 job 이든 단독으로 다시 실행할 수 있다. 입력을 데이터베이스나 외부 API 에서 읽기 때문이다. 결정 기록은 예외다. 입력을 메모리로 받으므로 consensus 를 다시 실행해야만(`make consensus`) 다시 만들어진다.
 
 ### 프로세스와 배포
+
+![Nuri-Quant 운영 서비스, 데이터 흐름과 배포](../../.github/assets/architecture.svg)
 
 production 은 호스트 한 대에서 launchd(`scripts/launchd/`) 아래 실행된다. scheduler, API, dashboard(`npm run start`), Discord bot, autopull receiver, state replicator, heartbeat watchdog, SRE scan 용 LaunchAgent 가 있고, 여기에 머신 자체를 보고하는 system LaunchDaemon(`system/com.nuri-quant.machine-alive.plist`)이 더해진다. `health-check` plist 는 디렉터리에 남아 있지만 설치하지 않는다 — 그 schema·table·writer-role 점검은 SRE detector 로 돈다(#939, #952). `scripts/ops/health_check.sh` 는 Discord `/health` 명령으로 필요할 때 실행된다.
 

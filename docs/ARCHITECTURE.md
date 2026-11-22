@@ -2,7 +2,7 @@
 
 *Korean edition: [ko/ARCHITECTURE.md](ko/ARCHITECTURE.md)*
 
-This reference describes the data paths, runtime processes and checks on `main`. Start with the [README overview](../README.md#system-overview) for the recommendation path or the [fresh-clone guide](FRESH_CLONE_SETUP.md) to run it locally.
+This reference describes the data paths, runtime processes and checks on `main`. Start with the [README architecture](../README.md#architecture) for the deployed components or the [fresh-clone guide](FRESH_CLONE_SETUP.md) to run it locally.
 
 `make verify-doc-counts` checks the documented counts listed in `scripts/verify/verify_doc_counts.sh`. The commands behind individual measurements are listed under [Verifying Numeric Claims](#verifying-numeric-claims).
 
@@ -12,19 +12,25 @@ The system turns public market data and the operator's holdings into a dated BUY
 
 ```mermaid
 flowchart LR
-    SRC["External sources<br/>prices · macro · news · filings"]
-    COL["Collect<br/>scheduled collector jobs"]
-    TAB[("Collector tables<br/>prices · signals · macro · macro_events · …")]
-    PF[("portfolio<br/>imported by the operator")]
-    FAC["Analyze<br/>factors"]
-    CON["Consensus<br/>specialist agents · risk veto"]
-    REC[("recommendations")]
-    DEC[("decisions · decision_evidence")]
-    BUY["BUY candidates<br/>pre-market brief"]
-    TRK["Track<br/>outcomes · alpha"]
-    OUTCOMES[("decision_outcomes")]
-    OUT["Delivery<br/>Discord · dashboard"]
-    YOU(["Operator places every order by hand"])
+    subgraph INPUTS["Inputs"]
+        SRC["External sources<br/>prices · macro · news · filings"]
+        PF[("Portfolio")]
+    end
+    subgraph RESEARCH["Scheduled research"]
+        COL["Collect"]
+        TAB[("Collector tables")]
+        FAC["Analyze<br/>factors"]
+        CON["Consensus<br/>specialist agents · risk veto"]
+        REC[("recommendations")]
+        DEC[("decisions · decision_evidence")]
+        BUY["BUY candidates<br/>pre-market brief"]
+        TRK["Track<br/>outcomes · alpha"]
+        OUTCOMES[("decision_outcomes")]
+    end
+    subgraph DELIVERY["Delivery"]
+        OUT["Discord · dashboard"]
+        YOU(["Operator places every order by hand"])
+    end
 
     SRC --> COL --> TAB
     TAB --> CON
@@ -47,6 +53,8 @@ flowchart LR
     class COL,FAC,CON,BUY,TRK,OUT step
     class SRC,TAB,PF,REC,DEC,OUTCOMES store
     class YOU human
+    classDef zone fill:none,stroke:#94a3b8,stroke-width:1px
+    class INPUTS,RESEARCH,DELIVERY zone
 ```
 
 The diagram shows the main path. The table lists each step's inputs and outputs; bookkeeping writes (`collector_runs` and the lifecycle events in `pipeline_events`) are left out.
@@ -181,6 +189,8 @@ Outcome tracking is scheduled at 07:02, before the consensus job at 07:05, so th
 Times are host-local; the production host runs on KST. Weekday crons do not consult a holiday calendar, so they also fire on exchange holidays. US-session jobs that fall after midnight KST (the price polls and refreshes, `technical`, `ark` and the US post-market brief) run Tuesday to Saturday KST; the weekly batch (fundamentals, 13F filings, estimates, analyst ratings and the price backfills) runs on Sunday. Any stage job can be re-run on its own, because it reads its inputs from the database or an external API. The decision record is the exception: it receives its input in memory, so it is re-created only by re-running consensus (`make consensus`).
 
 ### Processes and Deployment
+
+![Nuri-Quant production services, data paths and deployment](../.github/assets/architecture.svg)
 
 Production runs on one host under launchd (`scripts/launchd/`): LaunchAgents for the scheduler, the API, the dashboard (`npm run start`), the Discord bot, the autopull receiver, the state replicator, the heartbeat watchdog and the SRE scan, plus a system LaunchDaemon (`system/com.nuri-quant.machine-alive.plist`) that reports the machine itself. The `health-check` plist stays in the directory but is not installed: its schema, table and writer-role checks run as SRE detectors (#939, #952), and `scripts/ops/health_check.sh` runs on demand from the Discord `/health` command.
 
