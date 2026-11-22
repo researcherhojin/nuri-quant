@@ -2,7 +2,9 @@
 
 *Korean edition: [ko/ARCHITECTURE.md](ko/ARCHITECTURE.md)*
 
-Detailed reference for Nuri-Quant internals: how data moves through the system, what runs when, and where each piece lives. Statements here are checked against the code; `make verify-doc-counts` checks the counts stated here against the code (its site list is in `scripts/verify/verify_doc_counts.sh`), and [Verifying Numeric Claims](#verifying-numeric-claims) gives the commands that measure them. This file is not auto-loaded; read it when working on cross-cutting concerns.
+This reference describes the data paths, runtime processes and checks on `main`. Start with the [README overview](../README.md#system-overview) for the recommendation path or the [fresh-clone guide](FRESH_CLONE_SETUP.md) to run it locally.
+
+`make verify-doc-counts` checks the documented counts listed in `scripts/verify/verify_doc_counts.sh`. The commands behind individual measurements are listed under [Verifying Numeric Claims](#verifying-numeric-claims).
 
 ## System Flow
 
@@ -21,7 +23,7 @@ flowchart LR
     BUY["BUY candidates<br/>pre-market brief"]
     TRK["Track<br/>outcomes · alpha"]
     OUTCOMES[("decision_outcomes")]
-    OUT["Delivery<br/>Discord · dashboard · MCP"]
+    OUT["Delivery<br/>Discord · dashboard"]
     YOU(["Operator places every order by hand"])
 
     SRC --> COL --> TAB
@@ -525,6 +527,8 @@ If a count disagrees with this document, fix the document.
 ## CI/CD Pipeline (`main-ci-cd.yml`)
 
 On push and pull request to `main`. A `Detect Changes` job decides which areas a pull request touches; the jobs for untouched areas fast-pass so their required checks still report. The required set is defined by branch protection; `.claude/rules/enforcement.md` describes it.
+
+Open the run for the commit you want to verify and inspect the individual jobs. Pull requests run fast backend shards when selected, and runs on `main` also run the slow shards. On a documentation-only pull request the code test jobs can fast-pass. For runtime status, check the [runtime topology](#runtime-topology) and the [pipeline health surfaces](#pipeline-observability).
 
 1. **Lint**: `ruff check nuri/ tests/ scripts/` + `pyright` with zero errors (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
 2. **Test**: pytest with xdist in a fast-shard matrix, plus 2 slow shards that run on every `main` run, push or dispatch, never on PRs (shard counts are defined in `main-ci-cd.yml`); `Backend Tests` aggregates them and `Backend Tests · Coverage Aggregate` combines their coverage. TA-Lib is cached. Dependencies are installed with `uv sync --frozen --extra dev`; the `local-llm` extra is excluded on purpose (#1406, sdist compile). A separate `Local-LLM Build Gate` job (required check) builds and imports the locked `llama-cpp-python` once — on a PR only when `pyproject.toml`, `uv.lock` or `main-ci-cd.yml` changes, and on every non-PR run (push to main, manual dispatch). Per-test DB isolation copies go to tmpfs via `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` (#1414). Push-to-main shards also record per-test durations (`--store-durations --clean-durations`) and upload `durations-fast-N` artifacts; `make sync-test-durations-from-ci` rebuilds `.test_durations` from the latest runs (fail-closed merge + cross-run median, `scripts/ci/merge_test_durations.py`).

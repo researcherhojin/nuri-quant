@@ -4,7 +4,7 @@
 
 > 범위: 초기화 가능한 개발 환경. 운영 판정 원장에 초기화 명령을 실행하지 않는다. 아래 날짜별 smoke 로그는 당시 증거이며, 새 clone 실행 결과나 현재 서비스 정상 상태를 보장하지 않는다.
 
-Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다. PR CI 가 확인하지 않는 end-to-end 시나리오를 수동으로 검증한다. #272 Phase 5 (2026-04-15) 기준.
+Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다. 로컬 설치에서 실제 시장 데이터 소스를 사용해 동작을 확인한다. GitHub Actions의 브라우저 테스트는 시드 데이터베이스를 사용한다. [CI와 테스트](ARCHITECTURE.md#cicd-pipeline-main-ci-cdyml)
 
 > **실행 시점**: fresh clone, 환경 초기화 후, 주요 dependency 업그레이드 후, 분기별 헬스 체크. PR 마다 실행하지 않는다. 네트워크 작업에 20-30분이 걸리고 외부 API 상태에 따라 결과가 달라진다.
 
@@ -70,6 +70,12 @@ make start                       # API :8001 + Dashboard :3000
 ## 3. Expected Success Signals
 
 각 스텝 완료 후 확인할 출력이다. 성공 신호가 나오지 않으면 섹션 4 의 triage 를 따른다.
+
+`make start` 실행 중 새 터미널에서 API를 확인하고 브라우저에서 대시보드를 연다. API의 정상 응답은 `{"status":"ok"}`이다. 수집 데이터가 채워졌는지는 대시보드의 데이터 최신성 화면에서 확인한다. [대시보드 개요](OVERVIEW.md)
+
+```bash
+curl -fsS http://localhost:8001/api/health
+```
 
 | 스텝 | 성공 신호 | 실패 신호 |
 |------|----------|----------|
