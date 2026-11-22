@@ -10,47 +10,6 @@
 
 </div>
 
-## System overview
-
-```mermaid
-flowchart LR
-    subgraph INPUTS["Inputs"]
-        SRC["Market data<br/>prices · news · macro"]
-        PF[("Portfolio")]
-    end
-    subgraph RESEARCH["Scheduled research"]
-        COL["Collect"]
-        TAB[("Market tables")]
-        CON["Consensus<br/>specialist agents"]
-        REC[("Recommendations")]
-        DEC[("Decisions<br/>and evidence")]
-    end
-    subgraph DELIVERY["Delivery"]
-        OUT["Dashboard<br/>and Discord"]
-        YOU(["Operator trades by hand"])
-    end
-
-    SRC --> COL --> TAB --> CON
-    PF --> CON
-    CON --> REC
-    CON ==>|in memory| DEC
-    REC -.->|outcomes| CON
-    REC & DEC --> OUT --> YOU
-
-    classDef process stroke:#3b82f6,stroke-width:2px
-    classDef store stroke:#64748b,stroke-width:2px
-    classDef delivery stroke:#16a34a,stroke-width:2px
-    classDef inputsZone fill:none,stroke:#64748b
-    classDef researchZone fill:none,stroke:#3b82f6
-    classDef deliveryZone fill:none,stroke:#16a34a
-    class COL,CON process
-    class TAB,PF,REC,DEC store
-    class OUT,YOU delivery
-    class INPUTS inputsZone
-    class RESEARCH researchZone
-    class DELIVERY deliveryZone
-```
-
 > **Project status.** This overview follows `main`. GitHub Releases is currently empty. [Releases](https://github.com/researcherhojin/nuri-quant/releases) · [Architecture reference](docs/ARCHITECTURE.md)
 >
 > **What a green CI badge means.** The linked GitHub Actions run passed the checks selected for that commit. The run details show which jobs exercised code. Production service health and investment evaluation have their own evidence. [CI and testing](docs/ARCHITECTURE.md#cicd-pipeline-main-ci-cdyml) · [Runtime topology](docs/ARCHITECTURE.md#runtime-topology) · [Evaluation policy](docs/STRATEGY.md#311-small-stake--measurement-mode--the-systems-burden-of-proof-for-alpha-824828-2026-07-07)
@@ -99,7 +58,13 @@ make help         # every target
 
 ## Architecture
 
-The overview above follows the daily recommendation path. The scheduler registers independent jobs. Consensus hands its result to `record_decisions()` in memory, and the next consensus run reads completed recommendation outcomes to weight its agents. The analysis job also supplies the US pre-market BUY-candidate screen. [Architecture reference](docs/ARCHITECTURE.md#system-flow)
+![Nuri-Quant architecture showing browser traffic, the Mac mini services, SQLite, external data and deployment](.github/assets/architecture.svg)
+
+The browser connects to Next.js on port 3000. Next.js forwards API requests to FastAPI on the same host. The scheduler runs independently and updates the production SQLite ledger, which also holds the queue for Discord briefs and alerts. The operator places every order by hand. [Processes and deployment](docs/ARCHITECTURE.md#processes-and-deployment)
+
+### Research stages
+
+The scheduler registers independent jobs. Consensus passes its result to `record_decisions()` in memory and uses completed recommendation outcomes to weight the agents. The analysis job supplies the US pre-market BUY-candidate screen. [System flow](docs/ARCHITECTURE.md#system-flow)
 
 | Stage | Package | Runs as | Writes |
 |-------|---------|---------|--------|

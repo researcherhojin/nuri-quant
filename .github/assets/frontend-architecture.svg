@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title description">
+  <title id="title">Dashboard request paths</title>
+  <desc id="description">Page requests and relative API requests reach Next.js. Server Components fetch FastAPI directly. The Next.js rewrite forwards browser API calls. FastAPI reads and updates SQLite.</desc>
+  <defs>
+    <style>
+      svg { --ink: #17243a; --muted: #40516b; --edge: #516884; --border: #9cacc0; --canvas: #fff;
+             --neutral: #f1f5f9; --panel: #f8fbff; --blue: #e5f1ff; --blue-border: #6e99c9;
+             --green: #e6f6ee; --green-border: #5e9a7c; --gold: #fff1d7; --gold-border: #ae803c; }
+      @media (prefers-color-scheme: dark) {
+        svg { --ink: #f0f6fc; --muted: #bdcde1; --edge: #a4bad4; --border: #64758a; --canvas: #0d1117;
+               --neutral: #1a2636; --panel: #141e2c; --blue: #162e4c; --blue-border: #6da5e4;
+               --green: #18392f; --green-border: #6db69a; --gold: #3e3020; --gold-border: #d3a15e; }
+      }
+      text { fill: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .title { font-size: 34px; font-weight: 750; }
+      .section { font-size: 17px; font-weight: 750; letter-spacing: 1px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 19px; fill: var(--muted); }
+      .route { font-size: 17px; font-weight: 600; fill: var(--muted); }
+      rect { stroke-width: 1.6; }
+      .canvas { fill: var(--canvas); stroke: var(--border); }
+      .panel { fill: var(--panel); stroke: var(--blue-border); }
+      .neutral { fill: var(--neutral); stroke: var(--border); }
+      .blue { fill: var(--blue); stroke: var(--blue-border); }
+      .green { fill: var(--green); stroke: var(--green-border); }
+      .gold { fill: var(--gold); stroke: var(--gold-border); }
+      .arrow { fill: none; stroke: var(--edge); stroke-width: 2.5; marker-end: url(#tip); }
+      .auxiliary { stroke-dasharray: 6 5; }
+      .tip { fill: none; stroke: var(--edge); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 9 5 1 9" class="tip"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="418" rx="24" class="canvas"/>
+  <text x="36" y="55" class="title">Dashboard request paths</text>
+
+  <text x="36" y="86" class="body">Page requests and same-origin API requests</text>
+  <text x="36" y="143" class="section">CLIENT</text>
+  <rect x="36" y="183" width="215" height="108" rx="14" class="neutral"/>
+  <text x="54" y="215" class="heading">Web browser</text>
+  <text x="54" y="241" class="body">Pages and client fetch</text>
+  <rect x="304" y="107" width="362" height="287" rx="18" class="panel"/>
+  <text x="322" y="138" class="section">NEXT.JS · PORT 3000</text>
+  <rect x="325" y="155" width="319" height="83" rx="14" class="blue"/>
+  <text x="343" y="187" class="heading">Server Components</text>
+  <text x="343" y="213" class="body">Render data pages</text>
+  <rect x="325" y="278" width="319" height="83" rx="14" class="blue"/>
+  <text x="343" y="310" class="heading">/api/* rewrite</text>
+  <text x="343" y="336" class="body">Forward browser API requests</text>
+  <rect x="760" y="107" width="404" height="287" rx="18" class="panel"/>
+  <text x="778" y="138" class="section">FASTAPI · PORT 8001</text>
+  <rect x="785" y="155" width="355" height="83" rx="14" class="gold"/>
+  <text x="803" y="187" class="heading">Dashboard endpoints</text>
+  <text x="803" y="213" class="body">Loopback in production</text>
+  <rect x="785" y="278" width="355" height="83" rx="14" class="green"/>
+  <text x="803" y="310" class="heading">SQLite WAL</text>
+  <text x="803" y="336" class="body">Reads and updates</text>
+  <path id="browser-pages" d="M252 204H324" class="arrow"/>
+  <path id="browser-rewrite" d="M252 268H281V320H324" class="arrow"/>
+  <path id="pages-api" d="M645 196H784" class="arrow"/>
+  <text x="715" y="183" class="route" text-anchor="middle">server fetch</text>
+  <path id="rewrite-api" d="M645 321H710V218H784" class="arrow"/>
+  <path id="api-sqlite" d="M963 239V277" class="arrow"/>
+</svg>

@@ -45,6 +45,10 @@ scripts/
 
 ## deploy/ — deploy + sync between machines
 
+![개발 환경, GitHub CI, Mac mini 자동 배포 흐름](../.github/assets/deployment.svg)
+
+자동 배포는 같은 커밋의 main CI 성공을 확인한 뒤 변경된 영역을 반영한다. [배포 프로세스](../docs/ko/ARCHITECTURE.md#프로세스와-배포)
+
 | Script | Purpose | Use |
 |---|---|---|
 | `deploy_remote.sh` | generic SSH push (rsync) | `make deploy` |

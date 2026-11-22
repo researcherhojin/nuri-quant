@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="686" viewBox="0 0 1200 686" role="img" aria-labelledby="title description">
+  <title id="title">Nuri-Quant architecture</title>
+  <desc id="description">Browsers reach Next.js on port 3000. FastAPI listens at 127.0.0.1:8001 and uses SQLite WAL. The scheduler collects market data. The outbox sends briefs and alerts to Discord. Main CI gates autopull.</desc>
+  <defs>
+    <style>
+      svg { --ink: #17243a; --muted: #40516b; --edge: #516884; --border: #9cacc0; --canvas: #fff;
+             --neutral: #f1f5f9; --panel: #f8fbff; --blue: #e5f1ff; --blue-border: #6e99c9;
+             --green: #e6f6ee; --green-border: #5e9a7c; --gold: #fff1d7; --gold-border: #ae803c; }
+      @media (prefers-color-scheme: dark) {
+        svg { --ink: #f0f6fc; --muted: #bdcde1; --edge: #a4bad4; --border: #64758a; --canvas: #0d1117;
+               --neutral: #1a2636; --panel: #141e2c; --blue: #162e4c; --blue-border: #6da5e4;
+               --green: #18392f; --green-border: #6db69a; --gold: #3e3020; --gold-border: #d3a15e; }
+      }
+      text { fill: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .title { font-size: 34px; font-weight: 750; }
+      .section { font-size: 17px; font-weight: 750; letter-spacing: 1px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .body { font-size: 19px; fill: var(--muted); }
+      .route { font-size: 17px; font-weight: 600; fill: var(--muted); }
+      rect { stroke-width: 1.6; }
+      .canvas { fill: var(--canvas); stroke: var(--border); }
+      .panel { fill: var(--panel); stroke: var(--blue-border); }
+      .neutral { fill: var(--neutral); stroke: var(--border); }
+      .blue { fill: var(--blue); stroke: var(--blue-border); }
+      .green { fill: var(--green); stroke: var(--green-border); }
+      .gold { fill: var(--gold); stroke: var(--gold-border); }
+      .arrow { fill: none; stroke: var(--edge); stroke-width: 2.5; marker-end: url(#tip); }
+      .auxiliary { stroke-dasharray: 6 5; }
+      .tip { fill: none; stroke: var(--edge); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M1 1 9 5 1 9" class="tip"/>
+    </marker>
+  </defs>
+  <rect x="1" y="1" width="1198" height="684" rx="24" class="canvas"/>
+  <text x="36" y="55" class="title">Nuri-Quant architecture</text>
+
+  <text x="36" y="86" class="body">Dashboard requests, scheduled research, and deployment</text>
+  <text x="36" y="142" class="section">CLIENT</text>
+  <rect x="36" y="162" width="184" height="91" rx="14" class="neutral"/>
+  <text x="54" y="194" class="heading">Web browser</text>
+  <text x="54" y="220" class="body">Dashboard user</text>
+  <rect x="274" y="107" width="643" height="424" rx="18" class="panel"/>
+  <text x="292" y="138" class="section">PRODUCTION MAC MINI · LAUNCHD</text>
+  <rect x="301" y="158" width="254" height="83" rx="14" class="blue"/>
+  <text x="319" y="190" class="heading">Next.js dashboard</text>
+  <text x="319" y="216" class="body">Port 3000</text>
+  <rect x="301" y="279" width="254" height="83" rx="14" class="blue"/>
+  <text x="319" y="311" class="heading">FastAPI</text>
+  <text x="319" y="337" class="body">127.0.0.1:8001</text>
+  <rect x="658" y="279" width="232" height="83" rx="14" class="green"/>
+  <text x="676" y="311" class="heading">SQLite WAL</text>
+  <text x="676" y="337" class="body">Production ledger</text>
+  <rect x="301" y="422" width="254" height="83" rx="14" class="blue"/>
+  <text x="319" y="454" class="heading">APScheduler</text>
+  <text x="319" y="480" class="body">Independent cron jobs</text>
+  <rect x="658" y="422" width="232" height="83" rx="14" class="blue"/>
+  <text x="676" y="454" class="heading">Outbox dispatcher</text>
+  <text x="676" y="480" class="body">Sends queued alerts</text>
+  <text x="976" y="142" class="section">EXTERNAL SERVICES</text>
+  <rect x="976" y="166" width="188" height="91" rx="14" class="gold"/>
+  <text x="994" y="198" class="heading">Market APIs</text>
+  <text x="994" y="224" class="body">Prices and news</text>
+  <rect x="976" y="422" width="188" height="83" rx="14" class="gold"/>
+  <text x="994" y="454" class="heading">Discord</text>
+  <text x="994" y="480" class="body">Briefs and alerts</text>
+  <path id="browser-dashboard" d="M221 199H300" class="arrow"/>
+  <path id="dashboard-api" d="M428 242V278" class="arrow"/>
+  <text x="443" y="267" class="route">/api/*</text>
+  <path id="api-sqlite" d="M556 321H657" class="arrow"/>
+  <text x="607" y="310" class="route" text-anchor="middle">SQL</text>
+  <path id="scheduler-sqlite" d="M556 446H593V348H657" class="arrow"/>
+  <path id="dispatcher-sqlite" d="M774 421V363" class="arrow"/>
+  <text x="788" y="396" class="route">outbox</text>
+  <path id="scheduler-market" d="M521 506V521H945V211H975" class="arrow auxiliary"/>
+  <path id="dispatcher-discord" d="M891 464H975" class="arrow"/>
+  <rect x="36" y="553" width="1128" height="107" rx="18" class="neutral"/>
+  <text x="54" y="584" class="section">DELIVERY AND VERIFICATION</text>
+  <text x="58" y="620" class="heading">GitHub Actions</text>
+  <text x="58" y="645" class="body">Verifies the main commit</text>
+  <path id="ci-autopull" d="M340 620H397" class="arrow"/>
+  <text x="425" y="620" class="heading">Autopull receiver</text>
+  <text x="425" y="645" class="body">Checks that exact SHA</text>
+  <path id="autopull-host" d="M726 620H785" class="arrow"/>
+  <text x="813" y="620" class="heading">Production update</text>
+  <text x="813" y="645" class="body">Fast-forward, rebuild or restart</text>
+</svg>
