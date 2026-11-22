@@ -32,9 +32,9 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v7
-      # pre-push 훅(2d)이 spellcheck 의 유일한 층이었다 — 훅을 한 번만 지나치면 main 이 게이트를
-      # 못 넘고 이후 모든 push 가 막힌다 (#1554 → #1555, 2026-09-28). 여기서 한 겹 더 본다.
-      # `make spellcheck` 이 아니라 `spellcheck-ci` 다: 전자는 `|| true` 라 절대 실패하지 않는다.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
       - name: Spellcheck (cspell)
         run: make spellcheck-ci
       - name: Reject files over 5MB
@@ -98,6 +98,7 @@ jobs:
               # 잠금 테스트가 있는 루트 파일 (#1562): .cspell.json 만 바꾼 #1556 이 backend 로
               # 안 잡혀 `test_words_stay_sorted` 가 안 돌았고, main 이 빨간 채 다음 .py PR 이 죽었다.
               - '.cspell.json'
+              - '.cspell/**'
               # pyright 설정만 바꾼 PR 도 아래 Backend Lint 의 0 오류 검사를 거쳐야 한다 (#1831)
               - 'pyrightconfig.json'
               - '.gitignore'

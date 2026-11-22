@@ -8,6 +8,21 @@
       "path": ".cspell/tickers.txt",
       "description": "universe.yaml 티커 정적 allowlist (US alpha 심볼 + KS/KQ 접미사). KR 코드는 숫자라 cspell 미검사. universe 확장 시 갱신.",
       "addWords": false
+    },
+    {
+      "name": "test-terms",
+      "path": ".cspell/test-terms.txt",
+      "addWords": false
+    },
+    {
+      "name": "editor-terms",
+      "path": ".cspell/editor-terms.txt",
+      "addWords": false
+    },
+    {
+      "name": "svg-terms",
+      "path": ".cspell/svg-terms.txt",
+      "addWords": false
     }
   ],
   "dictionaries": [
@@ -43,6 +58,8 @@
     "Bayesian",
     "Bessent",
     "Bject",
+    "Blitz",
+    "Bonferroni",
     "Brinson",
     "Brok",
     "Buffett",
@@ -178,6 +195,7 @@
     "MacLean",
     "Marcap",
     "Markowitz",
+    "Martens",
     "Mgmt",
     "Mishkin",
     "Modelfile",
@@ -212,6 +230,7 @@
     "PYTHONPATH",
     "Papadakis",
     "Pharma",
+    "Pipfile",
     "Plotly",
     "Posteriors",
     "Prereq",
@@ -348,6 +367,7 @@
     "ZZZQ",
     "Zakrajsek",
     "Ziemba",
+    "Zilla",
     "acml",
     "activecolor",
     "addopts",
@@ -414,6 +434,7 @@
     "carryforward",
     "cathiesark",
     "ceid",
+    "certifi",
     "checkpw",
     "chflags",
     "chokepoint",
@@ -422,6 +443,7 @@
     "clpr",
     "cmap",
     "cmax",
+    "cmdk",
     "cmid",
     "cmin",
     "cnbc",
@@ -548,6 +570,7 @@
     "htmlcov",
     "htsid",
     "httpx",
+    "humanfs",
     "hwqh",
     "hyperscaler",
     "hyperscalers",
@@ -597,6 +620,7 @@
     "longshort",
     "longterm",
     "lookback",
+    "lookbacks",
     "lstn",
     "lwpr",
     "lydersen",
@@ -625,6 +649,7 @@
     "miswriter",
     "mktemp",
     "mmake",
+    "modelcontextprotocol",
     "monkeypatch",
     "monkeypatched",
     "monkeypatches",
@@ -633,6 +658,7 @@
     "mplfinance",
     "mult",
     "multiindex",
+    "multiset",
     "mybook",
     "mypass",
     "mypassword",
@@ -710,6 +736,7 @@
     "prefilter",
     "premarket",
     "prereq",
+    "pretendardvariable",
     "proba",
     "productionization",
     "prpr",
@@ -767,6 +794,7 @@
     "rpub",
     "rsi",
     "rsync",
+    "rtol",
     "ruff",
     "rundir",
     "rundirs",
@@ -786,6 +814,7 @@
     "setdefault",
     "setitem",
     "setuptools",
+    "shadcn",
     "sharpes",
     "shefrin",
     "shellcheck",
@@ -820,6 +849,7 @@
     "stft",
     "strat",
     "stryke",
+    "subchart",
     "subdirs",
     "subshell",
     "summ",
@@ -922,6 +952,7 @@
     "winrate",
     "worksteal",
     "worktree",
+    "worktrees",
     "wsb",
     "xanchor",
     "xaxes",
@@ -942,14 +973,51 @@
     "data/**",
     "frontend/.next/**",
     "**/__pycache__/**",
-    "tests/**",
     ".test_durations",
-    "frontend/src/__tests__/**",
     "uv.lock",
-    "package-lock.json",
-    "*.svg",
     "*.min.js",
     "NEXT_SESSION.md",
-    "frontend/tools/**"
+    "frontend/tools/**",
+    "**/package-lock.json",
+    "**/*.ico",
+    "**/.env",
+    "**/.env.local",
+    "**/.env.*.local",
+    "**/.env.new",
+    "config/portfolio.yaml",
+    "SESSION_PROMPT.md",
+    ".cspell/*.local.txt"
+  ],
+  "overrides": [
+    {
+      "filename": [
+        "tests/**/*",
+        "frontend/src/__tests__/**/*",
+        "frontend/**/*.test.*",
+        ".cspell/test-terms.txt"
+      ],
+      "dictionaries": [
+        "test-terms"
+      ]
+    },
+    {
+      "filename": [
+        ".vscode/*.json",
+        ".claude/output-styles/nuri-attention-kind.md",
+        ".cspell/editor-terms.txt"
+      ],
+      "dictionaries": [
+        "editor-terms"
+      ]
+    },
+    {
+      "filename": [
+        "**/*.svg",
+        ".cspell/svg-terms.txt"
+      ],
+      "dictionaries": [
+        "svg-terms"
+      ]
+    }
   ]
 }

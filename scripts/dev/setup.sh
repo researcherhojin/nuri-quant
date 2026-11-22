@@ -29,7 +29,7 @@ mkdir -p data/backups data/exports
 
 # .env from template
 if [ ! -f .env ]; then
-    cp .env.example .env
+    (umask 077; set -o noclobber; cat .env.example > .env)
     echo "Created .env from template — please fill in API keys"
 fi
 

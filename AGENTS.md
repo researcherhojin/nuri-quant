@@ -100,9 +100,11 @@ make typecheck                               # pyright, same pin as CI Backend L
 make verify-quick                            # pre-commit smoke (84.9s)
 make verify-all                              # tests + lint + frontend (320.8s)
 make verify-doc-counts                       # docs numbers vs code
-make spellcheck-ci                           # cspell (required CI check)
+make spellcheck                              # same tracked-file CSpell gate as CI
 make help                                    # every target
 ```
+
+CSpell uses the repository dictionary in `.cspell.json`. Add public package names there and use `.cspell/test-terms.txt` for synthetic fixtures. Git supplies the file list, so local credentials and handoff notes stay outside the scan.
 
 Push once, after the local gates: run `bash scripts/verify/pre_push_check.sh --skip-tests` plus the affected tests, fold all review findings into one push — every push cancels the running CI and re-queues from the back (27 jobs per PR run against a 20-job concurrency limit). Timings: M5 Max, 2026-08-14; no gate checks them. `make setup-hooks` installs the pre-commit (ruff/eslint autofix) and pre-push (`scripts/verify/pre_push_check.sh --skip-tests`) hooks. Use `uv sync --all-extras --all-groups`, not bare `uv sync`.
 

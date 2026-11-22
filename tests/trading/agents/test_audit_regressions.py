@@ -121,7 +121,7 @@ def test_malformed_valuation_is_unknown(quantity, price, rate):
         ("EUR", 1, 10),  # 환산 규칙이 없는 통화 — USD 로 간주하지 않는다
     ],
 )
-def test_unvaluable_holding_is_unknown_not_guessed(currency, quantity, price):
+def test_holding_without_reliable_value_is_unknown(currency, quantity, price):
     assert holding_value_usd("DEMO", currency, quantity, price, 1000) is None
 
 

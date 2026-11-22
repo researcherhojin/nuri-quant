@@ -1,7 +1,5 @@
 # Security Policy
 
-<!-- cspell:words certifi -->
-
 ## Supported Versions
 
 Only the `main` branch is supported and receives security fixes. The project
@@ -62,6 +60,7 @@ The repository runs the following on every PR and every push to `main`:
 | Trivy filesystem scan, CRITICAL severity | `.github/workflows/main-ci-cd.yml` `security-scan` job (`Security Scan`) | Yes. Fast-passes when no backend or frontend files changed |
 | CodeQL (Python, JavaScript/TypeScript, GitHub Actions) | GitHub code scanning default setup, weekly and on PRs | No. Alerts appear in the Security tab |
 | Privacy leak scanner ([#138](https://github.com/researcherhojin/nuri-quant/issues/138)) | `scripts/verify/check_privacy_leak.py`, run by the `privacy-scan` job (`Privacy Leak Scan`) and `scripts/verify/pre_push_check.sh` | Yes. Blocks broker names, suspect monetary literals, ticker+signed-% combinations and personal identifiers |
+| Secret scanning and push protection | GitHub repository settings | Push protection blocks detected credentials before a push is accepted. [GitHub secret scanning](https://docs.github.com/en/code-security/concepts/secret-security/secret-scanning) |
 | Dependabot alerts and version updates | Repository settings; `.github/dependabot.yml` (uv and npm weekly, GitHub Actions monthly) | No. Security-fix PRs are not enabled; version-update PRs follow the schedule |
 | Branch protection on `main` | GitHub repository settings | All required checks must pass; force push and deletion blocked |
 

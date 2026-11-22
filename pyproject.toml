@@ -3,7 +3,8 @@ name = "nuri-quant"
 version = "0.2.0"
 description = "Open-source quant investment platform — Collect, Analyze, Consensus, Decide, Track"
 readme = "README.md"
-license = { text = "AGPL-3.0-or-later" }
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [
     { name = "Nuri-Quant contributors" },
@@ -14,7 +15,6 @@ keywords = [
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Programming Language :: Python :: 3.12",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
@@ -119,6 +119,7 @@ dev = [
 Homepage = "https://github.com/researcherhojin/nuri-quant"
 Repository = "https://github.com/researcherhojin/nuri-quant"
 Issues = "https://github.com/researcherhojin/nuri-quant/issues"
+Documentation = "https://github.com/researcherhojin/nuri-quant/blob/main/docs/ARCHITECTURE.md"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -144,7 +145,7 @@ override-dependencies = [
 # Build (hatchling — egg-info 생성 X, setuptools보다 깔끔)
 # ═══════════════════════════════════════════════════════════════
 [build-system]
-requires = ["hatchling>=1.25.0"]
+requires = ["hatchling>=1.27.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

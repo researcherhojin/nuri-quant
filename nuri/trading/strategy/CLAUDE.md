@@ -27,9 +27,9 @@ Strategy-level decision modules. Each file is a self-contained strategy that con
 
 All strategies in this directory depend on `nuri.quant.regime.classifier.classify_regime()`. Regime keys total 10 = `BASE_REGIMES` 6 (`{bull,bear,sideways}_{low,high}_vol`) + `SPECIAL_REGIMES` 4 (`recovery`, `euphoria`, `stagflation`, `sector_rotation`) — `ALL_REGIMES` in `classifier.py` is the source of truth, and `REGIME_ALLOCATION` carries all 10 keys. Adding a regime requires updating `REGIME_ALLOCATION` in `longshort.py` and re-running `ls_backtest.py --stress`.
 
-## Pyright disabled per file
+## Pyright exceptions
 
-Several files lead with `# pyright: ...=false` directives. These suppress pandas / numpy strict-typing noise, not real type errors. New files should follow the same pattern only when the suppression is data-frame-related — not as a general license to skip typing.
+Some legacy data-frame modules use file-wide directives. For new code, fix or narrow the type at its source. When a stub limitation requires suppression, use the specific diagnostic on the affected line. [Pyright diagnostic directives](https://github.com/microsoft/pyright/blob/main/docs/comments.md)
 
 ## When adding a new strategy
 

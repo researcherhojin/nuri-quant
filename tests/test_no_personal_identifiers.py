@@ -21,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # 소문자 부분 일치. 기기명 접두사는 계정명을 품지만 실패 메시지가 무엇을 잡았는지 말하도록 따로 둔다.
 IDENTIFIERS = {
     "macos-account": "ehb" + "ebe",
+    # cspell:disable-next-line
     "hostname-prefix": "Ehbeb" + "eui",
 }
 

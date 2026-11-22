@@ -131,15 +131,21 @@ class TestMainVerdict:
 
 class TestCspellDictionary:
     def test_the_dictionary_parses(self):
-        """사전이 깨지면 cspell 이 통째로 죽고, `grep -q "Unknown word"` 게이트는 **통과**로 읽는다."""
+        """공유 설정과 사전 경로가 모두 유효해야 한다."""
         data = json.loads((REPO_ROOT / ".cspell.json").read_text(encoding="utf-8"))
         assert isinstance(data["words"], list) and data["words"]
+        for dictionary in data["dictionaryDefinitions"]:
+            assert (REPO_ROOT / dictionary["path"]).is_file()
 
     def test_words_stay_sorted(self):
         """정렬이 깨지면 중복 등재가 눈에 안 보이고 diff 가 커진다."""
-        words = json.loads((REPO_ROOT / ".cspell.json").read_text(encoding="utf-8"))["words"]
-        assert words == sorted(words), "ASCII 정렬 유지 — 추가 시 자리 지킬 것"
-        assert len(words) == len(set(words)), "중복 등재"
+        data = json.loads((REPO_ROOT / ".cspell.json").read_text(encoding="utf-8"))
+        word_lists = [data["words"]]
+        for dictionary in data["dictionaryDefinitions"]:
+            path = REPO_ROOT / dictionary["path"]
+            word_lists.append(path.read_text(encoding="utf-8").splitlines())
+        for words in word_lists:
+            assert words == sorted(set(words)), "사전은 ASCII 순서로 정렬하고 중복 없이 유지한다"
 
 
 class TestGateIsWired:
@@ -150,7 +156,7 @@ class TestGateIsWired:
     스크립트를 못 잡으므로 존재 검사를 같이 둔다.
     """
 
-    @pytest.mark.parametrize("needle", ["check_pyright_diff.py", "make spellcheck"])
+    @pytest.mark.parametrize("needle", ["check_pyright_diff.py", "make spellcheck-ci"])
     def test_pre_push_check_invokes_the_diagnostics(self, needle):
         text = (REPO_ROOT / "scripts" / "verify" / "pre_push_check.sh").read_text(encoding="utf-8")
         assert needle in text, f"{needle} 를 pre-push 게이트가 부르지 않는다"
@@ -179,7 +185,8 @@ class TestGateIsWired:
         cmd = cmds[0]
         assert "cspell" in cmd and "--config .cspell.json" in cmd, cmd
         assert "|| true" not in cmd and "--no-summary" not in cmd, cmd
-        assert '"nuri/**/*.py"' in cmd and '".github/workflows/*.yml"' in cmd, "검사 대상 목록이 비었다"
+        assert "git -c core.quotePath=false ls-files --deduplicate" in out
+        assert "--file-list stdin" in cmd
 
     def test_the_retired_baseline_is_gone(self):
         """숫자 파일이 되살아나면 낡는 게이트도 같이 돌아온다 (#1088)."""

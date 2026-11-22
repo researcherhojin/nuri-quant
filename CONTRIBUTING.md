@@ -13,7 +13,7 @@ Use the [architecture reference](docs/ARCHITECTURE.md) for runtime behavior and 
 ## Quick start
 
 ```bash
-# Prerequisites: Python 3.12, uv, Node.js 22, TA-Lib (C library)
+# Prerequisites: Python 3.12, uv, Node.js 22.18+, TA-Lib (C library)
 brew install ta-lib                                      # macOS; CI builds it from source
 cp config/portfolio.example.yaml config/portfolio.yaml   # make setup imports it into the DB
 make setup                      # .venv + dependencies, migrations, portfolio import, git hooks
@@ -29,8 +29,8 @@ auto-fixes on staged files and re-stages the result; it never blocks a commit.
 
 ### Local gates
 
-The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
-7 s). Running the script without the flag adds the full test suite. Its sections:
+The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests`. Running
+the script without the flag adds the full test suite.
 
 | Section | What it checks | Blocking |
 |---------|----------------|----------|
@@ -38,11 +38,13 @@ The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
 | 2 | `ruff check nuri/ tests/ scripts/` | Yes |
 | 2b | `shellcheck` on `scripts/**/*.sh` | Yes when installed; a warning otherwise, CI enforces |
 | 2c | Count claims in ARCHITECTURE, STRATEGY and the scoped `CLAUDE.md` / rules files match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
-| 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) | Yes when `npx` is available. CI runs its own spellcheck |
+| 2d | `make spellcheck-ci` checks Git-tracked files with the shared editor dictionary | Yes when `npx` is available. The same command runs in CI |
 | 2e | `pyright` on changed Python lines | Yes when the local checker is available and the push changes Python lines |
 | 3 | Tests (only without `--skip-tests`) | Yes |
 | 4 / 4b | Privacy scan of the tree and of unpushed commit messages (`scripts/verify/check_privacy_leak.py`) | Yes |
 | 5 | Conventional-commit format of the latest commit | No (warning) |
+
+Run `make spellcheck` to reproduce the CI spelling check. Keep public terms in `.cspell.json` and synthetic fixture identifiers in `.cspell/test-terms.txt`. Personal word lists can go in `.private/` or use the ignored `.cspell/*.local.txt` suffix. Stage new files before running the check so Git includes them. [CSpell CLI documentation](https://cspell.org/docs/api/cspell)
 
 ### Required CI checks
 

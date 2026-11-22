@@ -281,6 +281,7 @@ frontend/test-results/
 !.claude/commands/nuri-*.md
 # 공유 규칙보다 로컬 표시가 우선한다.
 *.local.md
+/.cspell/*.local.txt
 
 # ─── OS ────────────────────────────────────────────────────────
 .DS_Store

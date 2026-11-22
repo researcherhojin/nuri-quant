@@ -17,7 +17,7 @@ Use this procedure for a first install, a reinstall or contributor onboarding. I
 | Python | 3.12 | `brew install python@3.12` |
 | uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | TA-Lib (C lib) | latest | `brew install ta-lib` |
-| Node.js | 22+ | `brew install node@22` |
+| Node.js | 22.18+ | `brew install node@22` |
 | Git | any | Probably already installed |
 
 **Expected runtime (on an M2 Pro)**:

@@ -1,5 +1,7 @@
 # tests/ — Testing Conventions
 
+Run `make spellcheck` for tracked test source and fixture text. Add intentional synthetic identifiers to `.cspell/test-terms.txt`. That dictionary applies only to test paths and its own word list.
+
 ## DB Isolation Pattern
 
 두 층이다 — **테스트가 명시적으로 넘기는 `db_path`** 와, 그 아래 **전역 격리**.

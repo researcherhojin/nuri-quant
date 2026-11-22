@@ -9,11 +9,13 @@ This guide describes 4 scripts and a PR template that reduce the time-wasting pa
 ## TL;DR — before every push
 
 ```bash
-bash scripts/verify/pre_push_check.sh           # full (106s)
-bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
+bash scripts/verify/pre_push_check.sh --skip-tests
+make spellcheck
 ```
 
 `pre_push_check.sh` checks drift, lint (ruff · shellcheck), doc counts, spellcheck, pyright (changed lines), tests, the privacy scan and the commit message format in one run. This command catches the first 3 of the 4 patterns below; for atomicity, run `check_atomic.sh` separately.
+
+The spelling check uses the Git index. It covers tracked source, configuration, and fixture text, while generated lockfiles and timing data have separate validation. [CSpell CLI documentation](https://cspell.org/docs/api/cspell)
 
 | Pattern | Detection | Cost if undetected |
 |---|---|---|

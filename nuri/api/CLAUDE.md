@@ -4,7 +4,7 @@
 
 The dashboard's read surface (70 endpoints). Handlers query and render data, and may invoke existing strategy computations at request time; strategy definitions belong in the domain modules. Anything that decides, scores, or certifies lives in `nuri/trading/` · `nuri/quant/` · `nuri/analysis/` and is imported *lazily inside the handler body* (keeps startup fast; top-level heavy imports are the one convention every file follows).
 
-Backend `:8001`, Next.js `:3000` proxies `/api/*` — see `frontend/CLAUDE.md` "Server Components Pattern" before touching frontend call sites.
+Production FastAPI listens on `127.0.0.1:8001`. Next.js serves the browser on port 3000 and rewrites `/api/*` to FastAPI. See the [frontend request diagram](../../frontend/README.md#architecture) and [FastAPI proxy guidance](https://fastapi.tiangolo.com/advanced/behind-a-proxy/).
 
 ## App composition (`main.py` — sole app factory)
 

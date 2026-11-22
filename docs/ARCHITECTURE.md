@@ -546,7 +546,7 @@ Open the run for the commit you want to verify and inspect the individual jobs. 
 4. **Patch Coverage**: recomputes the `codecov.yml` patch target from the frontend lcov, the combined backend coverage and the pull-request diff (#1766)
 5. **Privacy**: `check_privacy_leak.py` on all files
 6. **Security**: Trivy CRITICAL vulnerability scan
-7. **Quick Checks**: `make spellcheck-ci` and a 5MB file-size limit (#1560)
+7. **Quick Checks**: `make spellcheck-ci` checks tracked files with the shared editor dictionary. The job also enforces a 5MB file-size limit.
 8. **Doc counts and universe**: `Doc Count Drift Check` (`make verify-doc-counts`) and `Universe Coverage Validation`
 9. **Lock boundaries**: `uv.lock Major Boundary` / `package-lock.json Major Boundary` reject a major (or direct-dependency 0.x minor) bump without the `lock-bump-reviewed` label (#1364/#1367/#1551)
 
@@ -571,7 +571,7 @@ The multi-account portfolio mixes USD and KRW. Exchange-rate fallback order: DB 
 `.mcp.json` registers the Tier 1 read-model MCP server `nuri-read` (#1306), implemented in `nuri/mcp/server.py` (stdio only):
 
 ```json
-{"mcpServers": {"nuri-read": {"command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
+{"mcpServers": {"nuri-read": {"type": "stdio", "command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
 ```
 
 Tools: `buy_candidates` · `macro_facts` · `data_freshness` · `live_quote` (#1626: caller-supplied tickers, up to 10, yfinance `fast_info`, reads no database; `siege_status` removed with the certifier, #1619; `macro_facts` reads its regime from `candidate_runs`). The server reads `NURI_DB_PATH` when set, otherwise the newest production replica in `data/replicas/` (hourly, from `state_replicator.sh`), otherwise the default DB — on a development machine that default is not the ledger and can be weeks old (#1617). `data_freshness` reports the source kind, the replica file age and the latest VIX / candidate-run dates, and flags the source as stale when the replica is older than 3 hours, when the latest VIX date is more than 5 days old or the latest candidate run more than 3 days old (KST calendar; `premarket_brief` writes a candidate run every weekday, so it doubles as a heartbeat), or when the file cannot be read (an interrupted `rsync --partial` push can leave a truncated replica); it never returns a path, because the replica filename contains the mini's hostname. Every query runs with `readonly=True` (`mode=ro` URI + `PRAGMA query_only=ON`, enforced by the engine), and only the columns in the module's `ALLOWED` dict reach a response (the SQL also uses fixed internal keys and filters such as `id`, `run_id` and `disposition`). The `decisions` table is excluded entirely because it would reveal holdings, and candidates expose `disposition='emitted'` rows only. The raw SQLite server (`nuri-db` → `mcp-server-sqlite`) was removed from the committed config (#1306 codex P1) because arbitrary SQL can reach `portfolio` and `trades`; it remains a per-machine opt-in, not a repository default.

@@ -2,7 +2,7 @@
 # Codecov Configuration — backend/frontend 분리 트래킹
 # ═══════════════════════════════════════════════════════════════
 # Codecov가 PR마다 backend/frontend 커버리지를 별도 배지로 표시
-# 정책: 자동 임계값 + 1% 허용범위 (작은 변동 무시)
+# 정책: 기준 커밋 대비 프로젝트 커버리지 하락을 최대 1%p 허용.
 
 # Single backend upload (workflow `backend-coverage-merge` job 이 fast shard +
 # slow `.coverage` 를 `coverage combine` 으로 union 한 뒤 단일 XML 을 codecov 에
@@ -17,7 +17,7 @@ coverage:
     project:
       default:
         target: auto         # 직전 commit 기준 자동 비교
-        threshold: 1%        # ±1% 이내 변동은 통과
+        threshold: 1%        # 허용되는 하락 폭
     patch:
       default:
         target: 100%         # 신규 코드는 전량 테스트 (미커버 diff 라인 0 허용)
