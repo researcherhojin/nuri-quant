@@ -12,6 +12,8 @@ npm ci
 
 The dashboard reads data from the FastAPI backend. Start it from the
 repository root with `make api`, or start both with `make start`.
+Open `http://localhost:3000` for the dashboard and check `http://localhost:8001/api/health`
+for API liveness. [Fresh-clone walkthrough](../docs/FRESH_CLONE_SETUP.md)
 
 | Variable | Purpose |
 |----------|---------|
@@ -34,6 +36,9 @@ npm run test:e2e       # Playwright
 `npm run test:e2e` starts the backend from the repository-root `.venv` and the
 Next.js dev server, or reuses them if they are already running
 (`playwright.config.ts`). Run `make setup` first.
+CI seeds a database before running the browser suite. For a manual check of a
+production build, run `npm run build` and then `npm run start` with the backend
+running. [CI and testing](../docs/ARCHITECTURE.md#cicd-pipeline-main-ci-cdyml)
 
 ## Structure
 

@@ -4,7 +4,7 @@
 
 > Scope: disposable development setup. Do not run reset commands against the production adjudication ledger. The dated smoke logs below are historical evidence, not a fresh-clone run or a current service-health guarantee.
 
-This is the procedure for a first install of Nuri-Quant, a reinstall, and onboarding a new contributor. It manually verifies the end-to-end scenario that PR CI does not check. It reflects #272 Phase 5 (2026-04-15).
+Use this procedure for a first install, a reinstall or contributor onboarding. It exercises a local installation with live market sources. GitHub Actions uses a seeded database for its browser suite. [CI and testing](ARCHITECTURE.md#cicd-pipeline-main-ci-cdyml)
 
 > **When to run**: after a fresh clone, after resetting the environment, after a major dependency upgrade, and as a quarterly health check. Do not run it on every PR. The network work takes 20-30 minutes, and the results depend on the state of external APIs.
 
@@ -70,6 +70,12 @@ make start                       # API :8001 + Dashboard :3000
 ## 3. Expected Success Signals
 
 These are the outputs to check after each step completes. If a success signal does not appear, follow the triage in section 4.
+
+With `make start` running, check the API from another terminal and open the dashboard in a browser. The API should return `{"status":"ok"}`. Use the dashboard's freshness view to check whether collection populated the data it needs. [Dashboard overview](OVERVIEW.md)
+
+```bash
+curl -fsS http://localhost:8001/api/health
+```
 
 | Step | Success signal | Failure signal |
 |------|----------|----------|

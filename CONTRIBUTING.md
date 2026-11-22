@@ -8,6 +8,8 @@ External contributors should open an issue before writing code so that scope
 can be agreed first. Read [`docs/STRATEGY.md`](docs/STRATEGY.md), which defines
 the project's design principles, before proposing a non-trivial change.
 
+Use the [architecture reference](docs/ARCHITECTURE.md) for runtime behavior and the [scripts index](scripts/README.md) for verification commands.
+
 ## Quick start
 
 ```bash
@@ -36,7 +38,8 @@ The pre-push hook runs `scripts/verify/pre_push_check.sh --skip-tests` (about
 | 2 | `ruff check nuri/ tests/ scripts/` | Yes |
 | 2b | `shellcheck` on `scripts/**/*.sh` | Yes when installed; a warning otherwise, CI enforces |
 | 2c | Count claims in ARCHITECTURE, STRATEGY and the scoped `CLAUDE.md` / rules files match the repository (`make verify-doc-counts`; fixer `scripts/doc/sync_doc_counts.sh`) | Yes |
-| 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) and a `pyright` ratchet on the lines the push adds | Yes when `npx` is available; skipped with a warning otherwise, CI enforces the spellcheck |
+| 2d | Spellcheck (`.cspell.json`, kept ASCII-sorted) | Yes when `npx` is available. CI runs its own spellcheck |
+| 2e | `pyright` on changed Python lines | Yes when the local checker is available and the push changes Python lines |
 | 3 | Tests (only without `--skip-tests`) | Yes |
 | 4 / 4b | Privacy scan of the tree and of unpushed commit messages (`scripts/verify/check_privacy_leak.py`) | Yes |
 | 5 | Conventional-commit format of the latest commit | No (warning) |

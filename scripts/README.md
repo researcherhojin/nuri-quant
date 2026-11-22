@@ -2,6 +2,9 @@
 
 nuri-quant 의 shell · Python 스크립트 색인. 스크립트는 카테고리별 하위 디렉터리에 둔다 (#557).
 
+첫 설치와 로컬 실행은 [새 클론 설정 가이드](../docs/ko/FRESH_CLONE_SETUP.md)에 있다.
+어떤 검사가 병합 조건인지 확인하려면 [기여 가이드](../CONTRIBUTING.md#checks)를 참고한다.
+
 ## 구조
 
 ```

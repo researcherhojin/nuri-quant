@@ -2,7 +2,9 @@
 
 *English (official) edition: [../ARCHITECTURE.md](../ARCHITECTURE.md)*
 
-Nuri-Quant 내부 구조의 상세 참조 문서다. 데이터가 시스템 안에서 어떻게 이동하는지, 무엇이 언제 실행되는지, 각 구성 요소가 어디에 있는지를 다룬다. 이 문서의 서술은 코드와 대조해 확인한 것이다. `make verify-doc-counts` 가 이 문서의 수치를 코드와 대조하며(검사 위치 목록은 `scripts/verify/verify_doc_counts.sh`), [수치 claim 검증](#수치-claim-검증)에 그 수치를 재는 명령이 있다. 이 파일은 자동으로 로드되지 않는다. 여러 영역에 걸친 문제를 다룰 때 읽는다.
+`main`의 데이터 흐름, 실행 프로세스, 검증 절차를 다룬다. 추천 흐름은 [README 개요](../../README.md#system-overview)에서, 로컬 실행 절차는 [새 클론 설정 가이드](FRESH_CLONE_SETUP.md)에서 볼 수 있다.
+
+`make verify-doc-counts`는 `scripts/verify/verify_doc_counts.sh`에 지정한 문서 수치를 검사한다. 수치별 측정 명령은 [수치 claim 검증](#수치-claim-검증)에 있다.
 
 ## 시스템 흐름
 
@@ -21,7 +23,7 @@ flowchart LR
     BUY["BUY candidates<br/>pre-market brief"]
     TRK["Track<br/>outcomes · alpha"]
     OUTCOMES[("decision_outcomes")]
-    OUT["Delivery<br/>Discord · dashboard · MCP"]
+    OUT["Delivery<br/>Discord · dashboard"]
     YOU(["Operator places every order by hand"])
 
     SRC --> COL --> TAB
@@ -525,6 +527,8 @@ find frontend/src/app -name "page.tsx" | wc -l
 ## CI/CD pipeline (`main-ci-cd.yml`)
 
 `main` 으로의 push 와 pull request 에서 실행된다. `Detect Changes` job 이 pull request 가 건드리는 영역을 판별하고, 건드리지 않은 영역의 job 은 바로 통과(fast-pass)해 그 required check 가 계속 보고되게 한다. required 집합은 branch protection 이 정의하며, `.claude/rules/enforcement.md` 가 이를 설명한다.
+
+검증하려는 커밋의 실행에서 개별 작업 결과를 확인한다. PR에서는 변경 범위에 따라 빠른 백엔드 테스트를 실행하고, `main`에서는 느린 테스트도 실행한다. 문서만 바뀐 PR에서는 코드 테스트가 실행 없이 통과로 표시될 수 있다. 서비스 상태 확인 방법은 [런타임 토폴로지](#런타임-토폴로지)와 [파이프라인 상태 확인](#pipeline-관찰-가능성)에 있다.
 
 1. **Lint**: `ruff check nuri/ tests/ scripts/` + `pyright` with zero errors (`Backend Lint`); `eslint && oxlint` (`Frontend Lint`); shellcheck (`Shell Lint`)
 2. **Test**: fast shard matrix 에서 xdist 로 pytest 를 돌리고, `main` run(push·dispatch, PR 은 제외)마다 실행되는 slow shard 2개를 더한다(shard 수는 `main-ci-cd.yml` 에서 정의). `Backend Tests` 가 이를 집계하고 `Backend Tests · Coverage Aggregate` 가 coverage 를 합친다. TA-Lib 은 cache 된다. 의존성은 `uv sync --frozen --extra dev` 로 설치하며, `local-llm` extra 는 의도적으로 제외한다(#1406, sdist compile). 별도의 `Local-LLM Build Gate` job(required check)이 lock 된 `llama-cpp-python` 을 한 번 build 하고 import 한다 — PR 에서는 `pyproject.toml`, `uv.lock`, `main-ci-cd.yml` 이 바뀔 때만, PR 이 아닌 실행(main 으로의 push, 수동 dispatch)에서는 매번 실행된다. 테스트별 DB 격리 사본은 `NURI_TEST_DB_DIR=/dev/shm/nuri-test-db` 로 tmpfs 에 둔다(#1414). main 으로의 push 에서 도는 shard 는 테스트별 소요 시간도 기록하고(`--store-durations --clean-durations`) `durations-fast-N` artifact 를 업로드한다. `make sync-test-durations-from-ci` 는 최신 실행들로부터 `.test_durations` 를 다시 만든다(fail-closed merge + 실행 간 median, `scripts/ci/merge_test_durations.py`).
