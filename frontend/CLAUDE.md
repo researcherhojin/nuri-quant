@@ -10,6 +10,8 @@ Next.js 16 + React 19 + Tailwind CSS 4 + shadcn/ui. Dark-only theme (zinc-950 ba
 
 ## Commands
 
+Run `make spellcheck` from the repository root to check frontend source, test fixtures and configuration with the CI dictionary.
+
 ```bash
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)

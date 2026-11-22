@@ -9,11 +9,13 @@
 ## TL;DR — 매 push 전
 
 ```bash
-bash scripts/verify/pre_push_check.sh           # full (106s)
-bash scripts/verify/pre_push_check.sh --quick   # smoke (6s)
+bash scripts/verify/pre_push_check.sh --skip-tests
+make spellcheck
 ```
 
 `pre_push_check.sh` 는 drift, lint(ruff · shellcheck), doc count, spellcheck, pyright(변경 라인), 테스트, privacy scan, commit message 형식을 한 번에 검사한다. 아래 4개 패턴 중 앞의 3개를 이 명령이 잡고, atomicity 는 `check_atomic.sh` 를 따로 실행해야 한다.
+
+철자 검사는 Git 인덱스를 기준으로 추적 중인 소스, 설정, 테스트 데이터를 확인한다. 생성된 잠금 파일과 테스트 시간 데이터는 각 도구의 검사로 검증한다. [CSpell CLI 문서](https://cspell.org/docs/api/cspell)
 
 | 패턴 | Detection | 미감지 시 비용 |
 |---|---|---|

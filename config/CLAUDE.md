@@ -2,6 +2,8 @@
 
 **Canonical source of truth** for investment rules, agent thresholds, signal metadata, and account strategy profiles. Read these values from the corresponding loader in `nuri/core/`. Existing exceptions, such as `REGIME_ALLOCATION`, must be explicitly documented in the scoped rules; they do not authorize new hardcoded investment rules. (§2.2 mechanical execution.)
 
+Check tracked YAML with `make spellcheck` and the tests for its loader. Regenerate the public ticker dictionary with `make cspell-tickers` after editing `universe.yaml`.
+
 ## File inventory
 
 | File | Purpose | Loader |

@@ -32,7 +32,7 @@
 
 ## Quick start
 
-The development setup uses Python 3.12, uv, TA-Lib and Node.js 22. On macOS, run `brew install uv ta-lib fnm && fnm install 22`. [uv documentation](https://docs.astral.sh/uv/)
+The development setup uses Python 3.12, uv, TA-Lib and Node.js 22.18 or newer. On macOS, run `brew install uv ta-lib fnm && fnm install 22`. [uv documentation](https://docs.astral.sh/uv/) · [Node.js releases](https://nodejs.org/en/about/previous-releases)
 
 Install:
 
@@ -49,6 +49,7 @@ Run:
 make start        # API on :8001, dashboard on :3000
 make full-scan    # collect data, run the consensus, record decisions
 make test-fast    # backend tests
+make spellcheck   # spelling for tracked code, configuration and docs
 make help         # every target
 ```
 

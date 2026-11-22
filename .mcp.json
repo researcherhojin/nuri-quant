@@ -1,8 +1,7 @@
 {
-  "_comment": "MCP (Model Context Protocol) servers for Claude Code and Cursor. A raw SQLite server (mcp-server-sqlite) is deliberately not in the committed defaults (#1306, Codex P1): arbitrary SQL would reach portfolio and trades, so the Tier 1 privacy boundary would depend on local settings. For ad-hoc schema exploration, register one in personal settings only (e.g. ~/.claude.json).",
   "mcpServers": {
     "nuri-read": {
-      "_comment": "Tier 1 non-sensitive read model (#1306): buy_candidates, macro_facts, data_freshness and live_quote (yfinance, no DB access). stdio only (no network binding); read-only (mode=ro + query_only). Source: NURI_DB_PATH, else the newest data/replicas/*.db, else the default DB.",
+      "type": "stdio",
       "command": "uv",
       "args": [
         "run",

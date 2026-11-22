@@ -1,0 +1,6 @@
+Segoe
+dasharray
+evenodd
+labelledby
+linecap
+linejoin

@@ -17,7 +17,7 @@ Nuri-Quant 첫 설치, 재설치, 신규 기여자 온보딩에 쓰는 절차다
 | Python | 3.12 | `brew install python@3.12` |
 | uv | latest | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | TA-Lib (C lib) | latest | `brew install ta-lib` |
-| Node.js | 22+ | `brew install node@22` |
+| Node.js | 22.18+ | `brew install node@22` |
 | Git | any | 이미 있을 것 |
 
 **예상 runtime (M2 Pro 기준)**:

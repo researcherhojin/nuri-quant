@@ -185,41 +185,25 @@ PYRIGHT_VERSION := 1.1.414
 
 typecheck: ## Pyright across nuri/, tests/, scripts/ with the CI pin; fails on any error, like CI Backend Lint
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
-	npx --yes -p pyright@$(PYRIGHT_VERSION) pyright nuri/ tests/ scripts/ --outputjson 2>/dev/null | \
+	npx --yes -p pyright@$(PYRIGHT_VERSION) pyright --outputjson 2>/dev/null | \
 		.venv/bin/python -c "import json,sys; d=json.load(sys.stdin); diags=[x for x in d.get('generalDiagnostics',[]) if x.get('severity')=='error']; \
 		print(f'pyright: {len(diags)} error(s) across {len({x[\"file\"] for x in diags})} files'); \
 		[print(f'  {x[\"file\"]}:{x[\"range\"][\"start\"][\"line\"]+1} [{x.get(\"rule\",\"?\")}]: {x[\"message\"].splitlines()[0]}') for x in diags[:50]]; \
 		sys.exit(1 if diags else 0)"
 
-spellcheck: ## cspell check (uses .cspell.json — add words there for false positives)
+CSPELL_VERSION := 10.5.2
+
+.PHONY: spellcheck spellcheck-ci diagnostics
+spellcheck: spellcheck-ci ## Run the same spelling checks as CI
+
+spellcheck-ci: ## Spell-check tracked files using the shared editor dictionary
 	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
-	@# Excludes gitignored files (NEXT_SESSION.md / SESSION_PROMPT.md may contain personal info)
-	@# ⚠️ config/*.yaml 을 여기 넣지 말 것 — glob 이 gitignored config/portfolio.yaml 까지 훑어
-	@# 실보유 증권사명을 미등록 단어로 뱉는다. 그걸 "고치려고" .cspell.json 에 넣는 순간
-	@# 공개 레포에 증권사명이 박힌다 (§4.4.1 privacy). 이 주석에 그 예시를 적는 것조차
-	@# check_privacy_leak.py 가 차단한다 — 2026-08-02 실측, 가드가 정상 동작한 것이다.
-	@# IDE 는 열린 파일을 직접 검사하므로 config 경고는 거기서만 보이고,
-	@# 추적 중인 config yaml 의 단어는 이미 .cspell.json 에 등재돼 있다.
-	npx --yes -p cspell cspell --config .cspell.json --no-progress --no-summary --gitignore \
-		$(CSPELL_TARGETS) 2>&1 | tail -80 || true
+	@# Git supplies the file list. Local secrets and generated scratch files never enter it.
+	@tracked_files="$$(git -c core.quotePath=false ls-files --deduplicate)" && \
+		printf '%s\n' "$$tracked_files" | \
+		npx --yes -p cspell@$(CSPELL_VERSION) cspell --config .cspell.json --no-config-search --no-progress --file-list stdin
 
-# 검사 대상은 한 곳에만 — spellcheck(로컬 advisory) 과 spellcheck-ci(CI 하드 게이트)가 같은 목록을 본다.
-CSPELL_TARGETS := --exclude SESSION_PROMPT.md --exclude NEXT_SESSION.md \
-	"nuri/**/*.py" "tests/**/*.py" "scripts/**/*.py" "scripts/**/*.sh" \
-	"nuri/**/CLAUDE.md" "tests/**/CLAUDE.md" "scripts/**/*.md" \
-	"docs/*.md" "README.md" "CLAUDE.md" "AGENTS.md" "CONTRIBUTING.md" \
-	".claude/rules/*.md" ".claude/commands/nuri-*.md" ".claude/agents/nuri-*.md" \
-	".claude/skills/nuri-*/**/*.md" ".github/workflows/*.yml" "frontend/e2e/*.ts" \
-	"frontend/CLAUDE.md" "frontend/*.ts" "frontend/*.mjs" "frontend/.gitignore"
-
-spellcheck-ci: ## cspell, CI 용 — 미등록 단어나 실행 실패면 비영 exit (#1560)
-	@# `spellcheck` 은 `|| true` + `--no-summary` 라 CI 에선 못 쓴다: 실패해도 0 이고, 출력이
-	@# 비면 "깨끗함" 인지 "cspell 이 안 돌았음" 인지 구분이 없다. 여기는 exit code 를 그대로
-	@# 돌려주고 summary 를 남겨 돌았다는 증거를 로그에 둔다 (실행 불가 ≠ 통과, #910).
-	@command -v npx >/dev/null 2>&1 || { echo "npx not installed: install Node.js"; exit 1; }
-	npx --yes -p cspell cspell --config .cspell.json --no-progress --gitignore $(CSPELL_TARGETS)
-
-diagnostics: typecheck spellcheck ## Run pyright + cspell — surfaces all IDE-level issues
+diagnostics: typecheck spellcheck ## Run pyright + cspell — check Python types and repository spelling
 
 validate-portfolio: ## Verify each ticker in config/portfolio.yaml has live data (#131)
 	$(PYTHON) scripts/doc/validate_portfolio.py
@@ -785,18 +769,18 @@ sync-test-durations: ## [deprecated → sync-test-durations-from-ci] M5 직렬 �
 # Test: tests/scripts/test_merge_test_durations.py::TestMakeTargetWiring::test_recipe_delegates_to_refresh
 sync-test-durations-from-ci: ## 최근 push-to-main run 3개의 shard 실측으로 .test_durations 재생성 (#1414)
 	@set -e; \
-	RUNS=$$(gh run list --branch main --workflow main-ci-cd.yml --status success --limit 5 --json databaseId -q '.[].databaseId'); \
-	rm -rf /tmp/ci-durations && mkdir -p /tmp/ci-durations; \
+	RUNS=$$(gh run list --branch main --workflow main-ci-cd.yml --event push --status success --limit 5 --json databaseId -q '.[].databaseId'); \
+	RUN_ROOT=$$(mktemp -d /tmp/nuri-ci-durations.XXXXXX); \
+	trap 'rm -rf "$$RUN_ROOT"' EXIT; \
 	i=0; DIRS=""; \
 	for RUN in $$RUNS; do \
 	    [ "$$i" -ge 3 ] && break; \
-	    DIR=/tmp/ci-durations/run-$$RUN; mkdir -p $$DIR; \
+	    DIR=$$RUN_ROOT/run-$$RUN; mkdir -p "$$DIR"; \
 	    echo "📥 run $$RUN shard durations"; \
-	    if gh run download "$$RUN" --pattern 'durations-fast-*' --dir $$DIR; then \
+	    if gh run download "$$RUN" --pattern 'durations-fast-*' --dir "$$DIR"; then \
 	        i=$$((i+1)); DIRS="$$DIRS $$DIR"; \
 	    else \
 	        echo "  ⏭ artifact 없음/만료 — skip (파이프라인 도입 전 run, 또는 7일 retention 경과)"; \
-	        rm -rf $$DIR; \
 	    fi; \
 	done; \
 	if [ "$$i" -lt 2 ]; then echo "❌ duration artifact 가 있는 run 이 $$i 개 — median 은 2개 이상 필요 (main push 가 더 쌓여야 한다)"; exit 1; fi; \

@@ -114,26 +114,5 @@
     "**/.env.production": true,
     "**/kis_devlp.yaml": true,
     "**/token_*.json": true
-  },
-
-  // ─── cSpell (도메인/통계/저자명 사전 — #706 edge search) ──
-  "cSpell.words": [
-    "Bonferroni",
-    "bonferroni",
-    "Jegadeesh",
-    "Titman",
-    "Blitz",
-    "Huij",
-    "Martens",
-    "Swaminathan",
-    "Moskowitz",
-    "multiset",
-    "nanmean",
-    "rtol",
-    "lookback",
-    "lookbacks",
-    "walkforward",
-    "KOSDAQ",
-    "KOSPI"
-  ]
+  }
 }

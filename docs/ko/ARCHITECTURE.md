@@ -546,7 +546,7 @@ find frontend/src/app -name "page.tsx" | wc -l
 4. **Patch Coverage**: frontend lcov, 합쳐진 backend coverage, pull request diff 로부터 `codecov.yml` patch target 을 다시 계산한다(#1766)
 5. **Privacy**: 모든 파일에 `check_privacy_leak.py` 실행
 6. **Security**: Trivy CRITICAL 취약점 scan
-7. **Quick Checks**: `make spellcheck-ci` 와 5MB 파일 크기 제한(#1560)
+7. **Quick Checks**: `make spellcheck-ci`가 공유 편집기 사전으로 추적 파일을 검사한다. 파일 크기는 5MB로 제한한다.
 8. **Doc count 와 universe**: `Doc Count Drift Check` (`make verify-doc-counts`) 와 `Universe Coverage Validation`
 9. **Lock 경계**: `uv.lock Major Boundary` / `package-lock.json Major Boundary` 는 `lock-bump-reviewed` 라벨이 없는 major bump(또는 직접 의존성의 0.x minor bump)를 거부한다(#1364/#1367/#1551)
 
@@ -571,7 +571,7 @@ PR 종료 시(`cache-cleanup.yml`): 그 PR 의 `refs/pull/N/merge` ref 아래 �
 `.mcp.json` 은 Tier 1 read-model MCP server `nuri-read`(#1306)를 등록한다. 구현은 `nuri/mcp/server.py` 에 있다(stdio 전용):
 
 ```json
-{"mcpServers": {"nuri-read": {"command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
+{"mcpServers": {"nuri-read": {"type": "stdio", "command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
 ```
 
 Tool: `buy_candidates` · `macro_facts` · `data_freshness` · `live_quote`(#1626: 호출자가 넘긴 ticker 최대 10개, yfinance `fast_info`, 데이터베이스는 읽지 않는다; `siege_status` 는 certifier 와 함께 제거됐다, #1619; `macro_facts` 는 regime 을 `candidate_runs` 에서 읽는다). server 는 `NURI_DB_PATH` 가 설정돼 있으면 그것을, 아니면 `data/replicas/` 의 최신 production replica(`state_replicator.sh` 가 매시 생성)를, 그것도 아니면 기본 DB 를 읽는다 — 개발 머신에서 그 기본 DB 는 ledger 가 아니며 몇 주 묵은 것일 수 있다(#1617). `data_freshness` 는 source 종류, replica 파일 나이, 최신 VIX / candidate run 날짜를 보고한다. replica 가 3시간보다 오래됐을 때, 최신 VIX 날짜가 5일보다 오래됐거나 최신 candidate run 이 3일보다 오래됐을 때(KST 달력 기준; `premarket_brief` 가 평일마다 candidate run 을 쓰므로 heartbeat 역할도 한다), 또는 파일을 읽을 수 없을 때(중단된 `rsync --partial` push 가 잘린 replica 를 남길 수 있다) source 를 stale 로 표시한다. replica 파일 이름에 mini 의 hostname 이 들어 있으므로 경로는 절대 반환하지 않는다. 모든 query 는 `readonly=True`(`mode=ro` URI + `PRAGMA query_only=ON`, engine 이 강제)로 실행되고, module 의 `ALLOWED` dict 에 있는 column 만 응답에 실린다(SQL 은 `id`, `run_id`, `disposition` 같은 고정된 내부 key 와 filter 도 쓴다). `decisions` 테이블은 보유 종목을 드러낼 수 있으므로 통째로 제외하고, candidate 는 `disposition='emitted'` 행만 노출한다. raw SQLite server(`nuri-db` → `mcp-server-sqlite`)는 임의 SQL 이 `portfolio` 와 `trades` 에 닿을 수 있어 commit 된 설정에서 제거했다(#1306 codex P1). 머신별 opt-in 으로는 남아 있지만 repository 기본값은 아니다.

@@ -104,13 +104,11 @@ fi
 # .py 를 안 건드리는 push 는 pyright 를 아예 안 돈다.
 if command -v npx > /dev/null 2>&1; then
     echo -e "${YELLOW}━━━ 2d. Spellcheck ━━━${NC}"
-    if $PYTHON -c '' > /dev/null 2>&1 && make spellcheck 2>&1 | grep -q "Unknown word"; then
-        echo -e "${RED}✗ 미등록 단어 — 도메인 용어면 .cspell.json 에 추가, 오타면 고칠 것${NC}"
-        make spellcheck 2>&1 | grep "Unknown word" | head -5
-        echo ""
-        fail=1
-    else
+    if make spellcheck-ci; then
         echo -e "${GREEN}✓ Spellcheck clean${NC}\n"
+    else
+        echo -e "${RED}✗ Spellcheck failed${NC}\n"
+        fail=1
     fi
 
     echo -e "${YELLOW}━━━ 2e. Pyright (changed lines) ━━━${NC}"

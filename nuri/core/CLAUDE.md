@@ -66,9 +66,9 @@ Two guarantees hold here, and both are load-bearing for readers elsewhere:
 축이 여러 개인 소스(펀드·시장)는 합산 `MAX` 금지 — 멀쩡한 축이 죽은 축을 가린다
 (`signals` 의 KR/US 분리, `ark` 의 `COUNT(*)=5` + 펀드별 MIN 이 같은 원칙).
 
-## pipeline.py — Orchestration
+## pipeline.py — Job Dependencies and Logging
 
-`STEP_DEPENDENCIES` declares stage prerequisites: analyze and consensus depend on collect; decide and track depend on consensus. The five-stage reading order is `collect → analyze → consensus → decide → track`. `run_step()` checks it but the scheduler and the Overview data-refresh worker pass `warn_only=True`, so an unmet dependency is only recorded as a warning — it is not enforced (#894).
+`STEP_DEPENDENCIES` declares prerequisites for `run_step()`. Analyze and consensus read collected data, while decide and track depend on consensus results. The scheduler registers independent cron jobs. Both the scheduler and Overview refresh pass `warn_only=True`, which records an unmet prerequisite and still runs the requested step (#894).
 
 ## rules.py / signal_config.py / agent_config.py
 
