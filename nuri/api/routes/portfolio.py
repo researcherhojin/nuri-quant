@@ -319,7 +319,7 @@ def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="UTF-8 인코딩 파일만 지원합니다")
 
-    reader = csv.DictReader(io.StringIO(content))
+    reader = csv.DictReader(io.StringIO(content), restval="")
     if not reader.fieldnames:
         raise HTTPException(status_code=400, detail="CSV 헤더가 없습니다")
 

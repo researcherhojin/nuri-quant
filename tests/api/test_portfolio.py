@@ -593,6 +593,15 @@ class TestImport:
         assert data["imported"] == 1
         assert len(data["errors"]) > 0
 
+    def test_import_short_rows(self, client):
+        csv_content = "account,ticker,quantity,avg_price,currency,sector\nsample,AAPL,10,180.0\nsample,MSFT,3\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+
+        assert r.status_code == 200
+        assert r.json()["imported"] == 1
+        assert r.json()["errors"] == ["행 3: 빈 필드 avg_price"]
+        assert client.get("/api/portfolio/export").text.splitlines()[1] == "sample,AAPL,10.0,180.0,USD,"
+
     def test_import_empty_field(self, client):
         """필수 필드가 비어있는 행 → errors."""
         csv_content = "account,ticker,quantity,avg_price\nsample,,10,100.0\n"
