@@ -337,6 +337,10 @@ v9 prompt, evidence 검사, cache 상태, 알려진 한계는 [종목 리서치�
 
 `/api/coverage`(#297)와 `/api/market-context` 는 #1816 에서 은퇴했다. #1698 에서 기존 dashboard 가 삭제된 뒤로 아무도 호출하지 않았다. universe coverage 검사는 `scripts/verify/check_universe_coverage.py` 로 남고, Explore 페이지의 `/api/tickers/market-context` 는 별개 route 다.
 
+### 포트폴리오 CSV 가져오기
+
+`POST /api/portfolio/import` 는 쓰기 인증이 필요하며 UTF-8 CSV 를 받는다. 헤더보다 값이 적은 행의 누락 값은 빈 값으로 처리한다(#2100). 필수 값이 비어 있으면 행 번호가 포함된 검증 오류를 반환한다. `currency` 가 비어 있으면 `USD` 를 사용하고, `sector` 는 빈 값으로 둔다. [Python CSV reader](https://docs.python.org/3.12/library/csv.html#csv.DictReader)
+
 ## Scheduler
 
 `nuri/scheduler.py` 는 57 cron jobs in the `SCHEDULES` list 를 정의하고, 여기에 1분 간격 `heartbeat` interval job 이 하나 더 있다. 시각은 호스트 로컬 시간이며(production 호스트에서는 KST), job 이 자기 timezone 을 지정한 경우만 다르다(`premarket_brief` 는 `US/Eastern` 으로 실행되고, `thesis_pilot` · `thesis_pilot_check` 는 UTC 호스트에서도 KST 시각을 지키도록 `Asia/Seoul` 로 고정한다). collector import 는 import 시점의 부작용을 피하려고 `_dispatch_collector()` 안으로 지연된다. job 의 pipeline 스테이지는 `_STAGE_OF_JOB` 에서 오며, 스테이지가 지정된 job 만 lifecycle event 를 기록한다. cron job 은 5분의 misfire grace 를 허용하며, 프로세스가 내려가 있는 동안 놓친 실행 시각은 나중에 실행되지 않는다. 매일 도는 `self_restart` job(08:40 KST)은 누수된 yfinance file descriptor 를 회수하려고 프로세스를 재기동한다. 주간 `prune_reports` job(일요일 03:30 KST)은 30일보다 오래된 `data/reports/` 날짜 디렉터리를 지운다. 단, 가장 최신 디렉터리, 소비되는 산출물(`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — 이들은 수동 `make validate` / `make full-scan` 으로만 다시 생성된다)마다 그것을 담은 가장 최신 디렉터리, 그리고 날짜가 아닌 하위 디렉터리는 남긴다(#1654). `stock_us_freshness` job(06:10 과 06:40 KST, 화요일부터 토요일까지)은 SPY 측정 benchmark 와 `freshness_tickers` 를 최신으로 유지한다(§3.11).
@@ -498,7 +502,7 @@ data/
 
 ## 테스트
 
-9,680 backend tests across 462 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-10-29 의 frontend 전체 실행은 파일 117개에서 테스트 1,460개를 실행했다. E2E 수치는 `playwright test --list` 가 보고하는 파일 10개의 테스트 93개이며, 전체 실행 기록이 아니다. 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+9,680 backend tests across 462 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-11-23 main CI 에서 Vitest 는 파일 117개의 테스트 1,460개를 통과했다. Playwright 는 spec 파일 10개에서 88개 통과, 5개 건너뜀을 보고했다. [Frontend Tests](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513) · [Frontend E2E](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551429) 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 

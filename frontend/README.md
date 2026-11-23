@@ -46,6 +46,8 @@ CI seeds a database before running the browser suite. For a manual check of a
 production build, run `npm run build` and then `npm run start` with the backend
 running. [CI and testing](../docs/ARCHITECTURE.md#cicd-pipeline-main-ci-cdyml)
 
+[Vitest 5.1.1 with jest-dom 8](https://github.com/testing-library/jest-dom/releases/tag/v8.0.0) backs the unit suite. See the [architecture testing section](../docs/ARCHITECTURE.md#testing) for the latest CI run and browser test results.
+
 ## Structure
 
 - Data pages generally use Server Components with `force-dynamic` and fetch

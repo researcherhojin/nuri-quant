@@ -16,7 +16,7 @@ Run `make spellcheck` from the repository root to check frontend source, test fi
 npm run dev            # Dev server (:3000)
 npm run build          # Production build (type-check + compile)
 npm run lint           # eslint && oxlint (anti-slop rules — see "Anti-slop (oxlint)" below)
-npm run test           # vitest run (1460 tests, 117 files — 2026-10-29)
+npm run test           # Vitest (latest CI result in docs/ARCHITECTURE.md)
 npm run test:e2e       # playwright (real backend — see "E2E (Playwright)" below)
 npx vitest run src/__tests__/pages/dashboard.test.tsx  # single file
 npx vitest run -t "renders verdict"                    # single test by name
