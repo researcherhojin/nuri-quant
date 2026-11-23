@@ -337,6 +337,10 @@ cache states and known limitations.
 
 `/api/coverage` (#297) and `/api/market-context` were retired in #1816: nothing had called them since the old dashboard was deleted in #1698. The universe coverage check lives on as `scripts/verify/check_universe_coverage.py`, and the Explore page's `/api/tickers/market-context` is a separate route.
 
+### Portfolio CSV import
+
+`POST /api/portfolio/import` requires write authentication and accepts UTF-8 CSV. A row with fewer values than headers treats the missing values as empty (#2100). Empty required fields produce a row-numbered validation error. Omitted `currency` defaults to `USD`, and omitted `sector` stays empty. [Python CSV reader](https://docs.python.org/3.12/library/csv.html#csv.DictReader)
+
 ## Scheduler
 
 `nuri/scheduler.py` defines 57 cron jobs in the `SCHEDULES` list, plus a 1-minute `heartbeat` interval job. Times are host-local (KST on the production host) unless a job sets its own timezone (`premarket_brief` runs on `US/Eastern`; `thesis_pilot` and `thesis_pilot_check` pin `Asia/Seoul` so they keep their KST times on a UTC host). Collector imports are deferred inside `_dispatch_collector()` to avoid import-time side effects. A job's pipeline stage comes from `_STAGE_OF_JOB`, and only staged jobs record lifecycle events. Cron jobs allow a 5-minute misfire grace, and a fire time missed while the process is down is not run later. A daily `self_restart` job (08:40 KST) recycles the process to reclaim leaked yfinance file descriptors. A weekly `prune_reports` job (Sunday 03:30 KST) removes `data/reports/` date directories older than 30 days, keeping the newest one, the newest directory holding each consumed artifact (`signal_scorecard.csv`, `signal_results.csv`, `superinvestor_scorecard.csv`, `evidence/` — those are regenerated only by a manual `make validate` / `make full-scan`) and the non-date subdirectories (#1654). The `stock_us_freshness` job (06:10 and 06:40 KST, Tuesday to Saturday) keeps the SPY measurement benchmark and the `freshness_tickers` current (§3.11).
@@ -498,7 +502,7 @@ data/
 
 ## Testing
 
-9,680 backend tests across 462 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. The frontend's full run on 2026-10-29 executed 1,460 tests in 117 files. The E2E figure is the 93 tests in 10 files that `playwright test --list` reports, not a full-run record. For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
+9,680 backend tests across 462 files (collection) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` verifies these collection and file counts. On 2026-11-23, main CI ran 1,460 Vitest tests across 117 files. Playwright reported 88 passed and 5 skipped across 10 spec files. [Frontend Tests](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513) · [Frontend E2E](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551429) For change-scoped verification, see the run records in [Overview](OVERVIEW.md).
 
 Tests run with `pytest-xdist`. The fast CI shards use `-n 8 --dist worksteal` because the suite is wait-bound (2x oversubscription on 4-core runners, #1414); the slow shards and local runs keep `-n auto`. In CI, tests marked `@pytest.mark.slow` run only in the slow shards of `main` runs, push or the catch-up's dispatch (#1812) (PR CI and `make test-fast` use `-m "not slow and not integration"`; locally `make test` includes them and `make test-slow` selects them), and tests marked `integration` are deselected by default (`addopts`) because they call real services.
 

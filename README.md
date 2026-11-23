@@ -49,6 +49,7 @@ Run:
 make start        # API on :8001, dashboard on :3000
 make full-scan    # collect data, run the consensus, record decisions
 make test-fast    # backend tests
+make verify-doc-counts  # verify counts in the architecture and strategy guides
 make spellcheck   # spelling for tracked code, configuration and docs
 make help         # every target
 ```
