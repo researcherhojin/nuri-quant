@@ -1,8 +1,9 @@
-"""Antigravity PreToolUse guard mirroring .claude/settings.json invariants."""
+"""Antigravity PreToolUse checks for the workspace."""
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -11,13 +12,33 @@ from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
+_GIT = r"\bgit(?:\s+-[Cc]\s+(?:\"[^\"]*\"|'[^']*'|[^\s;&|]+))*\s+"
 _DESTRUCTIVE_GIT_RE = re.compile(
-    r"git\s+push\s+([^\s]+\s+)*(-f|--force)(\s|$)"
-    r"|git\s+reset\s+--hard"
-    r"|git\s+clean\s+(?:-[^\s;|&]+\s+)*(?:--force|-[a-z]*f[a-z]*)(?=\s|$|[;|&])",
+    _GIT + r"(?:push\s+(?:[^\s;&|]+\s+)*(?:-f|--force|['\"]?\+[^\s;&|]+)"
+    r"|reset\s+--hard"
+    r"|clean\s+(?:-[^\s;&|]+\s+)*(?:--force|-[a-z]*f[a-z]*))(?=\s|$|[;&|])",
     re.IGNORECASE,
 )
-_FILE_TOOLS = {"write_to_file", "replace_file_content", "multi_replace_file_content"}
+_FILE_TOOLS = {"view_file", "write_to_file", "replace_file_content", "multi_replace_file_content"}
+_PRIVACY_SCANNER = Path("scripts/verify/check_privacy_leak.py")
+
+
+def _is_protected(path: Path) -> bool:
+    return path == Path("config/portfolio.yaml") or (
+        (path.name == ".env" or path.name.startswith(".env.")) and path.name != ".env.example"
+    )
+
+
+def _imports(content: str, module: str) -> bool:
+    return (
+        re.search(
+            rf"(?:^|[;:])[ \t]*(?:from[ \t]+{module}(?:\.\w+)*[ \t]+import\b"
+            rf"|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*{module}\b)",
+            content,
+            re.MULTILINE,
+        )
+        is not None
+    )
 
 
 def _deny(reason: str) -> dict[str, str]:
@@ -42,7 +63,7 @@ def _is_gitignored(file_path: Path, repo_root: Path) -> bool:
 
 
 def _check_privacy(content: str, repo_root: Path) -> str | None:
-    script = repo_root / "scripts/verify/check_privacy_leak.py"
+    script = repo_root / _PRIVACY_SCANNER
     try:
         res = subprocess.run(
             [sys.executable, str(script), "--stream", "--quiet"],
@@ -75,21 +96,30 @@ def evaluate_hook(payload: dict[str, Any], repo_root: Path = _REPO_ROOT) -> dict
         return _allow()
 
     if name in _FILE_TOOLS:
-        raw_path = str(args.get("TargetFile") or "")
+        path_key = "AbsolutePath" if name == "view_file" else "TargetFile"
+        raw_path = str(args.get(path_key) or "")
         if not raw_path:
             return _allow()
 
-        resolved = (repo_root / raw_path).resolve()
-        try:
-            rel = resolved.relative_to(repo_root.resolve())
-        except ValueError:
+        repo_root = repo_root.resolve()
+        target = repo_root / raw_path
+        requested = Path(os.path.abspath(target))
+        resolved = target.resolve()
+        if (
+            name != "view_file"
+            and requested == resolved == repo_root / ".env.new"
+            and _is_gitignored(resolved, repo_root)
+        ):
             return _allow()
 
-        rel_posix = rel.as_posix()
+        for path in (requested, resolved):
+            if path.is_relative_to(repo_root) and _is_protected(path.relative_to(repo_root)):
+                return _deny(f"Protected file cannot be accessed directly: {path.relative_to(repo_root)}")
 
-        protected = rel_posix in (".env", "config/portfolio.yaml")
-        if protected or (rel_posix.startswith(".env.") and rel_posix != ".env.example"):
-            return _deny(f"Protected file cannot be modified directly: {rel_posix}")
+        if name == "view_file" or not resolved.is_relative_to(repo_root):
+            return _allow()
+        rel = resolved.relative_to(repo_root)
+        rel_posix = rel.as_posix()
 
         if name == "multi_replace_file_content":
             content = "\n".join(chunk.get("ReplacementContent", "") for chunk in args.get("ReplacementChunks", []))
@@ -99,16 +129,16 @@ def evaluate_hook(payload: dict[str, Any], repo_root: Path = _REPO_ROOT) -> dict
             return _allow()
 
         if rel_posix.startswith("nuri/") and rel_posix.endswith(".py"):
-            if rel_posix != "nuri/core/db/connection.py" and "import sqlite3" in content:
+            if rel_posix != "nuri/core/db/connection.py" and _imports(content, "sqlite3"):
                 return _deny("sqlite3 may only be imported in nuri/core/db/connection.py (AGENTS.md Rule #1).")
-            if rel_posix != "nuri/llm/openai_client.py" and "import openai" in content:
+            if rel_posix != "nuri/llm/openai_client.py" and _imports(content, "openai"):
                 return _deny("openai may only be imported in nuri/llm/openai_client.py (AGENTS.md Rule #6).")
             if rel_posix != "nuri/core/timezone.py" and "datetime.now(" in content:
                 return _deny(
                     "Direct datetime.now() is forbidden in nuri/; use kst_now()/today_kst()/utc_now() (Rule #3)."
                 )
 
-        if not _is_gitignored(resolved, repo_root):
+        if rel != _PRIVACY_SCANNER and not _is_gitignored(resolved, repo_root):
             leak_reason = _check_privacy(content, repo_root)
             if leak_reason:
                 return _deny(leak_reason)
