@@ -282,13 +282,14 @@ class TestCloseOverSma200Pct:
     2026-08-21 논지 원장 첫 운용). 괴리율(%)은 시점 무관하게 같은 의미를 유지한다.
     """
 
-    def _seed_sma(self, db_path, sma: float):
+    def _seed_sma(self, db_path, sma: float, date: str | None = None):
         from nuri.core.db import get_db
 
+        d = date or today_kst()
         with get_db(db_path) as conn:
             conn.execute(
                 "INSERT INTO signals (ticker, date, sma_200) VALUES ('ZZZZ', ?, ?)",
-                (today_kst(), sma),
+                (d, sma),
             )
 
     def test_resolves_as_pct_deviation(self, db_path):
@@ -326,3 +327,35 @@ class TestCloseOverSma200Pct:
             db_path=db_path,
         )
         assert n == 1
+
+    def test_stale_sma_with_fresh_close_is_unevaluable(self, db_path):
+        """prices.close 가 최신이어도 signals.sma_200 이 낡으면 stale(unevaluable) 이어야 한다."""
+        from datetime import date, timedelta
+
+        today = today_kst()
+        old = (date.fromisoformat(today) - timedelta(days=10)).isoformat()
+        _seed_close(db_path, 95.0, date=today)
+        self._seed_sma(db_path, 100.0, date=old)
+
+        _, resolved_date, table = tc.METRIC_RESOLVERS["close_over_sma200_pct"]("ZZZZ", db_path)
+        assert resolved_date == old
+        assert table == "prices+signals"
+
+        criterion = {"kind": "machine", "metric": "close_over_sma200_pct", "op": "<", "threshold": 0}
+        result = tc.evaluate_criterion(criterion, "ZZZZ", as_of=today, db_path=db_path)
+        assert result["result"] == "unevaluable"
+        assert result["detail"].startswith("stale:prices+signals:")
+
+    def test_stale_close_with_fresh_sma_is_unevaluable(self, db_path):
+        """signals.sma_200 이 최신이어도 prices.close 가 낡으면 stale(unevaluable) 이어야 한다."""
+        from datetime import date, timedelta
+
+        today = today_kst()
+        old = (date.fromisoformat(today) - timedelta(days=10)).isoformat()
+        _seed_close(db_path, 95.0, date=old)
+        self._seed_sma(db_path, 100.0, date=today)
+
+        criterion = {"kind": "machine", "metric": "close_over_sma200_pct", "op": "<", "threshold": 0}
+        result = tc.evaluate_criterion(criterion, "ZZZZ", as_of=today, db_path=db_path)
+        assert result["result"] == "unevaluable"
+        assert result["detail"].startswith("stale:prices+signals:")

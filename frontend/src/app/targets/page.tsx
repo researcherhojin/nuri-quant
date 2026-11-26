@@ -24,7 +24,7 @@ interface PriceTarget {
   trailing_stop_pct: number;
   analyst_target: number | null;
   analyst_upside_pct: number | null;
-  take_profit_triggered?: boolean;
+  take_profit_triggered?: string | null;
   trailing_stop_triggered?: boolean;
   error?: string;
 }

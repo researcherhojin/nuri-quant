@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date
 
 import numpy as np
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def latest_vix(db_path=None) -> float | None:
-    """최신 VIX. 없거나·조회 실패·노후면 **None** — 숫자를 지어내지 않는다.
+    """최신 VIX. 없거나·조회 실패·노후·비유한(NULL/NaN/Inf)이면 **None** — 숫자를 지어내지 않는다.
 
     VIX 는 macro 테이블(indicator='vix')에만 수집된다. `prices.VIX` 는 미수집이라
     그 경로를 읽으면 항상 폴백으로 떨어져 게이트가 무력화된다 (#753).
@@ -55,9 +56,17 @@ def latest_vix(db_path=None) -> float | None:
     # TypeError 는 일부러 안 잡는다 — 그건 코딩 오류다.
     try:
         observed = date.fromisoformat(str(rows["date"].iloc[0])[:10])
-        value = float(rows["value"].iloc[0])
+        raw_value = rows["value"].iloc[0]
+        if raw_value is None:
+            logger.warning("VIX 값이 NULL — 미상 처리")
+            return None
+        value = float(raw_value)
     except (ValueError, KeyError, IndexError):
         logger.warning("VIX 행이 깨졌음 — 미상 처리", exc_info=True)
+        return None
+
+    if not math.isfinite(value):
+        logger.warning("VIX 값이 비유한(%s) — 미상 처리", value)
         return None
 
     age = int(np.busday_count(observed, date.fromisoformat(today_kst())))

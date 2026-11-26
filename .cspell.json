@@ -966,7 +966,10 @@
     "yflog",
     "ylabel",
     "yref",
-    "zhou"
+    "zhou",
+    "CREAT",
+    "toctou",
+    "WRONLY"
   ],
   "ignorePaths": [
     "**/node_modules/**",

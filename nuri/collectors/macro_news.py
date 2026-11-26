@@ -65,11 +65,14 @@ class MacroNewsCollector(BaseCollector):
         cutoff = (kst_now() - timedelta(days=MAX_ARTICLE_AGE_DAYS)).isoformat(timespec="seconds")
         records: list[dict] = []
         stale_count = 0
+        attempted = len(KEYWORDS)
+        errors: list[Exception] = []
         for keyword in KEYWORDS:
             try:
                 items = self._fetch_rss(keyword)
             except Exception as e:  # noqa: BLE001 — 한 키워드 실패가 전체를 막지 않게
                 self.logger.debug("RSS fetch 실패 (%s): %s", keyword, e)
+                errors.append(e)
                 continue
 
             for item in items:
@@ -94,6 +97,11 @@ class MacroNewsCollector(BaseCollector):
                         "raw_json": None,
                     }
                 )
+
+        if attempted > 0 and len(errors) == attempted:
+            raise RuntimeError(
+                f"[{self.name}] 모든 키워드({attempted}개) RSS 수집 실패 — 첫 오류: {errors[0]}"
+            ) from errors[0]
 
         if stale_count:
             self.logger.info("[%s] %d개 stale 기사 필터링 (>%d일)", self.name, stale_count, MAX_ARTICLE_AGE_DAYS)

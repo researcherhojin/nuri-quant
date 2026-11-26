@@ -207,4 +207,52 @@ describe("PortfolioPage", () => {
     });
     mockSearchParams.delete("onboarding");
   });
+
+  it("resets loadingSample on sample load failure and skips reload on non-ok", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes("/api/portfolio/sample") && opts?.method === "POST") {
+        return Promise.resolve({ ok: false, status: 500 });
+      }
+
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ holdings: [], count: 0 }) });
+    });
+
+    global.fetch = fetchMock;
+    render(<PortfolioPage />);
+    await waitFor(() => expect(screen.getByText("Load Sample Portfolio")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText("Load Sample Portfolio"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Load Sample Portfolio")).not.toBeDisabled();
+    });
+
+    // Initial GET + POST sample only — no reload GET after non-ok response
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("resets submitting and shows error on add holding network failure", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes("/api/portfolio") && opts?.method === "POST") {
+        return Promise.reject(new Error("Network error"));
+      }
+
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ holdings: mockHoldings, count: mockHoldings.length }) });
+    });
+
+    render(<PortfolioPage />);
+    await waitFor(() => expect(screen.getByText("TSLA")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Add Holding"));
+
+    fireEvent.change(screen.getByPlaceholderText("Ticker (e.g. AAPL)"), { target: { value: "MSFT" } });
+    fireEvent.change(screen.getByPlaceholderText("Quantity"), { target: { value: "5" } });
+    fireEvent.change(screen.getByPlaceholderText("Avg Price"), { target: { value: "400" } });
+    fireEvent.click(screen.getByText("Save"));
+
+    await waitFor(() => {
+      expect(screen.getByText("추가 실패")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Save")).not.toBeDisabled();
+  });
 });

@@ -67,6 +67,67 @@ class TestApiMain:
         assert resp.status_code == 200
         assert "access_token" in resp.json()
 
+    def test_login_invalid_json_returns_400(self, client, monkeypatch):
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "correct")
+        resp = client.post(
+            "/api/auth/token",
+            content=b"{not-json",
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize("payload", [["list"], "string", 123, None])
+    def test_login_non_dict_body_returns_400(self, client, monkeypatch, payload):
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "correct")
+        resp = client.post("/api/auth/token", json=payload)
+        assert resp.status_code == 400
+
+    @pytest.mark.parametrize("payload", [{}, {"password": None}, {"password": 1234}, {"password": ["x"]}])
+    def test_login_non_string_password_returns_400(self, client, monkeypatch, payload):
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "correct")
+        resp = client.post("/api/auth/token", json=payload)
+        assert resp.status_code == 400
+
+    def test_login_bcrypt_rejects_raw_hash_as_password(self, client, monkeypatch):
+        """DASHBOARD_PASSWORD 가 bcrypt 해시일 때 해시 문자열 자체를 비밀번호로 보내면 401."""
+        from nuri.api.auth import hash_password
+
+        hashed = hash_password("real-secret")
+        monkeypatch.setenv("DASHBOARD_PASSWORD", hashed)
+
+        # 해시 자체를 보내는 우회 시도 → 401
+        bypass_resp = client.post("/api/auth/token", json={"password": hashed})
+        assert bypass_resp.status_code == 401
+
+        # 오답 → 401
+        wrong_resp = client.post("/api/auth/token", json={"password": "wrong"})
+        assert wrong_resp.status_code == 401
+
+        # 정상 비밀번호 → 200
+        ok_resp = client.post("/api/auth/token", json={"password": "real-secret"})
+        assert ok_resp.status_code == 200
+        assert "access_token" in ok_resp.json()
+
+    def test_login_malformed_bcrypt_hash_returns_401_not_500(self, client, monkeypatch):
+        monkeypatch.setenv("DASHBOARD_PASSWORD", "$2b$12$not-a-valid-bcrypt-hash")
+        resp = client.post("/api/auth/token", json={"password": "$2b$12$not-a-valid-bcrypt-hash"})
+        assert resp.status_code == 401
+
+    def test_global_rate_limit_enforced_by_slowapi_middleware(self, client, monkeypatch):
+        """SlowAPIMiddleware 가 전역 60/minute 제한을 실제로 집행한다."""
+        from nuri.api import main as main_mod
+
+        monkeypatch.setattr(main_mod.limiter, "enabled", True)
+        main_mod.limiter.reset()
+        try:
+            for _ in range(60):
+                resp = client.get("/api/health")
+                assert resp.status_code == 200
+            exceeded = client.get("/api/health")
+            assert exceeded.status_code == 429
+        finally:
+            main_mod.limiter.reset()
+
     def test_main_block(self, monkeypatch):
         """Cover the __main__ block (lines 143-147)."""
         mock_run = MagicMock()

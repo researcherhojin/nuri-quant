@@ -83,12 +83,43 @@ class TestNewsCollectorScenarios:
         assert NewsCollector().collect() == []
 
     def test_collect_exception(self, monkeypatch, db_with_portfolio):
+        """모든 종목이 예외로 실패하면 전면 장애로 RuntimeError 를 올린다 (#1043)."""
         import sys
+
+        import pytest
 
         from nuri.collectors.news import NewsCollector
 
         monkeypatch.setitem(sys.modules, "yfinance", _yf(error=Exception("API error")))
-        assert NewsCollector().collect() == []
+        with pytest.raises(RuntimeError, match="API error"):
+            NewsCollector().collect()
+
+    def test_collect_partial_failure_returns_successful_tickers(self, monkeypatch, db_with_portfolio):
+        """일부 종목만 예외이고 나머지는 성공하면 예외 없이 수집 결과를 반환한다."""
+        import sys
+
+        from nuri.collectors.news import NewsCollector
+
+        raw = [
+            {
+                "content": {
+                    "title": "NVDA surges",
+                    "canonicalUrl": {"url": "https://example.com/nvda"},
+                    "provider": {"displayName": "Reuters"},
+                    "pubDate": "2025-01-28T12:00:00Z",
+                }
+            }
+        ]
+
+        def ticker_factory(ticker):
+            if ticker == "AAPL":
+                return MagicMock(get_news=MagicMock(side_effect=RuntimeError("AAPL fail")))
+            return MagicMock(get_news=MagicMock(return_value=_tagged(raw)))
+
+        monkeypatch.setitem(sys.modules, "yfinance", MagicMock(Ticker=ticker_factory))
+        results = NewsCollector().collect()
+        assert len(results) == 1
+        assert results[0]["ticker"] == "NVDA"
 
 
 class TestNewsCollector_Uncovered:
@@ -205,15 +236,18 @@ class TestYfinanceFallback:
         assert "https://skip.com/1" not in urls
 
     def test_fallback_returns_empty_when_yfinance_raises(self, monkeypatch, db_with_portfolio):
-        """yfinance 자체가 exception — fallback 은 per-ticker [] 반환 (silent degrade)."""
+        """전 종목이 예외이면 collect() 는 RuntimeError 를 올리고, 단건 _fetch_ticker_news() 는 [] 로 폴백."""
         import sys
+
+        import pytest
 
         from nuri.collectors.news import NewsCollector
 
         monkeypatch.setitem(sys.modules, "yfinance", _yf(error=RuntimeError("network fail")))
 
-        results = NewsCollector().collect()
-        assert results == []
+        assert NewsCollector()._fetch_ticker_news("AAPL") == []
+        with pytest.raises(RuntimeError, match="network fail"):
+            NewsCollector().collect()
 
     def test_iso_utc_to_kst_date_boundaries(self):
         """UTC→KST date 변환 경계값. KST=UTC+9 이므로 15:00 UTC 가 자정 경계."""

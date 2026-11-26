@@ -116,6 +116,34 @@ def test_permit_is_released_even_if_a_new_admission_replaced_the_state_mid_run(m
     assert limits._heavy_slots._value == before, "바꿔치기 뒤에도 옛 실행의 permit 은 돌아온다"
 
 
+def test_slot_is_released_when_audit_log_fails_at_admission(monkeypatch):
+    """접수 시 heavy slot 획득 후 audit_log 예외가 나도 슬롯이 영구 누수되지 않는다."""
+    from nuri.api import limits
+
+    def fail_audit(*args, **kwargs):
+        raise DatabaseError("database is locked")
+
+    monkeypatch.setattr(refresh, "audit_log", fail_audit)
+    before = limits._heavy_slots._value
+    with pytest.raises(DatabaseError, match="database is locked"):
+        refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), BackgroundTasks(), {"sub": "test"})
+    assert limits._heavy_slots._value == before
+    assert refresh.get_refresh()["run"] is None
+
+
+def test_slot_is_released_when_background_registration_fails(monkeypatch):
+    """접수 시 background.add_task 예외가 나도 슬롯이 반환되고 _state 는 오염되지 않는다."""
+    from nuri.api import limits
+
+    tasks = BackgroundTasks()
+    monkeypatch.setattr(tasks, "add_task", lambda *a, **kw: (_ for _ in ()).throw(RuntimeError("queue full")))
+    before = limits._heavy_slots._value
+    with pytest.raises(RuntimeError, match="queue full"):
+        refresh.start_refresh(refresh.RefreshInput(jobs=["macro"]), tasks, {"sub": "test"})
+    assert limits._heavy_slots._value == before
+    assert refresh.get_refresh()["run"] is None
+
+
 def test_job_literal_matches_the_catalog():
     assert refresh.JOB_IDS == frozenset(refresh.JOBS)
 

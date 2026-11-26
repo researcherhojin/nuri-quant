@@ -26,19 +26,24 @@ interface Props {
 // 공통 렌더러
 const ticker = (v: string) => <span className="font-medium">{v}</span>;
 
-const pct = (v: number) => (
-  <span className={v > 0 ? "text-emerald-400" : v < 0 ? "text-red-400" : "text-muted-foreground"}>
-    {v > 0 ? "+" : ""}{isNumber(v) ? v.toFixed(1) : v}%
-  </span>
-);
+const dim = (v: any) => <span className="text-muted-foreground text-xs">{String(v ?? "—")}</span>;
 
-const num = (v: number) => isNumber(v) ? v.toFixed(1) : String(v);
+const pct = (v: number | null | undefined) => {
+  if (v == null) return dim("—");
+  const isNum = isNumber(v);
+
+  return (
+    <span className={isNum && v > 0 ? "text-emerald-400" : isNum && v < 0 ? "text-red-400" : "text-muted-foreground"}>
+      {isNum && v > 0 ? "+" : ""}{isNum ? v.toFixed(1) : String(v)}%
+    </span>
+  );
+};
+
+const num = (v: number | null | undefined) => (v == null ? "—" : isNumber(v) ? v.toFixed(1) : String(v));
 
 const badge = (v: string) => <StatusBadge status={v} size="sm" />;
 
 const badgeMd = (v: string) => <StatusBadge status={v} size="md" />;
-
-const dim = (v: any) => <span className="text-muted-foreground text-xs">{String(v ?? "—")}</span>;
 
 const money = (v: number) => <span className="text-emerald-400">${v?.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>;
 
@@ -55,7 +60,7 @@ const VARIANTS = {
   scorecard: [
     { key: "signal_id", label: "Signal", render: (v: string) => <StatusBadge status={v} size="sm" /> },
     { key: "total_trades", label: "Trades", align: "right" },
-    { key: "win_rate", label: "Win Rate", align: "right", render: (v: number) => pct(v * 100) },
+    { key: "win_rate", label: "Win Rate", align: "right", render: (v: number | null | undefined) => (isNumber(v) ? pct(v * 100) : dim("—")) },
     { key: "profit_factor", label: "PF", align: "right", render: num },
     { key: "avg_return", label: "Avg Return", align: "right", render: pct },
   ],

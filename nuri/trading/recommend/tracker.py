@@ -275,12 +275,23 @@ def save_recommendations(candidates=None, actions=None, verdicts=None, db_path=N
             )
             price = price_row[0]["close"] if price_row else 0
 
+            raw_pa = getattr(a, "portfolio_action", None)
+            if isinstance(raw_pa, str):
+                portfolio_action: str | None = raw_pa
+                alpha_action: str | None = None
+            elif a.action in ("TRIM", "REDUCE"):
+                portfolio_action = "TRIM"
+                alpha_action = None
+            else:
+                portfolio_action = None
+                alpha_action = derive_alpha_action(a.action)
+
             rec = {
                 "date": today,
                 "ticker": a.ticker,
                 "action": a.action,
-                "alpha_action": derive_alpha_action(a.action),
-                "portfolio_action": None,  # E-2 rebalance 는 legacy 경로. PR C 에서 재분류.
+                "alpha_action": alpha_action,
+                "portfolio_action": portfolio_action,
                 "confidence": 50.0,  # 리밸런싱 기반은 기본 50
                 # #832: regime_note 는 free-text ("[recovery] 비중 축소" 등) 라 regime
                 # 컬럼 오염 원인 — canonical batch 라벨로 대체 (note 는 컬럼 미persist).
@@ -422,12 +433,13 @@ def track_outcomes(db_path=None, recompute: bool = False) -> int:
 
         # hit / hit_quality 는 canonical 30d 만 결정 (의도된 단일 기준).
         # BUY: +5% 이상 (성장 +20% 목표의 25%), SELL: -2% 이하.
+        # HOLD / TRIM / REDUCE 등 비-alpha 액션은 hit 채점 대상에서 제외 (NULL 유지).
         if ret30 is not None:
             action = rec["action"]
             if action == "BUY":
                 updates["hit"] = ret30 >= 5.0
                 updates["hit_quality"] = round(ret30 / 20.0, 3) if ret30 > 0 else 0.0
-            else:
+            elif action == "SELL":
                 updates["hit"] = ret30 < -2.0
                 updates["hit_quality"] = round(abs(ret30) / 10.0, 3) if ret30 < 0 else 0.0
 

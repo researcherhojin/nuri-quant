@@ -64,3 +64,24 @@ def test_all_zero_weights_are_returned_as_zeros_not_divided(db_path):
 
     assert weights == dict.fromkeys(DEFAULT_WEIGHTS, 0.0)
     assert set(sources.values()) == {"canonical_30d"}
+
+
+def test_zero_return_is_not_credited_as_sell_hit(db_path):
+    """0.0% 수익률은 SELL 적중으로 집계되면 안 된다 (outcome < 0 만 SELL 적중)."""
+    with get_db(db_path) as conn:
+        for i in range(10):
+            conn.execute(
+                "INSERT INTO recommendations (ticker, action, confidence, agent_verdicts, outcome_30d, date) "
+                "VALUES (?, 'SELL', 70, ?, 0.0, ?)",
+                (f"FLAT{i:02d}", '[{"agent_name": "technical", "action": "SELL"}]', today_kst()),
+            )
+
+    elig = _compute_horizon_eligibility(
+        outcome_col="outcome_30d", adjustment_range=0.30, label="canonical_30d", db_path=db_path
+    )
+
+    assert elig["technical"].eligible is True
+    assert elig["technical"].sample_count == 10
+    # 적중률 0% → -30% 조정(기본 가중치 미만). 기존 버그(not is_positive)는 100% 적중으로 +30% 상향.
+    assert elig["technical"].weight < DEFAULT_WEIGHTS["technical"]
+    assert elig["technical"].weight == pytest.approx(max(0.03, DEFAULT_WEIGHTS["technical"] * 0.70))

@@ -93,14 +93,17 @@ class TestCalculateTargets:
         assert result["target_2"] == pytest.approx(270.0 * 1.30, rel=0.01)
 
     def test_swing_targets(self, db_path):
-        """스윙 타겟: -7% 손절, +5%/+10% 익절."""
+        """스윙 타겟: -5% 손절(SWING_STOP_LOSS), +5%/+10% 익절, 2차 익절 100% 매도."""
         _seed_prices_nm(db_path)
         from nuri.trading.recommend.price_targets import calculate_targets
 
         result = calculate_targets("NVDA", entry_price=168.0, stock_type="swing", db_path=db_path)
         assert result["stock_type"] == "swing"
+        assert result["stop_loss_pct"] == -5
+        assert result["stop_loss"] == pytest.approx(168.0 * 0.95, rel=0.01)
         assert result["target_1"] == pytest.approx(168.0 * 1.05, rel=0.01)
         assert result["target_2"] == pytest.approx(168.0 * 1.10, rel=0.01)
+        assert result["target_2_sell_pct"] == 100
 
     def test_analyst_target_included(self, db_path):
         """애널리스트 목표가가 있으면 포함."""

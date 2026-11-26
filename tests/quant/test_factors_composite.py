@@ -264,6 +264,14 @@ class TestSentimentIsNotFabricated:
         upsert_macro([{"indicator": "fear_greed", "date": "not-a-date", "value": 50.0, "source": "test"}], path)
         assert comp._market_sentiment() is None
 
+    @pytest.mark.parametrize("bad_val", [float("nan"), float("inf"), float("-inf")])
+    def test_non_finite_fear_greed_returns_none(self, bad_val, monkeypatch):
+        """NaN/inf fear_greed 는 None 으로 처리되어 composite_score 를 오염시키지 않는다."""
+        from nuri.quant.factors import composite as comp
+
+        monkeypatch.setattr(comp, "query", lambda _sql: [{"date": today_kst(), "value": bad_val}])
+        assert comp._market_sentiment() is None
+
 
 class TestFactorDateIsAMarketDate:
     """`factors.date` 는 쓴 날이 아니라 **시장 데이터 날짜**다 (#1071, Codex P1).

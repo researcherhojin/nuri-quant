@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 import requests
 
-_CLOUD_NAME = re.compile(r"(?:^|[:\-])cloud$", re.IGNORECASE)
+_CLOUD_NAME = re.compile(r"(?:^|[:\-])cloud(?:$|:)", re.IGNORECASE)
 
 
 def _root(url: str) -> str:
@@ -42,23 +42,24 @@ def _same(name: str, model: str) -> bool:
 
 def refuse_reason(base_url: str, model: str, *, require_ollama: bool = True, timeout: float = 5.0) -> Optional[str]:
     """거부 사유, 통과면 None. 사유 문자열에 URL 은 넣지 않는다(로그 · Discord 로 env 값이 새지 않게)."""
-    if not model or _CLOUD_NAME.search(model):
+    normalized = model.strip() if model else ""
+    if not normalized or _CLOUD_NAME.search(normalized):
         return "cloud or empty model name"
-    session = requests.Session()
-    session.trust_env = False  # 루프백 요청도 환경 프록시로 나간다 (llm_consult 의 같은 이유)
-    try:
-        resp = session.get(_root(base_url) + "/api/tags", timeout=timeout, allow_redirects=False)
-    except requests.RequestException as e:
-        return f"model list unavailable ({type(e).__name__})"
-    if resp.status_code == 404 and not require_ollama:
-        return None  # Ollama 가 아닌 로컬 서버 — 이름 검사만
-    if resp.status_code != 200:
-        return f"model list unavailable (HTTP {resp.status_code})"
-    try:
-        models: list[dict[str, Any]] = resp.json().get("models") or []
-    except ValueError:
-        return "model list unreadable"
-    entry = next((m for m in models if _same(str(m.get("name") or m.get("model") or ""), model)), None)
+    with requests.Session() as session:
+        session.trust_env = False  # 루프백 요청도 환경 프록시로 나간다 (llm_consult 의 같은 이유)
+        try:
+            resp = session.get(_root(base_url) + "/api/tags", timeout=timeout, allow_redirects=False)
+        except requests.RequestException as e:
+            return f"model list unavailable ({type(e).__name__})"
+        if resp.status_code == 404 and not require_ollama:
+            return None  # Ollama 가 아닌 로컬 서버 — 이름 검사만
+        if resp.status_code != 200:
+            return f"model list unavailable (HTTP {resp.status_code})"
+        try:
+            models: list[dict[str, Any]] = resp.json().get("models") or []
+        except ValueError:
+            return "model list unreadable"
+    entry = next((m for m in models if _same(str(m.get("name") or m.get("model") or ""), normalized)), None)
     if entry is None:
         return "model not installed locally"
     if entry.get("remote_model") or entry.get("remote_host"):

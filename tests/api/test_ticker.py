@@ -62,6 +62,21 @@ class TestTicker:
         assert r.status_code == 200
         assert r.json()["macro_score"] == 62.5
 
+    def test_market_context_macro_score_zero_preserved(self, client, monkeypatch):
+        """macro_score 가 0.0 일 때 falsy 로 None 변환되지 않고 0.0 을 유지한다."""
+
+        class FakeZeroMacro:
+            total_score = 0.0
+
+        monkeypatch.setattr(
+            "nuri.quant.regime.macro_score.compute_macro_score",
+            lambda: FakeZeroMacro(),
+        )
+        r = client.get("/api/tickers/market-context")
+        assert r.status_code == 200
+        assert r.json()["macro_score"] == 0.0
+        assert r.json()["macro_score"] is not None
+
     def test_market_context_classify_returns_regime(self, client, monkeypatch):
         """classify_regime returns truthy → trend set (line 95)."""
 

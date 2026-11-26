@@ -28,7 +28,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 미인증 → 로그인 페이지로 리다이렉트
+  // 미인증 → API는 401 JSON, 페이지 라우트는 로그인 페이지로 리다이렉트
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   return NextResponse.redirect(new URL("/login", request.url));
 }
 

@@ -212,3 +212,33 @@ class TestSecretKeyStartupWarning:
     def test_silent_when_secret_key_is_set(self, caplog):
         text = self._exec_main_fresh({"API_SECRET_KEY": "x" * 32}, caplog)
         assert "API_SECRET_KEY 미설정" not in text
+
+
+class TestAuthSecretKeyFallback:
+    """`API_SECRET_KEY=""` 빈 문자열이 JWT 서명 키로 쓰이지 않는다."""
+
+    def _exec_auth_fresh(self, env: dict):
+        import importlib.util
+
+        path = Path(__file__).resolve().parents[2] / "nuri" / "api" / "auth.py"
+        spec = importlib.util.spec_from_file_location("nuri_api_auth_probe", path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        with patch.dict("os.environ", env, clear=False):
+            spec.loader.exec_module(module)
+        return module
+
+    def test_empty_secret_key_env_generates_random_fallback(self):
+        mod = self._exec_auth_fresh({"API_SECRET_KEY": ""})
+        assert isinstance(mod._SECRET_KEY, str)
+        assert len(mod._SECRET_KEY) >= 32
+        token = mod.create_token("dashboard")
+        payload = mod.decode_token(token)
+        assert payload is not None
+        assert payload["sub"] == "dashboard"
+        assert payload["exp"] - payload["iat"] == 24 * 3600
+
+    def test_non_empty_secret_key_env_is_used(self):
+        expected = "synthetic-non-empty-secret-key-32b"
+        mod = self._exec_auth_fresh({"API_SECRET_KEY": expected})
+        assert mod._SECRET_KEY == expected

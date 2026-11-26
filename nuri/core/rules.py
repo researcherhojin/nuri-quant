@@ -5,9 +5,12 @@
     max_pos = RULES["position_limits"]["max_single_position"]
 """
 
+import logging
 from pathlib import Path
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 _RULES_PATH = Path(__file__).parent.parent.parent / "config" / "rules.yaml"
 
@@ -248,13 +251,11 @@ def get_real_accounts() -> set[str]:
 
     호출자는 DB row 를 이 집합으로 걸러 stale 픽스처 행이 집계를 오염시키지 않게 한다.
     """
-    import yaml
-
-    _portfolio_path = Path(__file__).parent.parent.parent / "config" / "portfolio.yaml"
     try:
-        with open(_portfolio_path, encoding="utf-8") as f:
+        with open(PORTFOLIO_PATH, encoding="utf-8") as f:
             portfolio = yaml.safe_load(f) or {}
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to load %s: %s", PORTFOLIO_PATH, e)
         return set()
     return {acc for acc, info in (portfolio.get("accounts") or {}).items() if is_real_account(info)}
 

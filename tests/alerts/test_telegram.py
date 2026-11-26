@@ -265,3 +265,50 @@ class TestTelegram_R24:
 
         msg = format_signal_alert("AAPL", "HOLD", 50.0, 190.0)
         assert "HOLD" in msg
+
+
+class TestTelegramRuntimeEnvAndEscaping:
+    def test_send_resolves_env_vars_at_send_time(self, monkeypatch):
+        """임포트 이후 설정된 환경변수도 send_telegram() 시점에 반영된다."""
+        import requests
+
+        import nuri.alerts.telegram as tg
+
+        monkeypatch.setattr(tg, "_BOT_TOKEN", "")
+        monkeypatch.setattr(tg, "_CHAT_ID", "")
+        monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "runtime_tok")
+        monkeypatch.setenv("TELEGRAM_CHAT_ID", "99999")
+
+        captured: dict = {}
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+
+        def fake_post(url, **kw):
+            captured["url"] = url
+            captured["json"] = kw.get("json")
+            return mock_resp
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        assert tg.send_telegram("hello") is True
+        assert "botruntime_tok/sendMessage" in captured["url"]
+        assert captured["json"]["chat_id"] == "99999"
+
+    def test_formatters_escape_html_special_chars(self):
+        """동적 필드의 <, >, & 는 HTML 이스케이프되어야 Telegram HTML 파싱 오류가 나지 않는다."""
+        from nuri.alerts.telegram import (
+            format_regime_alert,
+            format_signal_alert,
+            format_violation_alert,
+        )
+
+        regime_msg = format_regime_alert("bull<1>", "bear&vol", 80.0)
+        assert "bull&lt;1&gt;" in regime_msg
+        assert "<b>bear&amp;vol</b>" in regime_msg
+
+        viol_msg = format_violation_alert([{"ticker": "A<B>", "severity": "critical", "reason": "P&L < -10%"}])
+        assert "A&lt;B&gt;" in viol_msg
+        assert "P&amp;L &lt; -10%" in viol_msg
+
+        sig_msg = format_signal_alert("BRK&B", "BUY<1>", 90.0, 400.0)
+        assert "<b>BRK&amp;B</b>" in sig_msg
+        assert "BUY&lt;1&gt;" in sig_msg

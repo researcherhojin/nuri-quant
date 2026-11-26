@@ -172,6 +172,60 @@ class TestComputeEventScore:
         assert es.event_count == 0
         assert es.score == 0.0
 
+    def test_future_events_excluded_when_date_in_past(self, db_path):
+        """기준일(date) 이후의 미래 이벤트는 lookahead 방지를 위해 제외된다."""
+        _insert_events(
+            db_path,
+            [
+                # 기준일 당일 이벤트 (date 문자열 + ISO 타임스탬프 모두 포함되어야 함)
+                {
+                    "category": "fed_dovish",
+                    "sentiment": 0.6,
+                    "confidence": 0.8,
+                    "published_at": "2026-04-09",
+                    "url": "http://t/same-day-date",
+                },
+                {
+                    "category": "fed_dovish",
+                    "sentiment": 0.6,
+                    "confidence": 0.8,
+                    "published_at": "2026-04-09T23:30:00+09:00",
+                    "url": "http://t/same-day-ts",
+                },
+                # 미래 이벤트 — 모두 제외되어야 함
+                {
+                    "category": "geopolitical_escalation",
+                    "sentiment": -0.9,
+                    "confidence": 0.95,
+                    "published_at": "2026-04-10",
+                    "url": "http://t/future-next-day",
+                },
+                {
+                    "category": "geopolitical_escalation",
+                    "sentiment": -0.9,
+                    "confidence": 0.95,
+                    "published_at": "2026-04-10T00:00:00+00:00",
+                    "url": "http://t/future-next-day-ts",
+                },
+                {
+                    "category": "trade_war",
+                    "sentiment": -0.9,
+                    "confidence": 0.95,
+                    "published_at": "2026-04-15",
+                    "url": "http://t/future-later",
+                },
+            ],
+        )
+        es = compute_event_score(db_path=db_path, date="2026-04-09", lookback_days=3)
+        assert es.event_count == 2
+        assert es.score > 0
+        assert es.dominant_category == "fed_dovish"
+
+        # 미래 이벤트만 있는 과거 시점 조회 → 0건
+        es_earlier = compute_event_score(db_path=db_path, date="2026-04-05", lookback_days=3)
+        assert es_earlier.event_count == 0
+        assert es_earlier.score == 0.0
+
     def test_zero_sentiment_uses_half_weight(self, db_path):
         """When sentiment is 0, contribution = weight × confidence × 0.5."""
         _insert_events(

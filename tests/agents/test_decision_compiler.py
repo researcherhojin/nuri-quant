@@ -346,6 +346,24 @@ class TestCausalGateLockTest:
         # WEAK + 낮은 certainty → conviction 임계값 미달 → HOLD
         assert result.output["action"] == "HOLD"
 
+    @pytest.mark.parametrize("bad_verdict", [None, "", "UNKNOWN", "PENDING", "robust"])
+    def test_unknown_or_missing_verdict_is_blocked_by_allowlist(self, patched_db, bad_verdict):
+        """Gate 2 는 allowlist(ROBUST/WEAK) — 누락·미지 verdict 도 fail-closed 차단."""
+        result = DecisionCompiler().run(
+            _compile_payload(
+                causal_evidence={
+                    "factor_id": "mystery",
+                    "as_of_date": "2026-05-01",
+                    "verdict": bad_verdict,
+                    "causal_certainty": 0.95,
+                }
+            )
+        )
+        assert result.outcome == Outcome.WARN
+        assert result.output["action"] == "HOLD"
+        assert result.output["status"] == "blocked"
+        assert f"causal verdict={bad_verdict}" in result.output["block_reason"]
+
 
 class TestConvictionGateLockTest:
     """LOCK-TEST: conviction < 0.5 → HOLD (low-signal emit 차단)."""
@@ -562,15 +580,19 @@ class TestDiscordPublish:
             mock_stage.assert_called_once()
             assert mock_stage.call_args.kwargs["payload"]["kind"] == "decision_blocked"
 
-    def test_publish_failure_does_not_block_actor(self, patched_db):
-        # outbox stage 가 어떤 이유로든 raise 해도 actor pipeline 죽지 않아야 함.
-        with patch(
-            "nuri.agents.discord.outbox.stage_brief",
-            side_effect=RuntimeError("outbox down"),
+    def test_publish_failure_does_not_block_actor(self, patched_db, caplog):
+        # outbox stage 가 어떤 이유로든 raise 해도 actor pipeline 죽지 않아야 함 + 경고 로깅.
+        with (
+            caplog.at_level("WARNING", logger="nuri.agents.actors.decision_compiler"),
+            patch(
+                "nuri.agents.discord.outbox.stage_brief",
+                side_effect=RuntimeError("outbox down"),
+            ),
         ):
             result = DecisionCompiler().run(_compile_payload())
             assert result.outcome == Outcome.PASS
             assert result.output["status"] == "emitted"
+        assert "stage_brief" in caplog.text
 
     def test_buy_emit_attaches_price_levels(self, patched_db):
         """#571 Phase 1 — BUY recommendation 은 entry/stop/TP1/TP2/trailing 를 payload 에 attach."""

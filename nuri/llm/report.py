@@ -635,7 +635,7 @@ def _generate_ollama(prompt: str) -> str:
     try:
         num_ctx = int(load_config()["report"]["num_ctx"])
         resp = _requests.post(
-            f"{OLLAMA_HOST}/api/generate",
+            f"{OLLAMA_HOST.rstrip('/')}/api/generate",
             json={
                 "model": OLLAMA_MODEL,
                 "prompt": prompt,

@@ -51,6 +51,7 @@ _INCIDENT_TYPES = (
     "replica_stale",  # DR 복제 정지 (#1531) — migration 65 와 짝
 )
 _INCIDENT_SEVERITIES = ("critical", "warning", "info")
+_INCIDENT_SEVERITY_RANK = {"info": 0, "warning": 1, "critical": 2}
 _INCIDENT_STATUSES = ("open", "acknowledged", "resolved")
 _DRIFT_TEST_TYPES = ("psi", "ks")
 _DRIFT_SEVERITIES = ("stable", "minor", "major", "critical")
@@ -268,14 +269,23 @@ def log_incident(
 
     evidence_json = json.dumps(evidence, sort_keys=True, default=str)
     with get_db(db_path) as conn:
-        # open 인 동일 (type, target) 가 있으면 update + 기존 incident_id 반환.
+        # open 또는 acknowledged 인 동일 (type, target) 가 있으면 update + 기존 incident_id 반환.
         existing = conn.execute(
-            """SELECT incident_id FROM incidents
-               WHERE incident_type = ? AND target = ? AND status = 'open'""",
+            """SELECT incident_id, severity FROM incidents
+               WHERE incident_type = ? AND target = ? AND status IN ('open', 'acknowledged')
+               ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, incident_id DESC
+               LIMIT 1""",
             (incident_type, target),
         ).fetchone()
         if existing is not None:
             existing_id = existing[0]
+            existing_sev = existing[1]
+            # 기존 critical 을 warning/info 로 강등하지 않는다 (동일 actor 의 복수 orphan_run 등).
+            effective_severity = (
+                severity
+                if _INCIDENT_SEVERITY_RANK.get(severity, 0) >= _INCIDENT_SEVERITY_RANK.get(existing_sev, 0)
+                else existing_sev
+            )
             conn.execute(
                 """UPDATE incidents
                    SET last_detected_at = datetime('now'),
@@ -283,7 +293,7 @@ def log_incident(
                        severity = ?,
                        run_id = COALESCE(?, run_id)
                    WHERE incident_id = ?""",
-                (evidence_json, severity, run_id, existing_id),
+                (evidence_json, effective_severity, run_id, existing_id),
             )
             return int(existing_id)
         # 신규 incident.

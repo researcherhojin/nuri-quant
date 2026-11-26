@@ -45,6 +45,9 @@ HEALTH_CHECK_SCRIPT = "scripts/ops/health_check.sh"
 # .env auto-load — `python -m` / launchd 양쪽 다 동일하게 작동.
 load_dotenv(REPO_ROOT / ".env")
 
+# /thesis 동시 실행 제한 — 로컬 LLM VRAM 경합 방지 (1건씩 순차 처리).
+_thesis_semaphore = asyncio.Semaphore(1)
+
 
 def _run_make(
     target: str, args: Optional[dict[str, str]] = None, timeout: int = 120, tail: Optional[int] = 1500
@@ -117,58 +120,77 @@ def build_bot():
             await interaction.response.send_message("❌ invalid ticker (A-Z, 1-6)", ephemeral=True)
             return
         await interaction.response.defer(thinking=True)
-        try:
-            message = await interaction.followup.send(
-                f"Thesis · {ticker} — 단계별 분석을 시작합니다.",
-                wait=True,
-                allowed_mentions=discord.AllowedMentions.none(),
-            )
-            channel = interaction.channel
-            if isinstance(channel, discord.Thread):
-                thread = channel
-            elif isinstance(channel, discord.TextChannel):
-                thread = await channel.create_thread(
-                    name=f"Thesis · {ticker}", message=message, auto_archive_duration=60
+        if _thesis_semaphore.locked():
+            try:
+                await interaction.followup.send(
+                    "이미 다른 /thesis 분석이 실행 중입니다. 완료 후 다시 시도하세요.",
+                    allowed_mentions=discord.AllowedMentions.none(),
                 )
-            else:
-                raise ValueError("unsupported thesis channel")
-        except Exception:
-            logger.exception("thesis thread creation failed")
-            await interaction.followup.send("분석 스레드를 만들 수 없습니다. 봇 권한을 확인하세요.")
+            except Exception:
+                logger.warning("thesis busy notice failed", exc_info=True)
             return
 
-        states: dict[str, str] = {}
-        progress = await thread.send(
-            embed=discord.Embed.from_dict(progress_embed(ticker, states)),
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
-
-        async def update_progress(*, finished: bool = False) -> None:
+        async with _thesis_semaphore:
             try:
-                await progress.edit(embed=discord.Embed.from_dict(progress_embed(ticker, states, finished=finished)))
-            except discord.HTTPException:
-                # 표시 갱신 실패가 실행을 중단하거나 최종 결과 전송을 막으면 안 된다.
-                logger.warning("thesis progress display unavailable")
+                message = await interaction.followup.send(
+                    f"Thesis · {ticker} — 단계별 분석을 시작합니다.",
+                    wait=True,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                channel = interaction.channel
+                if isinstance(channel, discord.Thread):
+                    thread = channel
+                elif isinstance(channel, discord.TextChannel):
+                    thread = await channel.create_thread(
+                        name=f"Thesis · {ticker}", message=message, auto_archive_duration=60
+                    )
+                else:
+                    raise ValueError("unsupported thesis channel")
+            except Exception:
+                logger.exception("thesis thread creation failed")
+                try:
+                    await interaction.followup.send("분석 스레드를 만들 수 없습니다. 봇 권한을 확인하세요.")
+                except Exception:
+                    logger.warning("thesis thread failure notice failed", exc_info=True)
+                return
 
-        async def on_stage(value: dict[str, str]) -> None:
-            event = public_event(value)
-            if event is not None and event["event"] == "stage":
-                if states.get(event["stage"]) != event["status"]:
-                    states[event["stage"]] = event["status"]
-                    await update_progress()
+            states: dict[str, str] = {}
+            progress = await thread.send(
+                embed=discord.Embed.from_dict(progress_embed(ticker, states)),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
 
-        try:
-            rc, value = await _run_thesis_stream("thesis-remote", ticker, on_stage)
-            event = public_event(value)
-        except Exception:
-            logger.exception("thesis stream failed; details stay in the local log")
-            rc, event = 1, None
-        await update_progress(finished=True)
-        # 상호작용 토큰(15분)이 만료돼도 봇 권한으로 최종 결과를 보낸다.
-        await thread.send(
-            embed=discord.Embed.from_dict(result_embed(ticker, states, rc, event)),
-            allowed_mentions=discord.AllowedMentions.none(),
-        )
+            async def update_progress(*, finished: bool = False) -> None:
+                try:
+                    await progress.edit(
+                        embed=discord.Embed.from_dict(progress_embed(ticker, states, finished=finished))
+                    )
+                except discord.HTTPException:
+                    # 표시 갱신 실패가 실행을 중단하거나 최종 결과 전송을 막으면 안 된다.
+                    logger.warning("thesis progress display unavailable")
+
+            async def on_stage(value: dict[str, str]) -> None:
+                event = public_event(value)
+                if event is not None and event["event"] == "stage":
+                    if states.get(event["stage"]) != event["status"]:
+                        states[event["stage"]] = event["status"]
+                        await update_progress()
+
+            try:
+                rc, value = await _run_thesis_stream("thesis-remote", ticker, on_stage)
+                event = public_event(value)
+            except Exception:
+                logger.exception("thesis stream failed; details stay in the local log")
+                rc, event = 1, None
+            await update_progress(finished=True)
+            # 상호작용 토큰(15분)이 만료돼도 봇 권한으로 최종 결과를 보낸다.
+            try:
+                await thread.send(
+                    embed=discord.Embed.from_dict(result_embed(ticker, states, rc, event)),
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+            except Exception:
+                logger.warning("thesis result send failed", exc_info=True)
 
     # ─── /health ───
     @tree.command(name="health", description="agent infra health check (single-writer + schema + tables)", guild=guild)

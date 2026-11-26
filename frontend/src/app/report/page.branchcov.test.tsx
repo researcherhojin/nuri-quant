@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 
 function jsonResponse(body: unknown) {
-  return { json: async () => body } as unknown as Response;
+  return { ok: true, status: 200, json: async () => body } as unknown as Response;
 }
 
 describe("ReportPage (branch coverage)", () => {

@@ -96,9 +96,9 @@ def compute_quality(tickers: list[str] | None = None, db_path=None) -> pd.DataFr
 
     df = pd.DataFrame(scores).T
 
-    # 시장별(.KS=KR vs US) 정규화 — ROE/영업이익률 baseline 이 시장마다 달라 cross-market
+    # 시장별(.KS/.KQ=KR vs US) 정규화 — ROE/영업이익률 baseline 이 시장마다 달라 cross-market
     # 순위가 KR 종목을 왜곡한다. 각 시장 안에서만 정규화 (#757, 백분위로 바꾼 #1102 이후도 동일).
-    is_kr = df.index.to_series().str.endswith(".KS")
+    is_kr = df.index.to_series().str.endswith((".KS", ".KQ"))
     parts = [_normalize_quality_columns(sub.copy()) for sub in (df[is_kr], df[~is_kr]) if not sub.empty]
     df = pd.concat(parts)
 

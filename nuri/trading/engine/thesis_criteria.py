@@ -43,6 +43,7 @@ logger = logging.getLogger(__name__)
 STALE_AFTER_DAYS: dict[str, int] = {
     "prices": 5,
     "signals": 5,
+    "prices+signals": 5,
     "factors": 5,
     "fundamentals": 100,
 }
@@ -85,7 +86,9 @@ def _close_over_sma200(ticker: str, db_path: Optional[Path]) -> tuple[Optional[f
     sma, date_s = _latest("signals", "sma_200", ticker, db_path)
     if close is None or sma is None or sma == 0:
         return None, None, "prices+signals"
-    return (close / sma - 1.0) * 100.0, max(d for d in (date_c, date_s) if d), "prices+signals"
+    # 두 소스 중 더 오래된 날짜를 사용 — 한쪽이라도 낡으면 stale 로 판정되어야 한다.
+    oldest_date = min((d for d in (date_c, date_s) if d), default=None)
+    return (close / sma - 1.0) * 100.0, oldest_date, "prices+signals"
 
 
 METRIC_RESOLVERS: dict[str, Callable[[str, Optional[Path]], tuple[Optional[float], Optional[str], str]]] = {

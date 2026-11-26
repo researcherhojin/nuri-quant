@@ -55,6 +55,9 @@ EVENT_TYPES = {
     # emitter: nuri/collectors/technical.py save() /
     # consumer: SREIncidentAgent._detect_signal_evaluation_stale.
     "signal_evaluation_run",
+    # 월간 alpha 진행 리포트 실행 heartbeat (#894) — emitter: nuri/scheduler.py _run_alpha_report /
+    # consumer: SREIncidentAgent._detect_alpha_report_stale.
+    "alpha_report_run",
 }
 
 # 파이프라인 스테이지 — README 의 5 stage 와 같은 어휘.
@@ -154,7 +157,14 @@ def get_step_status(step: str, db_path: Optional[Path] = None) -> dict:
         "step_blocked": "blocked",
     }
     status = status_map.get(row["event_type"], row["event_type"])
-    payload = json.loads(row["payload"]) if row["payload"] else None
+    payload = row["payload"]
+    if payload:
+        try:
+            payload = json.loads(payload)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    else:
+        payload = None
     return {
         "step": step,
         "status": status,

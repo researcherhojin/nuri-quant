@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import queue
 import threading
 import time
@@ -12,6 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from nuri.api.limits import heavy_slot
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agents"])
 
 # 큐 폴링 간격 / SSE 주석 keepalive 주기 (초). 근거는 stream.py 상단 주석 참조 —
@@ -122,11 +124,17 @@ async def stream_consensus_ticker(ticker: str):
         q: queue.Queue = queue.Queue()
 
         def _run():
-            from nuri.trading.agents.consensus import stream_analyze_ticker
+            try:
+                from nuri.trading.agents.consensus import stream_analyze_ticker
 
-            for event_type, data in stream_analyze_ticker(ticker.upper()):
-                q.put((event_type, data))
-            q.put(None)
+                for event_type, data in stream_analyze_ticker(ticker.upper()):
+                    q.put((event_type, data))
+            except Exception:
+                # 서버 로그에만 예외 상세를 남기고 클라이언트에는 일반 오류 이벤트만 전송 (CodeQL py/stack-trace-exposure)
+                logger.exception("consensus stream error for %s", ticker.upper())
+                q.put(("error", None))
+            finally:
+                q.put(None)
 
         thread = threading.Thread(target=_run, daemon=True)
         thread.start()
@@ -148,6 +156,9 @@ async def stream_consensus_ticker(ticker: str):
             if item is None:
                 break
             event_type, data = item
+            if event_type == "error":
+                yield f"data: {json.dumps({'type': 'error', 'error': 'analysis failed'})}\n\n"
+                continue
             payload = json.dumps(
                 {"type": event_type, "data": asdict(data)},
                 ensure_ascii=False,

@@ -461,14 +461,17 @@ def bucket_brief_digest(
         # 순서대로 줄을 쌓았다는 계약(첫 줄 = 종목·행동·경과일)에 기댄다.
         body_lines: list[str] = []
         running = 0
-        for ln in lines:
+        for idx, ln in enumerate(lines):
             ln_trunc = _truncate_card(ln, _EVENT_CARD_MAX)
-            if running + len(ln_trunc) + 1 > _FIELD_VALUE_MAX:
-                hidden = len(lines) - len(body_lines)
+            sep = 1 if body_lines else 0
+            remaining_after = len(lines) - (idx + 1)
+            reserve = 1 + len(f"… (+{remaining_after} more)") if remaining_after > 0 else 0
+            if running + sep + len(ln_trunc) + reserve > _FIELD_VALUE_MAX:
+                hidden = len(lines) - idx
                 body_lines.append(f"… (+{hidden} more)")
                 break
             body_lines.append(ln_trunc)
-            running += len(ln_trunc) + 1
+            running += sep + len(ln_trunc)
         fields.append(
             {
                 "name": _truncate(f"{bucket_name} ({len(lines)})", _FIELD_NAME_MAX),
@@ -612,18 +615,25 @@ def bucket_generic_digest(
         # 자가점검 kind 는 그룹 맨 위에 "무엇인지" 한 줄을 먼저 박는다.
         if meta:
             body_lines.append(f"ℹ️ {meta['what']}")
-        running = sum(len(b) + 1 for b in body_lines)
-        for ln in lines:
+        running = len(body_lines[0]) if body_lines else 0
+        for idx, ln in enumerate(lines):
             ln_trunc = _truncate(ln, 200)
-            if running + len(ln_trunc) + 1 > _FIELD_VALUE_MAX:
-                hidden = len(lines) - (len(body_lines) - (1 if meta else 0))
-                body_lines.append(f"… (+{hidden} more)")
+            sep = 1 if body_lines else 0
+            remaining_after = len(lines) - (idx + 1)
+            reserve = 1 + len(f"… (+{remaining_after} more)") if remaining_after > 0 else 0
+            if running + sep + len(ln_trunc) + reserve > _FIELD_VALUE_MAX:
+                hidden = len(lines) - idx
+                marker = f"… (+{hidden} more)"
+                body_lines.append(marker)
+                running += sep + len(marker)
                 break
             body_lines.append(ln_trunc)
-            running += len(ln_trunc) + 1
+            running += sep + len(ln_trunc)
         # 자가점검 kind 는 맨 아래 "조치" 를 붙인다 (사용자가 할 일이 아니라 코드 개선).
-        if meta and running + len(meta["action"]) + 1 <= _FIELD_VALUE_MAX:
-            body_lines.append(f"→ {meta['action']}")
+        if meta:
+            action_line = f"→ {meta['action']}"
+            if running + 1 + len(action_line) <= _FIELD_VALUE_MAX:
+                body_lines.append(action_line)
         field = {
             "name": _truncate(group_name, _FIELD_NAME_MAX),
             "value": _truncate("\n".join(body_lines), _FIELD_VALUE_MAX),

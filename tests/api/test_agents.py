@@ -200,6 +200,26 @@ class TestAgentsRoute:
         # keepalive 는 SSE 주석이라 EventSource 의 onmessage 를 깨우지 않는다.
         assert "done" in body
 
+    def test_stream_consensus_exception_terminates_cleanly(self, client, monkeypatch):
+        """stream_analyze_ticker 예외 시 센티넬(None)이 반드시 들어가 스트림이 영구 대기하지 않는다."""
+
+        def broken_stream(ticker):
+            raise RuntimeError("secret-internal-failure")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(
+            "nuri.trading.agents.consensus.stream_analyze_ticker",
+            broken_stream,
+        )
+        with client.stream("GET", "/api/consensus/AAPL/stream") as resp:
+            assert resp.status_code == 200
+            body = b"".join(resp.iter_bytes()).decode("utf-8")
+
+        events = [json.loads(line.removeprefix("data: ")) for line in body.splitlines() if line.startswith("data: ")]
+        assert any(e.get("type") == "error" and e.get("error") == "analysis failed" for e in events)
+        assert events[-1] == {"type": "done"}
+        assert "secret-internal-failure" not in body
+
     def test_get_consensus_ticker_exposes_divergence_fields(self, client, monkeypatch):
         """P1 A2: /api/consensus/{ticker} 단일 엔드포인트도 divergence 필드 노출."""
         from nuri.trading.agents.consensus import ConsensusResult

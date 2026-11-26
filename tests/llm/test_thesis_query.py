@@ -148,6 +148,61 @@ class TestFetchDbContext:
         assert "market cap —" in ctx["fundamentals"]
         assert "profit margin —" in ctx["fundamentals"]
 
+    def test_nan_and_null_in_factors_signals_fundamentals_render_dash(self, mock_query_df) -> None:
+        """SQL NULL → pandas NaN/None must render '—', never '$nanT', 'nan%', or TypeError."""
+        mock_query_df["FROM factors"] = pd.DataFrame(
+            [
+                {
+                    "date": "2026-04-30",
+                    "momentum_score": None,
+                    "value_score": float("nan"),
+                    "quality_score": 0.6,
+                    "sentiment_score": None,
+                    "composite_score": float("nan"),
+                }
+            ]
+        )
+        mock_query_df["FROM signals"] = pd.DataFrame(
+            [
+                {
+                    "date": "2026-04-30",
+                    "rsi_14": float("nan"),
+                    "macd": None,
+                    "macd_signal": float("nan"),
+                    "sma_20": 105.0,
+                    "sma_50": float("nan"),
+                    "sma_200": None,
+                }
+            ]
+        )
+        mock_query_df["FROM fundamentals"] = pd.DataFrame(
+            [
+                {
+                    "pe_ratio": float("nan"),
+                    "forward_pe": float("nan"),
+                    "profit_margin": float("nan"),
+                    "revenue_growth": float("nan"),
+                    "market_cap": float("nan"),
+                    "debt_to_equity": float("nan"),
+                }
+            ]
+        )
+        ctx = tq._fetch_db_context("AAA")
+        assert not ctx["factor"].startswith("(error:")
+        assert "composite —" in ctx["factor"]
+        assert "momentum —" in ctx["factor"]
+        assert "nan" not in ctx["factor"].lower()
+        assert not ctx["technical"].startswith("(error:")
+        assert "RSI(14) —" in ctx["technical"]
+        assert "SMA200 —" in ctx["technical"]
+        assert "nan" not in ctx["technical"].lower()
+        assert not ctx["fundamentals"].startswith("(error:")
+        assert "market cap —" in ctx["fundamentals"]
+        assert "profit margin —" in ctx["fundamentals"]
+        assert "revenue growth —" in ctx["fundamentals"]
+        assert "$nanT" not in ctx["fundamentals"]
+        assert "nan%" not in ctx["fundamentals"]
+
     def test_empty_db_returns_fallback_strings(self, mock_query_df) -> None:
         ctx = tq._fetch_db_context("UNKNOWN")
         assert "no price data" in ctx["price"]
@@ -355,6 +410,40 @@ class TestThesisQuery:
         with pytest.raises(RuntimeError, match="rc=1"):
             tq.thesis_query("AAA", "q", out_dir=tmp_path)
         assert (tmp_path / f"{_tk()}_aaa_q.md").exists()
+
+    @pytest.mark.parametrize("bad_ticker", ["../etc/passwd", "a/b", "a\\b", "..", ".", "", "   ", "AAA;rm"])
+    def test_unsafe_ticker_rejected_before_path_interpolation(
+        self, bad_ticker: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        called = False
+
+        def _fail_run(*args, **kwargs):
+            nonlocal called
+            called = True
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", _fail_run)
+        with pytest.raises(ValueError, match="invalid ticker"):
+            tq.thesis_query(bad_ticker, "q", out_dir=tmp_path)
+        assert not called
+
+    @pytest.mark.parametrize("valid_ticker", ["AAA", "BRK.B", "005930.KS", "BF-B", "TST_1"])
+    def test_valid_ticker_formats_accepted(self, valid_ticker: str) -> None:
+        assert tq._validate_ticker(valid_ticker.lower()) == valid_ticker.upper()
+
+    def test_paths_anchored_to_repo_root(self) -> None:
+        assert tq.OUT_DIR.is_absolute()
+        assert tq.LLM_CONSULT_SCRIPT.is_absolute()
+        assert tq.LLM_CONSULT_SCRIPT.exists()
+        assert tq.OUT_DIR == tq._REPO_ROOT / "data" / "thesis_query"
+        assert tq.LLM_CONSULT_SCRIPT == tq._REPO_ROOT / "scripts" / "dev" / "llm_consult.py"
+
+    def test_main_rejects_path_traversal_ticker_with_rc_1(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        monkeypatch.setattr(sys, "argv", ["thesis_query.py", "--ticker", "../escape"])
+        assert tq.main() == 1
+        assert "invalid ticker" in capsys.readouterr().err
 
 
 class TestThesisIsLocalOnly:

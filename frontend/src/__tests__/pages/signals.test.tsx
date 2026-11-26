@@ -133,4 +133,29 @@ describe("SignalsPage", () => {
 
     expect(screen.getByText("Signal × Regime")).toBeInTheDocument();
   });
+
+  it("renders dash safely when profit_factor or win_rate is null", async () => {
+    setupFetchAPI({
+      scorecard: {
+        scorecard: [
+          { signal_id: "null_sig", total_trades: 0, win_rate: null, avg_return: null, profit_factor: null, max_return: null, max_loss: null },
+        ],
+        date: "2026-03-31",
+      },
+      crossAnalysis: {
+        data: [
+          { signal_id: "null_sig", regime: "sideways", profit_factor: null },
+        ],
+      },
+    });
+
+    const { default: SignalsPage } = await import("@/app/signals/page");
+    await act(async () => {
+      render(<SignalsPage />);
+    });
+
+    expect(screen.getByText("PF —")).toBeInTheDocument();
+    expect(screen.queryByText("null")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+  });
 });

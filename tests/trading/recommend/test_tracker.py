@@ -807,6 +807,35 @@ class TestHitCalculation:
         assert rows[0]["hit"] == 0
         assert rows[0]["hit_quality"] == 0.0
 
+    def test_hold_not_scored_as_sell_hit_when_price_drops(self, db_path):
+        """HOLD 추천은 가격 -2% 초과 하락 시에도 SELL hit 로 채점되지 않는다."""
+        rec_date = (kst_now().replace(tzinfo=None) - timedelta(days=35)).strftime("%Y-%m-%d")
+        _seed_recommendation(db_path, rec_date, "HLD", "HOLD", 100.0)
+        d30 = (datetime.strptime(rec_date, "%Y-%m-%d") + timedelta(days=30)).strftime("%Y-%m-%d")
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "HLD",
+                    "date": d30,
+                    "open": 91.0,
+                    "high": 92.0,
+                    "low": 89.0,
+                    "close": 90.0,
+                    "volume": 1000000,
+                    "adj_close": 90.0,
+                }
+            ]
+        )
+        upsert_prices(prices, db_path)
+        from nuri.trading.recommend.tracker import track_outcomes
+
+        updated = track_outcomes(db_path=db_path)
+        assert updated == 1
+        rows = query("SELECT outcome_30d, hit, hit_quality FROM recommendations WHERE ticker='HLD'", db_path=db_path)
+        assert rows[0]["outcome_30d"] == -10.0
+        assert rows[0]["hit"] is None
+        assert rows[0]["hit_quality"] is None
+
     def test_hit_quality_column_exists(self, db_path):
         """hit_quality 컬럼이 recommendations 테이블에 존재."""
         rows = query("PRAGMA table_info(recommendations)", db_path=db_path)
@@ -1557,3 +1586,109 @@ class TestSaveBuyCandidates:
         row = query("SELECT alpha_action, portfolio_action FROM recommendations", db_path=db_path)[0]
         assert row["alpha_action"] == "LONG"
         assert row["portfolio_action"] is None
+
+
+class TestRebalanceActionAxisPreservation:
+    """E-2 리밸런싱 액션 저장 시 포트폴리오 축 보존 (alpha FLAT 혼동 방지)."""
+
+    def test_rebalance_trim_preserves_portfolio_axis_not_alpha_flat(self, db_path):
+        from nuri.core.axis import is_alpha_flat_sell
+        from nuri.trading.recommend.rebalance import RebalanceAction
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        upsert_portfolio(
+            [
+                {
+                    "account": "main",
+                    "ticker": "TST_TRIM",
+                    "quantity": 100,
+                    "avg_price": 100.0,
+                    "currency": "USD",
+                    "sector": "Technology",
+                }
+            ],
+            db_path,
+        )
+        _seed_prices_r23(db_path, "TST_TRIM", 100.0)
+
+        action = RebalanceAction(
+            ticker="TST_TRIM",
+            sector="Technology",
+            action="TRIM",
+            current_weight=30.0,
+            target_weight=15.0,
+            trade_value=-15000.0,
+            signals=[],
+            regime_note="[bull_low_vol] 비중 축소",
+            portfolio_action="TRIM",
+        )
+        assert save_recommendations(actions=[action], db_path=db_path) == 1
+
+        row = query(
+            "SELECT action, alpha_action, portfolio_action FROM recommendations WHERE ticker='TST_TRIM'",
+            db_path=db_path,
+        )[0]
+        assert row["action"] == "TRIM"
+        assert row["alpha_action"] is None
+        assert row["portfolio_action"] == "TRIM"
+        assert is_alpha_flat_sell(row["alpha_action"], row["action"]) is False
+
+    def test_rebalance_buy_preserves_portfolio_axis(self, db_path):
+        from nuri.trading.recommend.rebalance import RebalanceAction
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        _seed_prices_r23(db_path, "TST_BUY", 100.0)
+        action = RebalanceAction(
+            ticker="TST_BUY",
+            sector="Technology",
+            action="BUY",
+            current_weight=5.0,
+            target_weight=15.0,
+            trade_value=10000.0,
+            signals=[],
+            regime_note="[bull_low_vol] 비중 확대",
+            portfolio_action="REBALANCE",
+        )
+        assert save_recommendations(actions=[action], db_path=db_path) == 1
+
+        row = query(
+            "SELECT action, alpha_action, portfolio_action FROM recommendations WHERE ticker='TST_BUY'",
+            db_path=db_path,
+        )[0]
+        assert row["action"] == "BUY"
+        assert row["alpha_action"] is None
+        assert row["portfolio_action"] == "REBALANCE"
+
+    def test_legacy_reduce_without_portfolio_action_attr_maps_to_trim(self, db_path):
+        from nuri.trading.recommend.tracker import save_recommendations
+
+        @dataclass
+        class _LegacyAction:
+            ticker: str
+            action: str
+            signals: list
+            regime_note: str = ""
+
+        upsert_portfolio(
+            [
+                {
+                    "account": "main",
+                    "ticker": "TST_RED",
+                    "quantity": 50,
+                    "avg_price": 100.0,
+                    "currency": "USD",
+                    "sector": "Technology",
+                }
+            ],
+            db_path,
+        )
+        _seed_prices_r23(db_path, "TST_RED", 100.0)
+
+        assert save_recommendations(actions=[_LegacyAction("TST_RED", "REDUCE", [])], db_path=db_path) == 1
+        row = query(
+            "SELECT action, alpha_action, portfolio_action FROM recommendations WHERE ticker='TST_RED'",
+            db_path=db_path,
+        )[0]
+        assert row["action"] == "REDUCE"
+        assert row["alpha_action"] is None
+        assert row["portfolio_action"] == "TRIM"

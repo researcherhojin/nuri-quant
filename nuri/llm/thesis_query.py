@@ -38,16 +38,37 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
 
 from nuri.core.db import query_df
 from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
-OUT_DIR = Path("data/thesis_query")
-LLM_CONSULT_SCRIPT = Path("scripts/dev/llm_consult.py")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+OUT_DIR = _REPO_ROOT / "data/thesis_query"
+LLM_CONSULT_SCRIPT = _REPO_ROOT / "scripts/dev/llm_consult.py"
 
 DEFAULT_QUESTION = "investment thesis (long/short/avoid) + portfolio implications"
+
+_SAFE_TICKER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _validate_ticker(ticker: str) -> str:
+    """Validate ticker against path traversal and unsafe filename characters."""
+    normalized = ticker.strip().upper()
+    if not _SAFE_TICKER_RE.match(normalized) or ".." in normalized:
+        raise ValueError(f"invalid ticker: {ticker!r}")
+    return normalized
+
+
+def _fmt_num(v: Any, fmt: str = ".1f", suffix: str = "", prefix: str = "") -> str:
+    """Format numeric value, returning '—' for SQL NULL / NaN."""
+    if v is None or pd.isna(v):
+        return "—"
+    return prefix + format(v, fmt) + suffix
 
 
 def _slugify(text: str, max_len: int = 40) -> str:
@@ -97,9 +118,9 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
         if not df.empty:
             r = df.iloc[0]
             sections["factor"] = (
-                f"composite {r['composite_score']:.3f} | "
-                f"momentum {r['momentum_score']:.3f} | value {r['value_score']:.3f} | "
-                f"quality {r['quality_score']:.3f} | sentiment {r['sentiment_score']:.3f} "
+                f"composite {_fmt_num(r['composite_score'], '.3f')} | "
+                f"momentum {_fmt_num(r['momentum_score'], '.3f')} | value {_fmt_num(r['value_score'], '.3f')} | "
+                f"quality {_fmt_num(r['quality_score'], '.3f')} | sentiment {_fmt_num(r['sentiment_score'], '.3f')} "
                 f"(date {r['date']})"
             )
         else:
@@ -118,8 +139,11 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
         if not df.empty:
             r = df.iloc[0]
             sections["technical"] = (
-                f"RSI(14) {r['rsi_14']:.1f} | MACD {r['macd']:.2f} (signal {r['macd_signal']:.2f}) | "
-                f"SMA20 ${r['sma_20']:.2f} | SMA50 ${r['sma_50']:.2f} | SMA200 ${r['sma_200']:.2f}"
+                f"RSI(14) {_fmt_num(r['rsi_14'], '.1f')} | MACD {_fmt_num(r['macd'], '.2f')} "
+                f"(signal {_fmt_num(r['macd_signal'], '.2f')}) | "
+                f"SMA20 {_fmt_num(r['sma_20'], '.2f', prefix='$')} | "
+                f"SMA50 {_fmt_num(r['sma_50'], '.2f', prefix='$')} | "
+                f"SMA200 {_fmt_num(r['sma_200'], '.2f', prefix='$')}"
             )
         else:
             sections["technical"] = "(no signal data)"
@@ -137,24 +161,20 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
         )
         if not df.empty:
             r = df.iloc[0]
-
-            def _fmt(v: float | None, fmt: str = ".1f", suffix: str = "") -> str:
-                if v is None:
-                    return "—"
-                return format(v, fmt) + suffix
-
             mcap = r["market_cap"]
-            if mcap is None:
+            if pd.isna(mcap):
                 mcap_str = "—"
             elif mcap < 1e12:
                 mcap_str = f"${mcap / 1e9:.1f}B"
             else:
                 mcap_str = f"${mcap / 1e12:.2f}T"
+            pm = r["profit_margin"]
+            rg = r["revenue_growth"]
             sections["fundamentals"] = (
-                f"PE {_fmt(r['pe_ratio'])} | FwdPE {_fmt(r['forward_pe'])} | "
-                f"profit margin {_fmt(r['profit_margin'] * 100 if r['profit_margin'] is not None else None)}% | "
-                f"revenue growth {_fmt(r['revenue_growth'] * 100 if r['revenue_growth'] is not None else None)}% | "
-                f"market cap {mcap_str} | D/E {_fmt(r['debt_to_equity'], '.2f')}"
+                f"PE {_fmt_num(r['pe_ratio'])} | FwdPE {_fmt_num(r['forward_pe'])} | "
+                f"profit margin {_fmt_num(pm * 100 if not pd.isna(pm) else None, suffix='%')} | "
+                f"revenue growth {_fmt_num(rg * 100 if not pd.isna(rg) else None, suffix='%')} | "
+                f"market cap {mcap_str} | D/E {_fmt_num(r['debt_to_equity'], '.2f')}"
             )
         else:
             sections["fundamentals"] = "(no fundamentals data)"
@@ -170,7 +190,8 @@ def _fetch_db_context(ticker: str) -> dict[str, str]:
         )
         if not df.empty:
             lines = [
-                f"  - {r['account']}: {r['quantity']} @ ${r['avg_price']:.2f} ({r['sector']})" for _, r in df.iterrows()
+                f"  - {r['account']}: {r['quantity']} @ {_fmt_num(r['avg_price'], '.2f', prefix='$')} ({r['sector']})"
+                for _, r in df.iterrows()
             ]
             sections["portfolio"] = "**HELD** by user across:\n" + "\n".join(lines)
         else:
@@ -299,7 +320,7 @@ def thesis_query(
 
     Returns path to saved markdown.
     """
-    ticker = ticker.upper()
+    ticker = _validate_ticker(ticker)
     out = out_dir or OUT_DIR
     out.mkdir(parents=True, exist_ok=True)
 
@@ -359,8 +380,8 @@ def main() -> int:
             question=args.question,
             out_dir=args.out_dir,
         )
-    except RuntimeError as e:
-        # consult 실패·거부 — `make thesis` 와 Discord 가 성공으로 보고하지 않게
+    except (RuntimeError, ValueError) as e:
+        # consult 실패·거부 또는 잘못된 ticker — `make thesis` 와 Discord 가 성공으로 보고하지 않게
         print(f"thesis failed: {e}", file=sys.stderr)
         return 1
     print(f"saved: {out_path}")

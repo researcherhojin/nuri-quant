@@ -18,7 +18,7 @@ import requests
 from dotenv import load_dotenv
 
 from nuri.collectors.base import BaseCollector
-from nuri.core.db import get_db, insert_events
+from nuri.core.db import get_db
 from nuri.core.timezone import kst_now
 
 load_dotenv()
@@ -162,11 +162,20 @@ class FREDCalendarCollector(BaseCollector):
                     }
                 )
 
+        max_fallback_date = max(date_str for date_str, _, _ in _FALLBACK_2026)
+        if today_str > max_fallback_date:
+            self.logger.warning(
+                "FRED 캘린더 폴백 만료: 기준일(%s)이 하드코딩 일정 마지막 날짜(%s)를 초과했습니다 — "
+                "FRED_API_KEY 설정 또는 폴백 일정 갱신이 필요합니다",
+                today_str,
+                max_fallback_date,
+            )
+
         self.logger.info("FRED 캘린더 (폴백): %d개 이벤트", len(records))
         return records
 
     def save(self, data: list[dict]) -> int:
-        """events 테이블에 저장. 기존 동일 이벤트 삭제 후 재삽입."""
+        """events 테이블에 저장. 기존 동일 이벤트 삭제 후 재삽입 (단일 트랜잭션)."""
         if not data:
             return 0
 
@@ -178,7 +187,12 @@ class FREDCalendarCollector(BaseCollector):
                              AND description = ?""",
                     (record["date"], record["description"]),
                 )
-        return insert_events(data)
+            conn.executemany(
+                """INSERT INTO events (date, event_type, ticker, description, importance)
+                   VALUES (:date, :event_type, :ticker, :description, :importance)""",
+                data,
+            )
+        return len(data)
 
 
 if __name__ == "__main__":

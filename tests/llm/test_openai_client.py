@@ -200,6 +200,24 @@ class TestOptOut:
         # Opt-out means no call was attempted, so no audit row.
         assert len(rows) == 0
 
+    def test_disabled_after_warm_sdk_still_raises_external_llm_disabled(
+        self, fake_openai_success, monkeypatch, db_path
+    ):
+        """Regression: toggling NURI_DISABLE_EXTERNAL_LLM=1 on a warm singleton must still block outbound calls."""
+        from nuri.llm.openai_client import ExternalLLMDisabled, get_client
+
+        client = get_client()
+        client.chat_json(system="s", user="u", db_path=db_path)
+        assert client._sdk_client is not None
+        assert fake_openai_success.chat.completions.create.call_count == 1
+
+        monkeypatch.setenv("NURI_DISABLE_EXTERNAL_LLM", "1")
+        with pytest.raises(ExternalLLMDisabled):
+            client.chat_json(system="s", user="u", db_path=db_path)
+        with pytest.raises(ExternalLLMDisabled):
+            client.chat_text(system="s", user="u", db_path=db_path)
+        assert fake_openai_success.chat.completions.create.call_count == 1
+
 
 class TestMissingCredentials:
     def test_missing_key_raises_unavailable(self, monkeypatch, db_path):
@@ -278,6 +296,20 @@ class TestMalformedResponse:
         rows = query("SELECT success FROM external_llm_calls", db_path=db_path)
         assert len(rows) == 1
         assert rows[0]["success"] == 1
+
+    def test_chat_json_empty_choices_raises_response_error(self, fake_openai_success, db_path):
+        from nuri.llm.openai_client import ExternalLLMResponseError, OpenAIClient
+
+        fake_openai_success.chat.completions.create.return_value.choices = []
+        with pytest.raises(ExternalLLMResponseError, match="empty choices"):
+            OpenAIClient().chat_json(system="s", user="u", db_path=db_path)
+
+    def test_chat_text_empty_choices_raises_response_error(self, fake_openai_success, db_path):
+        from nuri.llm.openai_client import ExternalLLMResponseError, OpenAIClient
+
+        fake_openai_success.chat.completions.create.return_value.choices = []
+        with pytest.raises(ExternalLLMResponseError, match="empty choices"):
+            OpenAIClient().chat_text(system="s", user="u", db_path=db_path)
 
 
 class TestSingleton:

@@ -47,9 +47,8 @@ describe("POST /api/auth — branch coverage", () => {
     vi.unstubAllEnvs();
   });
 
-  // password 필드 자체가 없는 요청 → `password ?? ""` 의 null-arm 을 trigger.
-  // 빈 비밀번호이므로 expected 와 불일치 → 401.
-  it("returns 401 when password field is absent (nullish-coalescing null-arm)", async () => {
+  // password 필드 자체가 없는 요청 → isString(body.password) false → 400.
+  it("returns 400 when password field is absent", async () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "correct");
     const { POST } = await import("@/app/api/auth/route");
 
@@ -59,8 +58,79 @@ describe("POST /api/auth — branch coverage", () => {
     });
 
     const resp = await POST(req);
-    expect(resp.status).toBe(401);
-    expect(resp.body).toEqual({ error: "Invalid password" });
+    expect(resp.status).toBe(400);
+    expect(resp.body).toEqual({ error: "Invalid request body" });
+  });
+
+  // 잘못된 JSON → catch 브랜치 → 400.
+  it("returns 400 on invalid JSON", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "correct");
+    const { POST } = await import("@/app/api/auth/route");
+
+    const req = new Request("http://localhost:3000/api/auth", {
+      method: "POST",
+      body: "not-json",
+    });
+
+    const resp = await POST(req);
+    expect(resp.status).toBe(400);
+    expect(resp.body).toEqual({ error: "Invalid request body" });
+  });
+
+  // 배열 등 non-object JSON → isPlainObject(body) false → 400.
+  it("returns 400 when body is not a plain object", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "correct");
+    const { POST } = await import("@/app/api/auth/route");
+
+    const req = new Request("http://localhost:3000/api/auth", {
+      method: "POST",
+      body: JSON.stringify(["not", "object"]),
+    });
+
+    const resp = await POST(req);
+    expect(resp.status).toBe(400);
+    expect(resp.body).toEqual({ error: "Invalid request body" });
+  });
+
+  // x-forwarded-for (다중/공백) · x-real-ip · 429 레이트 리밋 브랜치 커버.
+  it("extracts client IP headers and enforces 429 rate limit", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "correct");
+    const { POST } = await import("@/app/api/auth/route");
+
+    // 공백 x-forwarded-for → x-real-ip 폴백
+    const realIpResp = await POST(
+      new Request("http://localhost:3000/api/auth", {
+        method: "POST",
+        headers: { "x-forwarded-for": "   ", "x-real-ip": "192.0.2.10" },
+        body: JSON.stringify({ password: "wrong" }),
+      }),
+    );
+
+    expect(realIpResp.status).toBe(401);
+
+    // x-forwarded-for 첫 IP 기준 5회 초과 → 429
+    for (let i = 0; i < 5; i += 1) {
+      const r = await POST(
+        new Request("http://localhost:3000/api/auth", {
+          method: "POST",
+          headers: { "x-forwarded-for": "198.51.100.1, 10.0.0.1" },
+          body: JSON.stringify({ password: "wrong" }),
+        }),
+      );
+
+      expect(r.status).toBe(401);
+    }
+
+    const limited = await POST(
+      new Request("http://localhost:3000/api/auth", {
+        method: "POST",
+        headers: { "x-forwarded-for": "198.51.100.1" },
+        body: JSON.stringify({ password: "correct" }),
+      }),
+    );
+
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: "Too many login attempts" });
   });
 
   // expected 미설정 → 첫 guard (line 8) truthy-arm.

@@ -17,11 +17,17 @@ export default function ReportPage() {
     try {
       // 컨텍스트 먼저 표시
       const ctxRes = await fetch(`/api/report/context`);
+
+      if (!ctxRes.ok) throw new Error(`Context request failed (${ctxRes.status})`);
+
       const ctxData = await ctxRes.json();
       setContext(ctxData.context);
 
       // LLM 리포트 생성
       const res = await fetch(`/api/report`);
+
+      if (!res.ok) throw new Error(`Report request failed (${res.status})`);
+
       const data = await res.json();
       setReport(data.report);
     } catch (e) {

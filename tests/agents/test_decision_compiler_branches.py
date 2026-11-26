@@ -2,7 +2,7 @@
 
 Targets residual branches uncovered by test_decision_compiler.py:
 - L165: walkforward_run_id 가 input 에 있으면 inputs dict 에 stamp.
-- L374: regime_top_prob fallback (posterior list 미존재) — top2_margin 기반 추정.
+- L374: regime_top_prob (posterior 미존재/빈 리스트) — 0.0 반환.
 - L383: causal_audit_id fallback (factor_id+date 미존재 시 raw key 사용).
 - L430-431: calculate_targets 가 raise 해도 brief stage 는 silent omit.
 - L438-439: classify_stock_type 가 raise 해도 horizon 만 omit, 다른 필드 진행.
@@ -150,19 +150,15 @@ class TestWalkforwardRunId:
 
 
 class TestParserFallbacks:
-    def test_regime_top_prob_fallback_uses_top2_margin(self):
-        """L374: posterior 가 list/non-empty 가 아니면 0.5 + top2_margin/2.
-
-        Regression: 본 분기 누락 시 KeyError 또는 0.0 반환 (silent low conviction).
-        """
+    def test_regime_top_prob_missing_posterior_returns_zero(self):
+        """posterior 가 없으면 top2_margin 으로 지어내지 않고 0.0 을 반환한다."""
         out = DecisionCompiler._regime_top_prob({"top2_margin": 0.4})
-        # 0.5 + 0.4/2 = 0.7
-        assert out == pytest.approx(0.70, abs=1e-6)
+        assert out == 0.0
 
-    def test_regime_top_prob_empty_list_uses_fallback(self):
-        """posterior=[] 도 list-but-empty → fallback 적용 (margin only)."""
+    def test_regime_top_prob_empty_list_returns_zero(self):
+        """posterior=[] 도 빈 리스트이므로 0.0 을 반환한다."""
         out = DecisionCompiler._regime_top_prob({"posterior": [], "top2_margin": 0.2})
-        assert out == pytest.approx(0.60, abs=1e-6)
+        assert out == 0.0
 
     def test_causal_audit_id_uses_explicit_key_when_factor_id_missing(self):
         """L383: factor_id 또는 as_of_date 누락 → causal_audit_id 키 fallback.

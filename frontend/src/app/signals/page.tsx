@@ -7,17 +7,21 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ClientTable } from "@/components/ui/client-table";
 
 interface Scorecard {
-  signal_id: string; total_trades: number; win_rate: number; avg_return: number;
-  profit_factor: number; max_return: number; max_loss: number;
+  signal_id: string; total_trades: number; win_rate: number | null; avg_return: number | null;
+  profit_factor: number | null; max_return: number | null; max_loss: number | null;
 }
 
-function pf(v: number) {
+function pf(v: number | null | undefined) {
+  if (v == null) return "—";
+
   if (v >= 99) return "∞";
 
   return v.toFixed(1);
 }
 
-function pfColor(v: number) {
+function pfColor(v: number | null | undefined) {
+  if (v == null) return "text-muted-foreground";
+
   return v >= 1.5 ? "text-emerald-400" : v >= 1.0 ? "text-amber-400" : "text-red-400";
 }
 
@@ -26,7 +30,7 @@ async function ScorecardSection() {
 
   // 원문 에러 문자열 노출 금지 (design-review F-002)
   if ("error" in data) return <p className="text-red-400 text-sm">{ERRORS.SCORECARD_FAILED}</p>;
-  const sorted = [...data.scorecard].sort((a, b) => b.profit_factor - a.profit_factor);
+  const sorted = [...data.scorecard].sort((a, b) => (b.profit_factor ?? -1) - (a.profit_factor ?? -1));
 
   return (
     <Card className="bg-card border-border">
@@ -41,7 +45,7 @@ async function ScorecardSection() {
 interface CrossRow {
   regime: string;
   signal_id: string;
-  profit_factor: number;
+  profit_factor: number | null;
 }
 
 async function CrossSection() {
@@ -56,7 +60,9 @@ async function CrossSection() {
         <p className="text-xs text-muted-foreground mb-3">Signal × Regime</p>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {regimes.map((regime) => {
-            const rows = data.data!.filter((d) => d.regime === regime).sort((a, b) => b.profit_factor - a.profit_factor);
+            const rows = data.data!
+              .filter((d) => d.regime === regime)
+              .sort((a, b) => (b.profit_factor ?? -1) - (a.profit_factor ?? -1));
 
             return (
               <div key={regime}>

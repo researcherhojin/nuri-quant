@@ -80,6 +80,12 @@ class TestEmitEvent:
         assert evt["record_count"] == 100
         assert evt["causation_id"] == 1
 
+    def test_alpha_report_run_in_event_types(self):
+        """`alpha_report_run` heartbeat 가 EVENT_TYPES 에 등재되어 있다."""
+        from nuri.core.events import EVENT_TYPES
+
+        assert "alpha_report_run" in EVENT_TYPES
+
 
 class TestGetTimeline:
     def test_timeline_order_desc(self, db_path):
@@ -524,6 +530,21 @@ class TestEventsDefensivePaths:
         emit_event("step_completed", "collect", payload={"rows": 3}, db_path=db_path)
 
         assert [e["payload"] for e in get_timeline(db_path=db_path)] == [{"rows": 3}, "skipped"]
+
+    def test_get_step_status_json_decode_failure_keeps_raw_payload(self, db_path):
+        """`get_step_status` 도 레거시 비-JSON payload 에서 죽지 않고 원문을 반환한다."""
+        from nuri.core.db.connection import get_db
+
+        with get_db(db_path) as conn:
+            conn.execute(
+                """INSERT INTO pipeline_events (event_type, step, payload)
+                   VALUES (?, ?, ?)""",
+                ("step_completed", "collect", "not-valid-json{"),
+            )
+
+        status = get_step_status("collect", db_path=db_path)
+        assert status["status"] == "completed"
+        assert status["payload"] == "not-valid-json{"
 
 
 # ═══════════════════════════════════════════════════════

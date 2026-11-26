@@ -224,6 +224,23 @@ def test_score_ticker_missing_rsi_neutral():
     assert src["rsi"] == 50.0
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_score_ticker_non_finite_ret_5d_and_rs_rank_neutral(bad):
+    """비유한 ret_5d / rs_rank 가 min(100.0, nan)==100.0 으로 만점 둔갑하지 않고 중립(50.0) 처리."""
+    weights = {"factor_composite": 0.4, "momentum_5d": 0.25, "technical_rsi": 0.15, "breakout_30d": 0.2}
+    score, src = _score_ticker(
+        "X",
+        {"composite": 0.5},
+        {"ret_5d": bad, "breakout_pct": 0.0},
+        50.0,
+        weights,
+        rs_rank=bad,
+    )
+    assert src["momentum"] == 50.0
+    assert src["rs_rank"] == 50.0
+    assert score < 100.0
+
+
 def test_why_now_picks_strongest_source():
     msg = _build_why_now({"factor": 90, "momentum": 60, "rsi": 50, "breakout": 40}, {}, 50)
     assert "factor" in msg.lower() or "composite" in msg.lower()
@@ -523,6 +540,32 @@ def test_held_ticker_skipped(db, cfg_path):
     assert "held" in res.skipped["AAPL"].lower()
 
 
+def test_zero_quantity_portfolio_row_not_treated_as_held(db, cfg_path):
+    """quantity=0 인 portfolio 행(청산 잔재)은 현재 보유로 간주해 BUY 후보에서 제외하지 않는다."""
+    upsert_portfolio(
+        [
+            {
+                "account": "test",
+                "ticker": "CLOSED",
+                "quantity": 0,
+                "avg_price": 100,
+                "currency": "USD",
+                "sector": "Tech",
+            }
+        ],
+        db,
+    )
+    _seed_factor(db, "CLOSED", 0.95)
+    _seed_prices(db, "CLOSED", [100.0] * 25 + [110.0, 115.0, 120.0, 125.0, 130.0, 135.0])
+    _seed_rsi(db, "CLOSED", 55)
+    _seed_vix(db, 20.0)
+    _use_regime("sideways_low_vol")
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert "CLOSED" not in res.skipped
+    assert any(c.ticker == "CLOSED" for c in res.candidates)
+
+
 def test_cooldown_ticker_skipped(db, cfg_path):
     _seed_factor(db, "MSFT", 0.95)
     _seed_prices(db, "MSFT", [100.0] * 30 + [200.0])
@@ -587,6 +630,33 @@ def test_below_threshold_blocked(db, cfg_path):
     res = emit_buy_candidates(config_path=cfg_path)
     assert res.candidates == []
     assert "threshold" in (res.blocked_reason or "")
+
+
+def test_below_threshold_reports_actual_highest_score(db, cfg_path, monkeypatch):
+    """임계 미달 시 blocked_reason 의 top scorer 는 scored[0] 이 아니라 실제 최고점이어야 한다."""
+    import nuri.trading.recommend.buy_candidate_emitter as mod
+
+    fake = mod.Evaluation(
+        regime="sideways_low_vol",
+        vix=20.0,
+        timestamp_kst="2026-01-01 00:00:00 KST",
+        threshold=70,
+        tickers={
+            "LOW": mod.TickerEvaluation(
+                "LOW", "below_threshold", score=31.0, sources={"factor": 30.0}, price={"close": 10.0}, rsi=50.0
+            ),
+            "HIGH": mod.TickerEvaluation(
+                "HIGH", "below_threshold", score=68.0, sources={"factor": 68.0}, price={"close": 20.0}, rsi=50.0
+            ),
+        },
+    )
+    monkeypatch.setattr(mod, "evaluate_universe", lambda config_path=None, db_path=None: fake)
+
+    res = emit_buy_candidates(config_path=cfg_path)
+    assert res.candidates == []
+    assert res.blocked_reason is not None
+    assert "68/100" in res.blocked_reason
+    assert "31/100" not in res.blocked_reason
 
 
 # --- Happy path: emit + risk levels ----------------------------------------
@@ -719,6 +789,33 @@ def test_render_markdown_tp_label_derived_from_price():
     assert "(+40%)" in md
     # 옛 하드코딩 회귀 방지
     assert "(+21%)" not in md and "(+42%)" not in md
+
+
+@pytest.mark.parametrize("bad_entry", [0.0, -5.0])
+def test_render_markdown_non_positive_entry_does_not_divide_by_zero(bad_entry):
+    """entry <= 0 이어도 ZeroDivisionError 없이 마크다운을 렌더링한다."""
+    r = EmitResult(
+        candidates=[
+            BuyCandidate(
+                ticker="ZERO",
+                score=80,
+                deploy_pct=10.0,
+                entry=bad_entry,
+                stop=0.0,
+                tp1=0.0,
+                tp2=0.0,
+                why_now="x",
+                sources={"factor": 90},
+            )
+        ],
+        regime="neutral",
+        vix=20.0,
+        total_deploy_pct=10.0,
+        timestamp_kst="2026-04-30 02:00:00 KST",
+    )
+    md = render_markdown(r)
+    assert f"Entry ${bad_entry}" in md
+    assert "Stop $0.0" in md
 
 
 # --- Config load -----------------------------------------------------------

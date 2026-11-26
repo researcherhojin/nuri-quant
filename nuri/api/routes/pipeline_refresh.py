@@ -90,19 +90,23 @@ def start_refresh(body: RefreshInput, background: BackgroundTasks, user=Depends(
                 detail="서버가 무거운 요청을 처리 중입니다. 잠시 후 다시 시도하세요.",
                 headers={"Retry-After": "5"},
             )
-        run = {
-            "id": uuid.uuid4().hex,
-            "status": "queued",
-            "started_at": kst_now().isoformat(),
-            "finished_at": None,
-            "jobs": [{"id": key, "status": "queued"} for key in requested],
-            "permit": True,  # 접수 때 잡은 heavy slot 을 아직 쥐고 있는가 (내부 필드)
-        }
-        # 접수 자체는 DB 에 행을 쓰지 않는다 — 감사 로그만. pipeline_events 는 백그라운드가 남긴다
-        # (스테이지 lifecycle 은 run_step, 작업 단위 refresh_job_* 는 _mark).
-        audit_log("REFRESH", "pipeline_refresh", run["id"], ",".join(requested), user_id=user.get("sub", "unknown"))
-        _state = run
-    background.add_task(_run_refresh, run["id"], requested)
+        try:
+            run = {
+                "id": uuid.uuid4().hex,
+                "status": "queued",
+                "started_at": kst_now().isoformat(),
+                "finished_at": None,
+                "jobs": [{"id": key, "status": "queued"} for key in requested],
+                "permit": True,  # 접수 때 잡은 heavy slot 을 아직 쥐고 있는가 (내부 필드)
+            }
+            # 접수 자체는 DB 에 행을 쓰지 않는다 — 감사 로그만. pipeline_events 는 백그라운드가 남긴다
+            # (스테이지 lifecycle 은 run_step, 작업 단위 refresh_job_* 는 _mark).
+            audit_log("REFRESH", "pipeline_refresh", run["id"], ",".join(requested), user_id=user.get("sub", "unknown"))
+            background.add_task(_run_refresh, run["id"], requested)
+            _state = run
+        except BaseException:
+            limits._heavy_slots.release()
+            raise
     return _public(deepcopy(run))
 
 

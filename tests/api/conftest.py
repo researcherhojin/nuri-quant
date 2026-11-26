@@ -57,6 +57,18 @@ def _mock_pykrx_names(monkeypatch):
     _tn.get_ticker_name_local.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _disable_rate_limiter(monkeypatch):
+    """고볼륨 TestClient 스위트가 전역 60/minute 제한에 걸리지 않도록 기본 비활성화.
+
+    레이트 리밋 자체를 검증하는 테스트(`tests/api/test_main.py`)는
+    `limiter.enabled = True` + `limiter.reset()` 으로 명시 활성화한다.
+    """
+    from nuri.api import main as main_mod
+
+    monkeypatch.setattr(main_mod.limiter, "enabled", False)
+
+
 @pytest.fixture()
 def db_path(tmp_path, monkeypatch):
     """Isolated test DB with DB_PATH monkeypatched."""

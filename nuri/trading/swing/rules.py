@@ -205,6 +205,10 @@ def check_exits(db_path=None) -> list[SwingExit]:
         else:
             current_price = price_row[0]["close"]
 
+        if not entry_price or entry_price <= 0:
+            logger.warning(f"{ticker}: 유효하지 않은 entry_price={entry_price} — 청산 체크 건너뜀")
+            continue
+
         return_pct = (current_price - entry_price) / entry_price * 100
 
         # 청산 조건 체크 (우선순위순)

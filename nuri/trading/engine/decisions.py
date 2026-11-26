@@ -15,6 +15,9 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# forward-close 조회 허용 범위 (주말/공휴일 흡수용). tracker.py 의 HORIZON_TOLERANCE_DAYS 와 동일.
+HORIZON_TOLERANCE_DAYS = 7
+
 
 def record_decision(consensus_result, db_path=None) -> int:
     """ConsensusResult를 decisions 테이블에 멱등 기록.
@@ -179,10 +182,16 @@ def track_decision_outcomes(db_path=None) -> int:
 
         for days, col in [(7, "pnl_7d"), (30, "pnl_30d"), (60, "pnl_60d"), (90, "pnl_90d")]:
             if elapsed >= days and dec[col] is None:
-                target_date = (dec_date + timedelta(days=days)).strftime("%Y-%m-%d")
+                target_dt = dec_date + timedelta(days=days)
+                target_date = target_dt.strftime("%Y-%m-%d")
+                # 상장폐지/거래중단 종목이 진입일 가격에 매칭되어 0.0% 로 영구 고정되는 것 방지
+                lower_bound = max(
+                    dec_date + timedelta(days=1),
+                    target_dt - timedelta(days=HORIZON_TOLERANCE_DAYS),
+                ).strftime("%Y-%m-%d")
                 price = query(
-                    "SELECT close FROM prices WHERE ticker = ? AND date <= ? ORDER BY date DESC LIMIT 1",
-                    (ticker, target_date),
+                    "SELECT close FROM prices WHERE ticker = ? AND date <= ? AND date >= ? ORDER BY date DESC LIMIT 1",
+                    (ticker, target_date, lower_bound),
                     db_path,
                 )
                 if price and entry > 0:

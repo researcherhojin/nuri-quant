@@ -177,4 +177,20 @@ describe("LoginPage", () => {
     // React autoFocus prop triggers focus in jsdom
     expect(input).toHaveFocus();
   });
+
+  it("resets loading and shows error on network failure", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
+
+    render(<LoginPage />);
+    const input = screen.getByPlaceholderText("Password");
+    fireEvent.change(input, { target: { value: "pass" } });
+    fireEvent.submit(input.closest("form")!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Connection failed")).toBeInTheDocument();
+    });
+
+    const button = screen.getByText("Login");
+    expect(button).not.toBeDisabled();
+  });
 });

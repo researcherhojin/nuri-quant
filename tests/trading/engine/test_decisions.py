@@ -784,6 +784,61 @@ class TestTrackOutcomes:
         rows = get_decisions(ticker="BAD", db_path=db_path)
         assert rows[0]["outcome"] == "success"  # SELL 후 하락 = 성공
 
+    def test_delisted_ticker_with_no_post_entry_prices_not_locked_at_zero(self, db_path):
+        """진입일 이후 가격이 없는(상장폐지/거래중단) 종목은 0.0% 로 고정되지 않고 NULL/pending 유지."""
+        from nuri.trading.engine.decisions import track_decision_outcomes
+
+        _insert_price(db_path, "DELISTED", 100.0, "2026-01-01")
+        upsert_decision(
+            {
+                "date": "2026-01-01",
+                "ticker": "DELISTED",
+                "action": "BUY",
+                "confidence": 80.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
+
+        updated = track_decision_outcomes(db_path)
+        assert updated == 0
+
+        rows = get_decisions(ticker="DELISTED", db_path=db_path)
+        assert rows[0]["pnl_7d"] is None
+        assert rows[0]["pnl_30d"] is None
+        assert rows[0]["pnl_60d"] is None
+        assert rows[0]["pnl_90d"] is None
+        assert rows[0]["outcome"] == "pending"
+
+    def test_holiday_gap_within_tolerance_still_matches(self, db_path):
+        """목표일이 휴장/주말이어도 허용 윈도우 내 최근 거래일 가격으로 매칭된다."""
+        from nuri.trading.engine.decisions import track_decision_outcomes
+
+        _insert_price(db_path, "HOLIDAY", 100.0, "2026-01-01")
+        _insert_price(db_path, "HOLIDAY", 110.0, "2026-01-06")  # 7d 목표(01-08)의 2일 전
+
+        upsert_decision(
+            {
+                "date": "2026-01-01",
+                "ticker": "HOLIDAY",
+                "action": "BUY",
+                "confidence": 75.0,
+                "entry_price": 100.0,
+            },
+            db_path,
+        )
+
+        updated = track_decision_outcomes(db_path)
+        assert updated == 1
+
+        rows = get_decisions(ticker="HOLIDAY", db_path=db_path)
+        assert rows[0]["pnl_7d"] == 10.0
+        # 30d/60d/90d 윈도우 밖이므로 채워지지 않음
+        assert rows[0]["pnl_30d"] is None
+        assert rows[0]["pnl_60d"] is None
+        assert rows[0]["pnl_90d"] is None
+        assert rows[0]["outcome"] == "pending"
+
 
 # ═══════════════════════════════════════════════════════
 # get_decision_summary 테스트

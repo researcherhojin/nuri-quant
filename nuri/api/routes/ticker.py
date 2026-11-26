@@ -248,7 +248,7 @@ def get_market_context():
         "vix_date": vix_row[0]["date"] if vix_row else None,
         "fear_greed": round(fg_row[0]["value"], 1) if fg_row else None,
         "fg_date": fg_row[0]["date"] if fg_row else None,
-        "macro_score": round(macro_score, 1) if macro_score else None,
+        "macro_score": round(macro_score, 1) if macro_score is not None else None,
     }
 
 

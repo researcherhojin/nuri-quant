@@ -1200,3 +1200,24 @@ class TestUnmeasuredVixIsAVeto:
             sector_mom=0,
         )
         assert mode is None
+
+    def test_vix_threshold_uses_config_constant_and_override(
+        self, monkeypatch: pytest.MonkeyPatch, cfg_held_add: dict
+    ) -> None:
+        """하드코딩 28 대신 VIX_CAUTION_ABOVE(및 trigger.macro_veto_vix_max)를 따른다."""
+        from nuri.core.rules import VIX_CAUTION_ABOVE
+
+        self._patch(monkeypatch)
+        cfg = cfg_held_add["held_add_mode"]
+
+        # 기본 임계(VIX_CAUTION_ABOVE) 미만 → 통과, 이상 → veto
+        assert (
+            ha.select_held_mode(self._pos(), cfg, score=90, rsi=20, regime="neutral", vix=VIX_CAUTION_ABOVE - 0.1)
+            == "average_down"
+        )
+        assert ha.select_held_mode(self._pos(), cfg, score=90, rsi=20, regime="neutral", vix=VIX_CAUTION_ABOVE) is None
+
+        # config trigger.macro_veto_vix_max 지정 시 그 값을 우선 사용
+        cfg["modes"]["average_down"]["trigger"]["macro_veto_vix_max"] = 22
+        assert ha.select_held_mode(self._pos(), cfg, score=90, rsi=20, regime="neutral", vix=22.0) is None
+        assert ha.select_held_mode(self._pos(), cfg, score=90, rsi=20, regime="neutral", vix=21.9) == "average_down"

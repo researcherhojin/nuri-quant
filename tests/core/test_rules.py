@@ -428,3 +428,49 @@ class TestGetStopLossForAccount:
 
         result = get_stop_loss_for_account(None)
         assert isinstance(result, int)
+
+
+class TestGetRealAccounts:
+    """`get_real_accounts()` 는 모듈 `PORTFOLIO_PATH` 를 읽고 로드 실패 시 WARNING 로그를 남긴다."""
+
+    def test_uses_module_portfolio_path(self, tmp_path, monkeypatch):
+        import nuri.core.rules as rules_mod
+
+        portfolio_yaml = tmp_path / "portfolio.yaml"
+        portfolio_yaml.write_text(
+            yaml.dump(
+                {
+                    "accounts": {
+                        "acct_real": {"broker": "Brokerage Alpha", "strategy": "core"},
+                        "acct_stub": {"currency": "USD", "holdings": []},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(rules_mod, "PORTFOLIO_PATH", portfolio_yaml)
+
+        assert rules_mod.get_real_accounts() == {"acct_real"}
+
+    def test_logs_warning_on_missing_or_invalid_yaml(self, tmp_path, monkeypatch, caplog):
+        import logging
+
+        import nuri.core.rules as rules_mod
+
+        missing = tmp_path / "missing_portfolio.yaml"
+        monkeypatch.setattr(rules_mod, "PORTFOLIO_PATH", missing)
+
+        with caplog.at_level(logging.WARNING, logger="nuri.core.rules"):
+            assert rules_mod.get_real_accounts() == set()
+
+        assert any(r.levelno == logging.WARNING and "Failed to load" in r.getMessage() for r in caplog.records)
+
+        bad_yaml = tmp_path / "bad_portfolio.yaml"
+        bad_yaml.write_text("accounts: [\n", encoding="utf-8")
+        monkeypatch.setattr(rules_mod, "PORTFOLIO_PATH", bad_yaml)
+        caplog.clear()
+
+        with caplog.at_level(logging.WARNING, logger="nuri.core.rules"):
+            assert rules_mod.get_real_accounts() == set()
+
+        assert any(r.levelno == logging.WARNING and "Failed to load" in r.getMessage() for r in caplog.records)

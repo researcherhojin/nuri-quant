@@ -33,13 +33,25 @@ class NewsCollector(BaseCollector):
 
         self.logger.info(f"뉴스 수집 대상: {len(tickers)} 종목 (source={source})")
         iterator = tqdm(tickers, desc=f"  news [{source}]", unit="tk", disable=len(tickers) < 20)
+        attempted = len(tickers)
+        errors: list[Exception] = []
 
         for ticker in iterator:
-            items = self._fetch_ticker_news(ticker)
+            try:
+                items = self._fetch_ticker_news(ticker, raise_on_error=True)
+            except Exception as e:  # noqa: BLE001 — 단일 종목 실패가 전체를 막지 않게
+                errors.append(e)
+                failed.append(ticker)
+                continue
             if not items:
                 failed.append(ticker)
                 continue
             records.extend(items)
+
+        if attempted > 0 and len(errors) == attempted:
+            raise RuntimeError(
+                f"[{self.name}] 모든 종목({attempted}개) 뉴스 수집 실패 — 첫 오류: {errors[0]}"
+            ) from errors[0]
 
         if len(tickers) >= 20:
             sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
@@ -57,7 +69,7 @@ class NewsCollector(BaseCollector):
     #: 종목당 요청 기사 수. 다른 종목이 주인공인 기사도 섞이므로 아래에서 `stockTickers` 로 다시 거른다.
     NEWS_COUNT = 20
 
-    def _fetch_ticker_news(self, ticker: str) -> list[dict]:
+    def _fetch_ticker_news(self, ticker: str, *, raise_on_error: bool = False) -> list[dict]:
         """단일 종목 뉴스 (yfinance `Ticker.get_news`).
 
         Yahoo 가 옛 경로(`/xhr/ncp`)를 없애 `get_news()` 가 2026-10-02 부터 **예외 없이 빈 목록**을 줬고
@@ -76,6 +88,8 @@ class NewsCollector(BaseCollector):
             return self._parse_yfinance_news(related, ticker)
         except Exception as e:
             self.logger.debug(f"{ticker}: yfinance news 조회 실패 — {e}")
+            if raise_on_error:
+                raise
             return []
 
     @staticmethod

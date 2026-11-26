@@ -627,14 +627,15 @@ class TestWriteHeartbeatException:
 
 
 class TestMainShutdownHandler:
-    """Lines 544-547: signal handler calls scheduler.shutdown() + sys.exit(0)."""
+    """Signal handler calls scheduler.shutdown(wait=False) without logging + sys.exit(0)."""
 
     def test_shutdown_handler_invokes_shutdown_and_exit(self, monkeypatch):
         """Capture the registered SIGTERM handler, invoke it, verify behavior.
 
-        Lines 544-547 only run when the scheduler receives a signal. We capture
-        the handler via signal.signal patching, then invoke it directly.
-        Behavior locked: shutdown() called once, sys.exit(0) raises SystemExit(0).
+        Behavior locked: shutdown(wait=False) called once (avoids deadlock when
+        _self_restart triggers SIGTERM from a worker thread), logger.info is not
+        called inside the signal handler (avoids re-entrant logging lock deadlock),
+        and sys.exit(0) raises SystemExit(0).
         """
         from nuri import scheduler as sched_mod
 
@@ -646,10 +647,12 @@ class TestMainShutdownHandler:
         mock_scheduler = MagicMock()
         # Make scheduler.start() a no-op so main returns synchronously.
         mock_scheduler.start.return_value = None
+        mock_logger = MagicMock()
 
         monkeypatch.setattr(sched_mod, "init_db", MagicMock())
         monkeypatch.setattr(sched_mod, "create_scheduler", MagicMock(return_value=mock_scheduler))
         monkeypatch.setattr(sched_mod.signal, "signal", fake_signal)
+        monkeypatch.setattr(sched_mod, "logger", mock_logger)
         monkeypatch.setattr(sys, "argv", ["nuri.scheduler"])
 
         sched_mod.main()
@@ -661,13 +664,17 @@ class TestMainShutdownHandler:
         # The two handlers must be the same closure (same shutdown())
         assert captured_handlers[_signal.SIGINT] is captured_handlers[_signal.SIGTERM]
 
-        # Now invoke the captured handler — should call shutdown() + sys.exit(0)
+        # Reset logger mock so we only observe calls made inside the signal handler
+        mock_logger.reset_mock()
+
+        # Now invoke the captured handler — should call shutdown(wait=False) + sys.exit(0)
         handler = captured_handlers[_signal.SIGTERM]
         with pytest.raises(SystemExit) as exc_info:
             handler(_signal.SIGTERM, None)
 
         assert exc_info.value.code == 0
-        mock_scheduler.shutdown.assert_called_once()
+        mock_scheduler.shutdown.assert_called_once_with(wait=False)
+        mock_logger.info.assert_not_called()
 
 
 # ─────────────────────────────────────────────
@@ -859,3 +866,64 @@ class TestPruneReports:
 
         prune.assert_called_once_with()
         assert "prune_reports: 2 directories removed" in caplog.text
+
+    def test_exception_swallowed_and_logged(self, caplog):
+        """`_prune_reports` 예외가 스케줄러로 전파되지 않고 ERROR 로그로 남는다."""
+        import logging
+
+        from nuri.scheduler import _prune_reports
+
+        with (
+            patch("nuri.analysis.report_prune.prune_report_dirs", side_effect=OSError("disk error")),
+            caplog.at_level(logging.ERROR, logger="nuri.scheduler"),
+        ):
+            _prune_reports()  # must not raise
+
+        assert any(
+            r.levelno == logging.ERROR and "prune_reports failed" in r.getMessage() and r.exc_info
+            for r in caplog.records
+        )
+
+
+class TestSchedulerHardening:
+    """스케줄러 timezone / backup timeout·경로 앵커 / unknown dispatch 회귀 테스트."""
+
+    def test_create_scheduler_uses_asia_seoul_timezone(self):
+        """BlockingScheduler 와 기본 cron 트리거가 호스트 OS TZ 와 무관하게 Asia/Seoul 이다."""
+        from nuri.scheduler import create_scheduler
+
+        scheduler = create_scheduler()
+        assert str(scheduler.timezone) == "Asia/Seoul"
+        stock_job = scheduler.get_job("stock_us_night")
+        assert stock_job is not None
+        assert str(stock_job.trigger.timezone) == "Asia/Seoul"
+        premarket_job = scheduler.get_job("premarket_brief")
+        assert premarket_job is not None
+        assert str(premarket_job.trigger.timezone) == "US/Eastern"
+
+    def test_run_backup_uses_anchored_path_and_timeout(self):
+        """`_run_backup` 은 repo root 기준 절대 경로와 timeout=300 으로 실행한다."""
+        from pathlib import Path
+
+        from nuri.scheduler import BACKUP_SCRIPT, _run_backup
+
+        expected_script = str(Path(__file__).resolve().parents[1] / BACKUP_SCRIPT)
+        with patch("subprocess.run") as mock_run:
+            _run_backup()
+
+        mock_run.assert_called_once_with(["bash", expected_script], check=True, timeout=300)
+
+    def test_dispatch_collector_unknown_raises_and_logs_warning(self, caplog):
+        """알 수 없는 collector 이름은 WARNING 로그 후 ValueError 를 발생시킨다."""
+        import logging
+
+        from nuri.scheduler import _dispatch_collector
+
+        with caplog.at_level(logging.WARNING, logger="nuri.scheduler"):
+            with pytest.raises(ValueError, match="Unknown collector job: nonexistent_job"):
+                _dispatch_collector("nonexistent_job")
+
+        assert any(
+            r.levelno == logging.WARNING and "Unknown collector job: nonexistent_job" in r.getMessage()
+            for r in caplog.records
+        )

@@ -302,8 +302,12 @@ class TestOrchestrateRetry:
         assert len(result.output["attempts"]) == 3  # 1 + 2 retries
         assert all(a["status"] == "timeout" for a in result.output["attempts"])
 
-    def test_generic_failure_then_block(self, patched_db):
+    def test_generic_failure_then_block(self, patched_db, _patch_sleep):
+        """영구 실패('failed') 는 재시도·sleep 없이 즉시 BLOCK 으로 중단한다."""
+        call_count = {"n": 0}
+
         def always_fail():
+            call_count["n"] += 1
             raise ValueError("bad payload")
 
         actor = CollectorOrchestrator()
@@ -312,12 +316,14 @@ class TestOrchestrateRetry:
                 "action": "orchestrate",
                 "collector_name": "finviz",
                 "collector_fn": always_fail,
-                "max_retries": 1,
+                "max_retries": 3,
             }
         )
         assert result.outcome == Outcome.BLOCK
-        assert len(result.output["attempts"]) == 2
-        assert all(a["status"] == "failed" for a in result.output["attempts"])
+        assert call_count["n"] == 1
+        assert len(result.output["attempts"]) == 1
+        assert result.output["attempts"][0]["status"] == "failed"
+        _patch_sleep.assert_not_called()
 
     def test_zero_retries_immediate_block(self, patched_db):
         actor = CollectorOrchestrator()
@@ -333,15 +339,15 @@ class TestOrchestrateRetry:
         assert len(result.output["attempts"]) == 1
 
     def test_backoff_progression(self, patched_db, _patch_sleep):
-        def always_fail():
-            raise ValueError("boom")
+        def always_timeout():
+            raise TimeoutError("timed out")
 
         actor = CollectorOrchestrator()
         actor.run(
             {
                 "action": "orchestrate",
                 "collector_name": "finviz",
-                "collector_fn": always_fail,
+                "collector_fn": always_timeout,
                 "max_retries": 3,
             }
         )
@@ -699,6 +705,20 @@ class TestExtractRowCount:
                 "collector_fn": lambda: Bare(),
             }
         )
+        assert result.output["rows_collected"] == 0
+
+    @pytest.mark.parametrize("flag", [True, False])
+    def test_bool_returns_zero_not_one(self, patched_db, flag):
+        """bool 은 int 서브클래스지만 row count 가 아니다 — True 가 rows_collected=1 로 기록되면 안 된다."""
+        actor = CollectorOrchestrator()
+        result = actor.run(
+            {
+                "action": "orchestrate",
+                "collector_name": "fred",
+                "collector_fn": lambda: flag,
+            }
+        )
+        assert result.outcome == Outcome.PASS
         assert result.output["rows_collected"] == 0
 
 

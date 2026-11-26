@@ -212,3 +212,43 @@ class TestOptimizerExitNoneAndOver:
             {"rsi_threshold": 30, "hold_days": 50},  # 50일 hold → 끝부분 entry exit 불가
         )
         assert hasattr(r, "total_trades")
+
+
+class TestOptimizerRegressions:
+    """ZeroDivisionError 가드 및 today_kst() 사용 회귀 테스트."""
+
+    def test_all_zero_return_trades_does_not_raise_zero_division(self):
+        """비양수 수익률이 전부 0.0 일 때 ZeroDivisionError 없이 profit_factor=0.0 반환."""
+        from nuri.quant.backtest.optimizer import _backtest_signal_with_params
+
+        # 20일 하락(RSI < 30) → 21일차 반등(RSI >= 30 진입) → 이후 20일 동일가 유지(ret == 0.0)
+        close = np.concatenate(
+            [
+                np.linspace(100.0, 70.0, 20),
+                np.full(20, 82.0),
+            ]
+        )
+        df = pd.DataFrame({"close": close})
+        r = _backtest_signal_with_params(df, "rsi_oversold", {"rsi_threshold": 30, "hold_days": 5})
+        assert r.total_trades >= 1
+        assert r.profit_factor == 0.0
+
+    def test_optimize_all_uses_today_kst_for_report_dir(self, tmp_path, monkeypatch):
+        """optimize_all CSV 저장 경로가 date.today() 대신 today_kst() 를 사용해야 한다."""
+        from nuri.quant.backtest import optimizer
+
+        monkeypatch.setattr(optimizer, "REPORT_DIR", tmp_path)
+        monkeypatch.setattr(optimizer, "today_kst", lambda: "2099-01-02")
+        monkeypatch.setattr(
+            optimizer,
+            "optimize_signal",
+            lambda signal_id, db_path=None: (
+                [optimizer.OptResult(signal_id, {"hold_days": 10}, 5, 0.6, 1.5, 1.8, 1.1)]
+                if signal_id == "rsi_oversold"
+                else []
+            ),
+        )
+
+        df = optimizer.optimize_all()
+        assert not df.empty
+        assert (tmp_path / "2099-01-02" / "optimization_results.csv").exists()

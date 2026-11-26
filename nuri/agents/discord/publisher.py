@@ -183,6 +183,19 @@ class DiscordPublisher:
         new_payload["embeds"] = [new_first, *list(embeds[1:])]
         return new_payload
 
+    @staticmethod
+    def _safe_log_message(**kwargs: Any) -> None:
+        """Audit DB 기록 — 일시적 SQLite lock 등이 발송 결과를 덮어쓰지 않게 한다."""
+        try:
+            log_agent_message(**kwargs)
+        except Exception:  # noqa: BLE001 — audit DB failure must not turn a sent webhook into a failure
+            logger.warning(
+                "discord audit log_agent_message failed channel=%s http_status=%s",
+                kwargs.get("channel"),
+                kwargs.get("http_status"),
+                exc_info=True,
+            )
+
     def _publish(
         self,
         channel: Channel,
@@ -206,7 +219,7 @@ class DiscordPublisher:
                     resp = client.post(url, json=self._enrich_embed_payload(payload, actor_name))
                 last_status = resp.status_code
                 if 200 <= resp.status_code < 300:
-                    log_agent_message(
+                    self._safe_log_message(
                         channel=channel.value,
                         content_preview=preview,
                         actor_name=actor_name,
@@ -230,7 +243,7 @@ class DiscordPublisher:
                     continue
                 break
 
-        log_agent_message(
+        self._safe_log_message(
             channel=channel.value,
             content_preview=preview,
             actor_name=actor_name,
@@ -268,7 +281,7 @@ class DiscordPublisher:
                     resp = await client.post(url, json=self._enrich_embed_payload(payload, actor_name))
                 last_status = resp.status_code
                 if 200 <= resp.status_code < 300:
-                    log_agent_message(
+                    self._safe_log_message(
                         channel=channel.value,
                         content_preview=preview,
                         actor_name=actor_name,
@@ -292,7 +305,7 @@ class DiscordPublisher:
                     continue
                 break
 
-        log_agent_message(
+        self._safe_log_message(
             channel=channel.value,
             content_preview=preview,
             actor_name=actor_name,
@@ -314,7 +327,7 @@ class DiscordPublisher:
         decision_id: Optional[str],
     ) -> PublishResult:
         msg = f"webhook missing: env {channel.env_var} not set"
-        log_agent_message(
+        self._safe_log_message(
             channel=channel.value,
             content_preview=preview,
             actor_name=actor_name,

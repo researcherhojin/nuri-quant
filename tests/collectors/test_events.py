@@ -84,6 +84,26 @@ class TestEventsCollectorFOMCAndEarnings:
         )
         assert len(rows) == 1
 
+    def test_save_is_atomic_rollback_on_insert_failure(self, db_with_portfolio):
+        import pytest
+
+        from nuri.collectors.events import EventsCollector
+
+        c = EventsCollector()
+        original = {"date": "2025-03-17", "event_type": "fomc", "ticker": None, "description": "FOMC", "importance": 3}
+        assert c.save([original]) == 1
+
+        # importance 키 누락 → DELETE 후 INSERT 실패 시 롤백되어 기존 행이 유지되어야 함
+        broken = {"date": "2025-03-17", "event_type": "fomc", "ticker": None, "description": "FOMC"}
+        with pytest.raises(Exception):
+            c.save([broken])
+
+        rows = query(
+            "SELECT * FROM events WHERE event_type = 'fomc' AND date = '2025-03-17'", db_path=db_with_portfolio
+        )
+        assert len(rows) == 1
+        assert rows[0]["importance"] == 3
+
 
 class TestEventsCollectorETFSkip:
     """ETF tickers must short-circuit before yfinance call (no earnings calendar).

@@ -35,6 +35,10 @@ _STATUSES = ("pending", "claimed", "sent", "failed", "dropped")
 # Lease 만료 — claimed 상태에서 이 시간 지나면 다른 dispatcher 가 재claim
 CLAIM_LEASE_SECONDS = 300  # 5분
 
+# 일시 장애 재시도 상한 — attempt_count < MAX_OUTBOX_ATTEMPTS 인 failed row 만 자동 재claim.
+# 상한 도달 시 status='failed' 로 남아 OutboxWatchdog 이 #ops 에 경고한다.
+MAX_OUTBOX_ATTEMPTS = 5
+
 
 def stage_outbox(
     channel: str,
@@ -121,6 +125,7 @@ def claim_pending_outbox(
     Returns (claim_token, rows). 빈 배열 = 처리할 것 없음.
 
     "Ready" = status='pending' AND scheduled_for <= now()
+        OR  status='failed' AND attempt_count < MAX_OUTBOX_ATTEMPTS AND scheduled_for <= now()
         OR  status='claimed' AND claimed_at < now() - CLAIM_LEASE_SECONDS
                                                     (lease 만료 → 재claim).
     Priority order: high > normal > low, scheduled_for 오름차순 (오래된 것 먼저).
@@ -129,6 +134,7 @@ def claim_pending_outbox(
     if channel not in _CHANNELS:
         raise ValueError(f"channel must be {_CHANNELS}, got {channel!r}")
     claim_token = secrets.token_hex(8)
+    lease_cutoff = f"-{CLAIM_LEASE_SECONDS} seconds"
 
     with get_db(db_path) as conn:
         rows = conn.execute(
@@ -136,6 +142,7 @@ def claim_pending_outbox(
                 WHERE channel = ?
                   AND (
                        (status = 'pending' AND scheduled_for <= datetime('now'))
+                    OR (status = 'failed' AND attempt_count < ? AND scheduled_for <= datetime('now'))
                     OR (status = 'claimed' AND claimed_at < datetime('now', ?))
                   )
                 ORDER BY
@@ -143,33 +150,41 @@ def claim_pending_outbox(
                     scheduled_for ASC,
                     id ASC
                 LIMIT ?""",
-            (channel, f"-{CLAIM_LEASE_SECONDS} seconds", limit),
+            (channel, MAX_OUTBOX_ATTEMPTS, lease_cutoff, limit),
         ).fetchall()
         if not rows:
             return claim_token, []
 
         ids = [r["id"] for r in rows]
         placeholders = ",".join("?" for _ in ids)
+        # 동시 claim 레이스(TOCTOU) 방지: UPDATE 에 ready 조건을 다시 걸고,
+        # 실제로 내 claim_token 을 획득한 행만 반환한다.
         conn.execute(
             f"""UPDATE discord_outbox
                    SET status = 'claimed',
                        claim_token = ?,
                        claimed_at = datetime('now'),
                        attempt_count = attempt_count + 1
-                 WHERE id IN ({placeholders})""",
-            (claim_token, *ids),
+                 WHERE id IN ({placeholders})
+                   AND channel = ?
+                   AND (
+                        (status = 'pending' AND scheduled_for <= datetime('now'))
+                     OR (status = 'failed' AND attempt_count < ? AND scheduled_for <= datetime('now'))
+                     OR (status = 'claimed' AND claimed_at < datetime('now', ?))
+                   )""",
+            (claim_token, *ids, channel, MAX_OUTBOX_ATTEMPTS, lease_cutoff),
         )
 
         claimed = conn.execute(
             f"""SELECT id, channel, payload_json, priority, dedupe_key,
                        scheduled_for, attempt_count, actor_name, run_id, created_at
                   FROM discord_outbox
-                 WHERE id IN ({placeholders})
+                 WHERE id IN ({placeholders}) AND claim_token = ?
                  ORDER BY
                      CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
                      scheduled_for ASC,
                      id ASC""",
-            ids,
+            (*ids, claim_token),
         ).fetchall()
 
     result = []

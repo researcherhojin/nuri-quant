@@ -1028,6 +1028,90 @@ class TestDiscordPublishRouting:
             result = actor.run({"action": "scan"})
         assert result.outcome == Outcome.PASS
 
+    def test_acknowledged_incident_suppresses_duplicate_row_and_republish(self, patched_db):
+        """acknowledged 상태 인시던트가 지속돼도 신규 open 행 생성 및 재발행을 차단한다."""
+        with (
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=950, free=50),
+            ),
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+        ):
+            actor = SREIncidentAgent()
+            r1 = actor.run({"action": "scan"})
+            disk_inc = [i for i in r1.output["incidents"] if i["incident_type"] == "disk_full"][0]
+            first_id = disk_inc["incident_id"]
+            first_calls = mock_inc.call_count
+
+            ack_res = actor.run({"action": "acknowledge", "incident_id": first_id})
+            assert ack_res.outcome == Outcome.PASS
+
+            # 동일 조건 재스캔 → acknowledged 행을 갱신하며 새 open 행·재발행 없음
+            r2 = actor.run({"action": "scan"})
+            disk_inc2 = [i for i in r2.output["incidents"] if i["incident_type"] == "disk_full"][0]
+            assert disk_inc2["incident_id"] == first_id
+            assert disk_inc2["is_new"] is False
+            assert mock_inc.call_count == first_calls
+
+        rows = query(
+            "SELECT incident_id, status FROM incidents WHERE incident_type = 'disk_full' AND target = 'disk'",
+            db_path=patched_db,
+        )
+        assert len(rows) == 1
+        assert rows[0]["status"] == "acknowledged"
+
+    def test_warning_to_critical_escalation_publishes_to_incidents(self, patched_db):
+        """open warning 이 critical 로 승격되면 #incidents 채널로 알림을 발행한다."""
+        with (
+            patch("nuri.agents.discord.outbox.stage_ops") as mock_ops,
+            patch("nuri.agents.discord.outbox.stage_incident") as mock_inc,
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+        ):
+            actor = SREIncidentAgent()
+            with patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=850, free=150),
+            ):
+                r1 = actor.run({"action": "scan"})
+            disk1 = [i for i in r1.output["incidents"] if i["incident_type"] == "disk_full"][0]
+            assert disk1["severity"] == "warning"
+            assert mock_ops.called
+            inc_calls_before = mock_inc.call_count
+
+            # 85% (warning) → 95% (critical) 승격
+            with patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=950, free=50),
+            ):
+                r2 = actor.run({"action": "scan"})
+            disk2 = [i for i in r2.output["incidents"] if i["incident_type"] == "disk_full"][0]
+            assert disk2["incident_id"] == disk1["incident_id"]
+            assert disk2["severity"] == "critical"
+            assert mock_inc.call_count == inc_calls_before + 1
+            assert mock_inc.call_args.kwargs["payload"]["incident_type"] == "disk_full"
+            assert mock_inc.call_args.kwargs["payload"]["severity"] == "critical"
+
+    def test_multiple_orphan_runs_for_same_actor_keep_critical_severity(self, patched_db, no_publish):
+        """동일 actor 에 critical(4h) + warning(1.5h) orphan 이 공존해도 critical 이 강등되지 않는다."""
+        _seed_orphan_run(patched_db, actor_name="collector", hours_ago=1.5, run_id="orphan-warn")
+        _seed_orphan_run(patched_db, actor_name="collector", hours_ago=4.0, run_id="orphan-crit")
+        actor = SREIncidentAgent()
+        with (
+            patch("nuri.core.freshness.check_all_freshness", return_value=[]),
+            patch(
+                "nuri.agents.actors.sre_incident_agent.shutil.disk_usage",
+                return_value=MagicMock(total=1000, used=100, free=900),
+            ),
+        ):
+            actor.run({"action": "scan"})
+        rows = query(
+            "SELECT severity FROM incidents WHERE incident_type = 'orphan_run' AND target = 'collector'",
+            db_path=patched_db,
+        )
+        assert len(rows) == 1
+        assert rows[0]["severity"] == "critical"
+
 
 # ═══════════════════════════════════════════════════════
 # helper enum 검증 (HelperLockTests)

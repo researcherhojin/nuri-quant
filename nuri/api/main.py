@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from nuri.api.routes import (
@@ -73,6 +74,7 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_middleware(SlowAPIMiddleware)
 
 # ─── CORS 강화 ───
 # 프로덕션: CORS_ORIGINS 환경변수로 허용 도메인 지정
@@ -140,17 +142,34 @@ app.include_router(learning_memory.router, prefix="/api")
 @limiter.limit("5/15minutes")
 async def login(request: Request):
     """JWT 토큰 발급. Body: {"password": "xxx"}."""
-    from nuri.api.auth import create_token, verify_password
+    from nuri.api.auth import _constant_time_compare, create_token, verify_password
 
     dashboard_pw = os.getenv("DASHBOARD_PASSWORD", "")
     if not dashboard_pw:
         return JSONResponse({"error": "DASHBOARD_PASSWORD 미설정"}, status_code=503)
 
-    body = await request.json()
-    password = body.get("password", "")
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "잘못된 요청 형식"}, status_code=400)
 
-    # 평문 비교 (기존 호환) 또는 bcrypt 비교
-    if password == dashboard_pw or (dashboard_pw.startswith("$2") and verify_password(password, dashboard_pw)):
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "잘못된 요청 형식"}, status_code=400)
+
+    password = body.get("password")
+    if not isinstance(password, str):
+        return JSONResponse({"error": "잘못된 요청 형식"}, status_code=400)
+
+    # bcrypt 해시면 해시 검증만 허용 (평문 == 해시 우회 금지), 평문이면 상수시간 비교
+    if dashboard_pw.startswith("$2"):
+        try:
+            valid = verify_password(password, dashboard_pw)
+        except ValueError:
+            valid = False
+    else:
+        valid = _constant_time_compare(password, dashboard_pw)
+
+    if valid:
         token = create_token(subject="dashboard")
         return {"access_token": token, "token_type": "bearer"}
 

@@ -29,7 +29,7 @@ import yaml
 
 from nuri.core.account_cap import derive_position_cap
 from nuri.core.db import get_db, query_df
-from nuri.core.rules import TAKE_PROFIT_GROWTH
+from nuri.core.rules import TAKE_PROFIT_GROWTH, VIX_CAUTION_ABOVE
 from nuri.core.timezone import kst_now, today_kst
 from nuri.quant.regime.classifier import UNKNOWN_REGIME
 
@@ -356,7 +356,8 @@ def _evaluate_average_down(
         # 평온하다는 **확인이 안 된** 상태다 — 통과시키면 측정 실패가 조용히 매수
         # 조건을 여는 그 형태가 된다. 예전엔 `None >= 28` 로 TypeError 를 냈고,
         # 스케줄러가 그걸 삼켜 VIX 수집이 끊긴 날 잡이 조용히 아무것도 안 했다 (#1076).
-        if vix is None or vix >= 28:
+        vix_max = float(trig.get("macro_veto_vix_max", VIX_CAUTION_ABOVE))
+        if vix is None or vix >= vix_max:
             return None
 
     return "average_down"

@@ -169,6 +169,41 @@ class TestSignals:
         assert "error" in data
         assert "scorecard.csv" in data["error"]
 
+    def test_scorecard_ignores_future_and_non_date_dirs(self, client, monkeypatch, tmp_path):
+        """미래 날짜 디렉터리와 비날짜 디렉터리는 오늘 스코어카드를 가리지 않는다."""
+        import nuri.api.routes.signals as signals_mod
+
+        report_root = tmp_path / "reports"
+        for name, score in [("2026-05-04", "75.0"), ("2099-01-01", "99.0"), ("briefs", "88.0")]:
+            sub = report_root / name
+            sub.mkdir(parents=True)
+            (sub / "signal_scorecard.csv").write_text(f"ticker,score\n,{score}\nAAPL,80.0\n")
+        # 파일(디렉터리 아님)도 안전하게 무시되어야 한다
+        (report_root / "2026-05-05").write_text("not a dir")
+
+        def fake_path(arg):
+            class _W:
+                @property
+                def parent(self):
+                    return self
+
+                def __truediv__(self, other):
+                    return _Mid() if other == "data" else tmp_path / other
+
+            class _Mid:
+                def __truediv__(self, other):
+                    return report_root if other == "reports" else tmp_path / other
+
+            return _W()
+
+        monkeypatch.setattr("pathlib.Path", fake_path)
+        monkeypatch.setattr(signals_mod, "today_kst", lambda: "2026-05-04")
+        r = client.get("/api/scorecard")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["date"] == "2026-05-04"
+        assert data["scorecard"] == [{"score": 75.0}]
+
     def test_cross_analysis_empty(self, client, monkeypatch):
         """analyze_signal_by_regime 가 빈 df → error (line 56)."""
         monkeypatch.setattr(
@@ -188,3 +223,14 @@ class TestSignals:
         r = client.get("/api/cross-analysis")
         assert r.status_code == 200
         assert "data" in r.json()
+
+    @pytest.mark.parametrize("bad_val", [float("nan"), float("inf"), float("-inf")])
+    def test_cross_analysis_non_finite_values_are_null(self, client, monkeypatch, bad_val):
+        """cross-analysis 응답의 NaN/±inf 는 JSON null 로 정제된다 (#1829)."""
+        monkeypatch.setattr(
+            "nuri.quant.regime.strategy_map.analyze_signal_by_regime",
+            lambda: pd.DataFrame([{"signal": "rsi", "regime": "bull", "win_rate": bad_val}]),
+        )
+        r = client.get("/api/cross-analysis")
+        assert r.status_code == 200
+        assert r.json() == {"data": [{"signal": "rsi", "regime": "bull", "win_rate": None}]}

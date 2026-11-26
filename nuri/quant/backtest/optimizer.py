@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from nuri.core.db import query_df
+from nuri.core.timezone import today_kst
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,8 @@ def _backtest_signal_with_params(
     wins = [r for r in returns if r > 0]
     losses = [r for r in returns if r <= 0]
     total_gain = sum(wins)
-    total_loss = abs(sum(losses)) if losses else 0.001
+    loss_sum = abs(sum(losses))
+    total_loss = loss_sum if loss_sum > 0 else 0.001
     avg_ret = np.mean(returns)
     std_ret = np.std(returns) if len(returns) > 1 else 1.0
 
@@ -270,9 +272,7 @@ def optimize_all(db_path: Optional[Path] = None) -> pd.DataFrame:
             )
 
         # CSV 저장
-        from datetime import date
-
-        report_dir = REPORT_DIR / str(date.today())
+        report_dir = REPORT_DIR / today_kst()
         report_dir.mkdir(parents=True, exist_ok=True)
         csv_path = report_dir / "optimization_results.csv"
         df.to_csv(csv_path, index=False)

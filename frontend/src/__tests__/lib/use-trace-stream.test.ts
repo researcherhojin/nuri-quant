@@ -150,4 +150,15 @@ describe("useTraceStream", () => {
     expect(es.close).toHaveBeenCalled();
     expect(result.current.isStreaming).toBe(false);
   });
+
+  it("closes EventSource on unmount", async () => {
+    const { useTraceStream } = await import("@/lib/use-trace-stream");
+    const { result, unmount } = renderHook(() => useTraceStream());
+
+    act(() => result.current.start("AAPL"));
+    const es = MockEventSource.instances[0];
+
+    unmount();
+    expect(es.close).toHaveBeenCalledTimes(1);
+  });
 });

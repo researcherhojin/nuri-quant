@@ -204,6 +204,19 @@ function fmtPnl(v: number | null): string {
   return v === null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
 }
 
+// 외부 근거 링크는 http/https 만 허용 — javascript: 등 스킴 주입 차단.
+function safeSourceUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+
+  try {
+    const url = new URL(raw);
+
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 // === Provenance (exported for test coverage of async children — frontend RSC gotcha) ===
 export async function DecisionProvenance({ id }: { id: string }) {
   let d: DecisionDetail | null = null;
@@ -585,30 +598,34 @@ export async function DecisionProvenance({ id }: { id: string }) {
               {d.thesis.evidence.length > 0 && (
                 <div className="space-y-1.5">
                   <p className="text-[10px] text-muted-foreground">논지 근거 ({d.thesis.evidence.length})</p>
-                  {d.thesis.evidence.map((e) => (
-                    <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
-                      <span
-                        className={`w-10 shrink-0 ${e.side === "bull" ? "text-emerald-500" : "text-rose-500"}`}
-                      >
-                        {e.side === "bull" ? "상승" : "하락"}
-                      </span>
-                      <span className="text-foreground/90">{e.claim}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground font-mono">
-                        {e.source_url ? (
-                          <a href={e.source_url} className="underline" rel="noopener noreferrer" target="_blank">
-                            {e.source_type}
-                            {e.source_key ? `/${e.source_key}` : ""}
-                          </a>
-                        ) : (
-                          <>
-                            {e.source_type}
-                            {e.source_key ? `/${e.source_key}` : ""}
-                          </>
-                        )}
-                        {e.as_of ? ` · ${e.as_of}` : ""}
-                      </span>
-                    </div>
-                  ))}
+                  {d.thesis.evidence.map((e) => {
+                    const href = safeSourceUrl(e.source_url);
+
+                    return (
+                      <div key={e.id} className="flex items-start gap-2 text-xs bg-muted/40 rounded-sm px-2.5 py-1.5">
+                        <span
+                          className={`w-10 shrink-0 ${e.side === "bull" ? "text-emerald-500" : "text-rose-500"}`}
+                        >
+                          {e.side === "bull" ? "상승" : "하락"}
+                        </span>
+                        <span className="text-foreground/90">{e.claim}</span>
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground font-mono">
+                          {href ? (
+                            <a href={href} className="underline" rel="noopener noreferrer" target="_blank">
+                              {e.source_type}
+                              {e.source_key ? `/${e.source_key}` : ""}
+                            </a>
+                          ) : (
+                            <>
+                              {e.source_type}
+                              {e.source_key ? `/${e.source_key}` : ""}
+                            </>
+                          )}
+                          {e.as_of ? ` · ${e.as_of}` : ""}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

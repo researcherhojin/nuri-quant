@@ -22,6 +22,16 @@ class FakeSession:
         self.status, self.payload, self.exc = status, payload, exc
         self.trust_env = True
         self.calls = []
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def close(self):
+        self.closed = True
 
     def get(self, url, **kw):
         self.calls.append((url, kw, self.trust_env))
@@ -45,7 +55,20 @@ def run(model, *, require_ollama=True, url=URL, **session_kw):
 LOCAL = {"models": [{"name": "gemma4:26b-a4b-it-qat", "digest": "d"}, {"name": "bge-m3:latest", "digest": "e"}]}
 
 
-@pytest.mark.parametrize("model", ["kimi-k3:cloud", "gemma4:31b-cloud", "glm-5.3:CLOUD", "cloud", ""])
+@pytest.mark.parametrize(
+    "model",
+    [
+        "kimi-k3:cloud",
+        "gemma4:31b-cloud",
+        "qwen3-cloud:latest",
+        "model:cloud ",
+        "cloud:latest",
+        "glm-5.3:CLOUD",
+        "cloud",
+        "   ",
+        "",
+    ],
+)
 def test_cloud_names_are_refused_without_a_request(model):
     reason, s = run(model, payload=LOCAL)
     assert reason == "cloud or empty model name" and s.calls == []
@@ -103,3 +126,11 @@ def test_a_non_ollama_server_gets_the_name_check_only_when_allowed():
 def test_the_reason_never_contains_the_url():
     reason, _ = run("m", url="http://127.0.0.1:9999", exc=requests.ConnectionError("http://127.0.0.1:9999 refused"))
     assert reason is not None and "9999" not in reason
+
+
+def test_session_is_closed_on_success_and_error():
+    reason_ok, s_ok = run("gemma4:26b-a4b-it-qat", payload=LOCAL)
+    assert reason_ok is None and s_ok.closed is True
+
+    reason_err, s_err = run("gemma4:26b-a4b-it-qat", exc=requests.ConnectionError("down"))
+    assert reason_err is not None and s_err.closed is True

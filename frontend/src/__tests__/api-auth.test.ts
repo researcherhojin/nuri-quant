@@ -106,4 +106,67 @@ describe("POST /api/auth", () => {
     expect(cookie.value).not.toBe("mypass");
     expect(cookie.value.length).toBe(64); // SHA256 hex = 64 chars
   });
+
+  it("returns 400 on malformed JSON body", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    const { POST } = await import("@/app/api/auth/route");
+
+    const req = new Request("http://localhost:3000/api/auth", {
+      method: "POST",
+      body: "{bad-json",
+    });
+
+    const resp = await POST(req);
+    expect(resp.status).toBe(400);
+  });
+
+  it("returns 400 when password is not a string", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    const { POST } = await import("@/app/api/auth/route");
+
+    const req = new Request("http://localhost:3000/api/auth", {
+      method: "POST",
+      body: JSON.stringify({ password: 12345 }),
+    });
+
+    const resp = await POST(req);
+    expect(resp.status).toBe(400);
+  });
+
+  it("rate limits after 5 attempts per IP and returns 429", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    const { POST } = await import("@/app/api/auth/route");
+
+    for (let i = 0; i < 5; i += 1) {
+      const req = new Request("http://localhost:3000/api/auth", {
+        method: "POST",
+        headers: { "x-forwarded-for": "10.0.0.1" },
+        body: JSON.stringify({ password: "wrong" }),
+      });
+
+      const resp = await POST(req);
+      expect(resp.status).toBe(401);
+    }
+
+    const blocked = await POST(
+      new Request("http://localhost:3000/api/auth", {
+        method: "POST",
+        headers: { "x-forwarded-for": "10.0.0.1" },
+        body: JSON.stringify({ password: "secret123" }),
+      }),
+    );
+
+    expect(blocked.status).toBe(429);
+
+    // Different IP is unaffected
+    const otherIp = await POST(
+      new Request("http://localhost:3000/api/auth", {
+        method: "POST",
+        headers: { "x-forwarded-for": "10.0.0.2" },
+        body: JSON.stringify({ password: "secret123" }),
+      }),
+    );
+
+    expect(otherIp.status).toBe(200);
+  });
 });

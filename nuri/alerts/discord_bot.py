@@ -23,6 +23,54 @@ from dotenv import load_dotenv
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+DISCORD_CONTENT_MAX_LEN = 2000
+_WEBHOOK_MAX_RETRIES = 2
+_WEBHOOK_MAX_RETRY_AFTER_SEC = 5.0
+
+
+def _retry_delay_seconds(resp, attempt: int) -> float:
+    """429 Retry-After 또는 5xx 지수 백오프 대기 시간(초) 계산."""
+    status = getattr(resp, "status_code", None)
+    if status == 429:
+        headers = getattr(resp, "headers", None) or {}
+        raw = headers.get("Retry-After") or headers.get("retry-after")
+        if raw is not None:
+            try:
+                return max(0.0, min(float(raw), _WEBHOOK_MAX_RETRY_AFTER_SEC))
+            except (TypeError, ValueError):
+                pass
+    return min(float(2**attempt), _WEBHOOK_MAX_RETRY_AFTER_SEC)
+
+
+def _post_webhook(url: str, payload: dict) -> None:
+    """Discord Webhook POST — 429 / 5xx 한정 유한 재시도 포함."""
+    import time
+
+    for attempt in range(_WEBHOOK_MAX_RETRIES + 1):
+        resp = requests.post(url, json=payload, timeout=10)
+        status = getattr(resp, "status_code", None)
+        is_retryable = isinstance(status, int) and (status == 429 or 500 <= status < 600)
+        if is_retryable and attempt < _WEBHOOK_MAX_RETRIES:
+            delay = _retry_delay_seconds(resp, attempt)
+            logger.warning(
+                "Discord Webhook HTTP %d — %.1f초 후 재시도 (%d/%d)",
+                status,
+                delay,
+                attempt + 1,
+                _WEBHOOK_MAX_RETRIES,
+            )
+            time.sleep(delay)
+            continue
+        resp.raise_for_status()
+        return
+
+
+def _truncate_discord_content(message: str) -> str:
+    """Discord 메시지 2000자 제한 적용 (초과 시 끝을 '…'로 절단)."""
+    if len(message) <= DISCORD_CONTENT_MAX_LEN:
+        return message
+    return message[: DISCORD_CONTENT_MAX_LEN - 1] + "…"
+
 
 def send_webhook(embed: dict, webhook_url: str | None = None) -> bool:
     """Discord Webhook으로 Embed 전송."""
@@ -31,8 +79,7 @@ def send_webhook(embed: dict, webhook_url: str | None = None) -> bool:
         logger.error("DISCORD_WEBHOOK_URL이 설정되지 않음")
         return False
 
-    resp = requests.post(url, json={"embeds": [embed]}, timeout=10)
-    resp.raise_for_status()
+    _post_webhook(url, {"embeds": [embed]})
     logger.info("Webhook 전송 완료")
     return True
 
@@ -44,8 +91,7 @@ def send_webhook_text(message: str, webhook_url: str | None = None) -> bool:
         logger.error("DISCORD_WEBHOOK_URL이 설정되지 않음")
         return False
 
-    resp = requests.post(url, json={"content": message}, timeout=10)
-    resp.raise_for_status()
+    _post_webhook(url, {"content": _truncate_discord_content(message)})
     logger.info("텍스트 전송 완료")
     return True
 
