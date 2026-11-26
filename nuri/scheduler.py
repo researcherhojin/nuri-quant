@@ -22,6 +22,7 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from nuri.core.db import init_db
+from nuri.scheduler_crontab import _crontab_dow
 
 
 def _configure_logging() -> None:
@@ -137,8 +138,6 @@ def _dispatch_collector(name: str, **kwargs):
     if name == "stock":
         from nuri.collectors.stock import StockCollector
 
-        # `return` 이 없으면 collector_runs 에 rows_collected=0 으로 남는다 — #1101 이
-        # 추가한 일일 universe refresh 잡이 매일 no-op 처럼 보인다. 나머지 분기는 #1105.
         return StockCollector().run(**kwargs)
     elif name == "stock_kr":
         from nuri.collectors.stock_kr import StockKRCollector
@@ -149,15 +148,6 @@ def _dispatch_collector(name: str, **kwargs):
 
         return MacroCollector().run()
     elif name == "technical":
-        # `source="all"` (portfolio ∪ universe) — 기본값(portfolio)이면 signals 가 보유
-        # 18종목에 갇혀 BUY 점수의 0.15 가중치(RSI)가 736 채점 대상 중 99.1% 에서 중립
-        # 상수 50 이 된다 (#1101). universe 모드는 #272 부터 있었는데 여기서 안 불러
-        # 도달 불가였다. 이 수집기는 prices 테이블만 읽는 순수 계산이라(네트워크 0)
-        # 확장 비용은 CPU 뿐이고, prices <14일 종목은 0.8% (MAX_FAILURE_RATE 10% 이내,
-        # 2026-08-18 실측 751/757).
-        #
-        # `return` 이 없으면 `_record_collector_run` 에 None 이 넘어가 collector_runs 에
-        # `rows_collected=0` 으로 남는다 — 오늘 17건을 저장하고도 0 으로 기록됐다.
         from nuri.collectors.technical import TechnicalCollector
 
         return TechnicalCollector().run(source="all")
@@ -182,40 +172,17 @@ def _dispatch_collector(name: str, **kwargs):
 
         return MacroNewsCollector().run()
     elif name == "fundamental":
-        # `source="all"` (portfolio ∪ universe) — `technical` 과 같은 이유다 (#1104), 한 계층
-        # 위에서. 기본값(portfolio)이면 이 주간 잡이 보유 18종목만 갱신하고 나머지 ~728
-        # universe 종목은 **아무것도 건드리지 않는다**. 그 결과가 #1102 다: value·quality 가
-        # 채점 대상의 99% 에서 중립 상수 0.5 라 composite 가중치 1.00 중 0.50 이 순위를
-        # 만들지 못한다. universe 모드는 #272 부터 있었는데 여기서 안 불러 도달 불가였다.
-        #
-        # `universe` 가 아니라 `all` 인 이유: universe.yaml 밖 보유 종목이 11개 있다
-        # (KODEX/TIGER 계열 등). `universe` 로 좁히면 오늘 갱신되던 그 11개를 잃는다 —
-        # 확장이어야지 교체여서는 안 된다.
-        #
-        # 비용은 `technical`(순수 계산) 과 달리 실제 네트워크다: KR 203종목이 KIS 순차
-        # 0.4s ≈ 81s + US 543종목 yfinance 10-thread. 주 1회 일요일 자정이라 감당된다.
         from nuri.collectors.fundamental import FundamentalCollector
 
         return FundamentalCollector().run(source="all")
     elif name == "factors":
-        # 수집이 아니라 **분석** 단계다 (`_STAGE_OF_JOB` 에서 analyze). `_run_collector` 를
-        # 재사용하는 건 그쪽이 예외 격리 · 실행 기록 · 스테이지 이벤트를 이미 갖고 있어서다.
         from nuri.quant.factors.composite import compute_composite, save_composite
 
         return save_composite(compute_composite())
     elif name == "thesis_criteria":
-        # 수집이 아니라 **사후 채점** 단계다 (`_STAGE_OF_JOB` 에서 track). `factors` 와
-        # 같은 이유로 이 경로를 쓴다 — 예외 격리 · 실행 기록 · 스테이지 이벤트를 공짜로
-        # 얻는다. 전용 러너로 두면 `pipeline_events` 에 아무것도 안 남아 "도는 줄 아는데
-        # 안 도는" 상태를 관측할 수 없다.
-        #
-        # **Surface 전용**: breach 는 알림·뱃지까지고 주문을 만들지 않는다 (§7.1).
         from nuri.trading.engine.thesis_criteria import roll_up_verdicts, run_daily_checks
 
         counts = run_daily_checks()
-        # 롤업은 판정 **뒤에** — 같은 잡 안에서 도는 이유는 오늘 판정이 오늘 verdict 에
-        # 반영돼야 하기 때문이다. 별도 잡으로 두면 하루 시차가 생기고, 그 시차 동안
-        # 화면의 verdict 가 기준 판정과 어긋난다.
         verdicts = roll_up_verdicts()
         return counts["holding"] + counts["breached"] + counts["unevaluable"] + sum(verdicts.values())
     elif name == "cboe":
@@ -257,32 +224,18 @@ def _dispatch_collector(name: str, **kwargs):
         logger.info(f"[memory_snapshot] {n}건 저장")
         return n
     elif name == "decision_pnl":
-        # decisions 테이블의 7/30/60/90d raw P&L 갱신.
-        # NOTE: decision_outcomes(alpha) 테이블이 아님 — alpha 는 아래 alpha_tracking job.
         from nuri.trading.engine.decisions import track_decision_outcomes
 
         n = track_decision_outcomes()
         logger.info(f"[decision_pnl] {n}건 업데이트")
         return n
     elif name == "recommendation_outcomes":
-        # recommendations 테이블의 7/14/21/30/60/90d forward return 갱신.
-        # NOTE: decisions 테이블이 아님 — 그쪽은 바로 위 decision_pnl.
-        #
-        # 이 호출은 `make recommend` CLI(tracker.main) 에만 있었다. 스케줄러에는
-        # 없어서 프로덕션 `recommendations.outcome_*` 1,170행이 **전부 NULL** 이었고
-        # (창이 닫힌 550행 포함), learning_memory 의 canonical(outcome_30d) /
-        # provisional(outcome_21d) 가중치가 표본 0 으로 DEFAULT_WEIGHTS 에 영구
-        # 고정돼 있었다. dev 에서는 사람이 `make recommend` 를 돌려 채워지므로
-        # 학습이 도는 것처럼 보였다 — 그게 3.5개월 안 들킨 이유다 (#899).
         from nuri.trading.recommend.tracker import track_outcomes
 
         n = track_outcomes()
         logger.info(f"[recommendation_outcomes] {n}건 업데이트")
         return n
     elif name == "alpha_tracking":
-        # ForwardOutcomeTracker: emit 된 추천 vs SPY benchmark → realized alpha 를
-        # decision_outcomes 테이블에 기록 (recommendations → agent_decisions 백필 포함).
-        # canonical scheduler 경로 — 과거 launchd track-forward.plist 를 흡수(이제 redundant).
         from nuri.agents.actors.forward_outcome_tracker import ForwardOutcomeTracker
 
         res = ForwardOutcomeTracker().run({"action": "scan", "max_decisions": 2000})
@@ -291,41 +244,22 @@ def _dispatch_collector(name: str, **kwargs):
             f"[alpha_tracking] synced={out.get('synced_from_recommendations', 0)} "
             f"measured={out.get('n_measurements', 0)}"
         )
-        # 이 잡은 **두 가지 일**을 한다: 추천을 `agent_decisions` 로 미러(sync)한 뒤,
-        # 창이 닫힌 것만 측정(measure). 부트스트랩·백필 구간에서는 sync 가 수백 건이어도
-        # 아직 30일이 안 지나 measure 가 0 이다 — 측정만 세면 그 구간 전체가
-        # `rows_collected=0` 인 no-op 으로 기록돼, 이 PR 이 없애려는 상태 그대로다.
         return int(out.get("synced_from_recommendations", 0)) + int(out.get("n_measurements", 0))
     elif name == "consensus":
-        # 10-agent 합의 결과를 recommendations 에 저장 → Learning Memory 자동 학습 input.
-        # recommendation_outcomes(07:02) 가 outcome_30d 를 채우면 _compute_weights 가 가중치를 조정한다.
         from nuri.trading.agents.consensus import analyze_portfolio, save_to_recommendations
         from nuri.trading.engine.decisions import record_decisions
 
         results = analyze_portfolio()
         saved = save_to_recommendations(results)
-        # decisions 기록은 CLI(`python -m nuri.trading.agents.consensus`) 에만 있었다.
-        # 자동화(#363, 2026-04-17)가 수동 실행을 대체하면서 이 호출이 빠져 decisions 가
-        # 2026-04-14 이후 3.5 개월 동결됐다 — /decisions 대시보드가 4월 데이터를 서빙
-        # 했는데 헬스 지표는 전부 초록이었다 (#897).
         recorded = record_decisions(results)
         logger.info(f"[consensus] {len(results)}건 분석, recommendations {saved}건, decisions {recorded}건")
-        # `saved` 를 돌려준다 — 이 잡의 1차 산출물이 recommendations 행이다.
-        # `saved + recorded` 는 두 테이블 수를 더한 값이라 어느 쪽이 비었는지 못 읽는다.
         return saved
     elif name == "holdings_monitor":
-        # Holdings post-entry technical-divergence monitor (07:10 KST, after consensus 07:05).
-        # JKHY-class entry-stage defenses (PR #303) cover before-buy; this covers after-buy
-        # falling-knife. REVIEW CTA only — auto-trade deferred (STRATEGY §7.1).
         from nuri.trading.recommend.holdings_monitor import run_monitor, send_alerts
 
         summary = run_monitor()
         sent = send_alerts(summary)
         logger.info(f"[holdings_monitor] {summary.n_holdings}건 분석, {summary.n_alerted}건 alert, {sent}건 surface")
-        # `sent` 가 아니라 `n_alerted` 를 돌려준다. `send_alerts` 는 best-effort 라
-        # Discord 가 죽으면 alert 를 찾아 놓고도 0 을 반환한다 — 그러면 이 잡의 산출량이
-        # **선택적 표면 채널의 가용성**에 묶여, 감시가 정상 동작한 날이 no-op 으로 기록된다.
-        # 하필 Discord outage 때 그렇게 되므로 정확히 관측이 가장 필요한 순간에 눈이 먼다.
         return summary.n_alerted
     else:
         logger.warning("Unknown collector job: %s", name)
@@ -1224,65 +1158,6 @@ def _make_trigger(cron: str, tz: Optional[str] = None) -> CronTrigger:
         "timezone": pytz.timezone(tz or "Asia/Seoul"),
     }
     return CronTrigger(**kwargs)
-
-
-# crontab 요일 숫자(0=일) → 이름. crontab 은 0 과 7 을 모두 일요일로 본다.
-_CRONTAB_DOW_NAMES = ("sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun")
-_NAME_TO_CRONTAB_DOW = {n: i for i, n in enumerate(_CRONTAB_DOW_NAMES[:7])}
-
-
-def _crontab_dow(field: str) -> str:
-    """crontab 요일 필드 → APScheduler `day_of_week` 문자열.
-
-    치환이 아니라 **열거**한다. `mon-fri` 로 문자열만 바꾸면 `*/2` 같은 step 형식이
-    조용히 다른 요일 집합이 된다 — crontab `*/2` 는 0 부터라 일·화·목·토, APScheduler
-    `*/2` 는 월부터라 월·수·금·일이다. 이 이슈 자체가 그런 조용한 불일치였으므로
-    같은 함정을 함수 안에 남기지 않는다.
-    """
-    if field.strip() == "*":
-        return "*"
-    days = sorted(_parse_crontab_dow(field))  # crontab 번호 (0=일)
-    # APScheduler 는 이름을 Mon=0…Sun=6 로 읽으므로 월요일부터 정렬해 내보낸다.
-    ordered = sorted(days, key=lambda d: (d - 1) % 7)
-    return ",".join(_CRONTAB_DOW_NAMES[d] for d in ordered)
-
-
-def _parse_crontab_dow(field: str) -> set[int]:
-    """crontab 요일 필드 → {0..6} (0=일). 7 은 0 으로 정규화."""
-    out: set[int] = set()
-    for part in field.split(","):
-        part = part.strip()
-        step = 1
-        if "/" in part:
-            part, _, step_raw = part.partition("/")
-            step = int(step_raw)
-            if step < 1:
-                raise ValueError(f"crontab 요일 step 이 1 미만: {field!r}")
-        if part == "*":
-            lo, hi = 0, 6
-        elif "-" in part:
-            lo_raw, _, hi_raw = part.partition("-")
-            lo, hi = _dow_num(lo_raw), _dow_num(hi_raw)
-        else:
-            lo = hi = _dow_num(part)
-        # crontab 은 lo > hi 인 wrap 범위(fri-mon 등)를 표준으로 지원하지 않는다.
-        if lo > hi:
-            raise ValueError(f"crontab 요일 범위가 역순: {field!r}")
-        out.update(range(lo, hi + 1, step))
-    return out
-
-
-def _dow_num(token: str) -> int:
-    """요일 토큰 → crontab 번호(0=일). 숫자와 이름 모두 허용."""
-    token = token.strip().lower()
-    if token.isdigit():
-        n = int(token)
-        if not 0 <= n <= 7:
-            raise ValueError(f"crontab 요일 범위 밖: {token!r}")
-        return n % 7
-    if token not in _NAME_TO_CRONTAB_DOW:
-        raise ValueError(f"알 수 없는 요일 토큰: {token!r}")
-    return _NAME_TO_CRONTAB_DOW[token]
 
 
 def create_scheduler() -> BlockingScheduler:
