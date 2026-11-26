@@ -174,7 +174,7 @@ Uninstall: `bash scripts/launchd/uninstall_crons.sh [--only X]`
 |---|---|
 | `pre-commit` | 스테이지된 `.py` 에 `ruff check --fix` + `ruff format`, `frontend/` 의 JS/TS 에 `eslint --fix` 후 재스테이징. 비차단 |
 | `pre-push` | `scripts/verify/pre_push_check.sh --skip-tests` 실행. 실패 시 push 차단 |
-| `agy_pre_tool_guard.py` | Antigravity의 `.agents/hooks.json`에서 호출하는 `PreToolUse` 훅. 일부 파괴적 Git 명령과 파일 편집 규칙 위반을 차단 |
+| `agy_pre_tool_guard.py` | Antigravity의 `PreToolUse` 훅. 일부 파괴적 Git 명령과 보호 파일 열람·편집을 차단하고, 편집 내용의 코드·개인정보 규칙을 검사 |
 
 Git 훅은 `make setup-hooks`로 설치한다. Antigravity 훅의 설정과 검증 방법은 [Antigravity 작업 가이드](../GEMINI.md)에 있다.
 
