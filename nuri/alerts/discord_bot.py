@@ -74,11 +74,27 @@ def _truncate_discord_content(message: str) -> str:
     return message[: DISCORD_CONTENT_MAX_LEN - 1] + "…"
 
 
+# 사용자 대상 리포트/알림 채널. 배포는 범용 DISCORD_WEBHOOK_URL 을 비워 두고 채널별
+# webhook 을 쓰므로 (heartbeat_watchdog 과 동일 컨벤션), BRIEF 를 우선하고 범용 URL 은 fallback.
+BRIEF_WEBHOOK_ENV_PRIORITY = ("DISCORD_WEBHOOK_BRIEF", "DISCORD_WEBHOOK_URL")
+
+
+def resolve_brief_webhook_url() -> str | None:
+    """설정된(non-empty) BRIEF 채널 webhook 을 우선순위대로 탐색."""
+    for key in BRIEF_WEBHOOK_ENV_PRIORITY:
+        val = os.getenv(key, "").strip()
+        if val:
+            return val
+    return None
+
+
 def send_webhook(embed: dict, webhook_url: str | None = None) -> bool:
     """Discord Webhook으로 Embed 전송."""
     url = webhook_url or os.getenv("DISCORD_WEBHOOK_URL", "")
     if not url:
-        logger.error("DISCORD_WEBHOOK_URL이 설정되지 않음")
+        logger.error(
+            "Discord webhook URL 없음 — 인자 미지정이고 DISCORD_WEBHOOK_URL 도 빈 값 (채널 webhook 은 호출자가 넘긴다)"
+        )
         return False
 
     _post_webhook(url, {"embeds": [embed]})
@@ -90,7 +106,9 @@ def send_webhook_text(message: str, webhook_url: str | None = None) -> bool:
     """Discord Webhook으로 텍스트 메시지 전송."""
     url = webhook_url or os.getenv("DISCORD_WEBHOOK_URL", "")
     if not url:
-        logger.error("DISCORD_WEBHOOK_URL이 설정되지 않음")
+        logger.error(
+            "Discord webhook URL 없음 — 인자 미지정이고 DISCORD_WEBHOOK_URL 도 빈 값 (채널 webhook 은 호출자가 넘긴다)"
+        )
         return False
 
     _post_webhook(url, {"content": _truncate_discord_content(message)})

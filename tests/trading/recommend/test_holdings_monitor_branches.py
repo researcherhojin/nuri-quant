@@ -55,8 +55,22 @@ def test_send_alerts_counts_only_webhooks_that_went_out(two_holdings):
         summary = run_monitor(db_path=two_holdings, dry_run=True)
     outcomes = iter([True, False])
 
-    with patch("nuri.alerts.discord_bot.send_webhook_text", side_effect=lambda msg: next(outcomes)) as webhook:
+    with patch("nuri.alerts.discord_bot.send_webhook_text", side_effect=lambda msg, **_kw: next(outcomes)) as webhook:
         sent = send_alerts(summary)
 
     assert webhook.call_count == 2
     assert sent == 1
+
+
+def test_send_alerts_posts_to_brief_channel_when_generic_url_is_empty(two_holdings, monkeypatch):
+    """프로덕션 .env 형태(범용 URL 빈 값 + BRIEF 설정)에서 REVIEW alert 가 유실되지 않는다."""
+    with patch.object(hm, "_evaluate_triggers", return_value=(TRIGGER_TECHNICAL_SELL, dict(SELL_DIAG))):
+        summary = run_monitor(db_path=two_holdings, dry_run=True)
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+    monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "https://discord.test/brief")
+
+    with patch("nuri.alerts.discord_bot._post_webhook") as post:
+        sent = send_alerts(summary)
+
+    assert sent == post.call_count == len(summary.alerts) > 0
+    assert {c.args[0] for c in post.call_args_list} == {"https://discord.test/brief"}

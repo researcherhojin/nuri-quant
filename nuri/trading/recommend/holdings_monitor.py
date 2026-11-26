@@ -367,16 +367,17 @@ def send_alerts(summary: RunSummary) -> int:
     if not summary.alerts:
         return 0
     try:
-        from nuri.alerts.discord_bot import send_webhook_text
+        from nuri.alerts.discord_bot import resolve_brief_webhook_url, send_webhook_text
     except Exception as e:  # noqa: BLE001
         logger.debug("Discord webhook unavailable, skipping surface: %s", e)
         return 0
 
+    webhook_url = resolve_brief_webhook_url()
     for alert_dict in summary.alerts:
         payload = AlertPayload(**alert_dict)
         msg = _format_alert_message(payload)
         try:
-            if send_webhook_text(msg):
+            if send_webhook_text(msg, webhook_url=webhook_url):
                 sent += 1
         except Exception as e:  # noqa: BLE001
             logger.warning("Discord send failed for %s: %s", payload.ticker, e)

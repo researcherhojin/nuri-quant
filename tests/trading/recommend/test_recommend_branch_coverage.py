@@ -251,7 +251,9 @@ class TestHoldingsMonitorBranches:
 
         # Synthesize a fake discord module
         fake_module = types.ModuleType("nuri.alerts.discord_bot")
-        setattr(fake_module, "send_webhook_text", lambda msg: True)
+        calls = []
+        setattr(fake_module, "resolve_brief_webhook_url", lambda: "https://discord.test/brief")
+        setattr(fake_module, "send_webhook_text", lambda msg, **kw: calls.append(kw) or True)
         monkeypatch.setitem(sys.modules, "nuri.alerts.discord_bot", fake_module)
 
         summary = RunSummary(
@@ -283,6 +285,7 @@ class TestHoldingsMonitorBranches:
         )
         sent = send_alerts(summary)
         assert sent == 1
+        assert calls == [{"webhook_url": "https://discord.test/brief"}]
 
     def test_send_alerts_webhook_exception(self, monkeypatch):
         """Lines 380-381: webhook send raises → warning, count not incremented."""
@@ -291,10 +294,14 @@ class TestHoldingsMonitorBranches:
 
         from nuri.trading.recommend.holdings_monitor import RunSummary, send_alerts
 
-        def boom(msg):
+        attempts = []
+
+        def boom(msg, **_kw):
+            attempts.append(msg)
             raise RuntimeError("synthetic")
 
         fake_module = types.ModuleType("nuri.alerts.discord_bot")
+        setattr(fake_module, "resolve_brief_webhook_url", lambda: "https://discord.test/brief")
         setattr(fake_module, "send_webhook_text", boom)
         monkeypatch.setitem(sys.modules, "nuri.alerts.discord_bot", fake_module)
 

@@ -8,7 +8,6 @@ Discord 전송 또는 stdout 출력.
 """
 
 import logging
-import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
@@ -90,9 +89,11 @@ def generate_report() -> dict:
 
 def send_discord(embed: dict) -> bool:
     """Discord로 리포트 전송. Webhook 방식 (간단)."""
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+    from nuri.alerts.discord_bot import resolve_brief_webhook_url
+
+    webhook_url = resolve_brief_webhook_url()
     if not webhook_url:
-        logger.info("DISCORD_WEBHOOK_URL 미설정 — stdout 출력으로 대체")
+        logger.info("DISCORD_WEBHOOK_BRIEF / DISCORD_WEBHOOK_URL 미설정 — stdout 출력으로 대체")
         return False
 
     import requests
