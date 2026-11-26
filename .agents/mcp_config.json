@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "nuri-read": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "nuri.mcp.server"
+      ]
+    }
+  }
+}

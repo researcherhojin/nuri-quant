@@ -1,0 +1,16 @@
+{
+  "nuri-invariants": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_file|edit_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "../.venv/bin/python ../scripts/hooks/agy_pre_tool_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
