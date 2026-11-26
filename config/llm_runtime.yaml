@@ -13,7 +13,7 @@ model: gemma4:26b-a4b-it-qat
 
 # 등록된 런타임 — 다르면 호출 전에 거부한다. 앱이 업데이트를 자동으로 내려받으므로 필수.
 expected:
-  version: 0.40.11
+  version: 0.40.18
   digest: 2dd70431afed94dd3688d790443768c1487ed086b57147ff083851116ae4c4e4
 
 # 공식 API 의 options. 하나라도 빠지면 서버 기본값이 끼어든다.
@@ -45,9 +45,9 @@ canary:
     inflation expectations interact when central banks change policy rates. Use plain prose, no
     tables, and keep each paragraph self-contained.
   num_predict: 1200
-  # 2026-10-27 채점 기기(mini, Ollama 0.40.11 · 위 digest)에서 `--canary` 2회 연속 같은 값. MBP 는 다른 값이 나온다
+  # 2026-11-26 채점 기기(mini, Ollama 0.40.18 · 위 digest)에서 `--canary` 2회 연속 같은 값(0.40.11 값 2ba85186 에서 바뀜). MBP 는 다른 값이 나온다
   # (기기 간 출력 차이, #1957) — 채점 배치는 mini 에서만 이 값과 대조한다.
-  scored_sha256: 2ba85186f445db9f43235cc3949a07d579c738bdce333780e23a8e11b2fd94a9
+  scored_sha256: c9ebee92a17148d5e8ef98f5ee09b4b964b88981bcf2a8df4a8803804723ba3a
 
 # 다단계 팔 B 의 메모리 (#1966) — TradingAgents memory log 기본값을 따른다(`holding_period_days: 5`,
 # `get_past_context(n_same=5, n_cross=3)`, US 벤치마크 SPY). 팔 B 의 정의 지문에만 들어간다.
