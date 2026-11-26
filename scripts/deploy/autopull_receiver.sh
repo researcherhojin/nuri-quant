@@ -6,8 +6,8 @@
 #
 # 동작:
 #   1. fetch (실패 시 조용히 retry — 네트워크 끊김 대응)
-#   2. 로컬 HEAD vs origin/main 비교
-#   3. 변경 없으면 종료 (silent)
+#   2. 로컬 HEAD vs origin/main 비교 + 마지막 배포 커밋 기록과 비교 (#2112)
+#   3. 둘 다 변경 없으면 종료 (silent) — autopull 밖에서 HEAD 가 앞섰으면 재기동 판정을 이어서 한다
 #   3b. 새 커밋의 main CI 가 success 가 아니면 보류 — 다음 주기에 다시 본다 (#1808)
 #   4. 변경 있으면 ff-only merge → 비-FF면 거부 + 로그 (수동 처리 유도)
 #   5. 변경된 파일 분석 → dependency/schema 변경 시 경고
@@ -76,11 +76,44 @@ fi
 
 UPSTREAM=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
 
-if [ "$BEFORE" = "$UPSTREAM" ]; then
+# ── 마지막으로 배포한 커밋 기록 (#2112) ─────────────────────────────────────
+# "로컬 HEAD == origin/main" 만으로 변경 없음을 판정하면, autopull 밖에서 체크아웃이 앞으로
+# 간 경우(mini 에서 `gh pr merge` — 로컬 main 을 ff 한다 — 또는 수동 `git pull`)를 영영 못 본다.
+# 둘이 이미 같으니 매 주기 조용히 끝나고, 데몬은 #1017 처럼 구코드로 계속 돈다 (#2111 머지 때 실측).
+# 그래서 재기동 판정까지 끝낸 커밋을 따로 적어 두고, 변경 분석의 기준도 그 커밋으로 잡는다 —
+# 수동 pull 로 들어온 python 변경이 다음 docs-only pull 에 가려지지 않게.
+# 기록이 없거나 읽을 수 없으면(첫 실행 · 손상 · 히스토리에 없는 SHA) 지금 HEAD 를 배포된 것으로
+# 다시 잡고 재기동은 하지 않는다 — 판단 근거 없이 데몬을 흔들지 않는다.
+# kickstart 가 실패해도 기록한다(기존과 같이 ERROR 로그로 사람에게 넘긴다) — 기록을 미루면 한 서비스가
+# 계속 실패할 때 5분마다 세 데몬을 전부 다시 죽여 22:00 브리핑 같은 긴 잡이 영영 못 끝난다.
+# 막지 않는 것: deploy_to_mini.sh(수동 경로)는 이 기록을 갱신하지 않는다 — 다음 주기에 한 번 더
+# 재기동될 뿐이다.
+# Test: tests/scripts/test_autopull_restarts_daemons.py::TestAutopullCatchesALocallyAdvancedCheckout
+DEPLOYED_FILE="${AUTOPULL_DEPLOYED_FILE:-$HOME/.local/state/nuri-quant/autopull_deployed_head}"
+record_deployed() {
+    # 임시 파일에 쓰고 mv — 쓰다 죽어도 반쪽짜리 기록이 남지 않는다.
+    if ! { mkdir -p "$(dirname "$DEPLOYED_FILE")" && printf '%s\n' "$1" > "${DEPLOYED_FILE}.tmp" \
+            && mv -f "${DEPLOYED_FILE}.tmp" "$DEPLOYED_FILE"; }; then
+        log "WARN: 배포 기록(${DEPLOYED_FILE}) 쓰기 실패 — 다음 주기에 재기동을 다시 시도할 수 있다"
+    fi
+}
+DEPLOYED=$(head -1 "$DEPLOYED_FILE" 2>/dev/null | tr -d '[:space:]')
+# 40자 hex 만 받는다 — "HEAD" 같은 값은 cat-file 을 통과해 매번 '변경 없음' 이 된다.
+if ! [[ "$DEPLOYED" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "${DEPLOYED}^{commit}" 2>/dev/null; then
+    [ -n "$DEPLOYED" ] && log "WARN: 배포 기록 '${DEPLOYED:0:40}' 을 쓸 수 없음 — ${BEFORE:0:7} 로 다시 잡는다"
+    DEPLOYED="$BEFORE"
+    record_deployed "$BEFORE"
+fi
+
+if [ "$BEFORE" = "$UPSTREAM" ] && [ "$DEPLOYED" = "$BEFORE" ]; then
     # 변경 없음 — 조용히 종료 (로그 줄이려고). 프론트 빌드만 확인한다: 최신이면 무출력이고,
     # 지난 주기에 실패했거나 밀렸으면 여기서 따라잡는다.
     ensure_frontend_build
     exit 0
+fi
+
+if [ "$BEFORE" = "$UPSTREAM" ]; then
+    log "local HEAD advanced outside autopull: deployed ${DEPLOYED:0:7}, HEAD ${BEFORE:0:7} — 재기동 판정을 이어서 한다"
 fi
 
 # ── CI 게이트: main CI 가 초록인 커밋만 배포한다 (#1808) ─────────────────────
@@ -168,13 +201,14 @@ case "$OPEN_BATCHES" in
         exit 0 ;;
 esac
 
-# 새 커밋 발견
-log "new commits detected: ${BEFORE:0:7}..${UPSTREAM:0:7}"
-git log --oneline --no-decorate "${BEFORE}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
+# 새 커밋 발견 — 기준은 마지막 배포 커밋 (#2112)
+log "new commits detected: ${DEPLOYED:0:7}..${UPSTREAM:0:7}"
+git log --oneline --no-decorate "${DEPLOYED}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
     log "  $line"
 done
 
-# 로컬에 uncommitted 변경이 있으면 ff-only가 거부됨 — 명시적으로 체크
+# 로컬에 uncommitted 변경이 있으면 ff-only가 거부됨 — 명시적으로 체크.
+# autopull 밖에서 앞선 경로(#2112)에서도 본다: dirty 트리로 데몬을 재기동하지 않는다.
 if ! git diff --quiet HEAD 2>/dev/null; then
     log "ABORT: uncommitted local changes present. Manual resolution needed:"
     log "  cd $REPO && git status"
@@ -182,17 +216,23 @@ if ! git diff --quiet HEAD 2>/dev/null; then
 fi
 
 # ff-only merge
-if ! git merge --ff-only origin/main >/dev/null 2>&1; then
+if [ "$BEFORE" != "$UPSTREAM" ] && ! git merge --ff-only origin/main >/dev/null 2>&1; then
     log "ABORT: non-fast-forward. Local diverged from origin/main."
     log "  cd $REPO && git status && git log --oneline -5"
     exit 0
 fi
 
 AFTER=$(git rev-parse HEAD)
+# 로컬이 origin/main 보다 앞서 있으면(push 안 한 커밋) ff 는 성공하지만 CI 를 거치지 않은 코드다 —
+# 기록 기준 diff 에 섞여 재기동되지 않게 멈춘다.
+if [ "$AFTER" != "$UPSTREAM" ]; then
+    log "ABORT: local HEAD ${AFTER:0:7} != origin/main ${UPSTREAM:0:7} (unpushed commits?) — 재기동하지 않는다"
+    exit 0
+fi
 log "updated to ${AFTER:0:7}"
 
 # ── 변경 분석: 수동 조치가 필요한 변경이면 경고만 로그 ──────────────────
-CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null)
+CHANGED=$(git diff --name-only "$DEPLOYED" "$AFTER" 2>/dev/null)
 
 DEPS_CHANGED=0
 if echo "$CHANGED" | grep -qE "^(pyproject\.toml|uv\.lock)$"; then
@@ -281,8 +321,10 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
             log "ERROR: ${RESIDENT} kickstart 실패 — 구코드로 계속 돈다. 수동 확인 필요"
         fi
     done
+    record_deployed "$AFTER"
 else
     log "no python code/dep changes — services left running"
+    record_deployed "$AFTER"
 fi
 
 # ── frontend 빌드 (#1462) ────────────────────────────────────────────────

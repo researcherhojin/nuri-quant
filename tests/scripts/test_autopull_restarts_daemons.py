@@ -59,7 +59,9 @@ def world(tmp_path: Path):
     (binz / "launchctl").write_text(
         "#!/bin/sh\n"
         f'if [ "$1" = "list" ]; then for l in {" ".join([*RESIDENT, DASHBOARD])}; do echo "1 0 $l"; done; exit 0; fi\n'
-        f'echo "launchctl $*" >> "{calls}"\nexit 0\n'
+        f'echo "launchctl $*" >> "{calls}"\n'
+        # KICK_STUB_RC 로 kickstart 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향, #2112).
+        'if [ "$1" = "kickstart" ]; then exit ${KICK_STUB_RC:-0}; fi\nexit 0\n'
     )
     # UV_STUB_RC 로 sync 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향).
     (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit ${{UV_STUB_RC:-0}}\n')
@@ -537,3 +539,127 @@ class TestAutopullDefersForAnOpenThesisBatch:
         world.land({"nuri/core/rules.py": "X = 1\n"})
         world.run(THESIS_DEFER_HOURS="6 hours')) OR 1=1 OR ('")
         assert (world.work / "nuri" / "core" / "rules.py").exists()
+
+
+class TestAutopullCatchesALocallyAdvancedCheckout:
+    """autopull 밖에서 체크아웃이 앞으로 가도 데몬을 재기동한다 (#2112).
+
+    mini 에서 `gh pr merge` 를 돌리면 로컬 main 이 ff 된다. 예전 판정("로컬 HEAD == origin/main
+    이면 변경 없음")은 그 뒤로 매 주기 조용히 끝나 데몬이 구코드로 계속 돌았다 — #2111 머지 때 실측,
+    #1017 과 같은 계열. 그래서 마지막 배포 커밋을 기록하고 그 기록과 HEAD 를 비교한다.
+    """
+
+    @staticmethod
+    def _calls(world) -> Path:
+        return world.work.parent / "calls.txt"
+
+    @staticmethod
+    def _record(world) -> Path:
+        return world.work.parent / ".local" / "state" / "nuri-quant" / "autopull_deployed_head"
+
+    def _deployed_baseline(self, world) -> None:
+        """autopull 이 한 번 정상 배포한 상태를 만든다 (기록이 생긴다)."""
+        world.land({"docs/a.md": "a\n"})
+        world.run()
+        self._calls(world).unlink(missing_ok=True)
+
+    @staticmethod
+    def _pull_outside_autopull(world) -> None:
+        """`gh pr merge` 가 하는 것처럼 로컬 main 을 직접 ff 한다."""
+        _git(world.work, "fetch", "-q", "origin")
+        _git(world.work, "merge", "-q", "--ff-only", "origin/main")
+
+    @staticmethod
+    def _kicked(out: str) -> bool:
+        return all(re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out) for label in RESIDENT)
+
+    def test_a_local_merge_still_restarts_the_daemons(self, world):
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        out = world.run()
+        assert self._kicked(out), f"로컬 HEAD 가 이미 origin/main 이라 재기동을 건너뛰었다:\n{out}"
+        assert "advanced outside autopull" in world.autopull_log()
+
+    def test_it_restarts_once_not_every_cycle(self, world):
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        world.run()
+        self._calls(world).unlink()
+        out = world.run()
+        assert "kickstart" not in out, f"이미 재기동한 커밋으로 다시 재기동했다:\n{out}"
+
+    def test_a_later_docs_pull_does_not_hide_a_locally_pulled_code_change(self, world):
+        """변경 분석의 기준은 pull 직전 HEAD 가 아니라 마지막 배포 커밋이다."""
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        world.land({"docs/b.md": "b\n"})
+        out = world.run()
+        assert self._kicked(out), f"수동 pull 로 들어온 python 변경이 docs pull 에 가려졌다:\n{out}"
+
+    def test_a_local_merge_still_waits_for_green_ci(self, world):
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        red = '{"workflow_runs": [{"event": "push", "head_branch": "main", "status": "completed", "conclusion": "failure"}]}'
+        out = world.run(CI_STUB_JSON=red)
+        assert "kickstart" not in out, f"빨간 CI 커밋으로 재기동했다:\n{out}"
+        out = world.run()
+        assert self._kicked(out), f"CI 가 초록이 된 뒤에도 재기동하지 않았다:\n{out}"
+
+    def test_a_failing_kickstart_does_not_restart_every_cycle(self, world):
+        """한 서비스가 계속 실패해도 5분마다 세 데몬을 다시 죽이지 않는다 — 실패는 ERROR 로그로 넘긴다."""
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        world.run(KICK_STUB_RC="1")
+        assert "kickstart 실패" in world.autopull_log()
+        self._calls(world).unlink()
+        out = world.run(KICK_STUB_RC="1")
+        assert "kickstart" not in out, f"같은 커밋으로 매 주기 재기동한다 — 긴 잡이 못 끝난다:\n{out}"
+
+    def test_a_dirty_tree_is_not_restarted_on_the_local_path(self, world):
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        (world.work / "seed.txt").write_text("edited\n")
+        out = world.run()
+        assert "kickstart" not in out, f"dirty 트리로 재기동했다:\n{out}"
+
+    def test_unpushed_local_commits_are_not_restarted(self, world):
+        """CI 게이트는 origin/main 만 본다 — 로컬에만 있는 커밋으로 재기동하면 게이트를 건너뛴다."""
+        self._deployed_baseline(world)
+        (world.work / "nuri").mkdir()
+        (world.work / "nuri" / "x.py").write_text("X = 1\n")
+        _git(world.work, "add", "-A")
+        _git(world.work, "commit", "-m", "local only")
+        out = world.run()
+        assert "kickstart" not in out, f"push 안 한 커밋으로 재기동했다:\n{out}"
+
+    def test_an_open_thesis_batch_defers_the_local_path_too(self, world):
+        self._deployed_baseline(world)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._pull_outside_autopull(world)
+        TestAutopullDefersForAnOpenThesisBatch._db(world, "open")
+        out = world.run()
+        assert "kickstart" not in out, f"열린 thesis 배치 중에 재기동했다:\n{out}"
+        assert "thesis batch open" in world.autopull_log()
+
+    def test_the_first_run_without_a_record_does_not_restart(self, world):
+        """기록이 없으면 판단 근거가 없다 — 지금 HEAD 를 기록만 하고 데몬은 건드리지 않는다."""
+        out = world.run()
+        assert "kickstart" not in out, out
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=world.work, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        assert self._record(world).read_text().strip() == head
+
+    @pytest.mark.parametrize("junk", ["HEAD", "main", "0" * 40, "not a sha"])
+    def test_an_unusable_record_is_reset_without_restarting(self, world, junk):
+        """`HEAD` 같은 값은 cat-file 을 통과한다 — 40자 hex 이면서 히스토리에 있는 커밋만 받는다."""
+        self._record(world).parent.mkdir(parents=True)
+        self._record(world).write_text(junk + "\n")
+        out = world.run()
+        assert "kickstart" not in out, out
+        assert re.fullmatch(r"[0-9a-f]{40}", self._record(world).read_text().strip())

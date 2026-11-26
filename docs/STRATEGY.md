@@ -415,7 +415,7 @@ Check these before opening a PR.
 
 | Item | Standard | Current |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,875 tests, 464 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — not required, report-only (target ≥ 95%) | 9,888 tests, 464 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
 | Frontend tests | target ≥ 90% | 1,460 tests, 117 files ([2026-11-23 main CI](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513)) |
 | E2E | Core flows | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | Required | lint + test + coverage + security + privacy |
