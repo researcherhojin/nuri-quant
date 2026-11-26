@@ -11,7 +11,7 @@
 #   3b. 새 커밋의 main CI 가 success 가 아니면 보류 — 다음 주기에 다시 본다 (#1808)
 #   4. 변경 있으면 ff-only merge → 비-FF면 거부 + 로그 (수동 처리 유도)
 #   5. 변경된 파일 분석 → dependency/schema 변경 시 경고
-#   6. 상주 python 서비스 재기동 (#1023), 성공 시 배포 기준 갱신 (#2112)
+#   6. 상주 python 서비스 재기동 (#1023), 배포 기준 갱신 (#2112) — 실패한 서비스만 다음 주기에 재시도 (#2115)
 #   7. frontend 빌드 self-heal — 새 커밋이 없는 주기에도 (#1462)
 #
 # 수동 테스트:
@@ -82,7 +82,25 @@ fi
 
 UPSTREAM=$(git rev-parse --verify origin/main 2>/dev/null) || { log "ABORT: origin/main 확인 실패"; exit 0; }
 
-if [ "$BEFORE" = "$UPSTREAM" ] && [ "$DEPLOYED" = "$UPSTREAM" ]; then
+# ── 재기동 재시도 목록 (#2115) ─────────────────────────────────────────────
+# kickstart 가 실패한 서비스만 여기 적어 두고 다음 주기에 그것만 다시 띄운다. 예전(#2113)에는 배포 기준을
+# 안 옮기는 것으로 재시도해서, 한 서비스가 계속 실패하면 멀쩡히 뜬 다른 데몬까지 5분마다 다시 죽었다 —
+# scheduler 가 매 주기 죽으면 22:00 브리핑(~5분) 같은 잡은 영영 못 끝난다. 재시도도 아래 dirty 트리 ·
+# CI · thesis 배치 게이트를 그대로 거친다(재기동이 배치를 죽이는 건 똑같다).
+# 파일 내용은 아래 RESIDENT_SERVICES 에 있는 라벨만 받는다 — launchctl 인자로 들어가기 때문.
+# Test: tests/scripts/test_autopull_restarts_daemons.py::TestAutopullRetriesOnlyFailedRestarts
+RESIDENT_SERVICES=(com.nuri-quant.scheduler com.nuri-quant.api com.nuri-quant.discord-bot)
+RETRY_FILE=$(git rev-parse --git-path nuri-autopull-restart-retry 2>/dev/null)
+RETRY_LABELS=()
+if [ -n "$RETRY_FILE" ] && [ -f "$RETRY_FILE" ]; then
+    while read -r label; do
+        for known in "${RESIDENT_SERVICES[@]}"; do
+            [ "$label" = "$known" ] && RETRY_LABELS+=("$label")
+        done
+    done < "$RETRY_FILE"
+fi
+
+if [ "$BEFORE" = "$UPSTREAM" ] && [ "$DEPLOYED" = "$UPSTREAM" ] && [ "${#RETRY_LABELS[@]}" = "0" ]; then
     # 변경 없음 — 조용히 종료 (로그 줄이려고). 프론트 빌드만 확인한다: 최신이면 무출력이고,
     # 지난 주기에 실패했거나 밀렸으면 여기서 따라잡는다.
     ensure_frontend_build
@@ -95,8 +113,8 @@ fi
 # 초록인 두 PR 이 합쳐진 트리는 main push CI 만 검사하므로 여기서 그 결과를 기다린다.
 # 판정할 수 없으면(런 없음 · 진행 중 · API 실패) 배포하지 않고 다음 주기에 다시 본다. 빨간
 # HEAD 는 고치는 커밋이 초록이 될 때까지 보류된다. 수동 배포(`make deploy-mini`)는 거치지 않는다.
-# mini 의 gh 는 로그인돼 있지 않아 공개 REST 를 curl 로 읽는다 — 새 커밋이 있을 때만 부르므로
-# 비인증 한도(시간당 60)에 닿지 않는다.
+# mini 의 gh 는 로그인돼 있지 않아 공개 REST 를 curl 로 읽는다 — 새 커밋이 있거나 재기동 재시도가
+# 남았을 때(#2115)만 부르므로 많아야 주기당 1회, 비인증 한도(시간당 60)에 닿지 않는다.
 # 막는 것: 빨간 · 진행 중 · 아직 없는 런과 API 실패. 막지 않는 것: 응답 본문 자체를 조작할 수 있는
 # 쪽(TLS 를 뚫은 MITM · GitHub 침해) — 그쪽은 정상적인 success 응답을 그대로 보내면 되므로 파싱을
 # 어떻게 고쳐도 소용없다. 그런 입력(본문 속 날 NUL 등)을 겨냥한 수정은 하지 않는다.
@@ -174,10 +192,13 @@ case "$OPEN_BATCHES" in
         exit 0 ;;
 esac
 
-log "pending deployment: ${DEPLOYED:0:7}..${UPSTREAM:0:7}"
-git log --oneline --no-decorate "${DEPLOYED}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
-    log "  $line"
-done
+# 재시도만 남은 주기(#2115)는 빈 범위라 커밋 목록을 찍지 않는다 — 아래 "retry restart" 줄이 그 신호다.
+if [ "$DEPLOYED" != "$UPSTREAM" ]; then
+    log "pending deployment: ${DEPLOYED:0:7}..${UPSTREAM:0:7}"
+    git log --oneline --no-decorate "${DEPLOYED}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
+        log "  $line"
+    done
+fi
 
 # 로컬에 uncommitted 변경이 있으면 ff-only가 거부됨 — 명시적으로 체크
 if ! git diff --quiet HEAD 2>/dev/null; then
@@ -249,7 +270,17 @@ if echo "$CHANGED" | grep -qE "^nuri/.*\.py$"; then
 fi
 
 RESTART_FAILED=0
+FAILED_LABELS=()
+# 재기동 대상: 코드/의존성이 바뀌면 전부, 아니면 지난 주기에 실패한 서비스만 (#2115).
+RESTART_TARGETS=()
 if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
+    RESTART_TARGETS=("${RESIDENT_SERVICES[@]}")
+elif [ "${#RETRY_LABELS[@]}" -gt 0 ]; then
+    RESTART_TARGETS=("${RETRY_LABELS[@]}")
+    log "retry restart: ${RETRY_LABELS[*]}"
+fi
+
+if [ "${#RESTART_TARGETS[@]}" -gt 0 ]; then
     # 순서가 중요하다: sync 를 재기동 **앞**에 둔다. 뒤에 두면 새 프로세스가 옛 venv 로
     # 뜬 뒤 패키지만 바뀌어, 재기동을 한 번 더 해야 한다 (2026-08-10 수동 조치 때 밟음).
     if [ "$DEPS_CHANGED" = "1" ]; then
@@ -283,9 +314,9 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
     # 상주 python 서비스. plist 판정 기준(StartInterval 없음 + .venv/bin/python)과
     # 일치해야 하며 `tests/scripts/test_deploy_bounces_resident_services.py` 가 대조한다.
     # dashboard 는 빌드 산출물을 서빙하므로 제외 — 재빌드했을 때만 build_frontend.sh 가 재기동한다 (#1462).
-    RESIDENT_SERVICES=(com.nuri-quant.scheduler com.nuri-quant.api com.nuri-quant.discord-bot)
+    # 목록 자체는 위 RESIDENT_SERVICES (재시도 목록 검증과 같은 배열).
     if LOADED_SERVICES=$(launchctl list 2>>"$LOG"); then
-        for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
+        for RESIDENT in "${RESTART_TARGETS[@]}"; do
             if ! awk -v label="$RESIDENT" '$3 == label {found=1} END {exit !found}' <<<"$LOADED_SERVICES"; then
                 log "skip restart: ${RESIDENT} 미설치"
                 continue
@@ -294,18 +325,29 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
                 log "restarted ${RESIDENT}"
             else
                 RESTART_FAILED=1
-                log "ERROR: ${RESIDENT} kickstart 실패 — 다음 주기에 재시도"
+                FAILED_LABELS+=("$RESIDENT")
+                log "ERROR: ${RESIDENT} kickstart 실패 — 다음 주기에 이 서비스만 재시도"
             fi
         done
     else
         RESTART_FAILED=1
+        FAILED_LABELS=("${RESTART_TARGETS[@]}")
         log "ERROR: 설치된 서비스 조회 실패 — 다음 주기에 재시도"
     fi
 else
     log "no python code/dep changes — services left running"
 fi
 
-if [ "$RESTART_FAILED" = "0" ]; then
+# 실패한 서비스는 재시도 목록에 남기고 배포 기준은 옮긴다 — 다음 주기가 전체를 다시 재기동하지 않게 (#2115).
+if [ "$RESTART_FAILED" = "1" ]; then
+    if [ -z "$RETRY_FILE" ] || ! { printf '%s\n' "${FAILED_LABELS[@]}" > "${RETRY_FILE}.tmp" \
+            && mv -f "${RETRY_FILE}.tmp" "$RETRY_FILE"; }; then
+        log "ERROR: 재시도 목록 기록 실패 (${RETRY_FILE:-경로 없음}) — 실패한 서비스는 수동 확인 필요"
+    fi
+elif [ -n "$RETRY_FILE" ]; then
+    rm -f "$RETRY_FILE"
+fi
+if [ "$AFTER" != "$DEPLOYED" ]; then
     if git update-ref --no-deref "$DEPLOYED_REF" "$AFTER" "$DEPLOYED" >>"$LOG" 2>&1; then
         log "deployed ${AFTER:0:7}"
     else

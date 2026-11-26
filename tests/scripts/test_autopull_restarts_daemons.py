@@ -60,7 +60,10 @@ def uninitialized_world(tmp_path: Path):
     (binz / "launchctl").write_text(
         "#!/bin/sh\n"
         f'if [ "$1" = "list" ]; then for l in {" ".join([*RESIDENT, DASHBOARD])}; do echo "1 0 $l"; done; exit 0; fi\n'
-        f'echo "launchctl $*" >> "{calls}"\nexit "${{LAUNCHCTL_STUB_RC:-0}}"\n'
+        f'echo "launchctl $*" >> "{calls}"\n'
+        # LAUNCHCTL_FAIL_LABEL 로 한 서비스의 kickstart 만 실패시킨다 (#2115).
+        'case "$*" in *"${LAUNCHCTL_FAIL_LABEL:-@none@}"*) exit 1 ;; esac\n'
+        'exit "${LAUNCHCTL_STUB_RC:-0}"\n'
     )
     # UV_STUB_RC 로 sync 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향).
     (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit ${{UV_STUB_RC:-0}}\n')
@@ -342,17 +345,17 @@ class TestAutopullTracksDeployedCommit:
             assert re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out)
         assert _rev(world.work) == _rev(world.work, DEPLOYED_REF) == _rev(world.origin, "main")
 
-    def test_failed_restart_keeps_the_deployed_commit_for_retry(self, world):
-        before = _rev(world.work)
+    def test_failed_restart_is_retried_on_the_next_cycle(self, world):
+        """실패해도 배포 기준은 옮기고, 실패한 서비스는 다음 주기에 다시 띄운다 (#2115 로 재시도 방식 변경)."""
         world.land({"nuri/core/rules.py": "X = 1\n"})
 
         failed = world.run(LAUNCHCTL_STUB_RC="1")
         assert failed.count("launchctl kickstart") == len(RESIDENT)
-        assert _rev(world.work, DEPLOYED_REF) == before
+        assert _rev(world.work, DEPLOYED_REF) == _rev(world.work)
 
         retried = world.run()
         assert retried.count("launchctl kickstart") == 2 * len(RESIDENT)
-        assert _rev(world.work, DEPLOYED_REF) == _rev(world.work)
+        assert world.run() == retried, "성공한 뒤에도 재시도가 계속된다"
 
 
 class TestAutopullWaitsForGreenCi:
@@ -605,3 +608,77 @@ class TestAutopullDefersForAnOpenThesisBatch:
         world.land({"nuri/core/rules.py": "X = 1\n"})
         world.run(THESIS_DEFER_HOURS="6 hours')) OR 1=1 OR ('")
         assert (world.work / "nuri" / "core" / "rules.py").exists()
+
+
+class TestAutopullRetriesOnlyFailedRestarts:
+    """kickstart 가 실패한 서비스만 다시 띄운다 (#2115).
+
+    #2113 은 배포 기준을 안 옮기는 것으로 재시도해서, 한 서비스가 계속 실패하면 멀쩡한 데몬까지 5분마다
+    다시 죽였다. scheduler 가 매 주기 죽으면 22:00 브리핑(~5분) 같은 잡은 영영 못 끝난다.
+    `world.run()` 의 반환값은 누적 기록이라 주기별 호출은 차이로 본다.
+    """
+
+    BAD = "com.nuri-quant.api"
+
+    @staticmethod
+    def _kicks(out: str) -> list[str]:
+        return [ln for ln in out.splitlines() if ln.startswith("launchctl kickstart")]
+
+    def _run_cycle(self, world, seen: list[str], **env: str) -> list[str]:
+        kicks = self._kicks(world.run(**env))
+        new = kicks[len(seen) :]
+        seen[:] = kicks
+        return new
+
+    def test_a_persistently_failing_service_does_not_restart_the_others(self, world):
+        seen: list[str] = []
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        first = self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+        assert len(first) == len(RESIDENT)
+        for _ in range(3):
+            again = self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+            assert len(again) == 1 and self.BAD in again[0], (
+                f"실패한 서비스 말고 다른 데몬까지 다시 재기동했다 — 긴 잡이 매 주기 죽는다:\n{again}"
+            )
+
+    def test_retries_stop_once_the_service_comes_up(self, world):
+        seen: list[str] = []
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+        assert len(self._run_cycle(world, seen)) == 1
+        assert self._run_cycle(world, seen) == [], "재기동에 성공했는데 재시도가 계속된다"
+
+    def test_a_retry_still_waits_for_an_open_thesis_batch(self, world):
+        seen: list[str] = []
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+        TestAutopullDefersForAnOpenThesisBatch._db(world, "open")
+        assert self._run_cycle(world, seen) == [], "열린 thesis 배치 중에 재시도로 재기동했다"
+        (world.work / "data" / "portfolio.db").unlink()
+        after = self._run_cycle(world, seen)
+        assert len(after) == 1 and self.BAD in after[0], f"보류가 끝난 뒤 재시도가 사라졌다:\n{after}"
+
+    def test_a_retry_still_waits_for_green_ci(self, world):
+        seen: list[str] = []
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+        held = self._run_cycle(world, seen, CI_STUB_JSON=_runs({"status": "in_progress", "conclusion": None}))
+        assert held == [], "CI 판정 없이 재시도했다"
+        after = self._run_cycle(world, seen)
+        assert len(after) == 1 and self.BAD in after[0], f"보류가 끝난 뒤 재시도가 사라졌다:\n{after}"
+
+    def test_a_new_deployment_restarts_everything_and_replaces_the_retry_list(self, world):
+        seen: list[str] = []
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        self._run_cycle(world, seen, LAUNCHCTL_FAIL_LABEL=self.BAD)
+        world.land({"nuri/core/other.py": "Y = 1\n"})
+        assert len(self._run_cycle(world, seen)) == len(RESIDENT)
+        assert self._run_cycle(world, seen) == [], "새 배포가 성공했는데 옛 재시도 목록이 남았다"
+
+    def test_unknown_labels_in_the_retry_file_are_ignored(self, world):
+        """재시도 목록은 launchctl 인자로 들어간다 — 알려진 상주 서비스 라벨만 받는다."""
+        seen: list[str] = []
+        retry = world.work / ".git" / "nuri-autopull-restart-retry"
+        # dashboard 는 stub 의 `launchctl list` 에 있다 — 필터가 없으면 설치 확인을 통과해 재기동된다.
+        retry.write_text(f"{DASHBOARD}\nsystem/com.apple.something\n-k\n")
+        assert self._run_cycle(world, seen) == []
