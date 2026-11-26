@@ -441,3 +441,181 @@ class TestRebalance_R23:
         actions = regime_aware_rebalance(db_path=db_path)
         assert len(actions) == 1
         assert actions[0].action == "BUY"
+
+
+class TestRebalanceBugFixes:
+    """회귀 테스트: trade_value 100x 팽창, db_path 전달, action-axis 보존."""
+
+    @staticmethod
+    def _mock_regime_and_deps(monkeypatch, position_sizing: str = "aggressive", regime_name: str = "bull_low_vol"):
+        from types import SimpleNamespace
+
+        monkeypatch.setattr(
+            "nuri.quant.regime.classifier.classify_regime",
+            lambda **kw: SimpleNamespace(regime=regime_name),
+        )
+        monkeypatch.setattr(
+            "nuri.quant.regime.strategy_map.map_regime_to_strategy",
+            lambda *a, **kw: SimpleNamespace(position_sizing=position_sizing),
+        )
+        monkeypatch.setattr("nuri.trading.recommend.candidates.screen_candidates", lambda **kw: [])
+        monkeypatch.setattr("nuri.trading.engine.conflicts.detect_conflicts", lambda *a, **kw: [])
+
+    def test_trade_value_uses_db_portfolio_total_without_100x_inflation(self, db_path, monkeypatch):
+        """포트폴리오 총액 $100,000 에서 비중 -10% 축소 → trade_value == -10000.0."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        upsert_portfolio(
+            [
+                {
+                    "account": "main",
+                    "ticker": "TST_A",
+                    "quantity": 1000,
+                    "avg_price": 100.0,
+                    "currency": "USD",
+                    "sector": "Technology",
+                }
+            ],
+            db_path,
+        )
+        _seed_prices_r23(db_path, "TST_A", 100.0)
+
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["TST_A"],
+                "sector": ["Technology"],
+                "current_weight": [30.0],
+                "optimal_weight": [20.0],
+                "trade_value_usd": [-10000.0],
+                "action": ["SELL"],
+            }
+        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
+        self._mock_regime_and_deps(monkeypatch, position_sizing="aggressive")
+
+        (act,) = regime_aware_rebalance(method="rp", db_path=db_path)
+        assert act.trade_value == -10000.0
+        assert act.action == "TRIM"
+        assert act.portfolio_action == "TRIM"
+
+    def test_trade_value_uses_value_usd_column_when_present(self, db_path, monkeypatch):
+        """base_df 에 value_usd 컬럼이 있으면 합계로 포트폴리오 총액 계산."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["TST_A", "TST_B"],
+                "sector": ["Technology", "Finance"],
+                "current_weight": [60.0, 40.0],
+                "optimal_weight": [50.0, 50.0],
+                "value_usd": [60000.0, 40000.0],
+                "trade_value_usd": [-10000.0, 10000.0],
+                "action": ["SELL", "BUY"],
+            }
+        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
+        self._mock_regime_and_deps(monkeypatch, position_sizing="aggressive")
+
+        actions = {a.ticker: a for a in regime_aware_rebalance(method="rp", db_path=db_path)}
+        assert actions["TST_A"].trade_value == -10000.0
+        assert actions["TST_B"].trade_value == 10000.0
+
+    def test_trade_value_falls_through_when_value_usd_is_zero(self, db_path, monkeypatch):
+        """value_usd 컬럼 합이 0이면 DB/역산 경로로 폴백한다."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["TST_A"],
+                "sector": ["Technology"],
+                "current_weight": [30.0],
+                "optimal_weight": [20.0],
+                "value_usd": [0.0],
+                "trade_value_usd": [-5000.0],
+                "action": ["SELL"],
+            }
+        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
+        self._mock_regime_and_deps(monkeypatch, position_sizing="aggressive")
+
+        (act,) = regime_aware_rebalance(method="rp", db_path=db_path)
+        assert act.trade_value == -5000.0
+
+    def test_trade_value_infers_total_when_db_empty(self, db_path, monkeypatch):
+        """DB 미시드 시 base_df 의 trade_value_usd / (opt_w - cur_w) 로 총액 역산."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["TST_A"],
+                "sector": ["Technology"],
+                "current_weight": [30.0],
+                "optimal_weight": [20.0],
+                "trade_value_usd": [-5000.0],
+                "action": ["SELL"],
+            }
+        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
+        self._mock_regime_and_deps(monkeypatch, position_sizing="aggressive")
+
+        (act,) = regime_aware_rebalance(method="rp", db_path=db_path)
+        assert act.trade_value == -5000.0
+
+    def test_action_axis_mapping_for_trim_reduce_buy_hold(self, db_path, monkeypatch):
+        """비중 축소는 TRIM/REDUCE + portfolio_action='TRIM', 확대는 BUY + 'REBALANCE'."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        base_df = pd.DataFrame(
+            {
+                "ticker": ["T_TRIM", "T_RED", "T_BUY", "T_HOLD"],
+                "sector": ["Finance"] * 4,
+                "current_weight": [30.0, 20.0, 10.0, 15.0],
+                "optimal_weight": [20.0, 16.5, 20.0, 15.5],
+                "trade_value_usd": [-10000.0, -3500.0, 10000.0, 500.0],
+                "action": ["SELL", "SELL", "BUY", "HOLD"],
+            }
+        )
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", lambda **kw: base_df)
+        self._mock_regime_and_deps(monkeypatch, position_sizing="aggressive")
+
+        by_ticker = {a.ticker: a for a in regime_aware_rebalance(method="rp", db_path=db_path)}
+        assert by_ticker["T_TRIM"].action == "TRIM"
+        assert by_ticker["T_TRIM"].portfolio_action == "TRIM"
+        assert by_ticker["T_RED"].action == "REDUCE"
+        assert by_ticker["T_RED"].portfolio_action == "TRIM"
+        assert by_ticker["T_BUY"].action == "BUY"
+        assert by_ticker["T_BUY"].portfolio_action == "REBALANCE"
+        assert by_ticker["T_HOLD"].action == "HOLD"
+        assert by_ticker["T_HOLD"].portfolio_action is None
+
+    def test_db_path_forwarded_when_analyze_rebalance_accepts_it(self, db_path, monkeypatch):
+        """analyze_rebalance 가 db_path 를 받으면 그대로 전달한다."""
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        captured: dict = {}
+
+        def _fake_analyze(method: str = "mvo", db_path=None):
+            captured["method"] = method
+            captured["db_path"] = db_path
+            return pd.DataFrame()
+
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", _fake_analyze)
+        assert regime_aware_rebalance(method="rp", db_path=db_path) == []
+        assert captured == {"method": "rp", "db_path": db_path}
+
+    def test_db_path_scoped_when_analyze_rebalance_lacks_db_path_param(self, db_path, monkeypatch):
+        """analyze_rebalance 가 db_path 파라미터가 없어도 호출 구간 동안 DB_PATH 가 격리된다."""
+        import nuri.core.db as db_mod
+        from nuri.trading.recommend.rebalance import regime_aware_rebalance
+
+        original_db_path = db_mod.DB_PATH
+        captured: dict = {}
+
+        def _fake_analyze(method: str = "mvo"):
+            captured["seen_db_path"] = db_mod.DB_PATH
+            return pd.DataFrame()
+
+        monkeypatch.setattr("nuri.analysis.rebalance.analyze_rebalance", _fake_analyze)
+        assert regime_aware_rebalance(method="rp", db_path=db_path) == []
+        assert captured["seen_db_path"] == db_path
+        assert db_mod.DB_PATH == original_db_path

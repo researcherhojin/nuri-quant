@@ -188,6 +188,30 @@ class TestValueDbRead:
         for t in us:
             assert float(df_all["value_score"].loc[t]) == pytest.approx(float(df_us_only["value_score"].loc[t]))
 
+    def test_kosdaq_kq_tickers_normalized_in_kr_peer_group(self, db_path_mp):
+        """KOSDAQ(.KQ) 종목은 US 가 아니라 KR(.KS/.KQ) 피어 그룹에서 백분위 정규화된다."""
+        from nuri.quant.factors.value import compute_value
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 15.0, 2.0),
+                ("MSFT", "2026-04-15", 30.0, 5.0),
+                ("NVDA", "2026-04-15", 60.0, 10.0),
+                ("1111.KS", "2026-04-15", 8.0, 0.8),
+                ("2222.KQ", "2026-04-15", 20.0, 2.5),
+            ],
+        )
+        us = ["AAPL", "MSFT", "NVDA"]
+        df_us_only = compute_value(tickers=us)
+        df_all = compute_value(tickers=us + ["1111.KS", "2222.KQ"])
+
+        # .KQ 가 US 그룹에 섞이지 않았으므로 US 점수는 완전히 불변이어야 한다
+        for t in us:
+            assert float(df_all["value_score"].loc[t]) == pytest.approx(float(df_us_only["value_score"].loc[t]))
+        # KR 그룹 안에서 1111.KS(PE 8) > 2222.KQ(PE 20)
+        assert float(df_all["value_score"].loc["1111.KS"]) > float(df_all["value_score"].loc["2222.KQ"])
+
     def test_normalize_value_columns_skips_absent_column(self):
         """_normalize_value_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""
         from nuri.quant.factors.value import _normalize_value_columns

@@ -240,10 +240,24 @@ def test_scheduled_for_future_not_claimed_yet(db_path):
 
 
 def test_mark_failed_clears_claim_token_for_retry(db_path):
+    from nuri.core.db.discord_outbox_ops import MAX_OUTBOX_ATTEMPTS
+
+    stage_outbox("ops", {"x": 1}, db_path=db_path)
+    for attempt in range(1, MAX_OUTBOX_ATTEMPTS + 1):
+        token, rows = claim_pending_outbox("ops", db_path=db_path)
+        assert len(rows) == 1
+        assert rows[0]["attempt_count"] == attempt
+        assert mark_outbox_failed([rows[0]["id"]], token, error=f"boom-{attempt}", db_path=db_path) == 1
+
+    # 상한(MAX_OUTBOX_ATTEMPTS) 도달 후에는 자동 재claim 중단 (watchdog 이 감지)
+    _, exhausted = claim_pending_outbox("ops", db_path=db_path)
+    assert exhausted == []
+
+
+def test_mark_failed_drop_is_terminal(db_path):
     stage_outbox("ops", {"x": 1}, db_path=db_path)
     token1, rows1 = claim_pending_outbox("ops", db_path=db_path)
-    assert mark_outbox_failed([rows1[0]["id"]], token1, error="boom", db_path=db_path) == 1
-    # status='failed' 인 row 는 다음 claim 안 잡힘 (현재 정책: failed terminal until manual requeue)
+    assert mark_outbox_failed([rows1[0]["id"]], token1, error="fatal", drop=True, db_path=db_path) == 1
     _, rows2 = claim_pending_outbox("ops", db_path=db_path)
     assert rows2 == []
 

@@ -247,6 +247,39 @@ class TestGenericDigestTruncation:
         joined = " ".join(f["value"] for f in embed["fields"])
         assert "more)" in joined  # "… (+N more)" 마커
 
+    def test_brief_digest_reserves_space_for_overflow_marker(self):
+        """경계 길이(1024 근접)에서도 overflow 마커 `… (+N more)` 자체가 잘리지 않는다."""
+        # 10줄 × 101자 + 개행 9 = 1019자 → 마커 11자를 붙이면 1031자로 1024 초과하던 경계.
+        events = [{"kind": "BUY", "ticker": f"T{i}", "summary": "A" * 101} for i in range(11)]
+        embed = bucket_brief_digest(events)
+        value = embed["fields"][0]["value"]
+        assert len(value) <= 1024
+        assert value.endswith("… (+2 more)")
+
+    def test_generic_digest_reserves_space_for_overflow_marker(self):
+        """generic digest 도 경계 길이에서 overflow 마커를 미리 예약해 잘림을 방지한다."""
+        events = [{"kind": "noise", "summary": "B" * 101} for i in range(11)]
+        embed = bucket_generic_digest(events, channel_label="Ops")
+        value = embed["fields"][0]["value"]
+        assert len(value) <= 1024
+        assert value.endswith("… (+2 more)")
+
+    def test_generic_digest_with_meta_preserves_overflow_marker(self):
+        """meta(what + action) 가 있는 그룹도 overflow 마커가 1024 안에서 온전히 유지된다."""
+        events = [{"kind": "brief_quality_noise", "summary": "C" * 150} for i in range(10)]
+        embed = bucket_generic_digest(events, channel_label="Ops")
+        value = embed["fields"][0]["value"]
+        assert len(value) <= 1024
+        assert "… (+" in value
+        assert "more)" in value
+
+        # running 이 1016자(<=1024)에 멈춰 action_line 이 예산 초과로 생략되는 분기(line 635 False arm)
+        tight_events = [{"kind": "brief_quality_noise", "summary": "D" * 195} for _ in range(5)]
+        tight_embed = bucket_generic_digest(tight_events, channel_label="Ops")
+        tight_value = tight_embed["fields"][0]["value"]
+        assert len(tight_value) <= 1024
+        assert "→ 조치(개발):" not in tight_value
+
 
 # ════════════════════════════════════════════════════════════
 # format_money(None) / 스칼라가 하나도 없는 payload 의 머리

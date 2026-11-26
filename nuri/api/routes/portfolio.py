@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import logging
+import math
 import re
 from enum import Enum
 from typing import Optional
@@ -302,6 +303,7 @@ _CSV_REQUIRED = {"account", "ticker", "quantity", "avg_price"}
 _CSV_OPTIONAL = {"currency", "sector"}
 _CSV_ALL = _CSV_REQUIRED | _CSV_OPTIONAL
 _MAX_IMPORT_ROWS = 500
+_MAX_IMPORT_BYTES = 2 * 1024 * 1024
 
 
 @router.post("/portfolio/import")
@@ -314,8 +316,15 @@ def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
     if not file.filename or not file.filename.endswith(".csv"):
         raise HTTPException(status_code=400, detail="CSV 파일만 지원합니다 (.csv)")
 
+    raw = file.file.read(_MAX_IMPORT_BYTES + 1)
+    if len(raw) > _MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"CSV 파일 크기는 최대 {_MAX_IMPORT_BYTES // (1024 * 1024)}MB까지 지원합니다",
+        )
+
     try:
-        content = file.file.read().decode("utf-8-sig")
+        content = raw.decode("utf-8-sig")
     except UnicodeDecodeError:
         raise HTTPException(status_code=400, detail="UTF-8 인코딩 파일만 지원합니다")
 
@@ -360,8 +369,8 @@ def import_portfolio(file: UploadFile, user=Depends(require_write_auth)):
             errors.append(f"행 {i}: 숫자 변환 실패 (quantity/avg_price)")
             continue
 
-        if qty <= 0 or avg <= 0:
-            errors.append(f"행 {i}: quantity/avg_price는 0보다 커야 합니다")
+        if not math.isfinite(qty) or not math.isfinite(avg) or qty <= 0 or avg <= 0:
+            errors.append(f"행 {i}: quantity/avg_price는 0보다 큰 유한한 숫자여야 합니다")
             continue
 
         records.append(
@@ -466,13 +475,10 @@ _SAMPLE_PORTFOLIO = [
 @router.post("/portfolio/sample")
 def load_sample_portfolio(user=Depends(require_write_auth)):
     """샘플 포트폴리오 로드 (기존 sample 계좌 데이터 교체)."""
-    from nuri.core.db import get_db
+    from nuri.core.db import replace_portfolio_account
 
-    # 기존 sample 계좌 데이터 삭제
-    with get_db() as conn:
-        conn.execute("DELETE FROM portfolio WHERE account='sample'")
-
-    count = upsert_portfolio(_SAMPLE_PORTFOLIO)
+    # 기존 sample 계좌 삭제 + 샘플 삽입을 단일 트랜잭션으로 원자적 교체
+    _, count = replace_portfolio_account("sample", _SAMPLE_PORTFOLIO)
     audit_log("SAMPLE", "portfolio", f"{count} records", "loaded sample portfolio", user_id=user.get("sub", "unknown"))
     _try_sync_yaml()
     return {"ok": True, "loaded": count}

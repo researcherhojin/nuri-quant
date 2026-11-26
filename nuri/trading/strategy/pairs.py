@@ -76,8 +76,8 @@ def find_pairs(
     if len(prices) < 2:
         return []
 
-    # 공통 날짜 기준 수익률 DataFrame
-    price_df = pd.DataFrame(prices).dropna()
+    # 공통 날짜 기준 수익률 DataFrame (시간순 정렬 필수 — DESC 상태면 pct_change 역방향 + iloc[-1]이 최오래된 날)
+    price_df = pd.DataFrame(prices).dropna().sort_index(ascending=True)
     if len(price_df) < 30:
         return []
 
@@ -224,6 +224,7 @@ def backtest_pairs(
     returns = [t["return_pct"] for t in all_trades]
     wins = [r for r in returns if r > 0]
     losses = [r for r in returns if r <= 0]
+    total_loss = abs(sum(losses))
 
     return {
         "strategy": "pairs_trading",
@@ -231,7 +232,7 @@ def backtest_pairs(
         "total_trades": len(returns),
         "win_rate": len(wins) / len(returns),
         "avg_return": round(np.mean(returns), 2),
-        "profit_factor": round(sum(wins) / abs(sum(losses)), 2) if losses else float("inf"),
+        "profit_factor": round(sum(wins) / total_loss, 2) if total_loss > 0 else (float("inf") if wins else 0.0),
         "avg_hold_days": round(np.mean([t["hold_days"] for t in all_trades]), 1),
     }
 

@@ -3,6 +3,7 @@
 # cspell:ignore killpg
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -15,6 +16,8 @@ from nuri.llm.local_client import load_config
 from nuri.llm.thesis_events import PREFIX, public_event
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+_STREAM_LIMIT = 1024 * 1024  # 1 MiB — 기본 64 KiB StreamReader 상한 초과 긴 JSONL 라인 허용
+_TERM_GRACE_S = 5.0  # SIGTERM 후 종료 대기 유예, 초과 시 SIGKILL 승격
 
 
 async def run(
@@ -26,7 +29,10 @@ async def run(
     directory = Path(cfg["archive_dir"]) / "interactive"
     directory.mkdir(parents=True, exist_ok=True)
     timeout = float(cfg["interactive"]["timeout_s"])
-    with (directory / f"{uuid4().hex}.log").open("ab", buffering=0) as raw:
+    raw_path = directory / f"{uuid4().hex}.log"
+    fd = os.open(raw_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    os.chmod(raw_path, 0o600)
+    with os.fdopen(fd, "ab", buffering=0) as raw:
         proc = await asyncio.create_subprocess_exec(
             "make",
             target,
@@ -35,6 +41,7 @@ async def run(
             stdout=asyncio.subprocess.PIPE,
             stderr=raw,
             start_new_session=True,
+            limit=_STREAM_LIMIT,
         )
 
         async def consume() -> tuple[int, dict[str, str]]:
@@ -72,4 +79,11 @@ async def run(
                     os.killpg(proc.pid, signal.SIGTERM)
                 except ProcessLookupError:
                     pass
-                await proc.wait()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=_TERM_GRACE_S)
+                except TimeoutError:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(proc.pid, signal.SIGKILL)
+                    with contextlib.suppress(ProcessLookupError):
+                        proc.kill()
+                    await proc.wait()

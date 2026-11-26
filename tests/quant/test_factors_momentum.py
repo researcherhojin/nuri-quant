@@ -171,3 +171,25 @@ class TestMomentum:
 
         result = compute_momentum()
         assert "SHORT" not in result.index if not result.empty else True
+
+    def test_zero_initial_close_does_not_poison_universe_with_nan(self, db_path_mp):
+        """첫 종가가 0.0 인 종목이 있어도 period_return 이 inf 가 되어 전체 momentum_score 를 NaN 으로 오염시키지 않는다."""
+        from nuri.quant.factors.momentum import compute_momentum
+
+        self._seed_bars(db_path_mp, "GOOD1", days=20)
+        self._seed_bars(db_path_mp, "GOOD2", days=20)
+        dates = pd.bdate_range(end=kst_now().date(), periods=20)
+        with get_db(db_path_mp) as conn:
+            conn.executemany(
+                "INSERT INTO prices (ticker, date, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)",
+                [
+                    ("ZEROSTART", d.strftime("%Y-%m-%d"), 100, 101, 99, 0.0 if i == 0 else 100.0 + i, 1000)
+                    for i, d in enumerate(dates)
+                ],
+            )
+
+        df = compute_momentum()
+        assert not df.empty
+        assert np.isfinite(df["period_return"]).all()
+        assert not bool(df["momentum_score"].isna().any())
+        assert float(df["period_return"].loc["ZEROSTART"]) == 0.0

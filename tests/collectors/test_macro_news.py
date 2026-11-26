@@ -4,6 +4,7 @@ Network-free:
 - requests.get는 monkeypatch로 mock된 fixture XML 반환
 - classify_event는 use_llm=False로 regex만 사용
 """
+
 from datetime import timedelta
 from email.utils import format_datetime
 from unittest.mock import MagicMock
@@ -35,22 +36,22 @@ def _build_rss_fixture() -> bytes:
     return (
         b'<?xml version="1.0"?>'
         b'<rss version="2.0"><channel>'
-        b'<item>'
-        b'<title>Iran agrees to ceasefire - Reuters</title>'
-        b'<link>https://news.google.com/articles/abc123</link>'
-        b'<pubDate>' + d1 + b'</pubDate>'
+        b"<item>"
+        b"<title>Iran agrees to ceasefire - Reuters</title>"
+        b"<link>https://news.google.com/articles/abc123</link>"
+        b"<pubDate>" + d1 + b"</pubDate>"
         b'<source url="https://www.reuters.com">Reuters</source>'
-        b'</item>'
-        b'<item>'
-        b'<title>Fed signals rate cut next meeting</title>'
-        b'<link>https://news.google.com/articles/def456</link>'
-        b'<pubDate>' + d2 + b'</pubDate>'
-        b'</item>'
-        b'<item>'
-        b'<title>No URL</title>'
-        b'<link></link>'
-        b'</item>'
-        b'</channel></rss>'
+        b"</item>"
+        b"<item>"
+        b"<title>Fed signals rate cut next meeting</title>"
+        b"<link>https://news.google.com/articles/def456</link>"
+        b"<pubDate>" + d2 + b"</pubDate>"
+        b"</item>"
+        b"<item>"
+        b"<title>No URL</title>"
+        b"<link></link>"
+        b"</item>"
+        b"</channel></rss>"
     )
 
 
@@ -109,6 +110,7 @@ class TestCollect:
         mock_resp.raise_for_status = MagicMock()
 
         import nuri.collectors.macro_news as mod
+
         monkeypatch.setattr(mod.requests, "get", MagicMock(return_value=mock_resp))
 
         # 키워드 리스트를 1개로 줄여서 빠르게
@@ -134,25 +136,26 @@ class TestCollect:
         stale_rss = (
             b'<?xml version="1.0"?>'
             b'<rss version="2.0"><channel>'
-            b'<item>'
-            b'<title>Very old article about yen carry trade</title>'
-            b'<link>https://news.google.com/articles/old1</link>'
-            b'<pubDate>Thu, 19 Nov 2025 08:00:00 GMT</pubDate>'
+            b"<item>"
+            b"<title>Very old article about yen carry trade</title>"
+            b"<link>https://news.google.com/articles/old1</link>"
+            b"<pubDate>Thu, 19 Nov 2025 08:00:00 GMT</pubDate>"
             b'<source url="https://example.com">Example</source>'
-            b'</item>'
-            b'<item>'
-            b'<title>Iran agrees to ceasefire today</title>'
-            b'<link>https://news.google.com/articles/fresh1</link>'
-            b'<pubDate>' + _recent_date_rfc822().encode() + b'</pubDate>'
+            b"</item>"
+            b"<item>"
+            b"<title>Iran agrees to ceasefire today</title>"
+            b"<link>https://news.google.com/articles/fresh1</link>"
+            b"<pubDate>" + _recent_date_rfc822().encode() + b"</pubDate>"
             b'<source url="https://reuters.com">Reuters</source>'
-            b'</item>'
-            b'</channel></rss>'
+            b"</item>"
+            b"</channel></rss>"
         )
         mock_resp = MagicMock()
         mock_resp.content = stale_rss
         mock_resp.raise_for_status = MagicMock()
 
         import nuri.collectors.macro_news as mod
+
         monkeypatch.setattr(mod.requests, "get", MagicMock(return_value=mock_resp))
         monkeypatch.setattr(mod, "KEYWORDS", ("test",))
 
@@ -175,6 +178,7 @@ class TestCollect:
             return mock_resp
 
         import nuri.collectors.macro_news as mod
+
         monkeypatch.setattr(mod.requests, "get", fake_get)
         monkeypatch.setattr(mod, "KEYWORDS", ("first", "second"))
 
@@ -188,10 +192,21 @@ class TestCollect:
         mock_resp.raise_for_status = MagicMock()
 
         import nuri.collectors.macro_news as mod
+
         monkeypatch.setattr(mod.requests, "get", MagicMock(return_value=mock_resp))
         monkeypatch.setattr(mod, "KEYWORDS", ("test",))
 
         assert MacroNewsCollector(use_llm=False).collect() == []
+
+    def test_collect_total_outage_raises(self, monkeypatch, db_path):
+        """모든 키워드가 예외로 실패하면 조용히 [] 반환하지 않고 RuntimeError 를 올린다 (#1043)."""
+        import nuri.collectors.macro_news as mod
+
+        monkeypatch.setattr(mod.requests, "get", MagicMock(side_effect=ConnectionError("dns failure")))
+        monkeypatch.setattr(mod, "KEYWORDS", ("first", "second"))
+
+        with pytest.raises(RuntimeError, match="dns failure"):
+            MacroNewsCollector(use_llm=False).collect()
 
 
 class TestSave:

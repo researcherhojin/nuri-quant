@@ -606,6 +606,29 @@ class TestMissingPriceDataLockTest:
         result = ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-ne", "observation_window": 7})
         assert result.output["validation"] == "insufficient_data"
 
+    def test_zero_entry_price_returns_insufficient_without_crash(self, patched_db):
+        """entry == 0.0 은 ZeroDivisionError 없이 insufficient_data 로 기록된다."""
+        _seed_hypothesis(patched_db, "h-zero", "claim-zero")
+        _seed_decision(patched_db, decision_id="dc-zero", ticker="TESTZR", hypothesis_id="h-zero")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTZR", "2026-04-20", 0.0),
+                ("TESTZR", "2026-04-27", 105.0),
+            ],
+        )
+        result = ForwardOutcomeTracker().run({"action": "track_one", "decision_id": "dc-zero", "observation_window": 7})
+        assert result.outcome == Outcome.WARN
+        assert result.output["validation"] == "insufficient_data"
+        rows = query(
+            "SELECT hypothesis_validation, realized_return FROM decision_outcomes "
+            "WHERE decision_id = 'dc-zero' AND observation_window = 7",
+            db_path=patched_db,
+        )
+        assert len(rows) == 1
+        assert rows[0]["hypothesis_validation"] == "insufficient_data"
+        assert rows[0]["realized_return"] is None
+
 
 class TestStatusMachineLockTest:
     """LOCK-TEST: 이미 종결된 hypothesis 의 update 시도는 silently skip (status machine 보존)."""
@@ -766,6 +789,60 @@ class TestActionScan:
         result = ForwardOutcomeTracker().run({"action": "scan"})
         # default = all 3 windows
         assert result.output["windows"] == list(SUPPORTED_WINDOWS)
+
+    def test_scan_does_not_overwrite_finalized_outcome_but_remeasures_missing_price(self, patched_db):
+        """확정된 pass/reject 결과는 후속 scan 이 덮어쓰지 않고, 가격 누락 insufficient_data 는 재측정한다."""
+        from nuri.core.db import get_db
+
+        _seed_hypothesis(patched_db, "h-imm", "imm-claim")
+        _seed_decision(patched_db, decision_id="dc-imm", ticker="TESTIM", hypothesis_id="h-imm")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTIM", "2026-04-20", 100.0),
+                ("TESTIM", "2026-04-27", 110.0),  # +10% → pass
+            ],
+        )
+        # 가격 누락 상태의 두 번째 결정
+        _seed_hypothesis(patched_db, "h-late", "late-claim")
+        _seed_decision(patched_db, decision_id="dc-late", ticker="TESTLT", hypothesis_id="h-late")
+
+        r1 = ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        assert r1.output["n_pass"] == 1
+        assert r1.output["n_insufficient"] == 1
+
+        # 이후 가격 테이블이 수정(또는 소급 정정)되고 누락 티커 가격이 도착
+        with get_db(patched_db) as conn:
+            conn.execute("UPDATE prices SET close = 50.0 WHERE ticker = 'TESTIM' AND date = '2026-04-27'")
+        _seed_prices(
+            patched_db,
+            [
+                ("TESTLT", "2026-04-20", 100.0),
+                ("TESTLT", "2026-04-27", 108.0),
+            ],
+        )
+
+        r2 = ForwardOutcomeTracker().run({"action": "scan", "windows": [7]})
+        assert r2.output["skipped_finalized"] == 1
+        assert r2.output["n_pass"] == 1  # dc-late 만 새로 측정됨
+
+        # dc-imm 은 최초 확정값(+10%, pass)이 보존된다
+        imm = query(
+            "SELECT realized_return, hypothesis_validation FROM decision_outcomes "
+            "WHERE decision_id = 'dc-imm' AND observation_window = 7",
+            db_path=patched_db,
+        )
+        assert imm[0]["hypothesis_validation"] == "pass"
+        assert imm[0]["realized_return"] == pytest.approx(0.10, abs=1e-6)
+
+        # dc-late 는 누락 가격이 채워져 pass 로 갱신된다
+        late = query(
+            "SELECT realized_return, hypothesis_validation FROM decision_outcomes "
+            "WHERE decision_id = 'dc-late' AND observation_window = 7",
+            db_path=patched_db,
+        )
+        assert late[0]["hypothesis_validation"] == "pass"
+        assert late[0]["realized_return"] == pytest.approx(0.08, abs=1e-6)
 
 
 # ═══════════════════════════════════════════════════════

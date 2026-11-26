@@ -207,6 +207,30 @@ class TestQualityDbRead:
         for t in us:
             assert float(df_all["quality_score"].loc[t]) == pytest.approx(float(df_us_only["quality_score"].loc[t]))
 
+    def test_kosdaq_kq_tickers_normalized_in_kr_peer_group(self, db_path_mp):
+        """KOSDAQ(.KQ) 종목은 US 가 아니라 KR(.KS/.KQ) 피어 그룹에서 백분위 정규화된다."""
+        from nuri.quant.factors.quality import compute_quality
+
+        self._seed_fundamentals(
+            db_path_mp,
+            [
+                ("AAPL", "2026-04-15", 0.30, 0.35),
+                ("MSFT", "2026-04-15", 0.20, 0.25),
+                ("NVDA", "2026-04-15", 0.45, 0.50),
+                ("1111.KS", "2026-04-15", 0.12, 0.10),
+                ("2222.KQ", "2026-04-15", 0.40, 0.38),
+            ],
+        )
+        us = ["AAPL", "MSFT", "NVDA"]
+        df_us_only = compute_quality(tickers=us)
+        df_all = compute_quality(tickers=us + ["1111.KS", "2222.KQ"])
+
+        # .KQ 가 US 그룹에 섞이지 않았으므로 US 점수는 완전히 불변이어야 한다
+        for t in us:
+            assert float(df_all["quality_score"].loc[t]) == pytest.approx(float(df_us_only["quality_score"].loc[t]))
+        # KR 그룹 안에서 2222.KQ(ROE 0.40) > 1111.KS(ROE 0.12)
+        assert float(df_all["quality_score"].loc["2222.KQ"]) > float(df_all["quality_score"].loc["1111.KS"])
+
     def test_normalize_quality_columns_skips_absent_column(self):
         """_normalize_quality_columns: df 에 없는 컬럼은 건너뛴다 (col in df.columns False 분기)."""
         from nuri.quant.factors.quality import _normalize_quality_columns

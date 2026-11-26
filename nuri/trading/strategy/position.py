@@ -80,8 +80,10 @@ def certify_position(
 
         result = analyze_ticker(ticker, db_path=db_path)
         expected = "BUY" if direction == "long" else "SELL"
+        opposite = "SELL" if direction == "long" else "BUY"
         agree = sum(1 for v in result.verdicts if v.action == expected)
-        agent_consensus = agree >= 2  # 5명 중 2명 이상 (숏은 합의 어려우므로 완화)
+        # 최종 합의가 반대 방향(예: risk 거부권 SELL)이면 개별 찬성 2표 이상이어도 미합의 처리
+        agent_consensus = agree >= 2 and result.final_action != opposite
         details["agent_action"] = result.final_action
         details["agent_confidence"] = result.final_confidence
         details["agent_agree"] = f"{agree}/5"
@@ -197,7 +199,9 @@ def close_position(position_id: int, exit_price: float, reason: str, db_path=Non
     entry = p["entry_price"]
     direction = p["direction"]
 
-    if direction == "long":
+    if not entry or entry <= 0:
+        return_pct = 0.0
+    elif direction == "long":
         return_pct = (exit_price - entry) / entry * 100
     else:  # short — 가격 하락이 수익
         return_pct = (entry - exit_price) / entry * 100
@@ -239,7 +243,9 @@ def update_prices(db_path=None) -> None:
             current = price_row[0]["close"]
 
         entry = p["entry_price"]
-        if p["direction"] == "long":
+        if not entry or entry <= 0:
+            ret = 0.0
+        elif p["direction"] == "long":
             ret = (current - entry) / entry * 100
         else:
             ret = (entry - current) / entry * 100

@@ -21,7 +21,7 @@ API 인증 모듈 — JWT 토큰 + API 키 인증.
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Optional
 
 import bcrypt
@@ -29,10 +29,12 @@ import jwt
 from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from nuri.core.timezone import utc_now
+
 logger = logging.getLogger(__name__)
 
 # ─── 설정 ───
-_SECRET_KEY = os.getenv("API_SECRET_KEY", secrets.token_hex(32))
+_SECRET_KEY = os.getenv("API_SECRET_KEY") or secrets.token_hex(32)
 _API_KEY = os.getenv("API_KEY", "")
 _AUTH_ENABLED = os.getenv("API_AUTH_ENABLED", "false").lower() == "true"
 _JWT_ALGORITHM = "HS256"
@@ -55,10 +57,11 @@ def verify_password(password: str, hashed: str) -> bool:
 # ─── JWT 토큰 ───
 def create_token(subject: str, expires_hours: int = _JWT_EXPIRE_HOURS) -> str:
     """JWT 토큰 생성."""
+    now = utc_now()
     payload = {
         "sub": subject,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=expires_hours),
+        "iat": now,
+        "exp": now + timedelta(hours=expires_hours),
     }
     return jwt.encode(payload, _SECRET_KEY, algorithm=_JWT_ALGORITHM)
 

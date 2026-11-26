@@ -7,8 +7,14 @@ vi.mock("next/server", () => {
   const next = vi.fn(() => ({ type: "next" }));
   const redirect = vi.fn((url: URL) => ({ type: "redirect", url: url.toString() }));
 
+  const json = vi.fn((body: unknown, init?: { status?: number }) => ({
+    type: "json",
+    body,
+    status: init?.status ?? 200,
+  }));
+
   return {
-    NextResponse: { next, redirect },
+    NextResponse: { next, redirect, json },
   };
 });
 
@@ -132,6 +138,53 @@ describe("proxy", () => {
 
     const result = await proxy(request as unknown as NextRequest);
     expect(result.type).toBe("redirect");
+  });
+
+  it("returns 401 JSON for unauthenticated /api/ routes instead of redirecting", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    const { proxy } = await import("@/proxy");
+
+    const request = {
+      nextUrl: { pathname: "/api/portfolio" },
+      cookies: { get: () => undefined },
+      url: "http://localhost:3000/api/portfolio",
+    };
+
+    const result = await proxy(request as unknown as NextRequest);
+    expect(result).toEqual({ type: "json", body: { error: "Unauthorized" }, status: 401 });
+  });
+
+  it("returns 401 JSON for /api/ routes with wrong auth cookie", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    const { proxy } = await import("@/proxy");
+
+    const request = {
+      nextUrl: { pathname: "/api/health" },
+      cookies: { get: (name: string) => name === "nuri-auth" ? { value: "wrong-hash" } : undefined },
+      url: "http://localhost:3000/api/health",
+    };
+
+    const result = await proxy(request as unknown as NextRequest);
+    expect(result).toEqual({ type: "json", body: { error: "Unauthorized" }, status: 401 });
+  });
+
+  it("passes through /api/ routes with valid auth cookie", async () => {
+    vi.stubEnv("DASHBOARD_PASSWORD", "secret123");
+    vi.stubEnv("AUTH_SECRET", "test-auth-secret");
+    const { proxy } = await import("@/proxy");
+
+    const expectedToken = createHmac("sha256", "test-auth-secret")
+      .update("nuri-auth-token:v1")
+      .digest("hex");
+
+    const request = {
+      nextUrl: { pathname: "/api/portfolio" },
+      cookies: { get: (name: string) => name === "nuri-auth" ? { value: expectedToken } : undefined },
+      url: "http://localhost:3000/api/portfolio",
+    };
+
+    const result = await proxy(request as unknown as NextRequest);
+    expect(result).toEqual({ type: "next" });
   });
 
   it("exports correct matcher config", async () => {

@@ -26,6 +26,7 @@ Run:
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -105,8 +106,8 @@ def _load_config(path: Path | None = None) -> dict[str, Any]:
 
 
 def _get_held_tickers(db_path=None) -> set[str]:
-    """Tickers currently in `portfolio` table — exclude from BUY emit."""
-    df = query_df("SELECT DISTINCT ticker FROM portfolio", db_path=db_path)
+    """Tickers currently in `portfolio` table (quantity > 0) — exclude from BUY emit."""
+    df = query_df("SELECT DISTINCT ticker FROM portfolio WHERE quantity > 0", db_path=db_path)
     return {str(t) for t in df["ticker"].tolist()} if not df.empty else set()
 
 
@@ -344,6 +345,8 @@ def _score_ticker(
 
     # 5d return: -10% → 0, 0% → 50, +10% → 100. Clipped.
     ret_5d = price.get("ret_5d", 0.0)
+    if ret_5d is None or not math.isfinite(ret_5d):
+        ret_5d = 0.0
     momentum_pct = max(0.0, min(100.0, 50.0 + ret_5d * 5.0))
 
     # RSI: 30 → 60 (oversold positive), 50 → 70, 65 → 80, 75 → 50 (overbought penalty), 85 → 20
@@ -368,7 +371,7 @@ def _score_ticker(
         breakout_pct = max(0.0, 70.0 + bo * 4.0)
 
     # RS percentile (cross-sectional leadership): 0-100 직접 사용. 없으면 중립.
-    rs_pct = 50.0 if rs_rank is None else max(0.0, min(100.0, rs_rank))
+    rs_pct = 50.0 if (rs_rank is None or not math.isfinite(rs_rank)) else max(0.0, min(100.0, rs_rank))
 
     # 거래대금 surge: 완만한 확장은 보상(1.0→50 … 2.5→90), 과열(parabolic) 추격은
     # 페널티 (crowding 가드 — 급등주 추격 금지). surge 는 배수(ratio).
@@ -617,7 +620,7 @@ def emit_buy_candidates(
     top = qualified[:max_cand]
 
     if not top:
-        top_score = scored[0][1] if scored else 0
+        top_score = max((s[1] for s in scored), default=0.0)
         result.blocked_reason = (
             f"top scorer {top_score:.0f}/100 < threshold {threshold} "
             f"(regime={regime}, scored={len(scored)}, qualified=0)"
@@ -690,11 +693,14 @@ def render_markdown(result: EmitResult) -> str:
         lines.append("")
         lines.append(f"{i}. **{c.ticker}** — score {c.score}/100, deploy {c.deploy_pct}%")
         lines.append(f"   - Why now: {c.why_now}")
-        lines.append(
-            f"   - Entry ${c.entry} / Stop ${c.stop} ({(c.stop / c.entry - 1) * 100:+.0f}%) / "
-            f"TP1 ${c.tp1} ({(c.tp1 / c.entry - 1) * 100:+.0f}%) / "
-            f"TP2 ${c.tp2} ({(c.tp2 / c.entry - 1) * 100:+.0f}%)"
-        )
+        if c.entry > 0:
+            lines.append(
+                f"   - Entry ${c.entry} / Stop ${c.stop} ({(c.stop / c.entry - 1) * 100:+.0f}%) / "
+                f"TP1 ${c.tp1} ({(c.tp1 / c.entry - 1) * 100:+.0f}%) / "
+                f"TP2 ${c.tp2} ({(c.tp2 / c.entry - 1) * 100:+.0f}%)"
+            )
+        else:
+            lines.append(f"   - Entry ${c.entry} / Stop ${c.stop} / TP1 ${c.tp1} / TP2 ${c.tp2}")
         src = " · ".join(f"{k}={v:.0f}" for k, v in c.sources.items())
         lines.append(f"   - Sources: {src}")
         # 논지 Surface (#1165) — 정보 노출만, 매수를 막지 않는다

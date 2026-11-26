@@ -114,9 +114,18 @@ function PortfolioContent() {
 
   async function handleLoadSample() {
     setLoadingSample(true);
-    await fetch(`/api/portfolio/sample`, { method: "POST" });
-    setLoadingSample(false);
-    fetchHoldings();
+
+    try {
+      const res = await fetch(`/api/portfolio/sample`, { method: "POST" });
+
+      if (res.ok) {
+        fetchHoldings();
+      }
+    } catch (e) {
+      console.error("sample portfolio load failed:", e);
+    } finally {
+      setLoadingSample(false);
+    }
   }
 
   // ─── Add ───
@@ -140,26 +149,30 @@ function PortfolioContent() {
 
     setSubmitting(true);
 
-    const res = await fetch(`/api/portfolio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, account: formAccount, quantity: qty, avg_price: avg }),
-    });
+    try {
+      const res = await fetch(`/api/portfolio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, account: formAccount, quantity: qty, avg_price: avg }),
+      });
 
-    if (!res.ok) {
-      const data = await res.json();
-      setFormError(data.detail || PORTFOLIO.ADD_FAILED);
+      if (!res.ok) {
+        const data = await res.json();
+        setFormError(data.detail || PORTFOLIO.ADD_FAILED);
+
+        return;
+      }
+
+      // ACCOUNTS[0] always truthy: fromHoldings is .filter(Boolean) and FALLBACK_ACCOUNTS[0]==="test", so the ||"" arm is unreachable
+      /* v8 ignore next */
+      setForm({ account: ACCOUNTS[0] || "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
+      setShowForm(false);
+      fetchHoldings();
+    } catch {
+      setFormError(PORTFOLIO.ADD_FAILED);
+    } finally {
       setSubmitting(false);
-
-      return;
     }
-
-    // ACCOUNTS[0] always truthy: fromHoldings is .filter(Boolean) and FALLBACK_ACCOUNTS[0]==="test", so the ||"" arm is unreachable
-    /* v8 ignore next */
-    setForm({ account: ACCOUNTS[0] || "", ticker: "", quantity: "", avg_price: "", currency: "USD", sector: "" });
-    setShowForm(false);
-    setSubmitting(false);
-    fetchHoldings();
   }
 
   // ─── Delete ───

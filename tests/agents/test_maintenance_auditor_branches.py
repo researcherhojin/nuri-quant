@@ -40,7 +40,7 @@ def db_path(tmp_path):
 @pytest.fixture()
 def quiet_ops(monkeypatch):
     """#ops 표면화를 끈다 — 스캔 테스트가 outbox 를 건드리지 않게."""
-    monkeypatch.setattr(ma.MaintenanceAuditor, "_surface_summary", lambda self, output: None)
+    monkeypatch.setattr(ma.MaintenanceAuditor, "_surface_summary", lambda self, output, db_path=None: None)
 
 
 @pytest.fixture()
@@ -448,7 +448,7 @@ class TestCli:
         assert row["review_note"] == "looks right"
 
     def test_scan_prints_its_counters(self, default_db, capsys, monkeypatch):
-        monkeypatch.setattr(ma.MaintenanceAuditor, "_surface_summary", lambda self, output: None)
+        monkeypatch.setattr(ma.MaintenanceAuditor, "_surface_summary", lambda self, output, db_path=None: None)
         monkeypatch.setattr(ma, "SCANNERS", (lambda ctx: [_finding("cli scan")],))
 
         assert ma.main(["scan"]) == 0

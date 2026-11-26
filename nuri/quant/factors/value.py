@@ -96,11 +96,11 @@ def compute_value(tickers: list[str] | None = None, db_path=None) -> pd.DataFram
 
     df = pd.DataFrame(scores).T
 
-    # 시장별(.KS=KR vs US) 정규화 — PE/PB baseline 이 시장마다 달라 cross-market 순위는
+    # 시장별(.KS/.KQ=KR vs US) 정규화 — PE/PB baseline 이 시장마다 달라 cross-market 순위는
     # 저PE 시장(KR)을 구조적 고가치로 왜곡한다. 각 시장 안에서만 정규화 (#757).
     # 백분위로 바꿔도(#1102) 이 분리는 그대로 필요하다: 합쳐서 순위를 매기면 KR 이
     # 상위를 독식한다 — 척도만 바뀌었지 baseline 차이는 그대로다.
-    is_kr = df.index.to_series().str.endswith(".KS")
+    is_kr = df.index.to_series().str.endswith((".KS", ".KQ"))
     parts = [_normalize_value_columns(sub.copy()) for sub in (df[is_kr], df[~is_kr]) if not sub.empty]
     df = pd.concat(parts)
 

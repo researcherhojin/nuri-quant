@@ -199,6 +199,93 @@ class TestSlashCommandHandlers:
         ix.response.send_message.assert_awaited_once()
         mock_make.assert_not_called()
 
+    def test_thesis_rejects_concurrent_run_with_busy_notice(self, bot_components):
+        """동시 /thesis 요청은 로컬 VRAM 경합 방지를 위해 두 번째 요청을 정중히 거절한다."""
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix1 = self._make_interaction()
+        ix2 = self._make_interaction()
+        ix3 = self._make_interaction()
+
+        async def scenario():
+            started = asyncio.Event()
+            release = asyncio.Event()
+
+            async def slow_run(target, ticker, on_stage):
+                started.set()
+                await release.wait()
+                return 0, {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
+
+            with patch("nuri.agents.discord.bot._run_thesis_stream", side_effect=slow_run) as runner:
+                t1 = asyncio.create_task(callback(ix1, "MSFT"))
+                await started.wait()
+                await callback(ix2, "NVDA")
+                release.set()
+                await t1
+                # 첫 실행이 끝난 뒤에는 세 번째 요청이 정상 실행돼야 한다 (세마포어 해제 검증).
+                await callback(ix3, "AAPL")
+            return runner.call_count
+
+        call_count = asyncio.run(scenario())
+        assert call_count == 2
+        ix2.followup.send.assert_awaited_once()
+        assert "실행 중" in ix2.followup.send.await_args.args[0]
+        ix2.channel.create_thread.assert_not_awaited()
+
+    def test_thesis_busy_notice_failure_is_logged_not_raised(self, bot_components, caplog):
+        """busy 안내 followup.send 실패도 경고 로그만 남기고 예외를 전파하지 않는다."""
+        import logging
+
+        from nuri.agents.discord import bot as bot_mod
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        ix.followup.send.side_effect = RuntimeError("discord unavailable")
+        caplog.set_level(logging.WARNING, logger="nuri.agents.discord.bot")
+
+        async def scenario():
+            async with bot_mod._thesis_semaphore:
+                await callback(ix, "TEST")
+
+        asyncio.run(scenario())
+        assert any("thesis busy notice failed" in r.message for r in caplog.records)
+
+    def test_thesis_error_recovery_followup_send_failure_is_logged(self, bot_components, caplog):
+        """스레드 생성 실패 후 에러 안내 followup.send 마저 실패해도 unhandled exception 이 나지 않는다."""
+        import logging
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        ix.followup.send.side_effect = [MagicMock(), RuntimeError("discord api down")]
+        ix.channel.create_thread.side_effect = RuntimeError("no permission")
+        caplog.set_level(logging.WARNING, logger="nuri.agents.discord.bot")
+
+        with patch("nuri.agents.discord.bot._run_thesis_stream") as runner:
+            asyncio.run(callback(ix, "TEST"))
+
+        runner.assert_not_called()
+        assert any("thesis thread failure notice failed" in r.message for r in caplog.records)
+
+    def test_thesis_result_thread_send_failure_is_logged(self, bot_components, caplog):
+        """최종 결과 thread.send 실패 시 경고 로그만 남기고 예외를 전파하지 않는다."""
+        import logging
+
+        _, tree, guild = bot_components
+        callback = _get_callback(tree, guild, "thesis")
+        ix = self._make_interaction()
+        progress_msg = MagicMock()
+        progress_msg.edit = AsyncMock()
+        ix.progress_thread.send.side_effect = [progress_msg, RuntimeError("thread deleted")]
+        caplog.set_level(logging.WARNING, logger="nuri.agents.discord.bot")
+
+        result = {"event": "result", "rating": "Hold", "outcome": "verdict", "run_hash": "a" * 64}
+        with patch("nuri.agents.discord.bot._run_thesis_stream", return_value=(0, result)):
+            asyncio.run(callback(ix, "TEST"))
+
+        assert any("thesis result send failed" in r.message for r in caplog.records)
+
     def test_health_handler_runs_health_check_subprocess(self, bot_components, monkeypatch):
         """/health: defer → bash scripts/health_check.sh → followup.send."""
         _, tree, guild = bot_components

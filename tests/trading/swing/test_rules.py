@@ -3,6 +3,7 @@
 Extracted from the former tests/test_trading_strategy_all.py.
 Shared fixtures live in conftest.py for this directory.
 """
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -16,21 +17,32 @@ class TestSwingRules:
 
     def test_entry_evaluation(self, db_path):
         from nuri.trading.swing.rules import evaluate_entries
+
         entries = evaluate_entries(scan_results=[], db_path=db_path)
         assert entries == []
 
     def test_exit_no_positions(self, db_path):
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=db_path)
         assert exits == []
 
     def test_save_entry(self, db_path):
         from nuri.trading.swing.rules import SwingEntry, save_entries
-        entries = [SwingEntry(
-            ticker="TEST", price=100.0, scan_signal="volume_spike",
-            scan_score=30, agent_action="BUY", agent_confidence=70,
-            agent_agreement=0.6, approved=True, reason="test",
-        )]
+
+        entries = [
+            SwingEntry(
+                ticker="TEST",
+                price=100.0,
+                scan_signal="volume_spike",
+                scan_score=30,
+                agent_action="BUY",
+                agent_confidence=70,
+                agent_agreement=0.6,
+                approved=True,
+                reason="test",
+            )
+        ]
         n = save_entries(entries, db_path=db_path)
         assert n == 1
         rows = query("SELECT * FROM swing_trades WHERE ticker='TEST'", db_path=db_path)
@@ -43,12 +55,14 @@ class TestSwingEntry:
 
     def test_create(self):
         from nuri.trading.swing.rules import SwingEntry
+
         e = SwingEntry("AAPL", 150.0, "rsi_oversold", 30.0, "BUY", 65.0, 0.8, True, "ok")
         assert e.ticker == "AAPL"
         assert e.approved is True
 
     def test_rejected(self):
         from nuri.trading.swing.rules import SwingEntry
+
         e = SwingEntry("AAPL", 150.0, "rsi_oversold", 30.0, "HOLD", 30.0, 0.5, False, "에이전트 HOLD")
         assert e.approved is False
 
@@ -58,12 +72,14 @@ class TestSwingExit:
 
     def test_create(self):
         from nuri.trading.swing.rules import SwingExit
+
         x = SwingExit("AAPL", 150.0, 165.0, 10.0, 5, "take_profit", True)
         assert x.should_exit is True
         assert x.exit_reason == "take_profit"
 
     def test_hold(self):
         from nuri.trading.swing.rules import SwingExit
+
         x = SwingExit("AAPL", 150.0, 152.0, 1.3, 2, "hold", False)
         assert x.should_exit is False
 
@@ -73,6 +89,7 @@ class TestSaveEntries:
 
     def test_save_approved(self, db_path):
         from nuri.trading.swing.rules import SwingEntry, save_entries
+
         entries = [
             SwingEntry("AAPL", 150.0, "rsi_oversold", 30.0, "BUY", 65.0, 0.8, True, "ok"),
             SwingEntry("MSFT", 300.0, "macd_golden", 25.0, "HOLD", 30.0, 0.5, False, "rejected"),
@@ -85,11 +102,13 @@ class TestSaveEntries:
 
     def test_save_empty(self, db_path):
         from nuri.trading.swing.rules import save_entries
+
         n = save_entries([], db_path=db_path)
         assert n == 0
 
     def test_save_all_rejected(self, db_path):
         from nuri.trading.swing.rules import SwingEntry, save_entries
+
         entries = [
             SwingEntry("AAPL", 150.0, "rsi_oversold", 30.0, "HOLD", 30.0, 0.5, False, "no"),
         ]
@@ -102,6 +121,7 @@ class TestCheckExits:
 
     def test_no_open_trades(self, db_path):
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=db_path)
         assert exits == []
 
@@ -113,13 +133,23 @@ class TestCheckExits:
                 "VALUES (?, ?, ?, ?, 'open')",
                 ("AAPL", today, 100.0, "rsi_oversold"),
             )
-        prices = pd.DataFrame([{
-            "ticker": "AAPL", "date": today,
-            "open": 114, "high": 116, "low": 113, "close": 115.0,
-            "volume": 1000000, "adj_close": 115.0,
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "AAPL",
+                    "date": today,
+                    "open": 114,
+                    "high": 116,
+                    "low": 113,
+                    "close": 115.0,
+                    "volume": 1000000,
+                    "adj_close": 115.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=db_path)
         assert len(exits) == 1
         assert exits[0].exit_reason == "take_profit"
@@ -133,13 +163,23 @@ class TestCheckExits:
                 "VALUES (?, ?, ?, ?, 'open')",
                 ("BAD", today, 100.0, "bb_bounce"),
             )
-        prices = pd.DataFrame([{
-            "ticker": "BAD", "date": today,
-            "open": 93, "high": 94, "low": 92, "close": 93.0,
-            "volume": 1000000, "adj_close": 93.0,
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "BAD",
+                    "date": today,
+                    "open": 93,
+                    "high": 94,
+                    "low": 92,
+                    "close": 93.0,
+                    "volume": 1000000,
+                    "adj_close": 93.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=db_path)
         assert len(exits) == 1
         assert exits[0].exit_reason == "stop_loss"
@@ -153,16 +193,55 @@ class TestCheckExits:
                 "VALUES (?, ?, ?, ?, 'open')",
                 ("HOLD", entry_date, 100.0, "momentum"),
             )
-        prices = pd.DataFrame([{
-            "ticker": "HOLD", "date": today,
-            "open": 101, "high": 102, "low": 100, "close": 101.0,
-            "volume": 1000000, "adj_close": 101.0,
-        }])
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "HOLD",
+                    "date": today,
+                    "open": 101,
+                    "high": 102,
+                    "low": 100,
+                    "close": 101.0,
+                    "volume": 1000000,
+                    "adj_close": 101.0,
+                }
+            ]
+        )
         upsert_prices(prices, db_path)
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=db_path)
         assert len(exits) == 1
         assert exits[0].exit_reason == "max_hold"
+
+    def test_zero_entry_price_skipped_without_zero_division(self, db_path):
+        """entry_price <= 0 스윙 포지션은 ZeroDivisionError 없이 건너뛴다."""
+        today = datetime.now().strftime("%Y-%m-%d")
+        with get_db(db_path) as conn:
+            conn.execute(
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, entry_signal, status) "
+                "VALUES (?, ?, ?, ?, 'open')",
+                ("ZERO", today, 0.0, "momentum"),
+            )
+        prices = pd.DataFrame(
+            [
+                {
+                    "ticker": "ZERO",
+                    "date": today,
+                    "open": 100,
+                    "high": 101,
+                    "low": 99,
+                    "close": 100.0,
+                    "volume": 1000000,
+                    "adj_close": 100.0,
+                }
+            ]
+        )
+        upsert_prices(prices, db_path)
+        from nuri.trading.swing.rules import check_exits
+
+        exits = check_exits(db_path=db_path)
+        assert exits == []
 
 
 class TestCheckExits_R18:
@@ -170,10 +249,12 @@ class TestCheckExits_R18:
 
     def test_take_profit_exit(self, rich_db):
         from nuri.trading.swing.rules import check_exits
+
         with get_db(rich_db) as conn:
             conn.execute(
                 "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
-                "VALUES ('AAPL', '2024-10-01', 100.0, 'open')")
+                "VALUES ('AAPL', '2024-10-01', 100.0, 'open')"
+            )
         exits = check_exits(rich_db)
         assert len(exits) >= 1
         tp = [e for e in exits if e.exit_reason == "take_profit"]
@@ -181,6 +262,7 @@ class TestCheckExits_R18:
 
     def test_no_open_trades(self, rich_db):
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(rich_db)
         assert exits == []
 
@@ -190,12 +272,14 @@ class TestPrintEntries:
 
     def test_empty(self, capsys):
         from nuri.trading.swing.rules import print_entries
+
         print_entries([])
         output = capsys.readouterr().out
         assert "없음" in output
 
     def test_with_entries(self, capsys):
         from nuri.trading.swing.rules import SwingEntry, print_entries
+
         entries = [
             SwingEntry("AAPL", 150.0, "rsi_oversold", 30.0, "BUY", 65.0, 0.8, True, "ok"),
             SwingEntry("MSFT", 300.0, "macd_golden", 25.0, "HOLD", 30.0, 0.5, False, "no"),
@@ -211,12 +295,14 @@ class TestPrintExits:
 
     def test_empty(self, capsys):
         from nuri.trading.swing.rules import print_exits
+
         print_exits([])
         output = capsys.readouterr().out
         assert "없음" in output
 
     def test_with_exits(self, capsys):
         from nuri.trading.swing.rules import SwingExit, print_exits
+
         exits = [SwingExit("AAPL", 150.0, 165.0, 10.0, 5, "take_profit", True)]
         print_exits(exits)
         output = capsys.readouterr().out
@@ -234,6 +320,7 @@ class TestConstants:
             STOP_LOSS_PCT,
             TAKE_PROFIT_PCT,
         )
+
         assert TAKE_PROFIT_PCT == 10.0
         assert STOP_LOSS_PCT == -5.0
         assert MAX_HOLD_DAYS == 7
@@ -247,11 +334,14 @@ class TestEvaluateEntries:
     def test_approved_entry(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
         from nuri.trading.swing.scanner import ScanResult
+
         scan_results = [
             ScanResult("AAPL", 180.0, 2.0, 8.0, 3.0, 55.0, 0.6, "volume_spike", 40.0),
         ]
         mock_consensus = MagicMock(
-            final_action="BUY", final_confidence=75.0, agreement_rate=0.6,
+            final_action="BUY",
+            final_confidence=75.0,
+            agreement_rate=0.6,
         )
         with patch("nuri.trading.agents.consensus.analyze_ticker", return_value=mock_consensus):
             entries = evaluate_entries(scan_results=scan_results, db_path=rich_db)
@@ -261,11 +351,14 @@ class TestEvaluateEntries:
     def test_rejected_low_confidence(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
         from nuri.trading.swing.scanner import ScanResult
+
         scan_results = [
             ScanResult("NVDA", 900.0, 3.0, 10.0, 2.0, 60.0, 0.5, "momentum", 30.0),
         ]
         mock_consensus = MagicMock(
-            final_action="BUY", final_confidence=30.0, agreement_rate=0.3,
+            final_action="BUY",
+            final_confidence=30.0,
+            agreement_rate=0.3,
         )
         with patch("nuri.trading.agents.consensus.analyze_ticker", return_value=mock_consensus):
             entries = evaluate_entries(scan_results=scan_results, db_path=rich_db)
@@ -275,6 +368,7 @@ class TestEvaluateEntries:
     def test_low_score_skipped(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
         from nuri.trading.swing.scanner import ScanResult
+
         scan_results = [
             ScanResult("AAPL", 180.0, 1.0, 3.0, 1.5, 50.0, 0.5, "none", 10.0),
         ]
@@ -283,6 +377,7 @@ class TestEvaluateEntries:
 
     def test_empty_scan_results(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
+
         entries = evaluate_entries(scan_results=[], db_path=rich_db)
         assert entries == []
 
@@ -292,6 +387,7 @@ class TestSaveEntries_R18:
 
     def test_saves_approved(self, rich_db):
         from nuri.trading.swing.rules import SwingEntry, save_entries
+
         entries = [
             SwingEntry("AAPL", 180.0, "volume_spike", 40.0, "BUY", 75.0, 0.6, True, "approved"),
             SwingEntry("NVDA", 900.0, "momentum", 50.0, "HOLD", 40.0, 0.3, False, "rejected"),
@@ -301,6 +397,7 @@ class TestSaveEntries_R18:
 
     def test_no_approved_returns_zero(self, rich_db):
         from nuri.trading.swing.rules import SwingEntry, save_entries
+
         entries = [
             SwingEntry("NVDA", 900.0, "momentum", 50.0, "HOLD", 40.0, 0.3, False, "rejected"),
         ]
@@ -313,6 +410,7 @@ class TestSwingPrintHelpers:
 
     def test_print_entries_approved(self, capsys):
         from nuri.trading.swing.rules import SwingEntry, print_entries
+
         entries = [
             SwingEntry("AAPL", 180.0, "volume_spike", 40.0, "BUY", 75.0, 0.6, True, "approved"),
             SwingEntry("NVDA", 900.0, "momentum", 50.0, "HOLD", 40.0, 0.3, False, "rejected: low conf"),
@@ -324,6 +422,7 @@ class TestSwingPrintHelpers:
 
     def test_print_exits(self, capsys):
         from nuri.trading.swing.rules import SwingExit, print_exits
+
         exits = [
             SwingExit("AAPL", 170.0, 185.0, 8.82, 3, "hold", False),
             SwingExit("NVDA", 900.0, 800.0, -11.11, 5, "stop_loss", True),
@@ -338,11 +437,13 @@ class TestSwingRulesDeep:
 
     def test_evaluate_entries(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
+
         entries = evaluate_entries(db_path=rich_db)
         assert isinstance(entries, list)
 
     def test_check_exits(self, rich_db):
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=rich_db)
         assert isinstance(exits, list)
 
@@ -352,14 +453,14 @@ class TestSwingAgentSellExit:
 
     def test_agent_sell_triggers_exit(self, rich_db):
         from nuri.trading.swing.rules import check_exits
+
         latest = query(
             "SELECT close FROM prices WHERE ticker='AAPL' ORDER BY date DESC LIMIT 1",
             db_path=rich_db,
         )[0]["close"]
         with get_db(rich_db) as conn:
             conn.execute(
-                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) "
-                "VALUES ('AAPL', ?, ?, 'open')",
+                "INSERT INTO swing_trades (ticker, entry_date, entry_price, status) VALUES ('AAPL', ?, ?, 'open')",
                 (datetime.now().strftime("%Y-%m-%d"), latest),
             )
         mock_consensus = MagicMock(final_action="SELL", final_confidence=85.0)
@@ -375,16 +476,19 @@ class TestSwingScanner_R8:
 
     def test_scan(self, rich_db):
         from nuri.trading.swing.scanner import scan_market
+
         results = scan_market()
         assert isinstance(results, list)
 
     def test_evaluate_entries(self, rich_db):
         from nuri.trading.swing.rules import evaluate_entries
+
         entries = evaluate_entries(db_path=rich_db)
         assert isinstance(entries, list)
 
     def test_check_exits(self, rich_db):
         from nuri.trading.swing.rules import check_exits
+
         exits = check_exits(db_path=rich_db)
         assert isinstance(exits, list)
 
@@ -410,6 +514,7 @@ class TestSwingRulesMainBlock:
         monkeypatch.setattr(sys, "argv", ["rules.py", "--check"])
 
         import runpy
+
         runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
 
         out = capsys.readouterr().out
@@ -432,10 +537,12 @@ class TestSwingRulesMainBlock:
         monkeypatch.setattr(db_mod, "DB_PATH", path)
         # scan_market source-level patch — 빈 결과 → evaluate_entries 빈 list
         import nuri.trading.swing.scanner as scanner_mod
+
         monkeypatch.setattr(scanner_mod, "scan_market", lambda market="us": [])
         monkeypatch.setattr(sys, "argv", ["rules.py"])
 
         import runpy
+
         runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
 
         out = capsys.readouterr().out
@@ -463,23 +570,35 @@ class TestSwingRulesMainBlock:
 
         # scan_market → 점수 40 짜리 1건 (MIN_SCAN_SCORE=20 통과)
         scan_result = ScanResult(
-            "AAPL", 180.0, 2.0, 8.0, 3.0, 55.0, 0.6, "volume_spike", 40.0,
+            "AAPL",
+            180.0,
+            2.0,
+            8.0,
+            3.0,
+            55.0,
+            0.6,
+            "volume_spike",
+            40.0,
         )
         import nuri.trading.swing.scanner as scanner_mod
+
         monkeypatch.setattr(scanner_mod, "scan_market", lambda market="us": [scan_result])
 
         # analyze_ticker → BUY 75 (MIN_AGENT_CONFIDENCE=50 통과)
         mock_consensus = MagicMock(
-            final_action="BUY", final_confidence=75.0, agreement_rate=0.8,
+            final_action="BUY",
+            final_confidence=75.0,
+            agreement_rate=0.8,
         )
         import nuri.trading.agents.consensus as consensus_mod
-        monkeypatch.setattr(consensus_mod, "analyze_ticker",
-                            lambda ticker, db_path=None: mock_consensus)
+
+        monkeypatch.setattr(consensus_mod, "analyze_ticker", lambda ticker, db_path=None: mock_consensus)
         monkeypatch.setattr(sys, "argv", ["rules.py", "--market", "us"])
         # runpy 가 모듈을 __name__="__main__" 으로 재실행 → logger 이름 도 "__main__"
         caplog.set_level(logging.INFO, logger="__main__")
 
         import runpy
+
         runpy.run_module("nuri.trading.swing.rules", run_name="__main__")
 
         out = capsys.readouterr().out

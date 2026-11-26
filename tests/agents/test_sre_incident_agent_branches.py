@@ -405,3 +405,75 @@ class TestPidAlive:
         monkeypatch.setattr(os, "kill", eperm)
 
         assert _pid_alive("4242") is True
+
+
+class TestDetectorFileToctou:
+    """heartbeat / replica / frontend 마커가 검사 도중 사라져도 scan_failure 를 내지 않는다."""
+
+    def test_heartbeat_disappearing_between_check_and_stat_returns_empty(self, patched_db):
+        from nuri.agents.actors import sre_incident_agent as mod
+
+        vanishing = MagicMock()
+        vanishing.stat.side_effect = FileNotFoundError("vanished")
+        with patch.object(mod, "HEARTBEAT_PATH", vanishing):
+            out = SREIncidentAgent()._detect_scheduler_heartbeat(MagicMock(run_id="hb-race"))
+        assert out == []
+
+    def test_replica_stale_ignores_vanishing_db_file_during_glob(self, patched_db, tmp_path):
+        from pathlib import Path
+
+        from nuri.agents.actors import sre_incident_agent as mod
+
+        replicas_dir = tmp_path / "data" / "replicas"
+        replicas_dir.mkdir(parents=True)
+        vanished = replicas_dir / "vanished.db"
+        vanished.write_bytes(b"")
+
+        real_stat = Path.stat
+
+        def flaky_stat(self, *args, **kwargs):
+            if self == vanished:
+                raise FileNotFoundError("rotated away")
+            return real_stat(self, *args, **kwargs)
+
+        with (
+            patch.object(mod, "_machine_role", return_value="primary"),
+            patch.object(mod, "REPO_ROOT", tmp_path),
+            patch.object(Path, "stat", flaky_stat),
+        ):
+            out = SREIncidentAgent()._detect_replica_stale(MagicMock(run_id="rep-race"))
+        assert out == []
+
+    def test_frontend_build_stale_handles_vanishing_marker_files(self, patched_db, tmp_path):
+        from pathlib import Path
+
+        from nuri.agents.actors import sre_incident_agent as mod
+
+        frontend_dir = tmp_path / "frontend"
+        frontend_dir.mkdir()
+        now = _time.time()
+        fake_git = MagicMock(stdout=f"{int(now)} abc1234\n")
+
+        real_stat = Path.stat
+        real_read_text = Path.read_text
+
+        def flaky_stat(self, *args, **kwargs):
+            if self.name in {"BUILD_ID", ".next.restart_pending"}:
+                raise FileNotFoundError("vanished")
+            return real_stat(self, *args, **kwargs)
+
+        def flaky_read_text(self, *args, **kwargs):
+            if self.name in {"pid", ".next.failed"}:
+                raise FileNotFoundError("vanished")
+            return real_read_text(self, *args, **kwargs)
+
+        with (
+            patch.object(mod, "_machine_role", return_value="primary"),
+            patch.object(mod, "FRONTEND_DIR", frontend_dir),
+            patch.object(mod, "REPO_ROOT", tmp_path),
+            patch("subprocess.run", return_value=fake_git),
+            patch.object(Path, "stat", flaky_stat),
+            patch.object(Path, "read_text", flaky_read_text),
+        ):
+            out = SREIncidentAgent()._detect_frontend_build_stale(MagicMock(run_id="fe-race"))
+        assert out == []

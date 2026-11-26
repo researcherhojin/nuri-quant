@@ -410,3 +410,110 @@ class TestWebhookExceptionPropagation:
         monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", lambda *a, **kw: FakeResp())
         with pytest.raises(requests.HTTPError, match="403"):
             send_webhook({"title": "x"}, webhook_url="https://example.test/wh")
+
+
+class TestWebhookRetryAndTruncation:
+    def test_retries_on_429_honoring_capped_retry_after(self, monkeypatch):
+        from nuri.alerts.discord_bot import send_webhook
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+        resp_429 = MagicMock(status_code=429, headers={"Retry-After": "30"})
+        resp_ok = MagicMock(status_code=204, headers={})
+        resp_ok.raise_for_status = MagicMock()
+
+        mock_post = MagicMock(side_effect=[resp_429, resp_ok])
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", mock_post)
+
+        assert send_webhook({"title": "alert"}, webhook_url="https://example.test/wh") is True
+        assert mock_post.call_count == 2
+        assert sleeps == [5.0]
+
+    def test_retries_on_5xx_then_succeeds(self, monkeypatch):
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+        resp_503 = MagicMock(status_code=503, headers={})
+        resp_ok = MagicMock(status_code=200, headers={})
+        resp_ok.raise_for_status = MagicMock()
+
+        mock_post = MagicMock(side_effect=[resp_503, resp_ok])
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", mock_post)
+
+        assert send_webhook_text("outage alert", webhook_url="https://example.test/wh") is True
+        assert mock_post.call_count == 2
+        assert sleeps == [1.0]
+
+    def test_does_not_retry_on_400(self, monkeypatch):
+        import requests
+
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+        resp_400 = MagicMock(status_code=400, headers={})
+        resp_400.raise_for_status.side_effect = requests.HTTPError("400 Bad Request")
+        mock_post = MagicMock(return_value=resp_400)
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", mock_post)
+
+        with pytest.raises(requests.HTTPError, match="400"):
+            send_webhook_text("bad", webhook_url="https://example.test/wh")
+        assert mock_post.call_count == 1
+        assert sleeps == []
+
+    def test_send_webhook_text_truncates_over_2000_chars(self, monkeypatch):
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        captured: dict = {}
+        resp_ok = MagicMock(status_code=200, headers={})
+        resp_ok.raise_for_status = MagicMock()
+
+        def fake_post(url, json=None, timeout=None):
+            captured["json"] = json
+            return resp_ok
+
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", fake_post)
+        assert send_webhook_text("A" * 2500, webhook_url="https://example.test/wh") is True
+        content = captured["json"]["content"]
+        assert len(content) == 2000
+        assert content.endswith("…")
+
+    def test_send_webhook_text_preserves_exact_2000_chars(self, monkeypatch):
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        captured: dict = {}
+        resp_ok = MagicMock(status_code=200, headers={})
+        resp_ok.raise_for_status = MagicMock()
+
+        def fake_post(url, json=None, timeout=None):
+            captured["json"] = json
+            return resp_ok
+
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", fake_post)
+        exact = "B" * 2000
+        assert send_webhook_text(exact, webhook_url="https://example.test/wh") is True
+        assert captured["json"]["content"] == exact
+
+    def test_retries_on_429_without_or_invalid_retry_after_and_exhausts_5xx(self, monkeypatch):
+        import requests
+
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+        resp_429_no_hdr = MagicMock(status_code=429, headers={})
+        resp_429_bad_hdr = MagicMock(status_code=429, headers={"Retry-After": "not-a-number"})
+        resp_503_final = MagicMock(status_code=503, headers={})
+        resp_503_final.raise_for_status.side_effect = requests.HTTPError("503 Service Unavailable")
+        mock_post = MagicMock(side_effect=[resp_429_no_hdr, resp_429_bad_hdr, resp_503_final])
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", mock_post)
+
+        with pytest.raises(requests.HTTPError, match="503"):
+            send_webhook_text("still down", webhook_url="https://example.test/wh")
+        assert mock_post.call_count == 3
+        assert sleeps == [1.0, 2.0]

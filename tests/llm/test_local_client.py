@@ -54,6 +54,16 @@ class FakeSession:
         self.cfg, self.version, self.digest = cfg, version, digest
         self.response = response if response is not None else ok_response()
         self.calls: list[tuple[str, str, dict]] = []
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+
+    def close(self):
+        self.closed = True
 
     def _r(self, payload):
         return SimpleNamespace(json=lambda: payload, raise_for_status=lambda: None)
@@ -105,14 +115,51 @@ class TestBeforeAnyRequest:
         with pytest.raises(lc.LocalModelError) as e:
             lc.generate("hi", cfg=cfg, session=s)
         assert e.value.code == "not_loopback"
+        assert e.value.detail == "local model URL must be loopback"
+        assert url not in str(e.value)
         assert s.calls == []
+
+    def test_trailing_slash_in_base_url_is_stripped(self, cfg):
+        cfg["base_url"] = "http://127.0.0.1:11434/"
+        s = FakeSession(cfg)
+        lc.generate("hi", cfg=cfg, session=s, archive=False)
+        urls = [c[1] for c in s.calls]
+        assert urls
+        assert all("//api/" not in u and u.startswith("http://127.0.0.1:11434/api/") for u in urls)
 
     @pytest.mark.parametrize("url", ["http://127.0.0.1:11434", "http://localhost:11434", "http://[::1]:11434"])
     def test_loopback_urls_pass(self, url):
         assert lc.is_loopback(url)
 
     def test_the_session_ignores_environment_proxies(self):
-        assert lc._session().trust_env is False
+        with lc._session() as s:
+            assert s.trust_env is False
+
+    def test_internal_session_is_closed_on_success_and_error(self, cfg, monkeypatch):
+        created: list[FakeSession] = []
+
+        def make_session():
+            s = FakeSession(cfg)
+            created.append(s)
+            return s
+
+        monkeypatch.setattr(lc, "_session", make_session)
+        lc.generate("hi", cfg=cfg, archive=False)
+        assert len(created) == 1 and created[0].closed is True
+
+        def make_bad_session():
+            s = FakeSession(cfg, version="0.0.1")
+            created.append(s)
+            return s
+
+        monkeypatch.setattr(lc, "_session", make_bad_session)
+        with pytest.raises(lc.LocalModelError):
+            lc.generate("hi", cfg=cfg, archive=False)
+        assert len(created) == 2 and created[1].closed is True
+
+        caller_session = FakeSession(cfg)
+        lc.generate("hi", cfg=cfg, archive=False, session=caller_session)
+        assert caller_session.closed is False
 
 
 class TestRuntimeGuard:

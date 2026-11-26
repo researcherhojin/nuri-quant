@@ -19,6 +19,7 @@ class NewsCollector(BaseCollector):
 
     def __init__(self):
         super().__init__("news")
+        self._raise_on_fetch_error = False
 
     def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
         """뉴스 수집. source='universe' 시 universe.yaml 전체."""
@@ -33,13 +34,29 @@ class NewsCollector(BaseCollector):
 
         self.logger.info(f"뉴스 수집 대상: {len(tickers)} 종목 (source={source})")
         iterator = tqdm(tickers, desc=f"  news [{source}]", unit="tk", disable=len(tickers) < 20)
+        attempted = len(tickers)
+        errors: list[Exception] = []
 
-        for ticker in iterator:
-            items = self._fetch_ticker_news(ticker)
-            if not items:
-                failed.append(ticker)
-                continue
-            records.extend(items)
+        self._raise_on_fetch_error = True
+        try:
+            for ticker in iterator:
+                try:
+                    items = self._fetch_ticker_news(ticker)
+                except Exception as e:  # noqa: BLE001 — 단일 종목 실패가 전체를 막지 않게
+                    errors.append(e)
+                    failed.append(ticker)
+                    continue
+                if not items:
+                    failed.append(ticker)
+                    continue
+                records.extend(items)
+        finally:
+            self._raise_on_fetch_error = False
+
+        if attempted > 0 and len(errors) == attempted:
+            raise RuntimeError(
+                f"[{self.name}] 모든 종목({attempted}개) 뉴스 수집 실패 — 첫 오류: {errors[0]}"
+            ) from errors[0]
 
         if len(tickers) >= 20:
             sample = ", ".join(failed[:5]) + (f" 외 {len(failed) - 5}개" if len(failed) > 5 else "")
@@ -76,6 +93,8 @@ class NewsCollector(BaseCollector):
             return self._parse_yfinance_news(related, ticker)
         except Exception as e:
             self.logger.debug(f"{ticker}: yfinance news 조회 실패 — {e}")
+            if self._raise_on_fetch_error:
+                raise
             return []
 
     @staticmethod

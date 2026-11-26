@@ -23,6 +23,7 @@ from nuri.core.timezone import kst_now, today_kst
 
 OLDEST_PENDING_ALERT_SECONDS = 30 * 60  # 30분
 PENDING_COUNT_ALERT_THRESHOLD = 100  # backlog 한도
+FAILED_COUNT_ALERT_THRESHOLD = 0  # failed row 존재 시 경고
 
 # Watchdog 자체 alert 의 dedupe — 같은 issue 가 30분 안에 반복 emit 되지 않게
 # (DB 안 거치고 caller 가 cron 빈도 조절. 여기는 1회 직접 발송만)
@@ -76,7 +77,7 @@ class OutboxWatchdog(Actor):
                 }
             )
 
-        # Check 2 — per-channel pending count
+        # Check 2 — per-channel pending / failed count
         for channel, statuses in health.get("by_channel", {}).items():
             pending = int(statuses.get("pending", 0))
             if pending > PENDING_COUNT_ALERT_THRESHOLD:
@@ -86,6 +87,16 @@ class OutboxWatchdog(Actor):
                         "kind": "pending_count",
                         "value": pending,
                         "threshold": PENDING_COUNT_ALERT_THRESHOLD,
+                    }
+                )
+            failed = int(statuses.get("failed", 0))
+            if failed > FAILED_COUNT_ALERT_THRESHOLD:
+                breaches.append(
+                    {
+                        "channel": channel,
+                        "kind": "failed_count",
+                        "value": failed,
+                        "threshold": FAILED_COUNT_ALERT_THRESHOLD,
                     }
                 )
 

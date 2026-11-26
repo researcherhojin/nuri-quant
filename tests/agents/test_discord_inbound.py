@@ -150,6 +150,22 @@ class TestEmitMessage:
         msg = _mock_message(channel_id=987654, parent_id=999)
         assert inbound.emit_message(msg, targets={222: "agent-dev-log"}) is None
 
+    def test_same_microsecond_emits_do_not_overwrite(self, sandbox, monkeypatch):
+        """동일 마이크로초에 연달아 들어온 이벤트도 랜덤 hex 접미사로 덮어쓰기를 방지한다."""
+        from datetime import datetime
+
+        from nuri.core.timezone import KST
+
+        fixed = datetime(2026, 7, 8, 12, 0, 0, 123456, tzinfo=KST)
+        monkeypatch.setattr(inbound, "kst_now", lambda: fixed)
+        p1 = inbound.emit_message(_mock_message(111, content="first", msg_id=1), targets={111: "agent-control"})
+        p2 = inbound.emit_message(_mock_message(111, content="second", msg_id=2), targets={111: "agent-control"})
+        assert p1 is not None and p2 is not None
+        assert p1 != p2
+        assert p1.name.endswith("_message.json") and p2.name.endswith("_message.json")
+        assert json.loads(p1.read_text())["content_masked"] == "first"
+        assert json.loads(p2.read_text())["content_masked"] == "second"
+
 
 class TestEmitReaction:
     def test_writes_file_for_target_channel(self, sandbox):
@@ -308,3 +324,16 @@ class TestAttachedHandlerInvocation:
         with patch("nuri.agents.discord.inbound.emit_reaction", side_effect=OSError("io fail")):
             await handlers["on_raw_reaction_remove"](payload)
         assert any("inbound reaction_remove emit failed" in rec.message for rec in caplog.records)
+
+    @pytest.mark.anyio("asyncio")
+    async def test_attached_handlers_offload_writes_via_to_thread(self, attached_bot):
+        """블로킹 파일 I/O 는 asyncio.to_thread 로 오프로드해 이벤트 루프를 막지 않는다."""
+        import asyncio
+
+        handlers, _ = attached_bot
+        real_to_thread = asyncio.to_thread
+        with patch("nuri.agents.discord.inbound.asyncio.to_thread", wraps=real_to_thread) as spy:
+            await handlers["on_message"](_mock_message(111, content="hi"))
+            await handlers["on_raw_reaction_add"](_mock_reaction(222))
+            await handlers["on_raw_reaction_remove"](_mock_reaction(222))
+        assert spy.await_count == 3

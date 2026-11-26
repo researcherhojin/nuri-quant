@@ -200,4 +200,36 @@ describe("ReportPage", () => {
       expect(global.fetch).toHaveBeenCalledWith("/api/report");
     });
   });
+
+  it("shows error without parsing JSON when /api/report/context returns non-ok", async () => {
+    const ctxJson = vi.fn();
+    global.fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 500, json: ctxJson });
+
+    render(<ReportPage />);
+    fireEvent.click(screen.getByText("Generate Report"));
+
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
+    });
+
+    expect(ctxJson).not.toHaveBeenCalled();
+    expect(screen.getByText("Generate Report")).not.toBeDisabled();
+  });
+
+  it("shows error without parsing JSON when /api/report returns non-ok", async () => {
+    const reportJson = vi.fn();
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ context: "ctx" }) })
+      .mockResolvedValueOnce({ ok: false, status: 503, json: reportJson });
+
+    render(<ReportPage />);
+    fireEvent.click(screen.getByText("Generate Report"));
+
+    await waitFor(() => {
+      expect(screen.getByText(ERRORS.REPORT_FAILED)).toBeInTheDocument();
+    });
+
+    expect(reportJson).not.toHaveBeenCalled();
+    expect(screen.getByText("Generate Report")).not.toBeDisabled();
+  });
 });

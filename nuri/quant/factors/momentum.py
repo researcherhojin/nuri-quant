@@ -67,8 +67,8 @@ def compute_momentum(tickers: list[str] | None = None) -> pd.DataFrame:
         if len(s) < 14:
             continue
 
-        # 기간 수익률 (데이터 전체)
-        period_return = (s.iloc[-1] / s.iloc[0]) - 1
+        # 기간 수익률 (데이터 전체) — 시작가 <= 0 이면 inf 로 전체 min-max 가 NaN 오염되므로 0.0 처리
+        period_return = (s.iloc[-1] / s.iloc[0]) - 1 if s.iloc[0] > 0 else 0.0
 
         # RSI 기반 모멘텀 (signals 테이블에서). 없거나 낡았으면 중립 50.
         # `or 50` 이 아니라 `is None` 인 이유: RSI 0.0 은 falsy 라서 `or` 로 쓰면 실제

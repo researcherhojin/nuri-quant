@@ -213,8 +213,9 @@ class CollectorOrchestrator(Actor):
                         "run_id": run_id,
                     }
                 )
-                # 마지막 시도면 retry 안 함.
-                if attempt_idx >= max_retries:
+                # 영구 실패('failed') 또는 마지막 시도면 retry 안 함.
+                # transient('timeout', 'rate_limited') 만 backoff 후 재시도.
+                if status == "failed" or attempt_idx >= max_retries:
                     break
                 # exponential backoff: 1s → 2s → 4s ...
                 backoff_s = self.BACKOFF_BASE_S * (2**attempt_idx)
@@ -292,7 +293,7 @@ class CollectorOrchestrator(Actor):
     @staticmethod
     def _extract_row_count(value: Any) -> int:
         """collector_fn 반환값 → row count 추정. 없으면 0."""
-        if value is None:
+        if value is None or isinstance(value, bool):
             return 0
         if isinstance(value, int):
             return max(value, 0)

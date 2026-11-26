@@ -327,6 +327,9 @@ def _dispatch_collector(name: str, **kwargs):
         # **선택적 표면 채널의 가용성**에 묶여, 감시가 정상 동작한 날이 no-op 으로 기록된다.
         # 하필 Discord outage 때 그렇게 되므로 정확히 관측이 가장 필요한 순간에 눈이 먼다.
         return summary.n_alerted
+    else:
+        logger.warning("Unknown collector job: %s", name)
+        raise ValueError(f"Unknown collector job: {name}")
 
 
 def _run_collector(name: str, **kwargs):
@@ -513,7 +516,8 @@ def _run_backup():
     import subprocess
 
     try:
-        subprocess.run(["bash", BACKUP_SCRIPT], check=True)
+        script = Path(__file__).resolve().parents[1] / BACKUP_SCRIPT
+        subprocess.run(["bash", str(script)], check=True, timeout=300)
     except Exception as e:
         logger.error(f"[backup] 실행 실패: {e}", exc_info=True)
 
@@ -883,10 +887,13 @@ def _run_offbox_heartbeat():
 
 def _prune_reports():
     """`data/reports/` 날짜 디렉터리 30일 보존 (#1654). 주 1회, 소비자는 전부 최신 디렉터리만 읽는다."""
-    from nuri.analysis.report_prune import prune_report_dirs
+    try:
+        from nuri.analysis.report_prune import prune_report_dirs
 
-    removed = prune_report_dirs()
-    logger.info("prune_reports: %d directories removed", len(removed))
+        removed = prune_report_dirs()
+        logger.info("prune_reports: %d directories removed", len(removed))
+    except Exception:
+        logger.error("prune_reports failed", exc_info=True)
 
 
 def _self_restart():
@@ -1206,17 +1213,16 @@ def _make_trigger(cron: str, tz: Optional[str] = None) -> CronTrigger:
     if len(parts) != 5:
         raise ValueError(f"cron 필드가 5개가 아님: {cron!r}")
     minute, hour, day, month, dow = parts
+    import pytz
+
     kwargs: dict[str, Any] = {
         "minute": minute,
         "hour": hour,
         "day": day,
         "month": month,
         "day_of_week": _crontab_dow(dow),
+        "timezone": pytz.timezone(tz or "Asia/Seoul"),
     }
-    if tz:
-        import pytz
-
-        kwargs["timezone"] = pytz.timezone(tz)
     return CronTrigger(**kwargs)
 
 
@@ -1281,7 +1287,7 @@ def _dow_num(token: str) -> int:
 
 def create_scheduler() -> BlockingScheduler:
     """스케줄러 생성 및 작업 등록."""
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(timezone="Asia/Seoul")
 
     for job in SCHEDULES:
         # 요일 규약 변환은 `_make_trigger` 안에 있다 (#929) — tz 유무로 갈리지 않는다.
@@ -1331,10 +1337,10 @@ def main():
 
     scheduler = create_scheduler()
 
-    # SIGINT/SIGTERM으로 안전 종료
+    # SIGINT/SIGTERM으로 안전 종료 — 시그널 핸들러 안에서 로깅 락 재진입 및
+    # 워커 스레드 대기(wait=True) 데드락을 피하기 위해 wait=False로 즉시 종료
     def shutdown(signum, frame):
-        logger.info("스케줄러 종료 중...")
-        scheduler.shutdown()
+        scheduler.shutdown(wait=False)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)

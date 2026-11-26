@@ -183,3 +183,37 @@ class TestSSEStream:
         assert "data:" in result
         parsed = json.loads(result.replace("data:", "").strip())
         assert "error" in parsed
+
+    def test_event_generator_runs_snapshot_off_event_loop(self):
+        """동기 _get_snapshot 은 asyncio.to_thread 로 실행되어 이벤트 루프를 블로킹하지 않는다."""
+        import threading
+
+        import nuri.api.routes.stream as stream_mod
+
+        snapshot_thread_ids: list[int] = []
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocking_snapshot():
+            snapshot_thread_ids.append(threading.get_ident())
+            entered.set()
+            release.wait(timeout=2.0)
+            return {"timestamp": 99.0, "regime": "off_loop"}
+
+        async def run():
+            loop_thread_id = threading.get_ident()
+            gen = stream_mod._event_generator()
+            with patch.object(stream_mod, "_get_snapshot", side_effect=blocking_snapshot):
+                task = asyncio.create_task(gen.__anext__())
+                # 이벤트 루프가 살아 있어야 다른 코루틴이 돌며 워커를 풀어줄 수 있다.
+                while not entered.is_set():
+                    await asyncio.sleep(0.01)
+                release.set()
+                event = await task
+            return loop_thread_id, event
+
+        loop_thread_id, event = asyncio.run(run())
+        assert len(snapshot_thread_ids) == 1
+        assert snapshot_thread_ids[0] != loop_thread_id
+        parsed = json.loads(event.replace("data:", "").strip())
+        assert parsed["regime"] == "off_loop"

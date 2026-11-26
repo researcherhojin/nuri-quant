@@ -5,6 +5,7 @@
 """
 
 import logging
+import math
 from datetime import date
 from typing import cast
 
@@ -49,6 +50,9 @@ def _market_sentiment() -> float | None:
         value = float(rows[0]["value"])
     except (ValueError, KeyError, TypeError):
         logger.warning("fear_greed 행이 깨졌음 — 센티먼트 성분 제외", exc_info=True)
+        return None
+    if not math.isfinite(value):
+        logger.warning("fear_greed 값이 비유한(%s) — 센티먼트 성분 제외", value)
         return None
     age = int(np.busday_count(observed, date.fromisoformat(today_kst())))
     if age > SENTIMENT_MAX_AGE_BUSINESS_DAYS:

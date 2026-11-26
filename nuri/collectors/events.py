@@ -10,7 +10,6 @@ OpenBB Platform으로 실적 캘린더 조회 + FOMC 하드코딩.
 import logging
 
 from nuri.collectors.base import BaseCollector
-from nuri.core.db import insert_events
 
 # 2026년 FOMC 회의 일정 (예정)
 FOMC_2026 = [
@@ -222,7 +221,7 @@ class EventsCollector(BaseCollector):
         return records
 
     def save(self, data: list[dict]) -> int:
-        """이벤트를 DB에 저장. 기존 동일 이벤트 삭제 후 재삽입."""
+        """이벤트를 DB에 저장. 기존 동일 이벤트 삭제 후 재삽입 (단일 트랜잭션)."""
         if not data:
             return 0
 
@@ -236,7 +235,12 @@ class EventsCollector(BaseCollector):
                              (ticker = ? OR (ticker IS NULL AND ? IS NULL))""",
                     (record["date"], record["event_type"], record.get("ticker"), record.get("ticker")),
                 )
-        return insert_events(data)
+            conn.executemany(
+                """INSERT INTO events (date, event_type, ticker, description, importance)
+                   VALUES (:date, :event_type, :ticker, :description, :importance)""",
+                data,
+            )
+        return len(data)
 
 
 if __name__ == "__main__":

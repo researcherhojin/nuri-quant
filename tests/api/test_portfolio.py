@@ -623,6 +623,33 @@ class TestImport:
         assert r.status_code == 400
         assert "500" in r.json()["detail"]
 
+    def test_import_over_max_bytes(self, client, monkeypatch):
+        """최대 업로드 바이트 초과 → 413."""
+        import nuri.api.routes.portfolio as portfolio_mod
+
+        assert portfolio_mod._MAX_IMPORT_BYTES == 2 * 1024 * 1024
+        monkeypatch.setattr(portfolio_mod, "_MAX_IMPORT_BYTES", 64)
+        csv_content = "account,ticker,quantity,avg_price\n" + ("sample,AAPL,10,180.0\n" * 5)
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 413
+
+    @pytest.mark.parametrize(
+        ("qty", "avg"),
+        [
+            ("nan", "100.0"),
+            ("inf", "100.0"),
+            ("-inf", "100.0"),
+            ("10", "nan"),
+            ("10", "inf"),
+        ],
+    )
+    def test_import_rejects_non_finite_numbers(self, client, qty, avg):
+        """nan/inf 수량·평균가는 검증을 통과하지 못하고 거부된다."""
+        csv_content = f"account,ticker,quantity,avg_price\nsample,AAPL,{qty},{avg}\n"
+        r = client.post("/api/portfolio/import", files=_csv_file(csv_content))
+        assert r.status_code == 400
+        assert client.get("/api/portfolio").json()["count"] == 0
+
 
 class TestExport:
     """GET /api/portfolio/export tests."""
@@ -686,6 +713,46 @@ class TestSamplePortfolio:
         client.post("/api/portfolio/sample")
         r = client.get("/api/portfolio")
         assert r.json()["count"] == 5
+
+    def test_load_sample_is_atomic_on_insert_failure(self, client, tmp_path):
+        """샘플 삽입 중 DB 오류 시 기존 sample 계좌가 롤백되어 보존된다."""
+        # 기존 sample 계좌에 종목 1건 시드
+        r_seed = client.post(
+            "/api/portfolio",
+            json={
+                "account": "sample",
+                "ticker": "MSFT",
+                "quantity": 7,
+                "avg_price": 350.0,
+                "currency": "USD",
+                "sector": "Tech",
+            },
+        )
+        assert r_seed.status_code == 200
+
+        # 샘플 삽입 도중 VOO 행에서 실패를 주입하는 SQLite 트리거
+        with get_db(tmp_path / "test.db") as conn:
+            conn.execute(
+                """
+                CREATE TRIGGER fail_sample_voo
+                BEFORE INSERT ON portfolio
+                WHEN NEW.account = 'sample' AND NEW.ticker = 'VOO'
+                BEGIN
+                    SELECT RAISE(ABORT, 'injected sample insert failure');
+                END;
+                """
+            )
+
+        with pytest.raises(Exception, match="injected sample insert failure"):
+            client.post("/api/portfolio/sample")
+
+        # 단일 트랜잭션 롤백으로 기존 MSFT 보유가 그대로 남아야 한다
+        r_after = client.get("/api/portfolio")
+        assert r_after.status_code == 200
+        holdings = r_after.json()["holdings"]
+        assert len(holdings) == 1
+        assert holdings[0]["ticker"] == "MSFT"
+        assert holdings[0]["quantity"] == 7
 
 
 class TestMetadata:

@@ -1029,4 +1029,42 @@ describe("측정 원장 카드 + 표본 배지 (#1912)", () => {
     expect(screen.queryByTestId("measurement-sample")).toBeNull();
     expect(screen.getByText(DECISIONS.RAIL_PNL_NOTE)).toBeInTheDocument();
   });
+
+  it("renders thesis evidence link only for http/https URLs and blocks javascript/data schemes", async () => {
+    mockFetchAPI = vi.fn().mockResolvedValue({
+      ...mockDetail,
+      thesis: {
+        id: 1,
+        ticker: "AAPL",
+        version: 1,
+        author: "analyst",
+        stance: "bull",
+        bull_case: "strong demand",
+        bear_case: "margin pressure",
+        effective_date: "2026-04-01",
+        status: "active",
+        verdict: null,
+        criteria: [],
+        evidence: [
+          { id: 1, side: "bull", claim: "valid link", source_type: "sec", source_key: "10k", source_url: "https://example.com/10k", as_of: "2026-04-01", quote: null },
+          { id: 2, side: "bear", claim: "xss link", source_type: "news", source_key: "bad", source_url: "javascript:alert(1)", as_of: null, quote: null },
+          { id: 3, side: "bear", claim: "data link", source_type: "note", source_key: "inline", source_url: "data:text/html,hi", as_of: null, quote: null },
+          { id: 4, side: "bear", claim: "malformed link", source_type: "memo", source_key: "broken", source_url: "not a valid url", as_of: null, quote: null },
+        ],
+      },
+    });
+    const { DecisionProvenance } = await import("@/app/decisions/[id]/page-view");
+    await act(async () => {
+      render(await DecisionProvenance({ id: "531" }));
+    });
+
+    const validLink = screen.getByRole("link", { name: "sec/10k" });
+    expect(validLink).toHaveAttribute("href", "https://example.com/10k");
+    expect(screen.queryByRole("link", { name: "news/bad" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "note/inline" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "memo/broken" })).not.toBeInTheDocument();
+    expect(screen.getByText("news/bad")).toBeInTheDocument();
+    expect(screen.getByText("note/inline")).toBeInTheDocument();
+    expect(screen.getByText("memo/broken")).toBeInTheDocument();
+  });
 });

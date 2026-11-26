@@ -213,10 +213,24 @@ class ForwardOutcomeTracker(Actor):
             (max_decisions,),
         )
 
+        # 이미 확정된 (decision_id, window) 는 재측정·덮어쓰기 금지 (가격 미도착/lookahead 의
+        # realized_return IS NULL + insufficient_data 만 이후 스캔에서 재측정 허용).
+        finalized_rows = query(
+            """SELECT decision_id, observation_window
+               FROM decision_outcomes
+               WHERE hypothesis_validation IN ('pass', 'reject')
+                  OR realized_return IS NOT NULL"""
+        )
+        finalized = {(r["decision_id"], int(r["observation_window"])) for r in finalized_rows}
+
         results: list[dict[str, Any]] = []
+        skipped_finalized = 0
         for row in rows:
             r = dict(row)
             for window in windows:
+                if (r["decision_id"], window) in finalized:
+                    skipped_finalized += 1
+                    continue
                 outcome = self._measure_one(
                     decision_id=r["decision_id"],
                     ticker=r["ticker"],
@@ -238,6 +252,7 @@ class ForwardOutcomeTracker(Actor):
                 "scanned": len(rows),
                 "windows": windows,
                 "n_measurements": len(results),
+                "skipped_finalized": skipped_finalized,
                 "n_pass": n_pass,
                 "n_reject": n_reject,
                 "n_insufficient": n_insuf,
@@ -370,20 +385,21 @@ class ForwardOutcomeTracker(Actor):
         bench_entry = self._fetch_close_on_or_before(benchmark, as_of_date) if benchmark else None
         bench_exit = self._fetch_close_on_or_after(benchmark, target_date) if benchmark else None
 
-        if entry is None or exit_p is None:
+        if entry is None or exit_p is None or entry <= 0:
+            reason = "invalid entry price (<= 0)" if entry is not None and entry <= 0 else "price data missing"
             log_decision_outcome(
                 decision_id=decision_id,
                 observation_window=window,
                 tracked_as_of_date=today,
                 hypothesis_validation="insufficient_data",
-                notes=f"price missing — entry={entry}, exit={exit_p}",
+                notes=f"{reason} — entry={entry}, exit={exit_p}",
                 run_id=ctx.run_id,
             )
             return {
                 "decision_id": decision_id,
                 "window": window,
                 "validation": "insufficient_data",
-                "reason": "price data missing",
+                "reason": reason,
             }
 
         realized = (exit_p - entry) / entry

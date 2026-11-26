@@ -85,7 +85,7 @@ async def _event_generator():
     """SSE 이벤트 생성기."""
     while True:
         try:
-            snapshot = _get_snapshot()
+            snapshot = await asyncio.to_thread(_get_snapshot)
             data = json.dumps(snapshot, ensure_ascii=False)
             yield f"data: {data}\n\n"
         except Exception:

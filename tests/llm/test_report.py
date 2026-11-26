@@ -534,6 +534,18 @@ class TestOllamaErrorLogging:
             assert report._generate_ollama("synthetic prompt") == "synthetic report"
         assert post.call_args.kwargs["json"]["options"]["num_ctx"] == 16384
 
+    def test_ollama_strips_trailing_slash_from_host(self, monkeypatch):
+        from nuri.llm import local_client as lc
+        from nuri.llm import report
+
+        monkeypatch.setattr(report, "OLLAMA_HOST", "http://localhost:11434/")
+        monkeypatch.setattr(lc, "load_config", lambda: {"report": {"num_ctx": 16384}})
+        response = MagicMock()
+        response.json.return_value = {"response": "ok"}
+        with patch("requests.post", return_value=response) as post:
+            assert report._generate_ollama("prompt") == "ok"
+        assert post.call_args.args[0] == "http://localhost:11434/api/generate"
+
     def test_missing_model_logs_how_to_fix_instead_of_a_traceback(self, caplog):
         """404 는 모델 미설치다 — mini 에서 19일 동안 스택트레이스만 쌓였다 (2026-10-27)."""
         import requests

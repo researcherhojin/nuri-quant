@@ -44,7 +44,7 @@ def quiet_ops(monkeypatch):
     monkeypatch.setattr(
         ma.MaintenanceAuditor,
         "_surface_summary",
-        lambda self, output: lines.append(str(output)),
+        lambda self, output, db_path=None: lines.append(str(output)),
     )
     return lines
 
@@ -118,6 +118,44 @@ class TestHardCaps:
         assert result.output["aborted_by_cap"] == "candidates"
         assert result.outcome == ma.Outcome.WARN
         assert len(list_maintenance_candidates(db_path=db_path)) == 5, "캡 초과분이 staging 됐다"
+
+    def test_already_seen_findings_do_not_exhaust_candidate_cap_or_starve_later_scanners(
+        self, db_path, quiet_ops, monkeypatch
+    ):
+        """기존(재검출) 후보는 신규 후보 캡을 소진하지 않는다 — 뒤 스캐너의 신규 발견이 굶으면 안 된다."""
+        for i in range(10):
+            title = f"existing-{i}"
+            stage_maintenance_candidate(
+                "doc_drift", title, "old", ma._fingerprint("doc_drift", title), "run-0", db_path=db_path
+            )
+        seen_findings = [{"axis": "doc_drift", "title": f"existing-{i}", "detail": "d"} for i in range(10)]
+        new_findings = [{"axis": "doc_drift", "title": f"fresh-{i}", "detail": "d"} for i in range(3)]
+        monkeypatch.setattr(ma, "SCANNERS", (lambda ctx: seen_findings, lambda ctx: new_findings))
+
+        result = _scan(db_path, caps={"candidates": 5})
+
+        assert result.output["aborted_by_cap"] is None
+        assert result.outcome == ma.Outcome.PASS
+        assert result.output["seen_again"] == 10
+        assert result.output["staged"] == 3
+        assert len(list_maintenance_candidates(db_path=db_path)) == 13
+
+    def test_already_seen_finding_after_cap_reached_does_not_abort(self, db_path, quiet_ops, monkeypatch):
+        """신규 캡에 도달한 뒤에도 재검출(existing) 후보는 캡 초과로 중단시키지 않는다."""
+        stage_maintenance_candidate(
+            "doc_drift", "already", "old", ma._fingerprint("doc_drift", "already"), "run-0", db_path=db_path
+        )
+        findings = [
+            {"axis": "doc_drift", "title": "new-1", "detail": "d"},
+            {"axis": "doc_drift", "title": "already", "detail": "d"},
+        ]
+        monkeypatch.setattr(ma, "SCANNERS", (lambda ctx: findings,))
+
+        result = _scan(db_path, caps={"candidates": 1})
+
+        assert result.output["aborted_by_cap"] is None
+        assert result.outcome == ma.Outcome.PASS
+        assert (result.output["staged"], result.output["seen_again"]) == (1, 1)
 
     def test_wall_clock_cap_cuts_before_subprocess_launch(self, db_path, quiet_ops, monkeypatch):
         """예산 소진 후 subprocess 는 **실행 자체가 안 된다** — 사후 검사가 아니다."""
@@ -292,17 +330,20 @@ class TestSummaryPayloadIsCountsOnly:
         import json as _json
 
         captured: list[str] = []
-        monkeypatch.setattr(
-            outbox_mod,
-            "stage_ops",
-            lambda payload, **kw: captured.append(_json.dumps(payload, ensure_ascii=False)),
-        )
+        captured_db_paths: list[object] = []
+
+        def _capture_stage_ops(payload, **kw):
+            captured.append(_json.dumps(payload, ensure_ascii=False))
+            captured_db_paths.append(kw.get("db_path"))
+
+        monkeypatch.setattr(outbox_mod, "stage_ops", _capture_stage_ops)
 
         _scan(db_path)
 
         assert captured, "요약이 표면화되지 않았다 — quiet-by-design 금지"
         assert secret_title not in captured[0], "후보 내용이 Discord 요약으로 샜다"
         assert "신규 1" in captured[0]
+        assert captured_db_paths == [db_path], "db_path 가 _surface_summary → stage_ops 로 전달되지 않았다"
 
 
 class TestWiringAndRoster:

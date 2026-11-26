@@ -455,7 +455,8 @@ class SREIncidentAgent(Actor):
                       (julianday('now') - julianday(started_at)) * 24.0 AS age_hours
                FROM agent_run_ledger
                WHERE status = 'started' AND finished_at IS NULL
-                 AND datetime(started_at) < datetime('now', ?)""",
+                 AND datetime(started_at) < datetime('now', ?)
+               ORDER BY started_at ASC""",
             (f"-{int(ORPHAN_WARN_HOURS * 60)} minutes",),
         )
         out: list[dict[str, Any]] = []
@@ -525,13 +526,15 @@ class SREIncidentAgent(Actor):
 
     def _detect_scheduler_heartbeat(self, ctx: RunContext) -> list[dict[str, Any]]:
         """data/.scheduler_heartbeat mtime 검사. 파일 미존재 시 skip (info-only — 미배포 환경)."""
-        if not HEARTBEAT_PATH.exists():
+        try:
+            mtime = HEARTBEAT_PATH.stat().st_mtime
+        except OSError:
             return []
         # mtime 검사 — KST 무관하게 epoch delta 사용 (kst_now 가 아닌 time.time 활용:
         # 파일시스템 mtime 도 epoch 단위라 변환 비용 없음).
         import time as _time
 
-        age_minutes = (_time.time() - HEARTBEAT_PATH.stat().st_mtime) / 60.0
+        age_minutes = (_time.time() - mtime) / 60.0
         if age_minutes <= SCHEDULER_WARN_MIN:
             return []
         severity = "critical" if age_minutes >= SCHEDULER_CRIT_MIN else "warning"
@@ -765,8 +768,13 @@ class SREIncidentAgent(Actor):
         marker = REPO_ROOT / "data" / "replicas" / ".last_push_ok"
         now = _time.time()
 
-        if marker.exists():
-            age_h = (now - marker.stat().st_mtime) / 3600.0
+        try:
+            marker_mtime: float | None = marker.stat().st_mtime
+        except OSError:
+            marker_mtime = None
+
+        if marker_mtime is not None:
+            age_h = (now - marker_mtime) / 3600.0
             if age_h <= REPLICA_STALE_HOURS:
                 return []
             reason = "stale"
@@ -775,14 +783,15 @@ class SREIncidentAgent(Actor):
             # 후자는 배포 직후 한 주기 동안만이고, 그 뒤 첫 성공이 마커를 만든다. 임계를
             # 넘긴 부재만 사고로 치면 그 창을 오보 없이 넘긴다 — 판단 근거가 없으므로
             # 복제본 자체의 나이로 대신 잰다.
-            replicas = sorted(
-                (REPO_ROOT / "data" / "replicas").glob("*.db"),
-                key=lambda f: f.stat().st_mtime,
-                reverse=True,
-            )
-            if not replicas:
+            replica_mod_times: list[float] = []
+            for f in (REPO_ROOT / "data" / "replicas").glob("*.db"):
+                try:
+                    replica_mod_times.append(f.stat().st_mtime)
+                except OSError:
+                    continue
+            if not replica_mod_times:
                 return []
-            age_h = (now - replicas[0].stat().st_mtime) / 3600.0
+            age_h = (now - max(replica_mod_times)) / 3600.0
             if age_h <= REPLICA_STALE_HOURS:
                 return []
             reason = "marker_missing"
@@ -796,7 +805,7 @@ class SREIncidentAgent(Actor):
                     "reason": reason,
                     "age_hours": round(age_h, 1),
                     "threshold_hours": REPLICA_STALE_HOURS,
-                    "marker_mtime_utc": _utc_str(marker.stat().st_mtime) if marker.exists() else None,
+                    "marker_mtime_utc": _utc_str(marker_mtime) if marker_mtime is not None else None,
                     "hint": (
                         "state_replicator.sh primary 의 push 실패 — 수신측 SSH(원격 로그인) 와 "
                         "DEV2_PATH 를 볼 것. 복구 지점이 age_hours 만큼 밀려 있다"
@@ -829,12 +838,19 @@ class SREIncidentAgent(Actor):
         failed_mark = FRONTEND_DIR / ".next.failed"
         pending_mark = FRONTEND_DIR / ".next.restart_pending"
         build_id = FRONTEND_DIR / ".next" / "BUILD_ID"
-        built_epoch = build_id.stat().st_mtime if build_id.exists() else 0.0
+        try:
+            built_epoch = build_id.stat().st_mtime
+        except OSError:
+            built_epoch = 0.0
 
         # 빌드 진행 중(락 보유 pid 생존)이면 판정하지 않는다 — 빌드 중에는 .next 가 .next.bak 으로
         # 비켜나 BUILD_ID 가 1~3분 부재하고, 시간당 스캔이 그 창에 겹치면 build_missing 오보가 난다.
         lock_pid = FRONTEND_DIR / ".next.lock" / "pid"
-        if lock_pid.exists() and _pid_alive(lock_pid.read_text().strip()):
+        try:
+            lock_pid_text = lock_pid.read_text().strip()
+        except OSError:
+            lock_pid_text = ""
+        if lock_pid_text and _pid_alive(lock_pid_text):
             return []
 
         # git 실패는 예외로 올린다 — _scan 이 detector 이름을 target 으로 한 db_lock 항목을 output 에
@@ -858,11 +874,18 @@ class SREIncidentAgent(Actor):
         unbuilt_min = (now - code_epoch) / 60.0 if code_epoch > built_epoch else 0.0
         # 실패 마커는 지금 코드의 sha 일 때만 "실패" 다 — 새 커밋이 오면 다음 주기가 마커를 지우고
         # 재시도하므로, 그 5분 창의 옛 sha 는 실패가 아니라 아직 안 돈 빌드다.
-        failed_sha = failed_mark.read_text().strip()[:40] if failed_mark.exists() else None
+        try:
+            failed_sha: str | None = failed_mark.read_text().strip()[:40] or None
+        except OSError:
+            failed_sha = None
+        try:
+            pending_mtime: float | None = pending_mark.stat().st_mtime
+        except OSError:
+            pending_mtime = None
         reason: str | None = None
         if failed_sha and (code_sha is None or failed_sha == code_sha):
             reason = "build_failed"
-        elif pending_mark.exists() and (now - pending_mark.stat().st_mtime) / 60.0 > FRONTEND_BUILD_STALE_MIN:
+        elif pending_mtime is not None and (now - pending_mtime) / 60.0 > FRONTEND_BUILD_STALE_MIN:
             reason = "restart_failed"
         elif unbuilt_min > FRONTEND_BUILD_STALE_MIN:
             reason = "stale"
@@ -899,18 +922,22 @@ class SREIncidentAgent(Actor):
         evidence: dict[str, Any],
         ctx: RunContext,
     ) -> dict[str, Any]:
-        """log_incident 호출 + 신규 여부 판정 + Discord publish 라우팅.
+        """log_incident 호출 + 신규/에스컬레이션 여부 판정 + Discord publish 라우팅.
 
-        is_new 판정: log_incident 호출 직전 open row 존재 여부.
-        신규 INSERT 인 경우만 Discord publish (re-publish 차단).
+        is_new 판정: log_incident 호출 직전 open/acknowledged row 존재 여부.
+        신규 INSERT 이거나 기존 warning/info 가 critical 로 승격된 경우만 Discord publish.
         """
-        # 신규 여부 판정 (log_incident 호출 전 미리 검사 — race condition tolerable for SRE).
+        # 신규/승격 여부 판정 (log_incident 호출 전 미리 검사 — race condition tolerable for SRE).
         existing_rows = query(
-            """SELECT incident_id FROM incidents
-               WHERE incident_type = ? AND target = ? AND status = 'open'""",
+            """SELECT incident_id, severity FROM incidents
+               WHERE incident_type = ? AND target = ? AND status IN ('open', 'acknowledged')
+               ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, incident_id DESC
+               LIMIT 1""",
             (incident_type, target),
         )
         is_new = len(existing_rows) == 0
+        prev_severity = str(existing_rows[0]["severity"]) if existing_rows else None
+        escalated_to_critical = not is_new and severity == "critical" and prev_severity != "critical"
 
         incident_id = log_incident(
             incident_type=incident_type,
@@ -920,7 +947,7 @@ class SREIncidentAgent(Actor):
             run_id=ctx.run_id,
         )
 
-        if is_new and severity in ("critical", "warning"):
+        if (is_new and severity in ("critical", "warning")) or escalated_to_critical:
             self._publish_alert(incident_id, incident_type, severity, target, evidence, ctx.run_id)
 
         return {

@@ -289,6 +289,91 @@ class TestRetryLogic:
             c.run()
         assert alert_called
 
+    def test_failed_tickers_reset_on_each_retry_attempt(self, monkeypatch):
+        """재시도 시작 시 이전 시도의 _failed_tickers 가 초기화되어야 한다."""
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+        seen_on_attempt: list[list[str]] = []
+
+        class ResetCheckCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("reset_check")
+                self._attempt = 0
+
+            def collect(self, **kwargs):
+                self._attempt += 1
+                seen_on_attempt.append(list(self._failed_tickers))
+                if self._attempt == 1:
+                    self._failed_tickers.append("STALE_TICKER")
+                    raise ConnectionError("transient")
+                return [1, 2]
+
+            def save(self, data):
+                return len(data)
+
+        c = ResetCheckCollector()
+        assert c.run() == 2
+        assert seen_on_attempt == [[], []]
+        assert c._failed_tickers == []
+
+    def test_save_retry_does_not_rerun_collect(self, monkeypatch):
+        """save() 일시 실패 시 collect() 를 재호출하지 않고 save() 만 재시도한다."""
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+        collect_calls = 0
+        save_calls = 0
+
+        class SaveRetryCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("save_retry")
+
+            def collect(self, **kwargs):
+                nonlocal collect_calls
+                collect_calls += 1
+                return [{"id": 1}, {"id": 2}]
+
+            def save(self, data):
+                nonlocal save_calls
+                save_calls += 1
+                if save_calls == 1:
+                    raise OSError("database is locked")
+                return len(data)
+
+        c = SaveRetryCollector()
+        assert c.run() == 2
+        assert collect_calls == 1
+        assert save_calls == 2
+
+    def test_save_all_retries_fail_without_rerunning_collect(self, monkeypatch):
+        """save() 3회 모두 실패해도 collect() 는 1회만 호출되고 실패 알림 후 예외를 전파한다."""
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+        collect_calls = 0
+        save_calls = 0
+        alerts: list[str] = []
+
+        class SaveAlwaysFailCollector(BaseCollector):
+            def __init__(self):
+                super().__init__("save_fail")
+
+            def collect(self, **kwargs):
+                nonlocal collect_calls
+                collect_calls += 1
+                return [{"id": 1}]
+
+            def save(self, data):
+                nonlocal save_calls
+                save_calls += 1
+                raise OSError("disk full")
+
+            def _send_failure_alert(self, msg):
+                alerts.append(msg)
+
+        c = SaveAlwaysFailCollector()
+        with pytest.raises(OSError, match="disk full"):
+            c.run()
+        assert collect_calls == 1
+        assert save_calls == 3
+        assert len(alerts) == 1
+        assert "disk full" in alerts[0]
+
 
 class TestMaxFailureRate:
     def test_constant(self):
@@ -423,3 +508,24 @@ class TestFailureAlertIsReadable:
         assert "yfinance_prices" in rendered
         assert "429" in rendered
         assert "event:" not in rendered  # 내부 키 이름이 사용자에게 보이면 안 된다
+
+
+def test_collect_raising_collection_failure_error_does_not_retry():
+    """collect() 가 CollectionFailureError 를 직접 던지면 재시도 없이 즉시 전파."""
+    calls = 0
+
+    class DirectFailCollector(BaseCollector):
+        def __init__(self):
+            super().__init__("direct_fail")
+
+        def collect(self, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise CollectionFailureError("hard failure")
+
+        def save(self, data):
+            return 0
+
+    with pytest.raises(CollectionFailureError, match="hard failure"):
+        DirectFailCollector().run()
+    assert calls == 1

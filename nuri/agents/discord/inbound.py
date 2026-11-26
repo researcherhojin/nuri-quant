@@ -14,10 +14,12 @@ env:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import re
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +69,8 @@ def _emit_event(label: str, event_type: str, payload: dict[str, Any]) -> Path:
     out_dir = _inbound_dir() / label
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = kst_now().strftime("%Y%m%dT%H%M%S%f")
-    path = out_dir / f"{ts}_{event_type}.json"
+    suffix = secrets.token_hex(2)
+    path = out_dir / f"{ts}_{suffix}_{event_type}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
@@ -152,21 +155,21 @@ def attach(bot: Any) -> bool:
     @bot.event
     async def on_message(message: Any) -> None:
         try:
-            emit_message(message, targets=targets)
+            await asyncio.to_thread(emit_message, message, targets=targets)
         except OSError:
             logger.exception("inbound message emit failed")
 
     @bot.event
     async def on_raw_reaction_add(payload_obj: Any) -> None:
         try:
-            emit_reaction(payload_obj, "reaction_add", targets=targets)
+            await asyncio.to_thread(emit_reaction, payload_obj, "reaction_add", targets=targets)
         except OSError:
             logger.exception("inbound reaction_add emit failed")
 
     @bot.event
     async def on_raw_reaction_remove(payload_obj: Any) -> None:
         try:
-            emit_reaction(payload_obj, "reaction_remove", targets=targets)
+            await asyncio.to_thread(emit_reaction, payload_obj, "reaction_remove", targets=targets)
         except OSError:
             logger.exception("inbound reaction_remove emit failed")
 

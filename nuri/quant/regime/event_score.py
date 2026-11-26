@@ -104,10 +104,11 @@ def compute_event_score(
         SELECT category, sentiment, confidence, regime_hint, published_at
         FROM macro_events
         WHERE published_at >= date(?, '-' || ? || ' days')
+          AND published_at < date(?, '+1 day')
           AND category IS NOT NULL
         ORDER BY published_at DESC
         """,
-        (ref_date, str(lookback_days)),
+        (ref_date, str(lookback_days), ref_date),
         db_path=db_path,
     )
 

@@ -149,6 +149,30 @@ class TestPublishSuccess:
         assert "FAIL: prices" in rows[0]["content_preview"]
         assert "stale 150h" in rows[0]["content_preview"]
 
+    def test_audit_db_lock_after_204_returns_ok_and_logs_warning(self, env_webhooks, caplog):
+        """HTTP 204 성공 직후 SQLite lock 이 나도 발송 성공(ok=True)으로 반환하고 경고만 남긴다."""
+        from nuri.core.db import OperationalError
+
+        with (
+            caplog.at_level("WARNING", logger="nuri.agents.discord.publisher"),
+            patch("httpx.Client") as mock_client,
+            patch(
+                "nuri.agents.discord.publisher.log_agent_message",
+                side_effect=OperationalError("database is locked"),
+            ),
+        ):
+            mock_client.return_value.__enter__.return_value.post.return_value = httpx.Response(204)
+            pub = DiscordPublisher()
+            result = pub.publish_embed(
+                Channel.BRIEF,
+                {"title": "Daily Brief", "description": "digest"},
+                actor_name="channel-dispatcher",
+            )
+
+        assert result.ok is True
+        assert result.http_status == 204
+        assert "log_agent_message failed" in caplog.text
+
 
 class TestPublishRetry:
     def test_503_retried_once_then_success(self, env_webhooks, patched_db):
@@ -294,6 +318,27 @@ class TestAsyncPublish:
         assert result.ok is True
         rows = query("SELECT content_preview FROM agent_messages", db_path=patched_db)
         assert "T" in rows[0]["content_preview"] and "D" in rows[0]["content_preview"]
+
+    def test_async_audit_db_lock_after_204_returns_ok_and_logs_warning(self, env_webhooks, caplog):
+        import asyncio
+
+        from nuri.core.db import OperationalError
+
+        mock_client = self._mock_async_client(httpx.Response(204))
+        with (
+            caplog.at_level("WARNING", logger="nuri.agents.discord.publisher"),
+            patch("httpx.AsyncClient", return_value=mock_client),
+            patch(
+                "nuri.agents.discord.publisher.log_agent_message",
+                side_effect=OperationalError("database is locked"),
+            ),
+        ):
+            pub = DiscordPublisher()
+            result = asyncio.run(pub.apublish_embed(Channel.BRIEF, {"title": "T", "description": "D"}))
+
+        assert result.ok is True
+        assert result.http_status == 204
+        assert "log_agent_message failed" in caplog.text
 
     def test_async_503_retried_then_success(self, env_webhooks, patched_db):
         import asyncio

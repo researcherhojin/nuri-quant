@@ -626,7 +626,7 @@ class MaintenanceAuditor(Actor):
     # ── scan ────────────────────────────────────────────────────────────────
 
     def _scan(self, input_data: dict[str, Any], ctx: RunContext, db_path: Optional[Path]) -> ActorResult:
-        from nuri.core.db import stage_maintenance_candidate
+        from nuri.core.db import query, stage_maintenance_candidate
 
         caps = AuditCaps(**input_data.get("caps", {}))
         tracker = _CapTracker(caps=caps)
@@ -648,17 +648,29 @@ class MaintenanceAuditor(Actor):
                         # 있다. 사건 자체는 output 카운터로 audit ledger 에 영속된다.
                         privacy_blocked += 1
                         continue
-                    tracker.charge_candidate()
+                    fp = _fingerprint(f["axis"], f["title"])
+                    if tracker.candidates_staged >= tracker.caps.candidates:
+                        # 이미 신규 후보 캡에 도달 — 새 후보라면 원장에 넣기 전에 중단한다.
+                        # 기존 fingerprint(재검출)는 새 행을 만들지 않으므로 캡을 소진하지 않는다.
+                        existing = query(
+                            "SELECT 1 FROM maintenance_candidates WHERE fingerprint = ? LIMIT 1",
+                            (fp,),
+                            db_path=db_path,
+                            readonly=True,
+                        )
+                        if not existing:
+                            tracker.charge_candidate()
                     verdict, _ = stage_maintenance_candidate(
                         f["axis"],
                         f["title"],
                         f["detail"],
-                        _fingerprint(f["axis"], f["title"]),
+                        fp,
                         ctx.run_id,
                         db_path=db_path,
                     )
                     if verdict == "staged":
                         staged += 1
+                        tracker.charge_candidate()
                     else:
                         seen += 1
             except CapExceeded as exc:
@@ -677,7 +689,7 @@ class MaintenanceAuditor(Actor):
             "usd_spent": tracker.usd_spent,
             "wall_clock_s": round(time.monotonic() - tracker.started, 1),
         }
-        self._surface_summary(output)
+        self._surface_summary(output, db_path=db_path)
         outcome = Outcome.WARN if (aborted or scanner_errors) else Outcome.PASS
         return ActorResult(output=output, outcome=outcome, sample_n=staged + seen)
 
@@ -700,7 +712,7 @@ class MaintenanceAuditor(Actor):
         except Exception:
             return False
 
-    def _surface_summary(self, output: dict[str, Any]) -> None:
+    def _surface_summary(self, output: dict[str, Any], db_path: Optional[Path] = None) -> None:
         """주간 한 줄을 #ops 로 — 정직한 0건도 표면화한다 (quiet-by-design 금지).
 
         관측이 본 작업을 게이트하면 안 된다 — 실패는 삼키고 로그만 남긴다 (#894).
@@ -721,6 +733,7 @@ class MaintenanceAuditor(Actor):
                 payload={"kind": "maintenance_audit_weekly", "summary": line},
                 dedupe_key=None,
                 actor_name=self.name,
+                db_path=db_path,
             )
         except Exception as exc:
             logger.warning(f"[maintenance-auditor] #ops 표면화 실패 (본 작업은 완료): {exc}")

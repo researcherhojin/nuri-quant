@@ -31,6 +31,17 @@ describe("ClientTable", () => {
     expect(screen.getByText("50")).toBeInTheDocument();
   });
 
+  it("renders dash for null/undefined win_rate, profit_factor, and avg_return in scorecard", () => {
+    const data = [
+      { signal_id: "rsi_oversold", total_trades: 0, win_rate: null, profit_factor: null, avg_return: undefined },
+    ];
+
+    render(<ClientTable variant="scorecard" data={data} />);
+    expect(screen.getAllByText("—")).toHaveLength(3);
+    expect(screen.queryByText("null")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.0%")).not.toBeInTheDocument();
+  });
+
   // ─── Variant: drift ─────────────────────────────────────
   it("renders drift variant columns", () => {
     const data = [

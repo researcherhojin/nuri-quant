@@ -143,3 +143,43 @@ def test_a_disappeared_child_is_safe_during_timeout_cleanup(monkeypatch, tmp_pat
 
     assert asyncio.run(stream.run("thesis-remote", "TEST", collect))[0] == 124
     proc.wait.assert_awaited_once()
+
+
+def test_sigterm_resistant_child_escalates_to_sigkill(monkeypatch, tmp_path):
+    """SIGTERM 을 무시하는 자식은 유예 시간 후 SIGKILL 로 강제 종료되어 hang 하지 않는다."""
+    script = "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"
+    producer(monkeypatch, tmp_path, script, timeout=0.05)
+    monkeypatch.setattr(stream, "_TERM_GRACE_S", 0.05)
+
+    async def collect(value):
+        pytest.fail("unexpected stage")
+
+    rc, result = asyncio.run(stream.run("thesis-remote", "TEST", collect))
+    assert rc == 124 and result == {"event": "error", "code": "timeout"}
+
+
+def test_stdout_line_exceeding_64kib_succeeds(monkeypatch, tmp_path):
+    """64 KiB 기본 StreamReader 상한을 넘는 긴 stdout 라인도 크래시 없이 처리한다."""
+    script = 'print("X" * 100_000, flush=True)\n' + payload(FINAL)
+    producer(monkeypatch, tmp_path, script)
+
+    async def collect(value):
+        pytest.fail("unexpected stage")
+
+    rc, result = asyncio.run(stream.run("thesis-remote", "TEST", collect))
+    assert rc == 0 and result == FINAL
+
+
+def test_raw_archive_log_has_0o600_permissions(monkeypatch, tmp_path):
+    """원문 아카이브 로그는 소유자 전용(0o600) 권한으로 생성된다."""
+    import stat
+
+    producer(monkeypatch, tmp_path, payload(FINAL))
+
+    async def collect(value):
+        pytest.fail("unexpected stage")
+
+    rc, _ = asyncio.run(stream.run("thesis-remote", "TEST", collect))
+    assert rc == 0
+    log_file = next((tmp_path / "interactive").glob("*.log"))
+    assert stat.S_IMODE(log_file.stat().st_mode) == 0o600

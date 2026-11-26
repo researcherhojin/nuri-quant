@@ -17,6 +17,7 @@ from nuri.core.fx import is_krw_holding
 from nuri.core.rules import (
     STOCK_STOP_LOSS,
     STOCK_STOP_LOSS_VALUE,
+    SWING_STOP_LOSS,
     TAKE_PROFIT_GROWTH,
     TAKE_PROFIT_LEADER,
     TAKE_PROFIT_SWING,
@@ -210,7 +211,7 @@ def calculate_targets(
         tp_config = TAKE_PROFIT_GROWTH
         trailing_stop_pct = TRAILING_STOP_GROWTH  # -15%
     elif stock_type == "swing":
-        stop_loss_pct = STOCK_STOP_LOSS  # -7%
+        stop_loss_pct = SWING_STOP_LOSS  # -5%
         tp_config = TAKE_PROFIT_SWING
         trailing_stop_pct = TRAILING_STOP_VOLATILE  # -20% (스윙은 변동성 높음)
     else:  # value
@@ -251,7 +252,7 @@ def calculate_targets(
         "target_1_sell_pct": tp_config.get("target_1_sell_pct", 50),
         "target_2": target_2,
         "target_2_pct": target_2_pct,
-        "target_2_sell_pct": tp_config.get("target_2_sell_pct", 25),
+        "target_2_sell_pct": tp_config.get("target_2_sell_pct", 100 if stock_type == "swing" else 25),
         "trailing_stop_pct": trailing_stop_pct,
         "analyst_target": analyst_target,
         "analyst_upside_pct": analyst_upside_pct,

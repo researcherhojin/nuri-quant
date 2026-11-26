@@ -31,6 +31,7 @@ import json
 import socket
 import subprocess
 import sys
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -100,13 +101,15 @@ def _session() -> requests.Session:
 
 
 def _get(s: Any, cfg: dict[str, Any], path: str) -> dict[str, Any]:
-    r = s.get(cfg["base_url"] + path, timeout=30, allow_redirects=False)
+    r = s.get(cfg["base_url"].rstrip("/") + path, timeout=30, allow_redirects=False)
     r.raise_for_status()
     return r.json()
 
 
 def _post(s: Any, cfg: dict[str, Any], body: dict[str, Any]) -> dict[str, Any]:
-    r = s.post(cfg["base_url"] + "/api/generate", json=body, timeout=cfg["timeout_s"], allow_redirects=False)
+    r = s.post(
+        cfg["base_url"].rstrip("/") + "/api/generate", json=body, timeout=cfg["timeout_s"], allow_redirects=False
+    )
     r.raise_for_status()
     return r.json()
 
@@ -222,24 +225,25 @@ def generate(
     """검사를 모두 통과한 차가운 호출 1회의 기록. 실패하면 `LocalModelError` (기록은 `.record`)."""
     cfg = cfg if cfg is not None else load_config()
     if not is_loopback(cfg["base_url"]):
-        raise LocalModelError("not_loopback", cfg["base_url"])
+        raise LocalModelError("not_loopback", "local model URL must be loopback")
     req = build_request(prompt, cfg, num_predict=num_predict, schema=schema)
     bound = byte_bound(prompt, cfg)
     need = bound + req["options"]["num_predict"]
     if need > req["options"]["num_ctx"]:
         raise LocalModelError("prompt_too_long", {"byte_bound": bound, "num_ctx": req["options"]["num_ctx"]})
 
-    s = session if session is not None else _session()
-    rt = read_runtime(cfg, s)
-    check_runtime(rt, cfg)
-    # digest 고정이 이미 막지만, 다른 로컬 전용 경로와 같은 가드도 건다 (#1969) — /api/tags 의 원격 표시.
-    from nuri.llm.local_model_guard import refuse_reason
+    ctx = nullcontext(session) if session is not None else _session()
+    with ctx as s:
+        rt = read_runtime(cfg, s)
+        check_runtime(rt, cfg)
+        # digest 고정이 이미 막지만, 다른 로컬 전용 경로와 같은 가드도 건다 (#1969) — /api/tags 의 원격 표시.
+        from nuri.llm.local_model_guard import refuse_reason
 
-    reason = refuse_reason(cfg["base_url"], cfg["model"])
-    if reason:
-        raise LocalModelError("model_not_local", reason)
-    _post(s, cfg, {"model": cfg["model"], "keep_alive": 0})  # 공식 언로드 — 캐시 0 에서 시작
-    resp = _post(s, cfg, req)
+        reason = refuse_reason(cfg["base_url"], cfg["model"])
+        if reason:
+            raise LocalModelError("model_not_local", reason)
+        _post(s, cfg, {"model": cfg["model"], "keep_alive": 0})  # 공식 언로드 — 캐시 0 에서 시작
+        resp = _post(s, cfg, req)
     failures = verify_response(resp, bound=bound, num_ctx=req["options"]["num_ctx"], allow_length=allow_length)
     record: dict[str, Any] = {
         "schema": "local_call/v1",
@@ -287,7 +291,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     cfg = load_config()
     try:
         if args.runtime:
-            rt = read_runtime(cfg, _session())
+            with _session() as s:
+                rt = read_runtime(cfg, s)
             print(json.dumps(asdict(rt), indent=2))
             check_runtime(rt, cfg)
             print("runtime: matches")

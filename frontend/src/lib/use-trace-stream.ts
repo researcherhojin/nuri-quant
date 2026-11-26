@@ -6,7 +6,7 @@
  * /api/consensus/{ticker}/stream에서 verdict를 완료 순서대로 수신.
  * 유한 스트림: 10 verdicts → 1 consensus → done → 자동 종료.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { JsonValue } from "@/lib/types";
 
 interface AgentVerdict {
@@ -85,7 +85,15 @@ export function useTraceStream() {
 
   const stop = useCallback(() => {
     esRef.current?.close();
+    esRef.current = null;
     setState((prev) => ({ ...prev, isStreaming: false }));
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      esRef.current?.close();
+      esRef.current = null;
+    };
   }, []);
 
   return { ...state, start, stop };

@@ -13,6 +13,7 @@ import argparse
 import logging
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from nuri.core.sectors import classify_sector
 
@@ -35,12 +36,59 @@ class RebalanceAction:
 
     ticker: str
     sector: str
-    action: str  # "BUY", "SELL", "HOLD", "REDUCE"
+    action: str  # "BUY", "TRIM", "REDUCE", "HOLD"
     current_weight: float
     target_weight: float
     trade_value: float
     signals: list[str]  # 근거 시그널
     regime_note: str
+    portfolio_action: str | None = None  # "REBALANCE" | "TRIM" | None
+
+
+def _resolve_portfolio_total_value(base_df, db_path=None) -> float:
+    """포트폴리오 총 평가액(USD) 계산.
+
+    우선순위:
+    1. base_df 에 `value_usd` 컬럼이 있으면 합계 사용.
+    2. DB `portfolio` × 최신 `prices.close` 합계 조회 (`db_path` 전달).
+    3. DB 미시드(mock 테스트 등) 시 `base_df` 의 `trade_value_usd / (opt_w - cur_w)` 로 역산.
+    """
+    if "value_usd" in base_df.columns:
+        col_sum = float(base_df["value_usd"].fillna(0).sum())
+        if col_sum > 0:
+            return col_sum
+
+    from nuri.core.db import query
+
+    rows = query(
+        """
+        SELECT SUM(p.quantity * latest.close) AS total_value
+        FROM portfolio p
+        JOIN (
+            SELECT ticker, close
+            FROM prices
+            WHERE (ticker, date) IN (
+                SELECT ticker, MAX(date) FROM prices GROUP BY ticker
+            )
+        ) latest ON p.ticker = latest.ticker
+        WHERE p.quantity > 0
+        """,
+        db_path=db_path,
+    )
+    if rows and rows[0]["total_value"] and rows[0]["total_value"] > 0:
+        return float(rows[0]["total_value"])
+
+    sum_trade = 0.0
+    sum_diff = 0.0
+    for _, row in base_df.iterrows():
+        base_diff = abs((row["optimal_weight"] - row["current_weight"]) / 100.0)
+        tv = abs(float(row.get("trade_value_usd") or 0.0))
+        if base_diff > 1e-6 and tv > 0:
+            sum_trade += tv
+            sum_diff += base_diff
+    if sum_diff > 0:
+        return sum_trade / sum_diff
+    return 0.0
 
 
 def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAction]:
@@ -57,12 +105,30 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
     except Exception:
         pass
 
+    import inspect
+
     from nuri.analysis.rebalance import analyze_rebalance
+    from nuri.core import db as _db_facade
     from nuri.quant.regime.classifier import classify_regime
     from nuri.quant.regime.strategy_map import map_regime_to_strategy
 
-    # 1. 기존 MVO/RP 결과
-    base_df = analyze_rebalance(method=method)
+    # 1. 기존 MVO/RP 결과 (db_path 전달 — 미지원 시 호출 구간만 facade DB_PATH 바인딩)
+    sig = inspect.signature(analyze_rebalance)
+    accepts_db_path = "db_path" in sig.parameters or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+    )
+    if accepts_db_path:
+        analyze_fn: Any = analyze_rebalance
+        base_df = analyze_fn(method=method, db_path=db_path)
+    elif db_path is not None:
+        prev_db_path = _db_facade.DB_PATH
+        _db_facade.DB_PATH = db_path
+        try:
+            base_df = analyze_rebalance(method=method)
+        finally:
+            _db_facade.DB_PATH = prev_db_path
+    else:
+        base_df = analyze_rebalance(method=method)
     if base_df.empty:
         logger.warning("기존 리밸런싱 결과 없음")
         return []
@@ -99,7 +165,7 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
 
     # 4. 비중 조정
     actions = []
-    total_value = sum(abs(row["trade_value_usd"]) for _, row in base_df.iterrows() if row["action"] != "HOLD") or 1
+    portfolio_total_value = _resolve_portfolio_total_value(base_df, db_path=db_path)
 
     for _, row in base_df.iterrows():
         ticker = row["ticker"]
@@ -118,9 +184,9 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
             elif sector_type == "growth":
                 adj_w *= 0.85  # 성장 섹터 15% 감점
 
-        # 액션 결정
+        # 액션 결정 (리밸런싱 비중 축소는 포트폴리오 축 — alpha SELL/FLAT 으로 혼동 금지)
         diff = adj_w - cur_w
-        trade_val = diff * total_value * 100  # 대략적 거래금액
+        portfolio_action: str | None = None
 
         if ticker in conflict_tickers and diff > 0:
             action = "HOLD"  # 방향 충돌 종목은 매수 차단
@@ -131,15 +197,18 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
             adj_w = cur_w
             regime_note = f"[{regime_name}] 신규 매수 차단"
         elif diff < -0.02:
-            action = "SELL" if diff < -0.05 else "REDUCE"
+            action = "TRIM" if diff < -0.05 else "REDUCE"
+            portfolio_action = "TRIM"
             regime_note = f"[{regime_name}] 비중 축소"
         elif diff > 0.02:
             action = "BUY"
+            portfolio_action = "REBALANCE"
             regime_note = f"[{regime_name}] 비중 확대"
         else:
             action = "HOLD"
             regime_note = f"[{regime_name}]"
 
+        trade_val = round((adj_w - cur_w) * portfolio_total_value, 2)
         signals = signal_map.get(ticker, [])
 
         actions.append(
@@ -149,9 +218,10 @@ def regime_aware_rebalance(method: str = "rp", db_path=None) -> list[RebalanceAc
                 action=action,
                 current_weight=round(cur_w * 100, 2),
                 target_weight=round(adj_w * 100, 2),
-                trade_value=round(trade_val, 0),
+                trade_value=trade_val,
                 signals=signals,
                 regime_note=regime_note,
+                portfolio_action=portfolio_action,
             )
         )
 

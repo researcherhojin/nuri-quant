@@ -123,6 +123,35 @@ class TestOutboxWatchdogBreach:
         assert result.outcome == Outcome.WARN
         assert any(b["kind"] == "pending_count" for b in result.output["breaches"])
 
+    def test_failed_count_breach(self, patched_base, monkeypatch):
+        """failed > 0 → WARN + alert (watchdog 이 failed 고립 행을 감지)."""
+        monkeypatch.setattr(
+            "nuri.agents.actors.outbox_watchdog.outbox_health",
+            lambda **kw: {
+                "oldest_pending_age_seconds": None,
+                "oldest_pending_channel": None,
+                "by_channel": {"incidents": {"pending": 0, "sent": 1, "failed": 2}},
+            },
+        )
+
+        fake_result = MagicMock()
+        fake_result.ok = True
+        fake_result.http_status = 204
+        fake_result.error = None
+        fake_pub = MagicMock()
+        fake_pub.publish_embed.return_value = fake_result
+
+        with patch(
+            "nuri.agents.discord.publisher.DiscordPublisher",
+            return_value=fake_pub,
+        ):
+            actor = OutboxWatchdog()
+            result = actor.run({"db_path": patched_base})
+
+        assert result.outcome == Outcome.WARN
+        assert any(b["kind"] == "failed_count" and b["channel"] == "incidents" for b in result.output["breaches"])
+        assert result.output["published"]["ok"] is True
+
 
 class TestDirectPublishOps:
     def test_publish_exception(self):

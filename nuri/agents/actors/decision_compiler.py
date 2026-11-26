@@ -39,6 +39,7 @@ from nuri.core.timezone import today_kst
 logger = logging.getLogger(__name__)
 
 VALID_ACTIONS_INPUT: tuple[str, ...] = ("BUY", "SELL")  # caller 가 제안하는 방향
+PASSING_CAUSAL_VERDICTS: tuple[str, ...] = ("ROBUST", "WEAK")  # Gate 2 allowlist (fail-closed)
 
 
 @REGISTRY.register
@@ -177,7 +178,7 @@ class DecisionCompiler(Actor):
         # ─── gate 2: causal audit ───
         causal_verdict = causal_evidence.get("verdict")
         causal_certainty = float(causal_evidence.get("causal_certainty", 0.0))
-        if causal_verdict in ("MIRAGE", "INSUFFICIENT"):
+        if causal_verdict not in PASSING_CAUSAL_VERDICTS:
             reason = f"causal verdict={causal_verdict} (factor mirage 또는 검증 불가)"
             return self._emit_blocked(decision_id, ticker, as_of_date, inputs, ctx, reason, conviction=causal_certainty)
 
@@ -370,8 +371,7 @@ class DecisionCompiler(Actor):
         posterior = regime_evidence.get("posterior")
         if isinstance(posterior, list) and posterior:
             return float(max(posterior))
-        # fallback: top2_margin + 0.5 (대략적 추정)
-        return 0.5 + float(regime_evidence.get("top2_margin", 0.0)) / 2
+        return 0.0
 
     @staticmethod
     def _causal_audit_id(causal_evidence: dict) -> str | None:
@@ -548,7 +548,8 @@ class DecisionCompiler(Actor):
                 run_id=run_id,
             )
         except Exception:  # noqa: BLE001 — outbox stage failure must not break decision pipeline
-            pass
+            # 발행 실패로 액터를 죽이지 않는다(#894) — 다만 **조용히** 넘기지도 않는다.
+            logger.warning("outbox staging 실패: stage_brief", exc_info=True)
 
     @staticmethod
     def _publish_block(decision_id: str, ticker: str, reason: str, run_id: str) -> None:

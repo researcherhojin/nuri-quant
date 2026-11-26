@@ -219,13 +219,13 @@ class OpenAIClient:
         self._sdk_client: Any = None  # lazy
 
     def _ensure_sdk(self) -> Any:
-        if self._sdk_client is not None:
-            return self._sdk_client
         if is_disabled():
             raise ExternalLLMDisabled(
                 "NURI_DISABLE_EXTERNAL_LLM is set — external LLM calls are "
                 "opted out. Caller should fall back to local behavior."
             )
+        if self._sdk_client is not None:
+            return self._sdk_client
         if not has_credentials():
             raise ExternalLLMUnavailable(
                 "OPENAI_API_KEY missing from environment. Set it in .env or set NURI_DISABLE_EXTERNAL_LLM=1 to opt out."
@@ -345,6 +345,8 @@ class OpenAIClient:
         )
 
         # Parse JSON body
+        if not resp.choices:
+            raise ExternalLLMResponseError(f"OpenAI {chosen_model} returned empty choices")
         raw = resp.choices[0].message.content or "{}"
         try:
             return json.loads(raw)
@@ -445,6 +447,8 @@ class OpenAIClient:
             cost_str,
         )
 
+        if not resp.choices:
+            raise ExternalLLMResponseError(f"OpenAI {chosen_model} returned empty choices")
         return resp.choices[0].message.content or ""
 
 

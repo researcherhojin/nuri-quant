@@ -225,10 +225,11 @@ def check_gate(phase: str | None = None, db_path=None) -> GateResult:
     Args:
         phase: 특정 단계만 (None=전체)
     """
+    required = REQUIRED_BY_PHASE.get(phase, set()) if phase else set()
     conditions = []
     for check_fn in ALL_CHECKS:
         cond = check_fn(db_path=db_path)
-        if phase and cond.phase != phase:
+        if phase and cond.phase != phase and cond.id not in required:
             continue
         conditions.append(cond)
 
@@ -236,9 +237,11 @@ def check_gate(phase: str | None = None, db_path=None) -> GateResult:
     passed = sum(1 for c in conditions if c.passed)
     score = passed / total if total > 0 else 0
 
-    # 필수 조건 확인
-    required = REQUIRED_BY_PHASE.get(phase, set()) if phase else set()
-    required_all_pass = all(c.passed for c in conditions if c.id in required) if required else score >= 0.5
+    # 필수 조건 확인 (누락된 필수 조건이 있으면 공허참으로 통과시키지 않음)
+    by_id = {c.id: c for c in conditions}
+    required_all_pass = (
+        all(req_id in by_id and by_id[req_id].passed for req_id in required) if required else score >= 0.5
+    )
 
     return GateResult(
         phase=phase or "all",

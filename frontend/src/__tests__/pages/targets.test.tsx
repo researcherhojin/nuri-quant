@@ -165,4 +165,32 @@ describe("TargetsPage", () => {
     // The growth sub-label confirms counting
     expect(screen.getByText("SL -7% / TP +20%/+40%")).toBeInTheDocument();
   });
+
+  it("counts string take_profit_triggered levels and ignores null/undefined", async () => {
+    const omittedTp = { ...mockTargets.targets[0] };
+    delete (omittedTp as { take_profit_triggered?: string | null }).take_profit_triggered;
+
+    setupFetchAPI({
+      targets: {
+        targets: [
+          { ...mockTargets.targets[0], ticker: "T1", take_profit_triggered: "target_1" },
+          { ...mockTargets.targets[1], ticker: "T2", take_profit_triggered: "target_2" },
+          { ...mockTargets.targets[2], ticker: "TNULL", take_profit_triggered: null, trailing_stop_triggered: false },
+          { ...omittedTp, ticker: "TUNDEF", trailing_stop_triggered: false },
+        ],
+        count: 4,
+      },
+    });
+
+    const { default: TargetsPage } = await import("@/app/targets/page");
+    await act(async () => {
+      render(<TargetsPage />);
+    });
+
+    // 4 valid targets, 2 take-profit triggered ("target_1" + "target_2"), null & undefined excluded
+    expect(screen.getByText("4개")).toBeInTheDocument();
+    const tpCard = screen.getByText("익절 도달").closest("div");
+    expect(tpCard).toHaveTextContent("2개");
+    expect(screen.getByText("매도 필요")).toBeInTheDocument();
+  });
 });
