@@ -19,6 +19,7 @@ class NewsCollector(BaseCollector):
 
     def __init__(self):
         super().__init__("news")
+        self._raise_on_fetch_error = False
 
     def collect(self, source: str = "portfolio", **kwargs) -> list[dict]:
         """뉴스 수집. source='universe' 시 universe.yaml 전체."""
@@ -36,17 +37,21 @@ class NewsCollector(BaseCollector):
         attempted = len(tickers)
         errors: list[Exception] = []
 
-        for ticker in iterator:
-            try:
-                items = self._fetch_ticker_news(ticker, raise_on_error=True)
-            except Exception as e:  # noqa: BLE001 — 단일 종목 실패가 전체를 막지 않게
-                errors.append(e)
-                failed.append(ticker)
-                continue
-            if not items:
-                failed.append(ticker)
-                continue
-            records.extend(items)
+        self._raise_on_fetch_error = True
+        try:
+            for ticker in iterator:
+                try:
+                    items = self._fetch_ticker_news(ticker)
+                except Exception as e:  # noqa: BLE001 — 단일 종목 실패가 전체를 막지 않게
+                    errors.append(e)
+                    failed.append(ticker)
+                    continue
+                if not items:
+                    failed.append(ticker)
+                    continue
+                records.extend(items)
+        finally:
+            self._raise_on_fetch_error = False
 
         if attempted > 0 and len(errors) == attempted:
             raise RuntimeError(
@@ -69,7 +74,7 @@ class NewsCollector(BaseCollector):
     #: 종목당 요청 기사 수. 다른 종목이 주인공인 기사도 섞이므로 아래에서 `stockTickers` 로 다시 거른다.
     NEWS_COUNT = 20
 
-    def _fetch_ticker_news(self, ticker: str, *, raise_on_error: bool = False) -> list[dict]:
+    def _fetch_ticker_news(self, ticker: str) -> list[dict]:
         """단일 종목 뉴스 (yfinance `Ticker.get_news`).
 
         Yahoo 가 옛 경로(`/xhr/ncp`)를 없애 `get_news()` 가 2026-10-02 부터 **예외 없이 빈 목록**을 줬고
@@ -88,7 +93,7 @@ class NewsCollector(BaseCollector):
             return self._parse_yfinance_news(related, ticker)
         except Exception as e:
             self.logger.debug(f"{ticker}: yfinance news 조회 실패 — {e}")
-            if raise_on_error:
+            if self._raise_on_fetch_error:
                 raise
             return []
 

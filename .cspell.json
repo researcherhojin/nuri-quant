@@ -71,6 +71,7 @@
     "COHR",
     "CPAY",
     "CPIAUCSL",
+    "CREAT",
     "CRWD",
     "CSGP",
     "CTRA",
@@ -351,6 +352,7 @@
     "Vivek",
     "WCAG",
     "WDAY",
+    "WRONLY",
     "WSB",
     "WalkForward",
     "Warsh",
@@ -882,6 +884,7 @@
     "tmpfs",
     "tmpl",
     "tobytes",
+    "toctou",
     "tolist",
     "tomllib",
     "tonexty",
@@ -966,10 +969,7 @@
     "yflog",
     "ylabel",
     "yref",
-    "zhou",
-    "CREAT",
-    "toctou",
-    "WRONLY"
+    "zhou"
   ],
   "ignorePaths": [
     "**/node_modules/**",

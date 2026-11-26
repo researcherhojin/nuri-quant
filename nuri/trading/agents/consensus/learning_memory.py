@@ -82,6 +82,7 @@ def _compute_horizon_eligibility(
                 continue
 
             outcome = row["outcome"] or 0
+            is_positive = outcome > 0
 
             row_has_usable_verdict = False
             for v in verdicts:
@@ -91,10 +92,10 @@ def _compute_horizon_eligibility(
                 action = v.get("action", "HOLD")
                 if agent_name in agent_hits:
                     if action == "BUY":
-                        agent_hits[agent_name].append(outcome > 0)
+                        agent_hits[agent_name].append(is_positive)
                         row_has_usable_verdict = True
                     elif action == "SELL":
-                        agent_hits[agent_name].append(outcome < 0)
+                        agent_hits[agent_name].append(not is_positive)
                         row_has_usable_verdict = True
 
             if row_has_usable_verdict:
