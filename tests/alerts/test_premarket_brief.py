@@ -378,7 +378,8 @@ class TestGenerateBrief:
 
     def test_send_brief_silent_fallback_when_discord_unset(self, monkeypatch):
         """Discord webhook 미설정 시 send_brief 는 False 반환 (scheduler 중단 안 함)."""
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         from nuri.alerts.premarket_brief import send_brief
 
         assert send_brief({"title": "test"}) is False
@@ -488,7 +489,8 @@ class TestMainCLI:
         monkeypatch.setattr(pb, "__file__", str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
         (tmp_path / "nuri" / "alerts").mkdir(parents=True)
         # Discord webhook 없는 env 에서 실행 — send_brief 는 silent fallback
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
 
         rc = pb.main(["--stdout", "--no-discord"])
         assert rc == 0
@@ -1302,3 +1304,14 @@ class TestFixtureLeavesNoMockBehind:
 
         found = _table_tickers("prices", db_path=db)
         assert found == {"SPY"}, f"커버리지 검사가 데이터를 못 본다 (#1149): {found}"
+
+
+def test_send_brief_posts_to_brief_channel_when_generic_url_is_empty(monkeypatch):
+    """프로덕션 .env 형태(범용 URL 빈 값 + BRIEF 설정)에서 brief 가 실제로 나간다."""
+    from nuri.alerts.premarket_brief import send_brief
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+    monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "https://discord.test/brief")
+    with patch("nuri.alerts.discord_bot._post_webhook") as post:
+        assert send_brief({"title": "t"}) is True
+    assert post.call_args.args[0] == "https://discord.test/brief"

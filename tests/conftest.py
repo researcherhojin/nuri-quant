@@ -245,6 +245,21 @@ def _local_model_guard_passes(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_discord_webhooks(monkeypatch):
+    """개발 기기 `.env` 의 실제 Discord webhook 이 테스트로 새지 않게 모두 빈 값으로 덮는다.
+
+    `discord_bot` · `daily_report` · `publisher` 는 import 시 `load_dotenv()` 를 부르고, 운영 `.env` 는
+    `DISCORD_WEBHOOK_BRIEF` 등을 채워 둔다. 범용 URL 만 지우는 테스트가 BRIEF 로 실제 POST 할 수 있다.
+    delenv 가 아니라 빈 값인 이유: 테스트 도중 첫 import 의 `load_dotenv()`(override=False)가 비어 있는
+    키만 다시 채우기 때문이다. 필요한 테스트는 `monkeypatch.setenv` 로 덮어쓴다.
+    """
+    from nuri.agents.discord.publisher import Channel
+
+    for key in ("DISCORD_WEBHOOK_URL", *(c.env_var for c in Channel)):
+        monkeypatch.setenv(key, "")
+
+
+@pytest.fixture(autouse=True)
 def mock_yfinance(monkeypatch):
     """모든 테스트에서 yfinance.download와 Ticker를 mock."""
     import pandas as pd

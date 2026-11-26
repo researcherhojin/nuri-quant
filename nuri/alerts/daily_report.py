@@ -8,7 +8,6 @@ Discord 전송 또는 stdout 출력.
 """
 
 import logging
-import os
 from datetime import timedelta
 
 from dotenv import load_dotenv
@@ -90,19 +89,26 @@ def generate_report() -> dict:
 
 def send_discord(embed: dict) -> bool:
     """Discord로 리포트 전송. Webhook 방식 (간단)."""
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+    from nuri.alerts.discord_bot import resolve_brief_webhook_url
+
+    webhook_url = resolve_brief_webhook_url()
     if not webhook_url:
-        logger.info("DISCORD_WEBHOOK_URL 미설정 — stdout 출력으로 대체")
+        logger.info("DISCORD_WEBHOOK_BRIEF / DISCORD_WEBHOOK_URL 미설정 — stdout 출력으로 대체")
         return False
 
     import requests
 
-    resp = requests.post(
-        webhook_url,
-        json={"embeds": [embed]},
-        timeout=10,
-    )
-    resp.raise_for_status()
+    # 전송 실패(무효 webhook·타임아웃)가 리포트 자체를 잃게 하지 않도록 False 로 stdout fallback.
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"embeds": [embed]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        logger.warning("Discord 리포트 전송 실패 — stdout 출력으로 대체", exc_info=True)
+        return False
     logger.info("Discord 리포트 전송 완료")
     return True
 

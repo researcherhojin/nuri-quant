@@ -73,7 +73,8 @@ class TestGenerateReport:
 
 class TestSendDiscord:
     def test_no_webhook(self, monkeypatch):
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         from nuri.alerts.daily_report import send_discord
 
         result = send_discord({"title": "test"})
@@ -165,7 +166,8 @@ class TestDailyReport:
     def test_send_discord_no_webhook(self, monkeypatch, db_with_portfolio):
         from nuri.alerts.daily_report import send_discord
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         result = send_discord({"title": "test", "fields": []})
         assert result is False
 
@@ -173,6 +175,7 @@ class TestDailyReport:
         from nuri.alerts.daily_report import send_discord
 
         monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/webhook/test")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
 
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
@@ -203,8 +206,36 @@ class TestDailyReport:
 
         monkeypatch.setattr("nuri.alerts.daily_report.analyze_portfolio", lambda: pd.DataFrame())
         monkeypatch.setattr("nuri.alerts.daily_report.analyze_risk", lambda: {})
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
 
         main()
         out = capsys.readouterr().out
         assert "Daily Report" in out
+
+
+def test_send_discord_posts_to_brief_channel_when_generic_url_is_empty(monkeypatch):
+    """프로덕션 .env 형태(범용 URL 빈 값 + BRIEF 설정)에서 08:00 리포트가 stdout 으로 새지 않는다."""
+    import requests as req_mod
+
+    from nuri.alerts.daily_report import send_discord
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+    monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "https://discord.test/brief")
+    post = MagicMock(return_value=MagicMock())
+    monkeypatch.setattr(req_mod, "post", post)
+
+    assert send_discord({"title": "t", "fields": []}) is True
+    assert post.call_args.args[0] == "https://discord.test/brief"
+
+
+def test_send_discord_failure_falls_back_instead_of_losing_the_report(monkeypatch):
+    """무효 BRIEF webhook(4xx)·타임아웃이 08:00 리포트를 통째로 잃게 하지 않는다 — False 로 stdout fallback."""
+    import requests as req_mod
+
+    from nuri.alerts.daily_report import send_discord
+
+    monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "https://discord.test/brief")
+    monkeypatch.setattr(req_mod, "post", MagicMock(side_effect=req_mod.ConnectionError("down")))
+
+    assert send_discord({"title": "t", "fields": []}) is False

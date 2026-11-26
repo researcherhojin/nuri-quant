@@ -682,9 +682,9 @@ def persist_brief(markdown: str, date: Optional[str] = None) -> Path:
 def send_brief(embed: dict) -> bool:
     """Discord webhook 전송. 실패 시 False."""
     try:
-        from nuri.alerts.discord_bot import send_webhook
+        from nuri.alerts.discord_bot import resolve_brief_webhook_url, send_webhook
 
-        return send_webhook(embed)
+        return send_webhook(embed, webhook_url=resolve_brief_webhook_url())
     except Exception:
         logger.warning("Discord webhook 전송 실패", exc_info=True)
         return False
