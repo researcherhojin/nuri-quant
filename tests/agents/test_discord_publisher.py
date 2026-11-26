@@ -225,7 +225,7 @@ class TestPublishRetry:
 
 class TestEnvMissing:
     def test_missing_env_skips_gracefully(self, monkeypatch, patched_db):
-        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         pub = DiscordPublisher()
         result = pub.publish_text(Channel.BRIEF, "no-env-test")
 
@@ -402,7 +402,7 @@ class TestAsyncPublish:
     def test_async_missing_env_skips(self, monkeypatch, patched_db):
         import asyncio
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         pub = DiscordPublisher()
         result = asyncio.run(pub.apublish_text(Channel.BRIEF, "async-no-env"))
         assert result.ok is False
@@ -424,7 +424,7 @@ class TestCli:
     def test_cli_publish_returns_1_on_fail(self, monkeypatch, patched_db):
         from nuri.agents.discord.publisher import main
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_OPS", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_OPS", "")
         rc = main(["ops", "no-env"])
         assert rc == 1
 

@@ -98,12 +98,17 @@ def send_discord(embed: dict) -> bool:
 
     import requests
 
-    resp = requests.post(
-        webhook_url,
-        json={"embeds": [embed]},
-        timeout=10,
-    )
-    resp.raise_for_status()
+    # 전송 실패(무효 webhook·타임아웃)가 리포트 자체를 잃게 하지 않도록 False 로 stdout fallback.
+    try:
+        resp = requests.post(
+            webhook_url,
+            json={"embeds": [embed]},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except requests.RequestException:
+        logger.warning("Discord 리포트 전송 실패 — stdout 출력으로 대체", exc_info=True)
+        return False
     logger.info("Discord 리포트 전송 완료")
     return True
 

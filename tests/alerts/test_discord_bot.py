@@ -8,14 +8,14 @@ import pytest
 
 class TestDiscordBot:
     def test_send_webhook_no_url(self, monkeypatch):
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         from nuri.alerts.discord_bot import send_webhook
 
         result = send_webhook({"title": "test"})
         assert result is False
 
     def test_send_text_no_url(self, monkeypatch):
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         from nuri.alerts.discord_bot import send_webhook_text
 
         result = send_webhook_text("test message")
@@ -50,14 +50,14 @@ class TestDiscordWebhook:
     def test_send_webhook_no_url(self, monkeypatch):
         from nuri.alerts.discord_bot import send_webhook
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         result = send_webhook({"title": "Test"})
         assert result is False
 
     def test_send_webhook_text_no_url(self, monkeypatch):
         from nuri.alerts.discord_bot import send_webhook_text
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         result = send_webhook_text("hello")
         assert result is False
 
@@ -89,7 +89,7 @@ class TestDiscordWebhook_R22:
     def test_send_webhook_no_url(self, monkeypatch):
         from nuri.alerts.discord_bot import send_webhook
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         assert send_webhook({"title": "test"}, webhook_url="") is False
 
     def test_send_webhook_success(self, monkeypatch):
@@ -106,7 +106,7 @@ class TestDiscordWebhook_R22:
     def test_send_webhook_text_no_url(self, monkeypatch):
         from nuri.alerts.discord_bot import send_webhook_text
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         assert send_webhook_text("hello", webhook_url="") is False
 
     def test_send_webhook_text_success(self, monkeypatch):
@@ -540,8 +540,8 @@ class TestResolveBriefWebhookUrl:
     def test_none_when_nothing_is_set(self, monkeypatch):
         from nuri.alerts.discord_bot import resolve_brief_webhook_url
 
-        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
         assert resolve_brief_webhook_url() is None
 
 
@@ -568,3 +568,20 @@ class TestRealWebhooksNeverReachTests:
         env_file.write_text("DISCORD_WEBHOOK_BRIEF=https://discord.test/leak\n")
         load_dotenv(env_file)  # 모듈 import 시점의 기본 호출과 같은 override=False
         assert os.environ["DISCORD_WEBHOOK_BRIEF"] == ""
+
+
+def test_no_test_deletes_a_webhook_env():
+    """delenv 는 conftest 가 넣은 빈 값을 지워, 그 뒤 첫 import 의 `load_dotenv()` 가 실제 `.env` webhook 을
+    다시 채운다 — 단독 실행 시 운영 BRIEF 채널로 POST 했다(#2110 리뷰 실측). 빈 값은 `setenv(key, "")` 로."""
+    import re
+    from pathlib import Path
+
+    forbidden = re.compile(r"delenv\(\s*[\"']" + "DISCORD_" + "WEBHOOK")
+    tests_root = Path(__file__).resolve().parents[1]
+    offenders = [
+        f"{p.relative_to(tests_root)}:{i}"
+        for p in tests_root.rglob("*.py")
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if forbidden.search(line)
+    ]
+    assert offenders == []

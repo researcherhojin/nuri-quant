@@ -378,8 +378,8 @@ class TestGenerateBrief:
 
     def test_send_brief_silent_fallback_when_discord_unset(self, monkeypatch):
         """Discord webhook 미설정 시 send_brief 는 False 반환 (scheduler 중단 안 함)."""
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
-        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
         from nuri.alerts.premarket_brief import send_brief
 
         assert send_brief({"title": "test"}) is False
@@ -489,8 +489,8 @@ class TestMainCLI:
         monkeypatch.setattr(pb, "__file__", str(tmp_path / "nuri" / "alerts" / "premarket_brief.py"))
         (tmp_path / "nuri" / "alerts").mkdir(parents=True)
         # Discord webhook 없는 env 에서 실행 — send_brief 는 silent fallback
-        monkeypatch.delenv("DISCORD_WEBHOOK_URL", raising=False)
-        monkeypatch.delenv("DISCORD_WEBHOOK_BRIEF", raising=False)
+        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "")
+        monkeypatch.setenv("DISCORD_WEBHOOK_BRIEF", "")
 
         rc = pb.main(["--stdout", "--no-discord"])
         assert rc == 0
