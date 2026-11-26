@@ -40,14 +40,16 @@ import)을 보고, `**kwargs` unpack 은 forward 로 인정하지 않는다.
 
 ## Global Mocks (conftest.py, autouse)
 
-4개 전부 autouse — 순서대로 `_isolate_from_production_db` · `_forbid_production_db` ·
-`_force_no_wal` · `mock_yfinance`.
+6개 전부 autouse — 순서대로 `_isolate_from_production_db` · `_forbid_production_db` ·
+`_force_no_wal` · `_local_model_guard_passes` · `_no_real_discord_webhooks` · `mock_yfinance`.
 
 | 픽스처 | 하는 일 |
 |---|---|
 | `_isolate_from_production_db` | `DB_PATH` → 세션 스키마 템플릿의 per-test 복사본 |
 | `_forbid_production_db` | 실 `data/portfolio.db` 를 **여는 순간** 예외 (아래 참조) |
 | `_force_no_wal` | `journal_mode=MEMORY` — CI tmpfs 의 WAL/visibility 문제 회피 |
+| `_local_model_guard_passes` | 로컬 모델 가드(#1969)의 `/api/tags` 조회를 네트워크 없이 통과 |
+| `_no_real_discord_webhooks` | `DISCORD_WEBHOOK_URL`·채널별 webhook 을 빈 값으로 — 개발 기기 `.env` 의 실제 webhook 으로 POST 차단 (`load_dotenv()` 가 다시 못 채우게 delenv 가 아니라 빈 값). **Test:** `tests/alerts/test_discord_bot.py::TestRealWebhooksNeverReachTests` |
 | `mock_yfinance` | `download` → 빈 DataFrame, `Ticker` → None 속성 스텁 |
 
 All tests run **network-free**. Override per-test if needed, but never remove global mocks.
