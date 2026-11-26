@@ -74,12 +74,12 @@ class TestStaleTargetIsSurvivable:
         Gotcha-Test Pair: `grep ... | head -1 || true` 의 `|| true` 를 지우면
         set -e 가 첫 클레임에서 스크립트를 죽여 processed 가 0 이 되고 FAIL.
         """
-        # 카나리아는 sync 목록의 **첫** 클레임 대상이어야 한다 — 첫 항목에서 죽는지가
-        # 이 테스트가 잠그는 것이기 때문. `.claude/rules/architecture.md` 를 쓰다가
-        # 그 파일이 사이트에서 빠지면서(always-loaded 파일의 카운트 제거) 카나리아가
-        # 아무 것도 안 겨냥하게 돼 조용히 통과했다 — 사이트를 옮길 땐 여기도 옮긴다.
-        target = repo_copy / "nuri" / "collectors" / "CLAUDE.md"
-        target.write_text(target.read_text().replace("Data Collectors", "Data Thingies"))
+        # sync 목록의 첫 항목이 사라져도 이후 항목을 처리하는지 확인한다.
+        target = repo_copy / "docs" / "ARCHITECTURE.md"
+        source = target.read_text()
+        modified = re.sub(r"\d+ data collectors", "data collectors", source)
+        assert modified != source
+        target.write_text(modified)
 
         r = _run(SYNC, repo_copy)
 
@@ -161,11 +161,7 @@ def repo_copy(tmp_path):
         "docs/ko/ARCHITECTURE.md",
         "docs/STRATEGY.md",
         "docs/ko/STRATEGY.md",
-        "config/CLAUDE.md",
         "config/rules.yaml",
-        "nuri/api/CLAUDE.md",
-        "nuri/collectors/CLAUDE.md",
-        ".claude/rules/architecture.md",
         "nuri/core/db_migrations.py",
         "nuri/scheduler.py",
     ):

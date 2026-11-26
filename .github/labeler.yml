@@ -85,7 +85,6 @@ docs:
       - any-glob-to-any-file:
           - "docs/**"
           - "*.md"
-          - "CLAUDE.md"
 
 config:
   - changed-files:

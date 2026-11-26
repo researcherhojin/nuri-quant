@@ -415,7 +415,7 @@ PR 전에 확인한다.
 
 | 항목 | 기준 | 현재 |
 |---|---|---|
-| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,886 tests, 464 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
+| Backend tests | Codecov project 1%p threshold vs `target: auto` — required 아님, 보고만 (목표 ≥ 95%) | 9,884 tests, 464 files (statement coverage **100%**, branch coverage **100%**; fast suite 9,606 passed / 0 skipped, `make test-fast`, 2026-10-28) |
 | Frontend tests | 목표 ≥ 90% | 1,460 tests, 117 files ([2026-11-23 main CI](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513)) |
 | E2E | 핵심 flow | 10 spec files · 93 Playwright tests (`playwright test --list`, 2026-10-12) |
 | CI | 필수 | lint + test + coverage + security + privacy |
@@ -590,7 +590,7 @@ Deferred (필요 시점에 추가):
 | 레이어 | 역할 | 구현 |
 |--------|------|------|
 | **Context Files** | 프로젝트 규칙 | `CLAUDE.md` 루트 + 13 scoped + `AGENTS.md` + `docs/STRATEGY.md` |
-| **MCP Servers** | 외부 도구 연결 | `.mcp.json` → `nuri-read` read-model (stdio · 전 쿼리 `readonly=True` 엔진 강제 · ALLOWED 컬럼만, #1306). raw SQLite 등록은 커밋 기본값에서 제거 — 임의 SQL 이 portfolio/trades 에 닿는다 (§4.4 Tier 2). |
+| **MCP Servers** | 외부 도구 연결 | 로컬 `nuri-read` 등록 (stdio · 전 쿼리 `readonly=True` 엔진 강제 · ALLOWED 컬럼만, #1306). raw SQLite는 머신별 직접 등록 대상이다. 임의 SQL이 portfolio/trades에 접근할 수 있다(§4.4 Tier 2). |
 | **Skill Files** | 반복 작업 | `scripts/deploy/deploy_remote.sh`, `scripts/verify/verify.py`, `scripts/db/migrate.py` |
 | **Mechanical Enforcement** | 시스템 강제 | ruff · main-ci-cd.yml · pr-discipline.yml · `make verify-*` · `scripts/verify/gate_check.py`(Makefile 단계 게이트) |
 

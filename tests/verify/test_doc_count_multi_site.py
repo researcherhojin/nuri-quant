@@ -71,15 +71,10 @@ def repo_copy(tmp_path):
     dst = tmp_path / "repo"
     dst.mkdir()
     for rel in (
-        "CLAUDE.md",
         "docs/ARCHITECTURE.md",
         "docs/ko/ARCHITECTURE.md",
         "docs/STRATEGY.md",
         "docs/ko/STRATEGY.md",
-        "config/CLAUDE.md",
-        "nuri/api/CLAUDE.md",
-        "nuri/collectors/CLAUDE.md",
-        ".claude/rules/architecture.md",
         "nuri/core/db_migrations.py",
         "nuri/scheduler.py",
         "config/rules.yaml",

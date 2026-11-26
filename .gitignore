@@ -251,34 +251,15 @@ frontend/test-results/
 .project
 .pydevproject
 
-# ─── Claude Code / AI assistants ───────────────────────────────
-# Default-ignore .claude/ to keep personal state (settings.local.json,
-# hooks drafts, notes) out of git. Explicitly allowlist the curated
-# project-scoped assets so any Claude Code user working on this repo
-# picks them up automatically.
-#
-# Skills allowlist: 프로젝트 `nuri-*`의 SKILL.md만 공유.
-# 머신별 개인 설치 skill (agents-langchain, prompt-engineer 등) 은
-# 자동 ignored — repo 를 clone 한 다른 환경에 강제되지 않음.
-.claude/*
-!.claude/settings.json
-!.claude/skills/
-.claude/skills/*
-!.claude/skills/nuri-*/
-.claude/skills/nuri-*/*
-!.claude/skills/nuri-*/SKILL.md
-!.claude/agents/
-.claude/agents/*
-!.claude/agents/nuri-*.md
-!.claude/commands/
-.claude/commands/*
-!.claude/rules/
-.claude/rules/*
-!.claude/rules/*.md
-!.claude/output-styles/
-.claude/output-styles/*
-!.claude/output-styles/nuri-*.md
-!.claude/commands/nuri-*.md
+# ─── Local Claude Code and Codex settings ──────────────────────
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+.mcp.json
+.codex/
+AGENTS.md
+AGENTS.override.md
+**/.agents/skills/
 # 공유 규칙보다 로컬 표시가 우선한다.
 *.local.md
 /.cspell/*.local.txt

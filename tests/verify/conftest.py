@@ -47,9 +47,10 @@ if not _FIXERS:
 # `update_claim <live_fn> <file> '<pattern>'`
 _FIXER_TARGETS = sorted({m.group(1) for m in re.finditer(r"^update_claim\s+\S+\s+(\S+)", _SYNC.read_text(), re.M)})
 
-# 카나리아 — 정규식이 눈이 멀면 해시 가드가 빈 목록을 지킨다. collection 단계에서 크게 터뜨린다.
-if len(_FIXER_TARGETS) < 6:
-    raise RuntimeError(f"update_claim 대상을 {len(_FIXER_TARGETS)}건만 파싱했다 — 정규식이 어긋남: {_SYNC}")
+# 공유 문서가 파싱에서 빠지면 해시 가드가 변경을 놓친다.
+_SHARED_DOCS = {f"{root}/{name}.md" for root in ("docs", "docs/ko") for name in ("ARCHITECTURE", "STRATEGY")}
+if missing := _SHARED_DOCS.difference(_FIXER_TARGETS):
+    raise RuntimeError(f"update_claim 목록에서 공유 문서를 찾지 못했다: {sorted(missing)}")
 
 
 def fixer_aimed_at_real_repo(args, env) -> str | None:
