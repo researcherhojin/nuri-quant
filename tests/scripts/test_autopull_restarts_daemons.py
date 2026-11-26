@@ -27,6 +27,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 AUTOPULL = REPO_ROOT / "scripts" / "deploy" / "autopull_receiver.sh"
+DEPLOYED_REF = "refs/worktree/nuri-autopull-deployed"
 
 RESIDENT = ["com.nuri-quant.scheduler", "com.nuri-quant.api", "com.nuri-quant.discord-bot"]
 DASHBOARD = "com.nuri-quant.dashboard"
@@ -49,7 +50,7 @@ def _git(cwd: Path, *args: str) -> None:
 
 
 @pytest.fixture()
-def world(tmp_path: Path):
+def uninitialized_world(tmp_path: Path):
     """origin 이 한 커밋 앞선 로컬 레포 + launchctl/uv stub PATH."""
     origin, work, binz = tmp_path / "origin", tmp_path / "work", tmp_path / "bin"
     binz.mkdir()
@@ -59,7 +60,7 @@ def world(tmp_path: Path):
     (binz / "launchctl").write_text(
         "#!/bin/sh\n"
         f'if [ "$1" = "list" ]; then for l in {" ".join([*RESIDENT, DASHBOARD])}; do echo "1 0 $l"; done; exit 0; fi\n'
-        f'echo "launchctl $*" >> "{calls}"\nexit 0\n'
+        f'echo "launchctl $*" >> "{calls}"\nexit "${{LAUNCHCTL_STUB_RC:-0}}"\n'
     )
     # UV_STUB_RC 로 sync 실패를 흉내낸다 (기본 0 — 기존 테스트 무영향).
     (binz / "uv").write_text(f'#!/bin/sh\necho "uv $*" >> "{calls}"\nexit ${{UV_STUB_RC:-0}}\n')
@@ -141,6 +142,12 @@ def world(tmp_path: Path):
             "autopull_log": staticmethod(autopull_log),
         },
     )
+
+
+@pytest.fixture()
+def world(uninitialized_world):
+    uninitialized_world.run()
+    return uninitialized_world
 
 
 class TestAutopullBouncesDaemons:
@@ -298,6 +305,56 @@ def _rev(repo: Path, ref: str = "HEAD") -> str:
     ).stdout.strip()
 
 
+class TestAutopullTracksDeployedCommit:
+    def test_first_run_only_records_current_head(self, uninitialized_world):
+        world = uninitialized_world
+        before = _rev(world.work)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+
+        assert world.run() == ""
+        assert _rev(world.work) == _rev(world.work, DEPLOYED_REF) == before
+
+    def test_manual_fast_forward_waits_for_ci_then_restarts_once(self, world):
+        before = _rev(world.work)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        _git(world.work, "pull", "--ff-only", "origin", "main")
+        target = _rev(world.work)
+        assert target == _rev(world.work, "origin/main") != before
+
+        out = world.run(CI_STUB_JSON=_runs({"status": "in_progress", "conclusion": None}))
+        assert f"head_sha={target}&branch=main" in out
+        assert "kickstart" not in out
+        assert _rev(world.work, DEPLOYED_REF) == before
+
+        out = world.run()
+        for label in RESIDENT:
+            assert re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out)
+        assert _rev(world.work, DEPLOYED_REF) == target
+        assert world.run() == out
+
+    def test_later_docs_pull_includes_code_from_manual_pull(self, world):
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        _git(world.work, "pull", "--ff-only", "origin", "main")
+        world.land({"docs/whatever.md": "# hi\n"})
+
+        out = world.run()
+        for label in RESIDENT:
+            assert re.search(rf"launchctl kickstart -k \S*{re.escape(label)}", out)
+        assert _rev(world.work) == _rev(world.work, DEPLOYED_REF) == _rev(world.origin, "main")
+
+    def test_failed_restart_keeps_the_deployed_commit_for_retry(self, world):
+        before = _rev(world.work)
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+
+        failed = world.run(LAUNCHCTL_STUB_RC="1")
+        assert failed.count("launchctl kickstart") == len(RESIDENT)
+        assert _rev(world.work, DEPLOYED_REF) == before
+
+        retried = world.run()
+        assert retried.count("launchctl kickstart") == 2 * len(RESIDENT)
+        assert _rev(world.work, DEPLOYED_REF) == _rev(world.work)
+
+
 class TestAutopullWaitsForGreenCi:
     """main CI 가 success 인 커밋만 배포한다 (#1808).
 
@@ -427,6 +484,17 @@ class TestAutopullDefersForAnOpenThesisBatch:
         assert "kickstart" not in out
         assert not (world.work / "nuri" / "core" / "rules.py").exists(), "열린 배치 중에 pull 했다"
         assert "thesis batch open" in world.autopull_log()
+
+    def test_an_open_batch_defers_restart_after_manual_pull(self, world):
+        before = _rev(world.work)
+        self._db(world, "open")
+        world.land({"nuri/core/rules.py": "X = 1\n"})
+        _git(world.work, "pull", "--ff-only", "origin", "main")
+
+        out = world.run()
+        assert "kickstart" not in out
+        assert "thesis batch open" in world.autopull_log()
+        assert _rev(world.work, DEPLOYED_REF) == before
 
     @pytest.mark.parametrize(("status", "hours_ago"), [("open", 7.0), ("ok", 0.5), ("canary_changed", 0.5), (None, 0)])
     def test_a_stale_or_finished_batch_or_no_table_does_not_block(self, world, status, hours_ago):

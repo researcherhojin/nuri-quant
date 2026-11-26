@@ -5,13 +5,13 @@
 # 로그:   ~/Library/Logs/nuri-quant-autopull.log
 #
 # 동작:
-#   1. fetch (실패 시 조용히 retry — 네트워크 끊김 대응)
-#   2. 로컬 HEAD vs origin/main 비교
-#   3. 변경 없으면 종료 (silent)
+#   1. 첫 실행은 현재 HEAD 를 배포 기준으로 저장하고 종료
+#   2. fetch (실패 시 다음 주기 재시도)
+#   3. 로컬 HEAD · origin/main · 마지막 배포 커밋이 같으면 프론트만 확인
 #   3b. 새 커밋의 main CI 가 success 가 아니면 보류 — 다음 주기에 다시 본다 (#1808)
 #   4. 변경 있으면 ff-only merge → 비-FF면 거부 + 로그 (수동 처리 유도)
 #   5. 변경된 파일 분석 → dependency/schema 변경 시 경고
-#   6. 상주 python 서비스 재기동 (#1023)
+#   6. 상주 python 서비스 재기동 (#1023), 성공 시 배포 기준 갱신 (#2112)
 #   7. frontend 빌드 self-heal — 새 커밋이 없는 주기에도 (#1462)
 #
 # 수동 테스트:
@@ -64,7 +64,13 @@ if [ -f "$LOG" ] && [ "$(stat -f%z "$LOG" 2>/dev/null || echo 0)" -gt 1048576 ];
     log "log rotated"
 fi
 
-BEFORE=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
+BEFORE=$(git rev-parse --verify HEAD 2>/dev/null) || { log "ABORT: HEAD 확인 실패"; exit 0; }
+DEPLOYED_REF=refs/worktree/nuri-autopull-deployed
+if ! DEPLOYED=$(git rev-parse --verify --quiet "$DEPLOYED_REF"); then
+    git update-ref --no-deref "$DEPLOYED_REF" "$BEFORE" "" >>"$LOG" 2>&1 \
+        || log "ERROR: 초기 배포 기준 기록 실패"
+    exit 0
+fi
 
 # fetch — non-interactive, git 자체 low-speed timeout (30초간 1KB/s 미만이면 abort)
 # macOS 기본에 GNU timeout이 없으므로 git의 내장 timeout 변수 사용
@@ -74,9 +80,9 @@ if ! GIT_TERMINAL_PROMPT=0 GIT_HTTP_LOW_SPEED_LIMIT=1000 GIT_HTTP_LOW_SPEED_TIME
     exit 0
 fi
 
-UPSTREAM=$(git rev-parse origin/main 2>/dev/null || echo "unknown")
+UPSTREAM=$(git rev-parse --verify origin/main 2>/dev/null) || { log "ABORT: origin/main 확인 실패"; exit 0; }
 
-if [ "$BEFORE" = "$UPSTREAM" ]; then
+if [ "$BEFORE" = "$UPSTREAM" ] && [ "$DEPLOYED" = "$UPSTREAM" ]; then
     # 변경 없음 — 조용히 종료 (로그 줄이려고). 프론트 빌드만 확인한다: 최신이면 무출력이고,
     # 지난 주기에 실패했거나 밀렸으면 여기서 따라잡는다.
     ensure_frontend_build
@@ -168,9 +174,8 @@ case "$OPEN_BATCHES" in
         exit 0 ;;
 esac
 
-# 새 커밋 발견
-log "new commits detected: ${BEFORE:0:7}..${UPSTREAM:0:7}"
-git log --oneline --no-decorate "${BEFORE}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
+log "pending deployment: ${DEPLOYED:0:7}..${UPSTREAM:0:7}"
+git log --oneline --no-decorate "${DEPLOYED}..${UPSTREAM}" 2>/dev/null | head -10 | while read -r line; do
     log "  $line"
 done
 
@@ -181,18 +186,26 @@ if ! git diff --quiet HEAD 2>/dev/null; then
     exit 0
 fi
 
-# ff-only merge
-if ! git merge --ff-only origin/main >/dev/null 2>&1; then
+# CI 를 확인한 SHA 만 병합한다. 로컬이 앞서면 ff-only 가 성공해도 그 SHA 에 도달하지 않는다.
+if [ "$BEFORE" != "$UPSTREAM" ] && {
+    ! git merge-base --is-ancestor "$BEFORE" "$UPSTREAM" || ! git merge --ff-only "$UPSTREAM" >/dev/null 2>&1
+}; then
     log "ABORT: non-fast-forward. Local diverged from origin/main."
     log "  cd $REPO && git status && git log --oneline -5"
     exit 0
 fi
 
-AFTER=$(git rev-parse HEAD)
-log "updated to ${AFTER:0:7}"
+AFTER=$(git rev-parse --verify HEAD 2>/dev/null)
+if [ "$AFTER" != "$UPSTREAM" ]; then
+    log "ABORT: HEAD 가 CI 를 확인한 커밋과 다름 — 다음 주기에 재시도"
+    exit 0
+fi
 
 # ── 변경 분석: 수동 조치가 필요한 변경이면 경고만 로그 ──────────────────
-CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null)
+if ! CHANGED=$(git diff --name-only "$DEPLOYED" "$AFTER" 2>>"$LOG"); then
+    log "ERROR: 마지막 배포 기준으로 변경 파일 확인 실패 — 다음 주기에 재시도"
+    exit 0
+fi
 
 DEPS_CHANGED=0
 if echo "$CHANGED" | grep -qE "^(pyproject\.toml|uv\.lock)$"; then
@@ -235,6 +248,7 @@ if echo "$CHANGED" | grep -qE "^nuri/.*\.py$"; then
     CODE_CHANGED=1
 fi
 
+RESTART_FAILED=0
 if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
     # 순서가 중요하다: sync 를 재기동 **앞**에 둔다. 뒤에 두면 새 프로세스가 옛 venv 로
     # 뜬 뒤 패키지만 바뀌어, 재기동을 한 번 더 해야 한다 (2026-08-10 수동 조치 때 밟음).
@@ -270,19 +284,33 @@ if [ "$CODE_CHANGED" = "1" ] || [ "$DEPS_CHANGED" = "1" ]; then
     # 일치해야 하며 `tests/scripts/test_deploy_bounces_resident_services.py` 가 대조한다.
     # dashboard 는 빌드 산출물을 서빙하므로 제외 — 재빌드했을 때만 build_frontend.sh 가 재기동한다 (#1462).
     RESIDENT_SERVICES=(com.nuri-quant.scheduler com.nuri-quant.api com.nuri-quant.discord-bot)
-    for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
-        if ! launchctl list 2>/dev/null | grep -q "${RESIDENT}\$"; then
-            log "skip restart: ${RESIDENT} 미설치"
-            continue
-        fi
-        if launchctl kickstart -k "gui/$(id -u)/${RESIDENT}" >>"$LOG" 2>&1; then
-            log "restarted ${RESIDENT}"
-        else
-            log "ERROR: ${RESIDENT} kickstart 실패 — 구코드로 계속 돈다. 수동 확인 필요"
-        fi
-    done
+    if LOADED_SERVICES=$(launchctl list 2>>"$LOG"); then
+        for RESIDENT in "${RESIDENT_SERVICES[@]}"; do
+            if ! awk -v label="$RESIDENT" '$3 == label {found=1} END {exit !found}' <<<"$LOADED_SERVICES"; then
+                log "skip restart: ${RESIDENT} 미설치"
+                continue
+            fi
+            if launchctl kickstart -k "gui/$(id -u)/${RESIDENT}" >>"$LOG" 2>&1; then
+                log "restarted ${RESIDENT}"
+            else
+                RESTART_FAILED=1
+                log "ERROR: ${RESIDENT} kickstart 실패 — 다음 주기에 재시도"
+            fi
+        done
+    else
+        RESTART_FAILED=1
+        log "ERROR: 설치된 서비스 조회 실패 — 다음 주기에 재시도"
+    fi
 else
     log "no python code/dep changes — services left running"
+fi
+
+if [ "$RESTART_FAILED" = "0" ]; then
+    if git update-ref --no-deref "$DEPLOYED_REF" "$AFTER" "$DEPLOYED" >>"$LOG" 2>&1; then
+        log "deployed ${AFTER:0:7}"
+    else
+        log "ERROR: 배포 기준 기록 실패 — 다음 주기에 재시도"
+    fi
 fi
 
 # ── frontend 빌드 (#1462) ────────────────────────────────────────────────
