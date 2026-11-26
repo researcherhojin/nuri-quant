@@ -19,6 +19,7 @@ from nuri.mcp import readmodels
 from nuri.mcp.readmodels import ALLOWED
 
 MCP_DIR = Path(__file__).resolve().parents[2] / "nuri" / "mcp"
+LOCAL_MCP_CONFIG = MCP_DIR.parents[1] / ".mcp.json"
 
 #: 이 이름이 응답 어디에든 키로 나타나면 그 자체로 결함이다 — holdings/계좌/행동 축.
 FORBIDDEN_KEYS = {
@@ -274,25 +275,27 @@ class TestStructuralSweeps:
                         f"{py.name}: 쓰기 헬퍼 import {name}"
                     )
 
+    @pytest.mark.skipif(not LOCAL_MCP_CONFIG.is_file(), reason="로컬 MCP 설정 없음")
     def test_mcp_json_registers_stdio_without_binding_args(self):
         """`.mcp.json` 의 nuri-read 는 stdio 커맨드 — --port/--host 류가 없다."""
-        cfg = json.loads((Path(__file__).resolve().parents[2] / ".mcp.json").read_text(encoding="utf-8"))
+        cfg = json.loads(LOCAL_MCP_CONFIG.read_text(encoding="utf-8"))
         entry = cfg["mcpServers"]["nuri-read"]
         joined = " ".join([entry["command"], *entry["args"]])
         assert "nuri.mcp.server" in joined
         assert "--port" not in joined and "--host" not in joined and "http" not in joined
 
-    def test_mcp_json_ships_no_raw_db_server(self):
-        """커밋된 기본값에 nuri-read 외 서버가 없다 (codex P1).
+    @pytest.mark.skipif(not LOCAL_MCP_CONFIG.is_file(), reason="로컬 MCP 설정 없음")
+    def test_mcp_json_registers_only_nuri_read(self):
+        """저장소의 로컬 MCP 설정에는 nuri-read만 등록한다.
 
         raw SQLite MCP(mcp-server-sqlite)가 기본으로 실리면 임의 SQL 이
         portfolio/trades 에 닿아 Tier 1 경계가 각자의 로컬 설정에 의존하게 된다.
         ad-hoc 탐색은 개인 설정에 로컬로만 등록한다 — 동치 비교라 어떤 이름으로
         돌아와도 여기서 걸린다.
         """
-        cfg = json.loads((Path(__file__).resolve().parents[2] / ".mcp.json").read_text(encoding="utf-8"))
+        cfg = json.loads(LOCAL_MCP_CONFIG.read_text(encoding="utf-8"))
         assert set(cfg["mcpServers"]) == {"nuri-read"}, (
-            f"커밋된 MCP 서버 목록이 계약과 다르다: {sorted(cfg['mcpServers'])}"
+            f"로컬 MCP 서버 목록이 계약과 다르다: {sorted(cfg['mcpServers'])}"
         )
 
     def test_schema_lag_probe_is_readonly_and_detects_lag(self, tmp_path):

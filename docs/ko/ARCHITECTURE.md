@@ -70,7 +70,7 @@ flowchart LR
 | 7 | **Track** | `decision_pnl`, `recommendation_outcomes`, `thesis_criteria`, `alpha_tracking`; `alpha_report` (ledger 를 봉인하는 operate job) | `recommendations`, `decisions`, `agent_decisions`, `prices`, `portfolio`, `theses`, `thesis_criteria`, `thesis_criteria_checks`, `signals`, `factors`, `fundamentals` | `recommendations.outcome_{7,14,21,30,60,90}d`, `decisions.pnl_*`, `agent_decisions`, `decision_outcomes`, `thesis_criteria_checks`, `theses.verdict`, `recommendation_seals` |
 | 8 | **Learn** | 다음 consensus 실행 | `agent_verdicts` 와 함께 `recommendations.outcome_30d` (잠정값 `outcome_21d`) | 그 실행의 agent 가중치. 실행마다 다시 계산되며 `recommendations` 와 `decisions` 의 `scoring_detail` 에 보관된다 |
 
-**Collect.** collector 는 각자의 스케줄에 따라 외부 API 를 읽고 각각 테이블 하나에 쓴다(여러 테이블에 쓰는 것도 있다). `technical` collector 는 `prices` 로부터 TA-Lib 지표를 계산한다. 운영자는 `config/portfolio.yaml` 에서 보유 종목을 가져오거나(`scripts/ops/import_portfolio.py`, `make setup` 이 실행하거나 수동으로 실행) portfolio API 로 수정한다. 데이터베이스 trigger 가 모든 insert 와 delete, 그리고 수량·계좌·ticker 를 바꾸는 모든 update 를 `portfolio_changes` 에 기록한다.
+**Collect.** 데이터 수집기 30개는 각자의 스케줄에 따라 외부 API 를 읽고 각각 테이블 하나에 쓴다(여러 테이블에 쓰는 것도 있다). `technical` collector 는 `prices` 로부터 TA-Lib 지표를 계산한다. 운영자는 `config/portfolio.yaml` 에서 보유 종목을 가져오거나(`scripts/ops/import_portfolio.py`, `make setup` 이 실행하거나 수동으로 실행) portfolio API 로 수정한다. 데이터베이스 trigger 가 모든 insert 와 delete, 그리고 수량·계좌·ticker 를 바꾸는 모든 update 를 `portfolio_changes` 에 기록한다.
 
 **Data sources.** universe 는 미국 주식과 KOSPI 200 이다. 한국 가격은 pykrx 에서 오고, KOSPI 200 목록은 FinanceDataReader 의 KOSPI 상장 종목 중 시가총액 상위 200개로 근사한다(`nuri/collectors/universe_sync.py`). 한국 fundamentals 는 yfinance 에서 온다. KIS Open API credential 이 설정되면 KIS 가 한국 P/E, P/B, 시가총액과 선택적 실시간 시세를 제공한다([KIS_INTEGRATION.md](KIS_INTEGRATION.md)).
 
@@ -502,7 +502,7 @@ data/
 
 ## 테스트
 
-9,886 backend tests across 464 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-11-23 main CI 에서 Vitest 는 파일 117개의 테스트 1,460개를 통과했다. Playwright 는 spec 파일 10개에서 88개 통과, 5개 건너뜀을 보고했다. [Frontend Tests](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513) · [Frontend E2E](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551429) 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
+9,884 backend tests across 464 files (collection 기준) + frontend vitest (117 files) + Playwright E2E (10 spec files). `verify_doc_counts.sh` 가 이 collection 수와 파일 수를 검증한다. 2026-11-23 main CI 에서 Vitest 는 파일 117개의 테스트 1,460개를 통과했다. Playwright 는 spec 파일 10개에서 88개 통과, 5개 건너뜀을 보고했다. [Frontend Tests](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551513) · [Frontend E2E](https://github.com/researcherhojin/nuri-quant/actions/runs/45099715110/job/137447551429) 변경 범위 검증은 [Overview](OVERVIEW.md)의 실행 기록을 참조한다.
 
 테스트는 `pytest-xdist` 로 실행한다. suite 가 대기 시간에 묶여 있어(wait-bound) CI fast shard 는 `-n 8 --dist worksteal` 을 쓴다(4-core runner 에서 2배 oversubscription, #1414). slow shard 와 로컬 실행은 `-n auto` 를 유지한다. CI 에서 `@pytest.mark.slow` 가 붙은 테스트는 `main` run(push, 또는 catch-up 의 dispatch, #1812)의 slow shard 에서만 실행된다(PR CI 와 `make test-fast` 는 `-m "not slow and not integration"` 을 쓰고, 로컬에서는 `make test` 가 이를 포함하며 `make test-slow` 가 이것만 고른다). `integration` 이 붙은 테스트는 실제 서비스를 호출하므로 기본적으로 제외된다(`addopts`).
 
@@ -572,10 +572,10 @@ PR 종료 시(`cache-cleanup.yml`): 그 PR 의 `refs/pull/N/merge` ref 아래 �
 
 ## MCP 연동
 
-`.mcp.json` 은 Tier 1 read-model MCP server `nuri-read`(#1306)를 등록한다. 구현은 `nuri/mcp/server.py` 에 있다(stdio 전용):
+Tier 1 읽기 전용 MCP 서버 `nuri-read`(#1306)는 stdio로 동작한다. Claude Code에 로컬로 등록하려면 저장소 루트에서 아래 명령을 실행한다.
 
-```json
-{"mcpServers": {"nuri-read": {"type": "stdio", "command": "uv", "args": ["run", "--no-sync", "python", "-m", "nuri.mcp.server"]}}}
+```bash
+claude mcp add --scope local --transport stdio nuri-read -- uv run --no-sync python -m nuri.mcp.server
 ```
 
-Tool: `buy_candidates` · `macro_facts` · `data_freshness` · `live_quote`(#1626: 호출자가 넘긴 ticker 최대 10개, yfinance `fast_info`, 데이터베이스는 읽지 않는다; `siege_status` 는 certifier 와 함께 제거됐다, #1619; `macro_facts` 는 regime 을 `candidate_runs` 에서 읽는다). server 는 `NURI_DB_PATH` 가 설정돼 있으면 그것을, 아니면 `data/replicas/` 의 최신 production replica(`state_replicator.sh` 가 매시 생성)를, 그것도 아니면 기본 DB 를 읽는다 — 개발 머신에서 그 기본 DB 는 ledger 가 아니며 몇 주 묵은 것일 수 있다(#1617). `data_freshness` 는 source 종류, replica 파일 나이, 최신 VIX / candidate run 날짜를 보고한다. replica 가 3시간보다 오래됐을 때, 최신 VIX 날짜가 5일보다 오래됐거나 최신 candidate run 이 3일보다 오래됐을 때(KST 달력 기준; `premarket_brief` 가 평일마다 candidate run 을 쓰므로 heartbeat 역할도 한다), 또는 파일을 읽을 수 없을 때(중단된 `rsync --partial` push 가 잘린 replica 를 남길 수 있다) source 를 stale 로 표시한다. replica 파일 이름에 mini 의 hostname 이 들어 있으므로 경로는 절대 반환하지 않는다. 모든 query 는 `readonly=True`(`mode=ro` URI + `PRAGMA query_only=ON`, engine 이 강제)로 실행되고, module 의 `ALLOWED` dict 에 있는 column 만 응답에 실린다(SQL 은 `id`, `run_id`, `disposition` 같은 고정된 내부 key 와 filter 도 쓴다). `decisions` 테이블은 보유 종목을 드러낼 수 있으므로 통째로 제외하고, candidate 는 `disposition='emitted'` 행만 노출한다. raw SQLite server(`nuri-db` → `mcp-server-sqlite`)는 임의 SQL 이 `portfolio` 와 `trades` 에 닿을 수 있어 commit 된 설정에서 제거했다(#1306 codex P1). 머신별 opt-in 으로는 남아 있지만 repository 기본값은 아니다.
+Tool: `buy_candidates` · `macro_facts` · `data_freshness` · `live_quote`(#1626: 호출자가 넘긴 ticker 최대 10개, yfinance `fast_info`, 데이터베이스는 읽지 않는다; `siege_status` 는 certifier 와 함께 제거됐다, #1619; `macro_facts` 는 regime 을 `candidate_runs` 에서 읽는다). server 는 `NURI_DB_PATH` 가 설정돼 있으면 그것을, 아니면 `data/replicas/` 의 최신 production replica(`state_replicator.sh` 가 매시 생성)를, 그것도 아니면 기본 DB 를 읽는다 — 개발 머신에서 그 기본 DB 는 ledger 가 아니며 몇 주 묵은 것일 수 있다(#1617). `data_freshness` 는 source 종류, replica 파일 나이, 최신 VIX / candidate run 날짜를 보고한다. replica 가 3시간보다 오래됐을 때, 최신 VIX 날짜가 5일보다 오래됐거나 최신 candidate run 이 3일보다 오래됐을 때(KST 달력 기준; `premarket_brief` 가 평일마다 candidate run 을 쓰므로 heartbeat 역할도 한다), 또는 파일을 읽을 수 없을 때(중단된 `rsync --partial` push 가 잘린 replica 를 남길 수 있다) source 를 stale 로 표시한다. replica 파일 이름에 mini 의 hostname 이 들어 있으므로 경로는 절대 반환하지 않는다. 모든 query 는 `readonly=True`(`mode=ro` URI + `PRAGMA query_only=ON`, engine 이 강제)로 실행되고, module 의 `ALLOWED` dict 에 있는 column 만 응답에 실린다(SQL 은 `id`, `run_id`, `disposition` 같은 고정된 내부 key 와 filter 도 쓴다). `decisions` 테이블은 보유 종목을 드러낼 수 있으므로 통째로 제외하고, candidate 는 `disposition='emitted'` 행만 노출한다. raw SQLite 서버(`nuri-db` → `mcp-server-sqlite`)는 머신별로 직접 등록한다. 임의 SQL은 `portfolio`와 `trades`에 접근할 수 있다(#1306).

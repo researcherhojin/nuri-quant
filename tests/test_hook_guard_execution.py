@@ -82,6 +82,7 @@ def _run(shell: list[str], command: str, payload: dict) -> int:
 
 
 pytestmark = [
+    pytest.mark.skipif(not SETTINGS.is_file(), reason="로컬 Claude Code 설정 없음"),
     pytest.mark.skipif(shutil.which("jq") is None, reason="훅이 jq 에 의존 — 미설치 환경에선 판정 불가"),
     pytest.mark.parametrize("shell", _SHELLS),
 ]

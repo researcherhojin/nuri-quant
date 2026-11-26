@@ -10,8 +10,7 @@
 것은 "값이 정확한가"(기계가 알 수 없다)가 아니라 **"모든 지점이 서로 같은가"** 다.
 재측정하면 전 지점을 같이 옮겨야 하고, 한 곳만 옮기면 FAIL 한다.
 
-정본은 `.claude/rules/architecture.md` — 항상 로드되는 rules 파일이라 여기가 어긋나면
-에이전트가 먼저 틀린다.
+정본은 Makefile 의 각 타깃 주석이다. 도움말과 공유 문서의 수치를 대조한다.
 
 `verify-fast` / `verify` 는 `.md` 정본이 없고 `Makefile` 안에만 두 번(도움말 표 + `##`
 주석) 나오므로, 그 둘이 서로 일치하는지만 본다 — 반쪽 수정을 잡는 데는 그걸로 충분하다.
@@ -26,7 +25,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 MAKEFILE = REPO_ROOT / "Makefile"
-CANONICAL = REPO_ROOT / ".claude" / "rules" / "architecture.md"
 
 # `84.9s` 는 잡고 `%-9s` / `%-14s` (printf 형식 지정자) 와 `~10s` (역사적 서술로 남긴
 # 옛 값)는 잡지 않는다. 앞 문자가 `%` `-` `~` `.` 또는 단어 문자면 배제.
@@ -37,23 +35,20 @@ def _find(path: Path, pattern: str) -> list[str]:
     return re.findall(pattern, path.read_text())
 
 
-# 정본 두 값을 architecture.md 한 줄에서 뽑는다.
-_CANONICAL_LINE = re.compile(r"`make verify-quick`[^/]*?" + _SECONDS + r"[^/]*?/[^`]*?`make verify-all`.*?" + _SECONDS)
+_CANONICAL_PATTERNS = {
+    "verify-quick": r"^verify-quick:[^\n]*?\(" + _SECONDS + r"\)",
+    "verify-all": r"^verify-all:[^\n]*?\(" + _SECONDS + r"[,)]",
+}
 
 # 등재된 표기 지점. (파일, 그 파일에서 해당 티어의 초 값을 뽑는 정규식).
 # 새 지점을 추가하면 아래 `test_no_unregistered_site` 가 등재를 요구한다.
 SITES: dict[str, list[tuple[Path, str]]] = {
     "verify-quick": [
-        (REPO_ROOT / "AGENTS.md", r"make verify-quick\s+#[^\n]*?" + _SECONDS),
         (REPO_ROOT / "CONTRIBUTING.md", r"make verify-quick\s+#[^\n]*?" + _SECONDS),
-        (REPO_ROOT / ".claude/skills/nuri-verify/SKILL.md", r"## Quick check \(" + _SECONDS),
         (MAKEFILE, r"'verify-quick'\s+'" + _SECONDS + r"'"),
-        (MAKEFILE, r"^verify-quick:[^\n]*?\(" + _SECONDS + r"\)"),
     ],
     "verify-all": [
-        (REPO_ROOT / "AGENTS.md", r"make verify-all\s+#[^\n]*?" + _SECONDS),
         (MAKEFILE, r"'verify-all'\s+'" + _SECONDS + r"'"),
-        (MAKEFILE, r"^verify-all:[^\n]*?\(" + _SECONDS + r"[,)]"),
     ],
 }
 
@@ -65,12 +60,13 @@ MAKEFILE_ONLY = {
 
 
 def _canonical() -> dict[str, str]:
-    m = _CANONICAL_LINE.search(CANONICAL.read_text())
-    assert m, (
-        f"{CANONICAL.relative_to(REPO_ROOT)} 에서 verify-quick/verify-all 정본 수치를 못 찾았다 — "
-        "형식이 바뀌었으면 이 테스트의 _CANONICAL_LINE 도 같이 고칠 것"
-    )
-    return {"verify-quick": m.group(1), "verify-all": m.group(2)}
+    text = MAKEFILE.read_text()
+    values = {}
+    for tier, pattern in _CANONICAL_PATTERNS.items():
+        found = re.findall(pattern, text, re.MULTILINE)
+        assert len(found) == 1, f"Makefile 에서 `{tier}` 타깃 소요 시간을 하나만 찾을 수 있어야 한다: {found}"
+        values[tier] = found[0]
+    return values
 
 
 class TestEverySiteQuotesTheSameNumber:
@@ -99,7 +95,7 @@ class TestEverySiteQuotesTheSameNumber:
                     mismatches.append(f"{rel}: `{tier}` = {found} 인데 정본은 {canonical[tier]}")
         assert not mismatches, (
             "verify 티어 수치가 지점마다 다르다:\n  " + "\n  ".join(mismatches) + "\n"
-            f"정본: {CANONICAL.relative_to(REPO_ROOT)}. 재측정했다면 전 지점을 같이 옮길 것."
+            "정본: Makefile 타깃 주석. 재측정했다면 전 지점을 같이 옮길 것."
         )
 
     def test_makefile_only_tiers_are_internally_consistent(self):
@@ -129,17 +125,12 @@ class TestEverySiteQuotesTheSameNumber:
             text=True,
             check=False,
         ).stdout.split()
-        # 제외 둘: 정본 파일(값의 출처라 당연히 등장)과 이 테스트 파일 자신
-        # (docstring 이 결함 서술로 값을 인용한다). 둘 다 "표기 지점"이 아니다.
+        # 이 테스트의 docstring 은 과거 사례의 수치를 인용한다.
         #
         # ⚠️ `git grep` 은 **추적되는 파일만** 본다. 그래서 이 테스트를 커밋 전에
         # 돌리면 자기 자신이 안 잡혀 초록이고, 커밋 직후 빨개진다 — 실제로 그렇게
         # 밟았다. 새 파일을 등재 목록에 넣을 땐 `git add` 후에 확인할 것.
-        excluded = {
-            str(CANONICAL.relative_to(REPO_ROOT)),
-            str(Path(__file__).resolve().relative_to(REPO_ROOT)),
-        }
-        tracked = [f for f in tracked if f not in excluded]
+        tracked = [f for f in tracked if f != str(Path(__file__).resolve().relative_to(REPO_ROOT))]
         registered = {str(p.relative_to(REPO_ROOT)) for p, _ in SITES["verify-quick"]}
         unregistered = set(tracked) - registered
         assert not unregistered, (
