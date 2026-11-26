@@ -22,7 +22,7 @@ scripts/
 ├── ci/                  # CI helpers (test duration merge, patch coverage gate)
 ├── episodes/            # historical experiments (e3_*/e4_*/pr_f_*)
 ├── launchd/             # macOS plist + LaunchAgent/LaunchDaemon install
-├── hooks/               # git hooks (pre-commit, pre-push)
+├── hooks/               # Git hooks and Antigravity PreToolUse guard
 └── _archive/            # retired scripts, not maintained
 ```
 
@@ -168,14 +168,15 @@ Install (LaunchDaemon): `sudo bash scripts/launchd/install_daemons.sh`
 
 Uninstall: `bash scripts/launchd/uninstall_crons.sh [--only X]`
 
-## hooks/ — git hooks
+## hooks/ — Git과 Antigravity 훅
 
 | Hook | Action |
 |---|---|
 | `pre-commit` | 스테이지된 `.py` 에 `ruff check --fix` + `ruff format`, `frontend/` 의 JS/TS 에 `eslint --fix` 후 재스테이징. 비차단 |
 | `pre-push` | `scripts/verify/pre_push_check.sh --skip-tests` 실행. 실패 시 push 차단 |
+| `agy_pre_tool_guard.py` | Antigravity의 `.agents/hooks.json`에서 호출하는 `PreToolUse` 훅. 일부 파괴적 Git 명령과 파일 편집 규칙 위반을 차단 |
 
-Install: `make setup-hooks` (`scripts/dev/install_hooks.sh`, 심볼릭 링크).
+Git 훅은 `make setup-hooks`로 설치한다. Antigravity 훅의 설정과 검증 방법은 [Antigravity 작업 가이드](../GEMINI.md)에 있다.
 
 ## 추가 가이드
 

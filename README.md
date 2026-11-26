@@ -87,10 +87,11 @@ The scheduler registers independent jobs. Consensus passes its result to `record
 | [`docs/FRESH_CLONE_SETUP.md`](docs/FRESH_CLONE_SETUP.md) | Setup from a fresh clone |
 | [Dashboard README](frontend/README.md) | Frontend setup, API routing and browser tests |
 | [Scripts index](scripts/README.md) | Development, verification and operations commands |
+| [Antigravity workspace guide](GEMINI.md) | CLI setup, tool hooks and the read-only MCP server |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | Workflow, required checks, pull request rules |
 | [`SECURITY.md`](SECURITY.md) | Security policy and rules governing data sent to large language models (LLMs) |
 
-Every guide is in [`docs/`](docs/), with Korean editions in [`docs/ko/`](docs/ko/).
+Find more guides in [`docs/`](docs/), with Korean editions in [`docs/ko/`](docs/ko/).
 
 ## Acknowledgements
 

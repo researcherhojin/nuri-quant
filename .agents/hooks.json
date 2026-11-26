@@ -1,0 +1,16 @@
+{
+  "nuri-invariants": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_to_file|replace_file_content|multi_replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/scripts/hooks/agy_pre_tool_guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
