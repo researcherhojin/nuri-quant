@@ -273,6 +273,13 @@ class TestGenericDigestTruncation:
         assert "… (+" in value
         assert "more)" in value
 
+        # running 이 1016자(<=1024)에 멈춰 action_line 이 예산 초과로 생략되는 분기(line 635 False arm)
+        tight_events = [{"kind": "brief_quality_noise", "summary": "D" * 195} for _ in range(5)]
+        tight_embed = bucket_generic_digest(tight_events, channel_label="Ops")
+        tight_value = tight_embed["fields"][0]["value"]
+        assert len(tight_value) <= 1024
+        assert "→ 조치(개발):" not in tight_value
+
 
 # ════════════════════════════════════════════════════════════
 # format_money(None) / 스칼라가 하나도 없는 payload 의 머리

@@ -46,23 +46,25 @@ def _post_webhook(url: str, payload: dict) -> None:
     """Discord Webhook POST — 429 / 5xx 한정 유한 재시도 포함."""
     import time
 
-    for attempt in range(_WEBHOOK_MAX_RETRIES + 1):
+    for attempt in range(_WEBHOOK_MAX_RETRIES):
         resp = requests.post(url, json=payload, timeout=10)
         status = getattr(resp, "status_code", None)
         is_retryable = isinstance(status, int) and (status == 429 or 500 <= status < 600)
-        if is_retryable and attempt < _WEBHOOK_MAX_RETRIES:
-            delay = _retry_delay_seconds(resp, attempt)
-            logger.warning(
-                "Discord Webhook HTTP %d — %.1f초 후 재시도 (%d/%d)",
-                status,
-                delay,
-                attempt + 1,
-                _WEBHOOK_MAX_RETRIES,
-            )
-            time.sleep(delay)
-            continue
-        resp.raise_for_status()
-        return
+        if not is_retryable:
+            resp.raise_for_status()
+            return
+        delay = _retry_delay_seconds(resp, attempt)
+        logger.warning(
+            "Discord Webhook HTTP %d — %.1f초 후 재시도 (%d/%d)",
+            status,
+            delay,
+            attempt + 1,
+            _WEBHOOK_MAX_RETRIES,
+        )
+        time.sleep(delay)
+
+    resp = requests.post(url, json=payload, timeout=10)
+    resp.raise_for_status()
 
 
 def _truncate_discord_content(message: str) -> str:

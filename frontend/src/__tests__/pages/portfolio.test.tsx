@@ -231,6 +231,29 @@ describe("PortfolioPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("resets loadingSample and logs error when sample portfolio fetch rejects", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
+      if (url.includes("/api/portfolio/sample") && opts?.method === "POST") {
+        return Promise.reject(new Error("Network error"));
+      }
+
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ holdings: [], count: 0 }) });
+    });
+
+    render(<PortfolioPage />);
+    await waitFor(() => expect(screen.getByText("Load Sample Portfolio")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Load Sample Portfolio"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Load Sample Portfolio")).not.toBeDisabled();
+    });
+
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
   it("resets submitting and shows error on add holding network failure", async () => {
     global.fetch = vi.fn().mockImplementation((url: string, opts?: RequestInit) => {
       if (url.includes("/api/portfolio") && opts?.method === "POST") {

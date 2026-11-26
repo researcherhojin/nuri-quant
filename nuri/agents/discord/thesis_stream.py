@@ -3,6 +3,7 @@
 # cspell:ignore killpg
 
 import asyncio
+import contextlib
 import json
 import os
 import re
@@ -81,12 +82,8 @@ async def run(
                 try:
                     await asyncio.wait_for(proc.wait(), timeout=_TERM_GRACE_S)
                 except TimeoutError:
-                    try:
+                    with contextlib.suppress(ProcessLookupError):
                         os.killpg(proc.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                    try:
+                    with contextlib.suppress(ProcessLookupError):
                         proc.kill()
-                    except ProcessLookupError:
-                        pass
                     await proc.wait()

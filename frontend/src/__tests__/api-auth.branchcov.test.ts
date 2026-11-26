@@ -97,11 +97,11 @@ describe("POST /api/auth — branch coverage", () => {
     vi.stubEnv("DASHBOARD_PASSWORD", "correct");
     const { POST } = await import("@/app/api/auth/route");
 
-    // 공백 x-forwarded-for → x-real-ip 폴백
+    // 첫 항목이 빈 x-forwarded-for → x-real-ip 폴백
     const realIpResp = await POST(
       new Request("http://localhost:3000/api/auth", {
         method: "POST",
-        headers: { "x-forwarded-for": "   ", "x-real-ip": "192.0.2.10" },
+        headers: { "x-forwarded-for": ", 10.0.0.1", "x-real-ip": "192.0.2.10" },
         body: JSON.stringify({ password: "wrong" }),
       }),
     );

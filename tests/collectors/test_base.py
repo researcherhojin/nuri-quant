@@ -508,3 +508,24 @@ class TestFailureAlertIsReadable:
         assert "yfinance_prices" in rendered
         assert "429" in rendered
         assert "event:" not in rendered  # 내부 키 이름이 사용자에게 보이면 안 된다
+
+
+def test_collect_raising_collection_failure_error_does_not_retry():
+    """collect() 가 CollectionFailureError 를 직접 던지면 재시도 없이 즉시 전파."""
+    calls = 0
+
+    class DirectFailCollector(BaseCollector):
+        def __init__(self):
+            super().__init__("direct_fail")
+
+        def collect(self, **kwargs):
+            nonlocal calls
+            calls += 1
+            raise CollectionFailureError("hard failure")
+
+        def save(self, data):
+            return 0
+
+    with pytest.raises(CollectionFailureError, match="hard failure"):
+        DirectFailCollector().run()
+    assert calls == 1

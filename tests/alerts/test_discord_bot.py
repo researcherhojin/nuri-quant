@@ -497,3 +497,23 @@ class TestWebhookRetryAndTruncation:
         exact = "B" * 2000
         assert send_webhook_text(exact, webhook_url="https://example.test/wh") is True
         assert captured["json"]["content"] == exact
+
+    def test_retries_on_429_without_or_invalid_retry_after_and_exhausts_5xx(self, monkeypatch):
+        import requests
+
+        from nuri.alerts.discord_bot import send_webhook_text
+
+        sleeps: list[float] = []
+        monkeypatch.setattr("time.sleep", lambda s: sleeps.append(s))
+
+        resp_429_no_hdr = MagicMock(status_code=429, headers={})
+        resp_429_bad_hdr = MagicMock(status_code=429, headers={"Retry-After": "not-a-number"})
+        resp_503_final = MagicMock(status_code=503, headers={})
+        resp_503_final.raise_for_status.side_effect = requests.HTTPError("503 Service Unavailable")
+        mock_post = MagicMock(side_effect=[resp_429_no_hdr, resp_429_bad_hdr, resp_503_final])
+        monkeypatch.setattr("nuri.alerts.discord_bot.requests.post", mock_post)
+
+        with pytest.raises(requests.HTTPError, match="503"):
+            send_webhook_text("still down", webhook_url="https://example.test/wh")
+        assert mock_post.call_count == 3
+        assert sleeps == [1.0, 2.0]
